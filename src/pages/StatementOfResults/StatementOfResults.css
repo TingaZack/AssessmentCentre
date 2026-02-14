@@ -1,0 +1,758 @@
+/* StatementOfResults.css */
+
+:root {
+  --mlab-midnight: #073f4e;
+  --mlab-green: #94c73d;
+  --mlab-grey: #6b6b6b;
+  --mlab-white: #ffffff;
+  --soft-bg: #f5f8f7;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.sor-wrapper {
+  /* Force it to take up the full screen width */
+  width: 100vw;
+  min-height: 100vh;
+
+  /* Flexbox centering */
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+
+  padding: 2rem 1rem;
+  box-sizing: border-box; /* Ensures padding doesn't push it off-screen */
+  background-color: #f4f7f6;
+}
+
+.container {
+  width: 100%;
+  max-width: 1100px;
+  margin: 0 auto; /* Fallback centering */
+  background: white;
+  box-shadow: 0 20px 60px rgba(7, 63, 78, 0.15);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Optional: Make it completely flush with the screen on very small phones */
+@media (max-width: 600px) {
+  .sor-wrapper {
+    padding: 0; /* Removes the outer spacing on small mobile screens */
+  }
+
+  .container {
+    box-shadow: none; /* Removes the shadow since it takes up the whole screen */
+  }
+}
+
+/* Header with mLab branding */
+.letterhead {
+  background: var(--mlab-midnight);
+  color: white;
+  padding: 3rem 3rem 2rem;
+  position: relative;
+  overflow: hidden;
+}
+
+.letterhead::before {
+  content: "";
+  position: absolute;
+  top: -100px;
+  right: -100px;
+  width: 300px;
+  height: 300px;
+  background: rgba(148, 199, 61, 0.1);
+  border-radius: 50%;
+}
+
+.letterhead::after {
+  content: "";
+  position: absolute;
+  bottom: -80px;
+  left: -80px;
+  width: 250px;
+  height: 250px;
+  background: rgba(148, 199, 61, 0.08);
+  border-radius: 50%;
+}
+
+.letterhead-content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.provider-info {
+  flex: 1;
+}
+
+.logo-container {
+  margin-bottom: 1.5rem;
+}
+
+.logo {
+  display: inline-block;
+}
+
+.logo-text {
+  font-family: "Oswald", sans-serif;
+  font-size: 3.5rem;
+  font-weight: 300;
+  line-height: 1;
+  letter-spacing: -2px;
+}
+
+.logo-m {
+  color: var(--mlab-green);
+}
+
+.logo-lab {
+  color: white;
+}
+
+.tagline {
+  font-size: 0.75rem;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  opacity: 0.8;
+  margin-top: 0.5rem;
+  font-weight: 400;
+}
+
+.provider-details {
+  font-size: 0.9rem;
+  opacity: 0.9;
+  line-height: 1.8;
+  margin-top: 1rem;
+}
+
+.contact-info {
+  text-align: right;
+  font-size: 0.85rem;
+  opacity: 0.9;
+}
+
+.contact-info div {
+  margin-bottom: 0.5rem;
+}
+
+/* Green accent bar */
+.accent-bar {
+  height: 6px;
+  background: var(--mlab-green);
+}
+
+/* Document Title */
+.document-header {
+  text-align: center;
+  padding: 2.5rem 3rem 2rem;
+  background: var(--soft-bg);
+}
+
+.document-title {
+  font-family: "Oswald", sans-serif;
+  font-size: 2.8rem;
+  font-weight: 600;
+  color: var(--mlab-midnight);
+  letter-spacing: 2px;
+  margin-bottom: 0.5rem;
+  text-transform: uppercase;
+}
+
+.document-subtitle {
+  color: var(--mlab-grey);
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  font-weight: 600;
+}
+
+/* Main Content */
+.content {
+  padding: 3rem;
+}
+
+/* Qualification Info */
+.qualification-box {
+  background: linear-gradient(135deg, var(--mlab-midnight) 0%, #0a5566 100%);
+  color: white;
+  padding: 2rem;
+  margin-bottom: 2.5rem;
+  position: relative;
+  overflow: hidden;
+}
+
+.qualification-box::before {
+  content: "";
+  position: absolute;
+  top: -50%;
+  right: -10%;
+  width: 300px;
+  height: 300px;
+  background: rgba(148, 199, 61, 0.1);
+  border-radius: 50%;
+}
+
+.qualification-title {
+  font-family: "Oswald", sans-serif;
+  font-size: 1.8rem;
+  font-weight: 500;
+  margin-bottom: 1.5rem;
+  position: relative;
+  z-index: 1;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.qualification-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 2rem;
+  position: relative;
+  z-index: 1;
+}
+
+.meta-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.meta-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  margin-bottom: 0.5rem;
+  opacity: 0.8;
+  font-weight: 600;
+}
+
+.meta-value {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--mlab-green);
+}
+
+/* Learner Info */
+.learner-section {
+  margin-bottom: 2.5rem;
+}
+
+.section-title {
+  font-family: "Oswald", sans-serif;
+  font-size: 1.4rem;
+  font-weight: 600;
+  color: var(--mlab-midnight);
+  margin-bottom: 1.5rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 3px solid var(--mlab-green);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.learner-info {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 2rem;
+  padding: 2rem;
+  background: var(--soft-bg);
+  border-left: 4px solid var(--mlab-green);
+}
+
+.info-field {
+  display: flex;
+  flex-direction: column;
+}
+
+.field-label {
+  font-size: 0.75rem;
+  color: var(--mlab-grey);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+}
+
+.field-value {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--mlab-midnight);
+}
+
+/* Assessment Tables */
+.assessment-category {
+  margin-bottom: 2.5rem;
+}
+
+.category-header {
+  background: var(--mlab-midnight);
+  color: white;
+  padding: 1rem 1.5rem;
+  font-family: "Oswald", sans-serif;
+  font-size: 1.2rem;
+  font-weight: 500;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.category-badge {
+  background: var(--mlab-green);
+  color: var(--mlab-midnight);
+  padding: 0.4rem 1rem;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.assessment-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 0.5rem;
+  box-shadow: 0 2px 8px rgba(7, 63, 78, 0.1);
+}
+
+.assessment-table thead {
+  background: var(--soft-bg);
+}
+
+.assessment-table th {
+  padding: 1rem;
+  text-align: left;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-weight: 700;
+  color: var(--mlab-midnight);
+  border-bottom: 2px solid var(--mlab-green);
+}
+
+.assessment-table th:last-child {
+  text-align: center;
+}
+
+.assessment-table tbody tr {
+  border-bottom: 1px solid #e0e0e0;
+  transition: all 0.2s ease;
+}
+
+.assessment-table tbody tr:hover {
+  background: rgba(0, 128, 0, 0.206);
+}
+
+.assessment-table td {
+  padding: 1.25rem 1rem;
+}
+
+.module-name {
+  font-weight: 600;
+  color: var(--mlab-midnight);
+  line-height: 1.5;
+}
+
+.credits-badge {
+  display: inline-block;
+  background: var(--mlab-green);
+  color: var(--mlab-midnight);
+  padding: 0.35rem 0.85rem;
+  border-radius: 4px;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.achievement-status {
+  text-align: center;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 0.6rem 1.5rem;
+  border-radius: 25px;
+  font-weight: 700;
+  font-size: 0.9rem;
+  min-width: 120px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.status-competent {
+  background: var(--mlab-green);
+  color: var(--mlab-midnight);
+}
+
+.status-not-competent {
+  background: #e74c3c;
+  color: white;
+}
+
+.status-pass {
+  background: var(--mlab-green);
+  color: var(--mlab-midnight);
+}
+
+.status-fail {
+  background: #e74c3c;
+  color: white;
+}
+
+/* Summary Box */
+.summary-box {
+  background: linear-gradient(135deg, var(--mlab-midnight) 0%, #0a5566 100%);
+  color: white;
+  padding: 2rem;
+  margin: 2rem 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.summary-box::before {
+  content: "";
+  position: absolute;
+  top: -50%;
+  right: -10%;
+  width: 250px;
+  height: 250px;
+  background: rgba(148, 199, 61, 0.1);
+  border-radius: 50%;
+}
+
+.summary-text {
+  font-size: 1.1rem;
+  font-weight: 600;
+  position: relative;
+  z-index: 1;
+}
+
+.eisa-status {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  position: relative;
+  z-index: 1;
+}
+
+.eisa-label {
+  font-size: 0.9rem;
+  opacity: 0.9;
+  font-weight: 600;
+}
+
+.eisa-badge {
+  background: var(--mlab-green);
+  color: var(--mlab-midnight);
+  padding: 0.75rem 2rem;
+  border-radius: 25px;
+  font-weight: 700;
+  font-size: 1.2rem;
+  font-family: "Oswald", sans-serif;
+}
+
+.eisa-badge.no {
+  background: #e74c3c;
+  color: white;
+}
+
+/* Important Notice */
+.important-notice {
+  background: #fff8e1;
+  border-left: 4px solid #ffa000;
+  padding: 1.5rem;
+  margin: 2rem 0;
+}
+
+.notice-title {
+  font-weight: 700;
+  color: #f57c00;
+  margin-bottom: 0.75rem;
+  font-size: 1.05rem;
+  font-family: "Oswald", sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.notice-text {
+  color: #6b6b6b;
+  line-height: 1.8;
+  font-size: 0.95rem;
+}
+
+.notice-text p {
+  margin-bottom: 0.75rem;
+}
+
+/* Footer Section */
+.footer-section {
+  margin-top: 3rem;
+  padding-top: 2rem;
+  border-top: 2px solid var(--mlab-green);
+}
+
+.signature-area {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 2rem;
+  height: 100%;
+  display: flex;
+  /* justify-content: center; */
+  align-items: center;
+}
+
+.signature-block {
+  text-align: center;
+  width: 45%;
+}
+
+.signature-line {
+  border-top: 2px solid var(--mlab-midnight);
+  margin-bottom: 0.5rem;
+  padding-top: 3rem;
+}
+
+.signature-name {
+  font-weight: 700;
+  color: var(--mlab-midnight);
+  margin-bottom: 0.25rem;
+  font-size: 1.05rem;
+}
+
+.signature-title {
+  font-size: 0.85rem;
+  color: var(--mlab-grey);
+}
+
+.attachments-box {
+  background: var(--soft-bg);
+  padding: 1.5rem;
+  border-left: 4px solid var(--mlab-green);
+  margin-bottom: 2rem;
+}
+
+.attachments-title {
+  font-weight: 700;
+  margin-bottom: 1rem;
+  color: var(--mlab-midnight);
+  font-family: "Oswald", sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.attachments-list {
+  list-style: none;
+  color: grey;
+}
+
+.attachments-list li {
+  padding: 0.5rem 0;
+  padding-left: 1.5rem;
+  position: relative;
+}
+
+.attachments-list li::before {
+  content: "✓";
+  position: absolute;
+  left: 0;
+  color: var(--mlab-green);
+  font-weight: bold;
+  font-size: 1.2rem;
+}
+
+.qr-verification {
+  text-align: center;
+  padding: 1.5rem;
+  background: var(--soft-bg);
+  border: 3px solid var(--mlab-green);
+}
+
+.qr-verification canvas {
+  display: block;
+  margin: 0 auto 1rem;
+  background: white;
+  padding: 0.5rem;
+}
+
+.qr-label {
+  font-weight: 700;
+  color: var(--mlab-midnight);
+  margin-bottom: 0.5rem;
+  font-size: 0.95rem;
+  font-family: "Oswald", sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.verification-code {
+  font-size: 0.8rem;
+  color: var(--mlab-grey);
+  font-family: monospace;
+  background: white;
+  padding: 0.5rem;
+  display: inline-block;
+  border: 1px solid #ddd;
+}
+
+/* Print Button */
+.print-button {
+  position: fixed;
+  bottom: 2rem;
+  right: 2rem;
+  padding: 1rem 2rem;
+  background: var(--mlab-green);
+  color: var(--mlab-midnight);
+  border: none;
+  border-radius: 50px;
+  font-weight: 700;
+  font-size: 1rem;
+  cursor: pointer;
+  box-shadow: 0 10px 30px rgba(148, 199, 61, 0.4);
+  transition: all 0.3s ease;
+  font-family: "Oswald", sans-serif;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.print-button:hover {
+  background: var(--mlab-midnight);
+  color: white;
+  transform: translateY(-3px);
+  box-shadow: 0 15px 40px rgba(7, 63, 78, 0.4);
+}
+
+.print-button:active {
+  transform: translateY(-1px);
+}
+
+/* Print Styles */
+@media print {
+  .sor-wrapper {
+    background: white;
+    padding: 0;
+  }
+
+  .container {
+    box-shadow: none;
+    max-width: 100%;
+  }
+
+  .print-button {
+    display: none;
+  }
+
+  .assessment-table tbody tr:hover {
+    background: transparent;
+  }
+
+  @page {
+    margin: 1cm;
+  }
+}
+
+/* Animations */
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.container {
+  animation: slideIn 0.5s ease-out;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .sor-wrapper {
+    padding: 1rem;
+  }
+
+  .content {
+    padding: 1.5rem;
+  }
+
+  .letterhead-content {
+    flex-direction: column;
+    gap: 2rem;
+  }
+
+  .contact-info {
+    text-align: left;
+  }
+
+  .qualification-meta {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+
+  .summary-box {
+    flex-direction: column;
+    gap: 1.5rem;
+    text-align: center;
+  }
+
+  .signature-area {
+    flex-direction: column;
+    gap: 2rem;
+  }
+
+  .signature-block {
+    width: 100%;
+  }
+
+  .logo-text {
+    font-size: 2.5rem;
+  }
+}
+
+/* src/pages/StatementOfResults/StatementOfResults.css */
+
+/* Add these new classes */
+
+.signature-block {
+  text-align: center;
+  width: 45%;
+  position: relative; /* Needed for positioning the signature */
+}
+
+.signature-image-container {
+  height: 60px; /* Fixed height to reserve space */
+  display: flex;
+  align-items: flex-end; /* Align bottom to sit near the line */
+  justify-content: center;
+  margin-bottom: -15px; /* Pull it down slightly to overlap the line */
+  position: relative;
+  z-index: 1;
+}
+
+.signature-image-container img {
+  max-width: 150px; /* Limit width */
+  max-height: 80px; /* Limit height */
+  object-fit: contain;
+  /* Optional: Rotate slightly for realism */
+  transform: rotate(-2deg);
+}
+
+.signature-line {
+  border-top: 2px solid var(--mlab-midnight);
+  margin-bottom: 0.5rem;
+  padding-top: 0.5rem; /* Reduced padding since image is now above */
+  position: relative;
+  z-index: 0;
+}
