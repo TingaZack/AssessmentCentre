@@ -100,12 +100,12 @@ export interface AssessmentCategoryProps {
 //   isArchived?: boolean;
 // }
 
-// Optional: Define an enum for the status to keep data clean
-export enum ProgrammeStatus {
-  DRAFT = "Draft",
-  ACTIVE = "Active",
-  ARCHIVED = "Archived",
-}
+// // Optional: Define an enum for the status to keep data clean
+// export enum ProgrammeStatus {
+//   DRAFT = "Draft",
+//   ACTIVE = "Active",
+//   ARCHIVED = "Archived",
+// }
 
 // 1. The Module Interface
 export interface ProgrammeModule {
@@ -119,15 +119,15 @@ export interface ProgrammeModule {
   notionalHours: number; // e.g., 120
 }
 
-// 2. The Create Template Interface
-export interface ProgrammeTemplate {
-  programmeTemplateId: string; // e.g., "PROG-SD-001"
-  programmeTitle: string; // e.g., "Software Development Occupational Programme"
-  saqaQualId: number; // e.g., 118707
-  occupationalCode: string; // e.g., "251201005"
-  nqfLevel: number; // e.g., 4
-  totalCredits: number; // Captured at creation: e.g., 120
-  totalNotionalHours: number; // Captured at creation: e.g., 1200
-  status: ProgrammeStatus | string;
-  modules: ProgrammeModule[]; // The array of modules that belong to this template
-}
+// // 2. The Create Template Interface
+// export interface ProgrammeTemplate {
+//   programmeTemplateId: string; // e.g., "PROG-SD-001"
+//   programmeTitle: string; // e.g., "Software Development Occupational Programme"
+//   saqaQualId: number; // e.g., 118707
+//   occupationalCode: string; // e.g., "251201005"
+//   nqfLevel: number; // e.g., 4
+//   totalCredits: number; // Captured at creation: e.g., 120
+//   totalNotionalHours: number; // Captured at creation: e.g., 1200
+//   status: ProgrammeStatus | string;
+//   modules: ProgrammeModule[]; // The array of modules that belong to this template
+// }

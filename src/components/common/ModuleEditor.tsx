@@ -24,14 +24,14 @@ export const ModuleEditor: React.FC<ModuleEditorProps> = ({
             <thead>
                 <tr>
                     <th>Module Name</th>
-                    <th width="80">NQF</th>
-                    <th width="80">Credits</th>
-                    <th width="100" style={{ display: 'none' }}>Notional Hrs</th>
+                    <th style={{ width: 80 }}>NQF</th>
+                    <th style={{ width: 80 }}>Credits</th>
+                    <th style={{ width: 100, display: 'none' }}>Notional Hrs</th>
                     {!isTemplate && (
-                        <th width="160">{type === 'workExperience' ? 'Date Signed Off' : 'Date Assessed'}</th>
+                        <th style={{ width: 160 }}>{type === 'workExperience' ? 'Date Signed Off' : 'Date Assessed'}</th>
                     )}
-                    {!isTemplate && <th width="150">Status</th>}
-                    <th width="50"></th>
+                    {!isTemplate && <th style={{ width: 150 }}>Status</th>}
+                    <th style={{ width: 50 }}></th>
                 </tr>
             </thead>
             <tbody>
