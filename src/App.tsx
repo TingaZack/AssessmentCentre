@@ -1,5 +1,4 @@
-import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Link, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import AdminDashboard from './pages/AdminDashboard/AdminDashboard';
 import StatementOfResults from './pages/StatementOfResults/StatementOfResults';
 import LearnerPortal from './pages/LearnerPortal/LearnerPortal';
@@ -44,44 +43,6 @@ function App() {
 }
 
 // --- Styles (Preserved from your code) ---
-
-const navStyle: React.CSSProperties = {
-  background: '#073f4e',
-  padding: '1rem 2rem',
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
-  position: 'relative',
-  zIndex: 100,
-  height: '80px', // Fixed height for layout calculation
-  boxSizing: 'border-box'
-};
-
-const navBrand: React.CSSProperties = {
-  color: 'white',
-  fontWeight: 'bold',
-  fontSize: '1.5rem',
-  letterSpacing: '1px',
-  fontFamily: 'Oswald, sans-serif'
-};
-
-const baseTab: React.CSSProperties = {
-  padding: '0.5rem 1rem',
-  borderRadius: '4px',
-  border: 'none',
-  fontWeight: 600,
-  cursor: 'pointer',
-  transition: 'all 0.2s',
-  textDecoration: 'none', // Added for Link component
-  display: 'inline-block'
-};
-
-const activeTab: React.CSSProperties = {
-  ...baseTab,
-  background: '#94c73d',
-  color: 'white'
-};
 
 export default App;
 
