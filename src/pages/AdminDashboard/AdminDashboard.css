@@ -94,14 +94,6 @@
    3. MAIN CONTENT WRAPPER & HEADER
    ========================================================================== */
 
-.main-wrapper {
-  flex-grow: 1;
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto; /* Scroll only the main content */
-  background-color: transparent;
-}
-
 .dashboard-header {
   display: flex;
   justify-content: space-between;
@@ -128,7 +120,7 @@
 }
 
 .admin-content {
-  padding: 2rem 3rem 4rem 3rem;
+  /* padding: 2rem 3rem 4rem 3rem; */
   flex-grow: 1;
   width: 100%;
   box-sizing: border-box;

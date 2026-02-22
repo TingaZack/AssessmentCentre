@@ -1,0 +1,299 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   CohortsView.css
+   Styled to align with mLab Corporate Identity Brand Guide 2019
+
+   Colours:
+     --mlab-blue:        #073f4e  (Midnight Blue)
+     --mlab-green:       #94c73d  (Green – primary accent)
+     --mlab-grey:        #6b6b6b  (Grey – secondary text)
+     --mlab-white:       #ffffff
+
+   Typefaces:
+     Oswald       – headings, labels, buttons (uppercase)
+     Trebuchet MS – body, data text
+───────────────────────────────────────────────────────────────────────────── */
+
+@import url("https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&display=swap");
+
+/* ── CSS Variables ─────────────────────────────────────────────────────────── */
+:root {
+  --mlab-blue: #073f4e;
+  --mlab-blue-dark: #052e3a;
+  --mlab-green: #94c73d;
+  --mlab-green-dark: #7aaa2e;
+  --mlab-grey: #6b6b6b;
+  --mlab-white: #ffffff;
+  --mlab-light-blue: #e8f0f3;
+  --mlab-light-green: #f0f7e1;
+  --mlab-amber: #d97706;
+  --mlab-red: #ef4444;
+
+  --font-heading: "Oswald", "Trebuchet MS", sans-serif;
+  --font-body:
+    "Trebuchet MS", "Lucida Grande", "Lucida Sans Unicode", Arial, sans-serif;
+}
+
+/* ── Wrapper ───────────────────────────────────────────────────────────────── */
+.mlab-cohorts {
+  font-family: var(--font-body);
+  color: var(--mlab-blue);
+}
+
+/* ── Header row ────────────────────────────────────────────────────────────── */
+.mlab-cohorts__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.75rem;
+}
+
+.mlab-cohorts__title {
+  font-family: var(--font-heading);
+  font-size: 1.3rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--mlab-blue);
+  margin: 0;
+}
+
+/* ── Button ────────────────────────────────────────────────────────────────── */
+.mlab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.6rem 1.25rem;
+  border: 2px solid transparent;
+  cursor: pointer;
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 0.8rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  transition:
+    background 0.18s,
+    border-color 0.18s,
+    opacity 0.18s;
+  outline: none;
+  white-space: nowrap;
+}
+
+.mlab-btn--green {
+  background: var(--mlab-green);
+  color: var(--mlab-white);
+  border-color: var(--mlab-green);
+}
+.mlab-btn--green:hover {
+  background: var(--mlab-green-dark);
+  border-color: var(--mlab-green-dark);
+}
+
+/* ── Card Grid ─────────────────────────────────────────────────────────────── */
+.mlab-cohort-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1.5rem;
+}
+
+/* ── Cohort Card ───────────────────────────────────────────────────────────── */
+.mlab-cohort-card {
+  background: var(--mlab-white);
+  border: 2px solid var(--mlab-blue);
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  transition:
+    box-shadow 0.2s,
+    transform 0.2s;
+}
+
+.mlab-cohort-card:hover {
+  box-shadow: 0 6px 20px rgba(7, 63, 78, 0.12);
+  transform: translateY(-2px);
+}
+
+/* ── Card Header ───────────────────────────────────────────────────────────── */
+.mlab-cohort-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 0.85rem;
+}
+
+.mlab-cohort-card__name {
+  font-family: var(--font-heading);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--mlab-blue);
+  margin: 0;
+  flex: 1;
+  padding-right: 0.5rem;
+}
+
+.mlab-cohort-card__actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* ── Icon Buttons ──────────────────────────────────────────────────────────── */
+.mlab-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: transparent;
+  border: 1.5px solid currentColor;
+  cursor: pointer;
+  transition:
+    opacity 0.15s,
+    transform 0.15s;
+  padding: 0;
+  outline: none;
+}
+
+.mlab-icon-btn:hover {
+  opacity: 0.7;
+  transform: scale(1.08);
+}
+
+.mlab-icon-btn--blue {
+  color: var(--mlab-blue);
+}
+.mlab-icon-btn--amber {
+  color: var(--mlab-amber);
+}
+
+/* ── Date Range ────────────────────────────────────────────────────────────── */
+.mlab-cohort-card__dates {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--mlab-grey);
+  margin-bottom: 1.1rem;
+  padding: 0.4rem 0.6rem;
+  background: var(--mlab-light-blue);
+  border-left: 3px solid var(--mlab-green);
+}
+
+/* ── Role List ─────────────────────────────────────────────────────────────── */
+.mlab-cohort-card__roles {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  font-size: 0.85rem;
+  flex: 1;
+}
+
+.mlab-role-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--mlab-grey);
+}
+
+.mlab-role-dot {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+}
+
+.mlab-role-dot--blue {
+  background: var(--mlab-blue);
+}
+.mlab-role-dot--red {
+  background: var(--mlab-red);
+}
+.mlab-role-dot--green {
+  background: var(--mlab-green);
+}
+
+.mlab-role-label {
+  color: var(--mlab-grey);
+  min-width: 80px;
+}
+
+.mlab-role-name {
+  font-weight: 700;
+  color: var(--mlab-blue);
+}
+
+/* ── Card Footer ───────────────────────────────────────────────────────────── */
+.mlab-cohort-card__footer {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 2px solid var(--mlab-light-blue);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.mlab-cohort-card__learner-count {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--mlab-grey);
+  font-size: 0.85rem;
+}
+
+.mlab-cohort-card__learner-count strong {
+  color: var(--mlab-blue);
+  font-family: var(--font-heading);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.mlab-cohort-card__manage {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-heading);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--mlab-white);
+  background: var(--mlab-blue);
+  border: 2px solid var(--mlab-blue);
+  padding: 0.4rem 0.85rem;
+  cursor: pointer;
+  transition:
+    background 0.18s,
+    border-color 0.18s;
+  outline: none;
+}
+
+.mlab-cohort-card__manage:hover {
+  background: var(--mlab-blue-dark);
+  border-color: var(--mlab-blue-dark);
+}
+
+/* ── Empty State ───────────────────────────────────────────────────────────── */
+.mlab-cohort-empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 4rem;
+  background: var(--mlab-light-blue);
+  border-top: 4px solid var(--mlab-green);
+  color: var(--mlab-grey);
+}
+
+.mlab-cohort-empty__title {
+  font-family: var(--font-heading);
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--mlab-blue);
+  margin: 1rem 0 0.5rem;
+}
+
+.mlab-cohort-empty__desc {
+  font-size: 0.88rem;
+  color: var(--mlab-grey);
+  margin: 0;
+}

@@ -1,0 +1,494 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   PageHeader.css  —  mLab Corporate Identity v2.1
+   Matches ViewPortfolio.css aesthetic:
+   · Title: Oswald 700, uppercase, mlab-blue
+   · Subtitle: Trebuchet MS, mlab-grey
+   · Buttons: mlab-btn system (primary = mlab-blue fill, outline = bordered)
+   · Back button: ghost, Trebuchet, mlab-grey
+   · Breadcrumb: Trebuchet, small, left-to-right with › separator
+   · Meta chips: mlab-badge style (inline, Oswald, uppercase)
+   · Status badge: mlab-badge system with colour variants
+   · No drop shadows heavier than 2px solid border treatment
+───────────────────────────────────────────────────────────────────────────── */
+
+@import url("https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&display=swap");
+
+:root {
+  --mlab-blue: #073f4e;
+  --mlab-blue-dark: #052e3a;
+  --mlab-green: #94c73d;
+  --mlab-green-dark: #7aaa2e;
+  --mlab-grey: #6b6b6b;
+  --mlab-white: #ffffff;
+  --mlab-light-blue: #e8f0f3;
+  --mlab-light-green: #f0f7e1;
+  --mlab-red: #ef4444;
+  --mlab-red-light: #fef2f2;
+  --mlab-amber: #d97706;
+  --font-heading: "Oswald", "Trebuchet MS", sans-serif;
+  --font-body: "Trebuchet MS", "Lucida Grande", Arial, sans-serif;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+@keyframes ph-fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   BASE
+══════════════════════════════════════════════════════════════════════════ */
+.ph {
+  font-family: var(--font-body);
+  animation: ph-fadeIn 0.25s ease both;
+}
+
+/* ── VARIANT: default — white, blue top-left border ─────────────────────── */
+.ph--default {
+  background: var(--mlab-white);
+  border: 2px solid var(--mlab-blue);
+  border-left: 5px solid var(--mlab-green);
+  padding: 1.5rem 1.75rem;
+  margin-bottom: 1.75rem;
+}
+
+/* ── VARIANT: hero — dark blue panel with texture ───────────────────────── */
+.ph--hero {
+  background: var(--mlab-blue);
+  border-bottom: 3px solid var(--mlab-green);
+  padding: 2.25rem 2.5rem 2rem;
+  margin-bottom: 1.75rem;
+  background-image: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 40px,
+    rgba(255, 255, 255, 0.015) 40px,
+    rgba(255, 255, 255, 0.015) 41px
+  );
+}
+
+/* ── VARIANT: compact — tight, light-blue rule underneath ───────────────── */
+.ph--compact {
+  border-bottom: 3px solid var(--mlab-blue);
+  padding: 1rem 0 0.85rem;
+  margin-bottom: 1.75rem;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LAYOUT
+══════════════════════════════════════════════════════════════════════════ */
+.ph__inner {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.ph__left {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.ph__right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   BACK BUTTON
+══════════════════════════════════════════════════════════════════════════ */
+.ph__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  outline: none;
+  padding: 0.15rem 0;
+  margin-top: 0.3rem;
+  flex-shrink: 0;
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  transition: color 0.15s;
+}
+
+.ph--default .ph__back,
+.ph--compact .ph__back {
+  color: var(--mlab-grey);
+}
+.ph--default .ph__back:hover,
+.ph--compact .ph__back:hover {
+  color: var(--mlab-blue);
+}
+
+.ph--hero .ph__back {
+  color: rgba(255, 255, 255, 0.55);
+}
+.ph--hero .ph__back:hover {
+  color: var(--mlab-white);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ICON SLOT
+══════════════════════════════════════════════════════════════════════════ */
+.ph__icon {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: 2px solid var(--mlab-blue);
+}
+
+.ph--default .ph__icon,
+.ph--compact .ph__icon {
+  background: var(--mlab-light-blue);
+  color: var(--mlab-blue);
+}
+.ph--hero .ph__icon {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--mlab-green);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   TEXT BLOCK
+══════════════════════════════════════════════════════════════════════════ */
+.ph__text {
+  min-width: 0;
+}
+
+.ph__eyebrow {
+  font-family: var(--font-heading);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  display: block;
+  margin-bottom: 0.2rem;
+}
+.ph--default .ph__eyebrow,
+.ph--compact .ph__eyebrow {
+  color: var(--mlab-green-dark);
+}
+.ph--hero .ph__eyebrow {
+  color: var(--mlab-green);
+}
+
+.ph__title {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  margin: 0;
+  line-height: 1.1;
+}
+
+.ph--default .ph__title {
+  font-size: clamp(1.2rem, 2.5vw, 1.55rem);
+  color: var(--mlab-blue);
+}
+.ph--hero .ph__title {
+  font-size: clamp(1.4rem, 3vw, 2rem);
+  color: var(--mlab-white);
+}
+.ph--compact .ph__title {
+  font-size: 1.05rem;
+  color: var(--mlab-blue);
+}
+
+.ph__desc {
+  font-size: 0.87rem;
+  line-height: 1.6;
+  margin: 0.35rem 0 0;
+}
+.ph--default .ph__desc,
+.ph--compact .ph__desc {
+  color: var(--mlab-grey);
+}
+.ph--hero .ph__desc {
+  color: rgba(255, 255, 255, 0.55);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   META CHIPS — matches mlab-badge system
+══════════════════════════════════════════════════════════════════════════ */
+.ph__meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.ph__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  font-family: var(--font-heading);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.ph--default .ph__chip,
+.ph--compact .ph__chip {
+  background: var(--mlab-light-blue);
+  color: var(--mlab-blue);
+  border: 1px solid #b0c4cc;
+}
+.ph--hero .ph__chip {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.ph__chip--green {
+  background: var(--mlab-light-green) !important;
+  color: var(--mlab-green-dark) !important;
+  border-color: #c2e08a !important;
+}
+.ph__chip--amber {
+  background: #fef9c3 !important;
+  color: #854d0e !important;
+  border-color: #fde047 !important;
+}
+.ph__chip--red {
+  background: var(--mlab-red-light) !important;
+  color: #991b1b !important;
+  border-color: #fca5a5 !important;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   STATUS BADGE — matches mlab-badge variants exactly
+══════════════════════════════════════════════════════════════════════════ */
+.ph__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  font-family: var(--font-heading);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  border: 1px solid;
+}
+
+.ph__status--active {
+  background: var(--mlab-light-green);
+  color: var(--mlab-green-dark);
+  border-color: #c2e08a;
+}
+.ph__status--draft {
+  background: var(--mlab-light-blue);
+  color: var(--mlab-grey);
+  border-color: #b0c4cc;
+}
+.ph__status--locked {
+  background: #e0f2fe;
+  color: #075985;
+  border-color: #7dd3fc;
+}
+.ph__status--warning {
+  background: #fef9c3;
+  color: #854d0e;
+  border-color: #fde047;
+}
+.ph__status--error {
+  background: var(--mlab-red-light);
+  color: #991b1b;
+  border-color: #fca5a5;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   BREADCRUMB
+══════════════════════════════════════════════════════════════════════════ */
+.ph__breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.85rem;
+  padding-top: 0.75rem;
+  flex-wrap: wrap;
+}
+.ph--default .ph__breadcrumb {
+  border-top: 1px solid var(--mlab-light-blue);
+}
+.ph--hero .ph__breadcrumb {
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+.ph--compact .ph__breadcrumb {
+  border-top: 1px solid var(--mlab-light-blue);
+}
+
+.ph__crumb {
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  background: none;
+  border: none;
+  padding: 0;
+  outline: none;
+  cursor: pointer;
+  transition: color 0.14s;
+}
+.ph--default .ph__crumb,
+.ph--compact .ph__crumb {
+  color: var(--mlab-grey);
+}
+.ph--default .ph__crumb:hover,
+.ph--compact .ph__crumb:hover {
+  color: var(--mlab-blue);
+}
+
+.ph--hero .ph__crumb {
+  color: rgba(255, 255, 255, 0.45);
+}
+.ph--hero .ph__crumb:hover {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.ph__crumb--active {
+  font-weight: 600;
+  cursor: default;
+}
+.ph--default .ph__crumb--active,
+.ph--compact .ph__crumb--active {
+  color: var(--mlab-blue);
+}
+.ph--hero .ph__crumb--active {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.ph__crumb-sep {
+  font-size: 0.75rem;
+  user-select: none;
+}
+.ph--default .ph__crumb-sep,
+.ph--compact .ph__crumb-sep {
+  color: #b0c4cc;
+}
+.ph--hero .ph__crumb-sep {
+  color: rgba(255, 255, 255, 0.2);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ACTION BUTTONS — matches mlab-btn system
+══════════════════════════════════════════════════════════════════════════ */
+.ph__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.55rem 1.15rem;
+  border: 2px solid transparent;
+  cursor: pointer;
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  outline: none;
+  transition:
+    background 0.18s,
+    border-color 0.18s,
+    color 0.18s;
+}
+
+.ph__btn--primary {
+  background: var(--mlab-blue);
+  color: var(--mlab-white);
+  border-color: var(--mlab-blue);
+}
+.ph__btn--primary:hover {
+  background: var(--mlab-blue-dark);
+  border-color: var(--mlab-blue-dark);
+}
+
+.ph__btn--green {
+  background: var(--mlab-green);
+  color: var(--mlab-white);
+  border-color: var(--mlab-green-dark);
+}
+.ph__btn--green:hover {
+  background: var(--mlab-green-dark);
+}
+
+.ph__btn--outline {
+  background: transparent;
+  color: var(--mlab-blue);
+  border-color: var(--mlab-blue);
+}
+.ph__btn--outline:hover {
+  background: var(--mlab-light-blue);
+}
+
+/* Hero variant outline adapts */
+.ph--hero .ph__btn--outline {
+  color: rgba(255, 255, 255, 0.85);
+  border-color: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.07);
+}
+.ph--hero .ph__btn--outline:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: var(--mlab-white);
+}
+
+.ph__btn--ghost {
+  background: transparent;
+  color: var(--mlab-grey);
+  border-color: transparent;
+  padding: 0.55rem 0.65rem;
+}
+.ph__btn--ghost:hover {
+  background: var(--mlab-light-blue);
+  color: var(--mlab-blue);
+}
+
+.ph--hero .ph__btn--ghost {
+  color: rgba(255, 255, 255, 0.5);
+}
+.ph--hero .ph__btn--ghost:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--mlab-white);
+}
+
+.ph__btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ── Responsive ──────────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .ph--default {
+    padding: 1.25rem;
+  }
+  .ph--hero {
+    padding: 1.5rem 1.25rem;
+  }
+  .ph__right {
+    width: 100%;
+  }
+}

@@ -2,9 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Search, Loader, AlertCircle } from 'lucide-react';
 import { useStore } from '../../store/useStore';
-import './LearnerPortal.css';
+import './PublicVerification.css';
 
-const LearnerPortal: React.FC = () => {
+const PublicVerification: React.FC = () => {
     const [searchParams] = useSearchParams();
     const navigate = useNavigate();
     const { learners, fetchLearners } = useStore();
@@ -111,4 +111,4 @@ const LearnerPortal: React.FC = () => {
     );
 };
 
-export default LearnerPortal;
+export default PublicVerification;

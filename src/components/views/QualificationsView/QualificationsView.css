@@ -1,0 +1,266 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   QualificationsView.css
+   Styled to align with mLab Corporate Identity Brand Guide 2019
+
+   Colours:
+     --mlab-blue:        #073f4e  (Midnight Blue)
+     --mlab-green:       #94c73d  (Green – primary accent)
+     --mlab-grey:        #6b6b6b  (Grey – secondary text)
+     --mlab-white:       #ffffff
+
+   Typefaces:
+     Oswald       – headings, labels, buttons (uppercase)
+     Trebuchet MS – body, data text
+───────────────────────────────────────────────────────────────────────────── */
+
+@import url("https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&display=swap");
+
+/* ── CSS Variables ─────────────────────────────────────────────────────────── */
+:root {
+  --mlab-blue: #073f4e;
+  --mlab-blue-dark: #052e3a;
+  --mlab-green: #94c73d;
+  --mlab-green-dark: #7aaa2e;
+  --mlab-grey: #6b6b6b;
+  --mlab-white: #ffffff;
+  --mlab-light-blue: #e8f0f3;
+  --mlab-light-green: #f0f7e1;
+  --mlab-red: #ef4444;
+  --mlab-amber: #d97706;
+
+  --font-heading: "Oswald", "Trebuchet MS", sans-serif;
+  --font-body:
+    "Trebuchet MS", "Lucida Grande", "Lucida Sans Unicode", Arial, sans-serif;
+}
+
+/* ── Wrapper ───────────────────────────────────────────────────────────────── */
+.mlab-qualifications {
+  font-family: var(--font-body);
+  color: var(--mlab-blue);
+}
+
+/* ── Header Row ────────────────────────────────────────────────────────────── */
+.mlab-qualifications__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.75rem;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.mlab-qualifications__title {
+  font-family: var(--font-heading);
+  font-size: 1.3rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--mlab-blue);
+  margin: 0;
+}
+
+.mlab-qualifications__actions {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+/* ── Buttons ───────────────────────────────────────────────────────────────── */
+.mlab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.6rem 1.25rem;
+  border: 2px solid transparent;
+  cursor: pointer;
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 0.8rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  transition:
+    background 0.18s,
+    border-color 0.18s,
+    color 0.18s,
+    opacity 0.18s;
+  outline: none;
+  white-space: nowrap;
+}
+
+.mlab-btn--green {
+  background: var(--mlab-green);
+  color: var(--mlab-white);
+  border-color: var(--mlab-green);
+}
+.mlab-btn--green:hover {
+  background: var(--mlab-green-dark);
+  border-color: var(--mlab-green-dark);
+}
+
+.mlab-btn--outline-blue {
+  background: transparent;
+  color: var(--mlab-blue);
+  border-color: var(--mlab-blue);
+}
+.mlab-btn--outline-blue:hover {
+  background: var(--mlab-light-blue);
+}
+
+/* ── Table ─────────────────────────────────────────────────────────────────── */
+.mlab-table-wrap {
+  overflow-x: auto;
+  border: 2px solid var(--mlab-blue);
+}
+
+.mlab-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-body);
+}
+
+.mlab-table thead {
+  background: var(--mlab-blue);
+}
+
+.mlab-table th {
+  padding: 0.85rem 1rem;
+  text-align: left;
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--mlab-white);
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.mlab-table th:last-child {
+  border-right: none;
+}
+
+.mlab-table td {
+  padding: 0.9rem 1rem;
+  border-bottom: 1px solid var(--mlab-light-blue);
+  vertical-align: middle;
+}
+
+.mlab-table tbody tr {
+  transition: background 0.15s;
+}
+
+.mlab-table tbody tr:hover td {
+  background: var(--mlab-light-blue);
+}
+
+/* ── Cell Helpers ──────────────────────────────────────────────────────────── */
+.mlab-cell-name {
+  font-weight: 700;
+  color: var(--mlab-blue);
+  font-size: 0.92rem;
+}
+
+.mlab-cell-meta {
+  font-size: 0.88rem;
+  color: var(--mlab-grey);
+}
+
+/* ── NQF Level Badge ───────────────────────────────────────────────────────── */
+.mlab-nqf-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  font-family: var(--font-heading);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: var(--mlab-blue);
+  color: var(--mlab-white);
+}
+
+/* ── Module Chips ──────────────────────────────────────────────────────────── */
+.mlab-module-chips {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.mlab-chip {
+  font-family: var(--font-heading);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 3px 9px;
+}
+
+.mlab-chip--k {
+  background: var(--mlab-light-blue);
+  color: var(--mlab-blue);
+  border: 1px solid #b0c4cc;
+}
+
+.mlab-chip--p {
+  background: var(--mlab-light-green);
+  color: var(--mlab-green-dark);
+  border: 1px solid #c2e08a;
+}
+
+/* ── Icon Buttons ──────────────────────────────────────────────────────────── */
+.mlab-icon-btn-group {
+  display: flex;
+  gap: 6px;
+}
+
+.mlab-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: transparent;
+  border: 1.5px solid currentColor;
+  cursor: pointer;
+  transition:
+    opacity 0.15s,
+    transform 0.15s;
+  padding: 0;
+  outline: none;
+}
+
+.mlab-icon-btn:hover {
+  opacity: 0.7;
+  transform: scale(1.08);
+}
+
+.mlab-icon-btn--blue {
+  color: var(--mlab-blue);
+}
+.mlab-icon-btn--amber {
+  color: var(--mlab-amber);
+}
+
+/* ── Empty State ───────────────────────────────────────────────────────────── */
+.mlab-table-empty {
+  text-align: center;
+  padding: 3.5rem;
+  color: var(--mlab-grey);
+  background: var(--mlab-light-blue);
+  border-top: 4px solid var(--mlab-green);
+}
+
+.mlab-table-empty__title {
+  font-family: var(--font-heading);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--mlab-blue);
+  margin: 0.75rem 0 0.4rem;
+  display: block;
+}
+
+.mlab-table-empty__desc {
+  font-size: 0.88rem;
+  color: var(--mlab-grey);
+  margin: 0;
+}

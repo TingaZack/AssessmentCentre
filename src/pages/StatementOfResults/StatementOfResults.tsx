@@ -70,7 +70,7 @@ const StatementOfResults: React.FC = () => {
                     issueDate: foundLearner.issueDate || new Date().toISOString().split('T')[0],
                     nextEISADate: "TBA", // Default or calculate based on logic
                     issuedBy: {
-                        name: "Dr. Nomvula Dlamini", // Static or from Auth Store
+                        name: "Mr. Nomvula Dlamini", // Static or from Auth Store
                         title: "Academic Manager"
                     }
                 });

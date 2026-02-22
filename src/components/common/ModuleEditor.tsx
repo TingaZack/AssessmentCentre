@@ -3,7 +3,7 @@ import { Trash2, Plus } from 'lucide-react';
 import type { ModuleCategory } from '../../types';
 
 interface ModuleEditorProps {
-    modules: any[]; // could be more strictly typed
+    modules: any[];
     type: ModuleCategory;
     onUpdate: (index: number, field: string, value: string | number) => void;
     onRemove: (index: number) => void;
