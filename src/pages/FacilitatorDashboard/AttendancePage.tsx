@@ -9,7 +9,7 @@ import {
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, getStorage } from 'firebase/storage';
 import { db } from '../../lib/firebase';
-import { StatusModal } from '../../components/common/StatusModal';
+import { StatusModal } from '../../components/common/StatusModal/StatusModal';
 import { ExpandableText } from '../../components/common/ExpandableText';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';

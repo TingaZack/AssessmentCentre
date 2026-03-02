@@ -1,20 +1,17 @@
-// src/pages/FacilitatorDashboard/ModeratorDashboard/ModeratorDashboard.tsx
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import {
     Calendar, ArrowRight, ShieldCheck,
-    Clock, CheckCircle, AlertTriangle, FileText,
-    Layers, Terminal, Info, Award
+    CheckCircle, FileText,
+    Layers, Info, Award, Clock, Activity
 } from 'lucide-react';
 import { Sidebar } from '../../../components/dashboard/Sidebar';
 import { useStore } from '../../../store/useStore';
 import { auth, db } from '../../../lib/firebase';
 import PageHeader from '../../../components/common/PageHeader/PageHeader';
 
-// Note: Ensure you duplicate AssessorProfileView to ModeratorProfileView
-// and change the ink color to green!
 import './ModeratorDashboard.css';
 import { ModeratorProfileView } from '../ModeratorProfileView/ModeratorProfileView';
 
@@ -27,6 +24,8 @@ interface PendingQATask {
     status: string;
     gradedAt: string;
     assessorName: string;
+    assessorTimeSpent?: number;
+    assessorStartedAt?: string;
 }
 
 export const ModeratorDashboard: React.FC = () => {
@@ -58,7 +57,7 @@ export const ModeratorDashboard: React.FC = () => {
     const myCohorts = store.cohorts.filter(c =>
         c.moderatorId === store.user?.uid ||
         c.moderatorId === myStaffProfile?.id ||
-        c.moderatorEmail === store.user?.email
+        (c as any).moderatorEmail === store.user?.email
     );
 
     const myCohortIds = myCohorts.map(c => c.id);
@@ -100,7 +99,9 @@ export const ModeratorDashboard: React.FC = () => {
                             title: data.title || 'Untitled Assessment',
                             status: data.status,
                             gradedAt: data.grading?.gradedAt || new Date().toISOString(),
-                            assessorName: data.grading?.assessorName || 'Unknown Assessor'
+                            assessorName: data.grading?.assessorName || 'Unknown Assessor',
+                            assessorTimeSpent: data.grading?.assessorTimeSpent,
+                            assessorStartedAt: data.grading?.assessorStartedAt
                         });
                     }
                 });
@@ -126,6 +127,36 @@ export const ModeratorDashboard: React.FC = () => {
 
     const getAssessorName = (id: string) =>
         store.staff.find(s => s.id === id)?.fullName || 'Unassigned';
+
+    const formatTimeSpent = (seconds?: number) => {
+        if (seconds === undefined || seconds === null) return '—';
+        const m = Math.floor(seconds / 60);
+        if (m === 0) return '< 1m';
+        const h = Math.floor(m / 60);
+        if (h > 0) {
+            const remM = m % 60;
+            return `${h}h ${remM}m`;
+        }
+        return `${m}m`;
+    };
+
+    const formatCalendarSpread = (startStr?: string, endStr?: string) => {
+        if (!startStr || !endStr) return null;
+        const start = new Date(startStr).getTime();
+        const end = new Date(endStr).getTime();
+        const diffHours = (end - start) / (1000 * 60 * 60);
+
+        if (diffHours < 24) {
+            if (diffHours < 1) return '< 1 hr';
+            return `${Math.floor(diffHours)} hrs`;
+        }
+        return `${Math.floor(diffHours / 24)} days`;
+    };
+
+    // Calculate Average Assessor Processing Time
+    const avgAssessorTime = pendingTasks.length > 0
+        ? pendingTasks.reduce((sum, task) => sum + (task.assessorTimeSpent || 0), 0) / pendingTasks.length
+        : 0;
 
     const pageTitle: Record<string, string> = {
         dashboard: 'Internal QA Moderation Centre',
@@ -203,10 +234,19 @@ export const ModeratorDashboard: React.FC = () => {
                                         <span className="md-metric-lbl">Pending Moderation</span>
                                     </div>
                                 </div>
+                                <div className="md-metric-card" style={{ borderLeftColor: '#073f4e' }}>
+                                    <div className="md-metric-icon" style={{ background: '#e2e8f0', color: '#073f4e' }}>
+                                        <Activity size={24} />
+                                    </div>
+                                    <div className="md-metric-data">
+                                        <span className="md-metric-val" style={{ fontSize: '1.5rem', marginTop: '5px' }}>{formatTimeSpent(avgAssessorTime)}</span>
+                                        <span className="md-metric-lbl">Avg Assessor Marking Time</span>
+                                    </div>
+                                </div>
                             </div>
 
                             {/* Queue panel */}
-                            <div className="md-panel" style={{ maxWidth: '900px' }}>
+                            <div className="md-panel" style={{ maxWidth: '1000px' }}>
                                 <div className="md-panel-header">
                                     <h2 className="md-panel-title">
                                         <ShieldCheck size={16} /> Moderation Queue
@@ -238,13 +278,26 @@ export const ModeratorDashboard: React.FC = () => {
                                                     <div className="md-task-header">
                                                         <h4 className="md-task-learner">{task.learnerName}</h4>
                                                     </div>
-                                                    <p className="md-task-title">
+                                                    <p className="md-task-title" style={{ marginBottom: '8px' }}>
                                                         <FileText size={13} /> {task.title}
                                                     </p>
-                                                    <p className="md-task-date">
-                                                        <Award size={12} color="var(--mlab-red)" />
-                                                        Graded by {task.assessorName} on {new Date(task.gradedAt).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' })}
-                                                    </p>
+                                                    <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                                                        <p className="md-task-date">
+                                                            <Award size={12} color="var(--mlab-red)" />
+                                                            Graded by <strong>{task.assessorName}</strong>
+                                                        </p>
+                                                        <p className="md-task-date">
+                                                            <Clock size={12} color="#64748b" />
+                                                            {new Date(task.gradedAt).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                                        </p>
+                                                        {task.assessorTimeSpent !== undefined && (
+                                                            <p className="md-task-date" style={{ color: '#073f4e', background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px' }}>
+                                                                <Activity size={11} />
+                                                                <strong>{formatTimeSpent(task.assessorTimeSpent)}</strong> active
+                                                                {task.assessorStartedAt && ` (${formatCalendarSpread(task.assessorStartedAt, task.gradedAt)} spread)`}
+                                                            </p>
+                                                        )}
+                                                    </div>
                                                 </div>
                                                 <button
                                                     className="md-grade-btn"
@@ -323,7 +376,6 @@ export const ModeratorDashboard: React.FC = () => {
                     ════════════════════════════════════════ */}
                     {currentNav === 'profile' && (
                         <ModeratorProfileView
-                            profile={store.user}
                             user={store.user}
                             onUpdate={store.updateStaffProfile}
                         />
@@ -334,3 +386,4 @@ export const ModeratorDashboard: React.FC = () => {
         </div>
     );
 };
+

@@ -76,6 +76,9 @@ export const QualificationsView: React.FC<QualificationsViewProps> = ({
                                         <span className="mlab-chip mlab-chip--p">
                                             P: {prog.practicalModules.length}
                                         </span>
+                                        <span className="mlab-chip mlab-chip--k">
+                                            W: {prog.workExperienceModules.length}
+                                        </span>
                                     </div>
                                 </td>
 

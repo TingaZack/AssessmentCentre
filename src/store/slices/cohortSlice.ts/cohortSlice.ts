@@ -41,12 +41,37 @@ export const createCohortSlice: StateCreator<
   cohortsLoading: false,
   cohortsError: null,
 
-  fetchCohorts: async (force = false) => {
-    const { cohorts, cohortsLoading } = get();
-    if (!force && cohorts.length > 0) return;
-    if (cohortsLoading) return;
+  // fetchCohorts: async (force = false) => {
+  //   const { cohorts, cohortsLoading } = get();
+  //   if (!force && cohorts.length > 0) return;
+  //   if (cohortsLoading) return;
 
-    set({ cohortsLoading: true, cohortsError: null });
+  //   set({ cohortsLoading: true, cohortsError: null });
+  //   try {
+  //     const q = query(collection(db, "cohorts"), orderBy("name"));
+  //     const snapshot = await getDocs(q);
+  //     const list = snapshot.docs.map(
+  //       (doc) => ({ id: doc.id, ...doc.data() }) as Cohort,
+  //     );
+
+  //     set({ cohorts: list, cohortsLoading: false });
+  //   } catch (error: any) {
+  //     console.error("Failed to fetch cohorts:", error);
+  //     set({ cohortsLoading: false, cohortsError: error.message });
+  //   }
+  // },
+
+  fetchCohorts: async (force = false) => {
+    // We remove the strict `if (cohortsLoading) return;` to prevent the race condition abort.
+    // We still respect the cache if force is false.
+    const { cohorts } = get();
+    if (!force && cohorts.length > 0) return;
+
+    set((state: any) => {
+      state.cohortsLoading = true;
+      state.cohortsError = null;
+    });
+
     try {
       const q = query(collection(db, "cohorts"), orderBy("name"));
       const snapshot = await getDocs(q);
@@ -54,10 +79,16 @@ export const createCohortSlice: StateCreator<
         (doc) => ({ id: doc.id, ...doc.data() }) as Cohort,
       );
 
-      set({ cohorts: list, cohortsLoading: false });
+      set((state: any) => {
+        state.cohorts = list;
+        state.cohortsLoading = false;
+      });
     } catch (error: any) {
       console.error("Failed to fetch cohorts:", error);
-      set({ cohortsLoading: false, cohortsError: error.message });
+      set((state: any) => {
+        state.cohortsLoading = false;
+        state.cohortsError = error.message;
+      });
     }
   },
 

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     User, Upload, CheckCircle,
-    Save, ChevronRight, ShieldCheck, Loader2, Camera, Award, Calendar, Fingerprint, Globe, BookOpen
+    Save, ChevronRight, ShieldCheck, Loader2, Camera, Calendar, Fingerprint, Globe, BookOpen
 } from 'lucide-react';
 import { doc, updateDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';

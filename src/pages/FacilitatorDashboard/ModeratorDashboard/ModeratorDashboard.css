@@ -230,10 +230,10 @@
 
 .md-task-header {
   display: flex;
-  alignitems: center;
+  align-items: center;
   gap: 0.6rem;
-  marginbottom: 0.3rem;
-  flexwrap: wrap;
+  margin-bottom: 0.3rem;
+  flex-wrap: wrap;
 }
 
 .md-task-learner {

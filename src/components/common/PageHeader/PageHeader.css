@@ -492,3 +492,182 @@
     width: 100%;
   }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   THEME OVERRIDES — data-theme attribute on .ph
+   Controls accent colour (green by default) for role-based portal tinting.
+   Only the accent/highlight colour changes; all typography and structure
+   remain consistent with the CI.
+══════════════════════════════════════════════════════════════════════════ */
+
+/* admin: default blue/green — no overrides needed */
+[data-theme="admin"] {
+  /* inherits base */
+}
+
+/* student — warm teal accent */
+[data-theme="student"] {
+  --ph-primary: #0e6b7a;
+  --ph-primary-dark: #094f5a;
+  --ph-accent: #29b6c8;
+  --ph-accent-bg: #e0f7fa;
+  --ph-accent-border: #80deea;
+}
+
+/* assessor — deep purple */
+[data-theme="assessor"] {
+  --ph-primary: #5b21b6;
+  --ph-primary-dark: #3b0e8a;
+  --ph-accent: #7c3aed;
+  --ph-accent-bg: #f5f3ff;
+  --ph-accent-border: #c4b5fd;
+}
+
+/* facilitator — forest green */
+[data-theme="facilitator"] {
+  --ph-primary: #15652e;
+  --ph-primary-dark: #0d4620;
+  --ph-accent: #22c55e;
+  --ph-accent-bg: #f0fdf4;
+  --ph-accent-border: #86efac;
+}
+
+/* moderator — amber */
+[data-theme="moderator"] {
+  --ph-primary: #92400e;
+  --ph-primary-dark: #6b2d07;
+  --ph-accent: #f59e0b;
+  --ph-accent-bg: #fffbeb;
+  --ph-accent-border: #fcd34d;
+}
+
+/* ── Apply theme accent to hero header bottom border ── */
+[data-theme="student"] .ph--hero,
+[data-theme="assessor"] .ph--hero,
+[data-theme="facilitator"].ph--hero,
+[data-theme="moderator"] .ph--hero {
+  border-bottom-color: var(--ph-accent);
+}
+
+/* ── Apply theme accent to compact header bottom border ── */
+[data-theme="student"] .ph--compact,
+[data-theme="assessor"] .ph--compact,
+[data-theme="facilitator"].ph--compact,
+[data-theme="moderator"] .ph--compact {
+  border-bottom-color: var(--ph-primary);
+}
+
+/* ── Apply theme accent to default header left border ── */
+[data-theme="student"] .ph--default,
+[data-theme="assessor"] .ph--default,
+[data-theme="facilitator"].ph--default,
+[data-theme="moderator"] .ph--default {
+  border-left-color: var(--ph-accent);
+}
+
+/* ── Theme eyebrow colour ── */
+[data-theme="student"] .ph__eyebrow {
+  color: var(--ph-accent);
+}
+[data-theme="assessor"] .ph__eyebrow {
+  color: var(--ph-accent);
+}
+[data-theme="facilitator"].ph__eyebrow {
+  color: var(--ph-accent);
+}
+[data-theme="moderator"] .ph__eyebrow {
+  color: var(--ph-accent);
+}
+
+/* ── Theme icon slot (default/compact variants) ── */
+[data-theme="student"] .ph--default .ph__icon,
+[data-theme="student"] .ph--compact .ph__icon {
+  background: var(--ph-accent-bg);
+  color: var(--ph-primary);
+  border-color: var(--ph-primary);
+}
+[data-theme="assessor"] .ph--default .ph__icon,
+[data-theme="assessor"] .ph--compact .ph__icon {
+  background: var(--ph-accent-bg);
+  color: var(--ph-primary);
+  border-color: var(--ph-primary);
+}
+[data-theme="facilitator"].ph--default .ph__icon,
+[data-theme="facilitator"].ph--compact .ph__icon {
+  background: var(--ph-accent-bg);
+  color: var(--ph-primary);
+  border-color: var(--ph-primary);
+}
+[data-theme="moderator"] .ph--default .ph__icon,
+[data-theme="moderator"] .ph--compact .ph__icon {
+  background: var(--ph-accent-bg);
+  color: var(--ph-primary);
+  border-color: var(--ph-primary);
+}
+
+/* ── Theme chip in default/compact ── */
+[data-theme="student"] .ph--default .ph__chip,
+[data-theme="student"] .ph--compact .ph__chip {
+  background: var(--ph-accent-bg);
+  color: var(--ph-primary);
+  border-color: var(--ph-accent-border);
+}
+[data-theme="assessor"] .ph--default .ph__chip,
+[data-theme="assessor"] .ph--compact .ph__chip {
+  background: var(--ph-accent-bg);
+  color: var(--ph-primary);
+  border-color: var(--ph-accent-border);
+}
+[data-theme="facilitator"].ph--default .ph__chip,
+[data-theme="facilitator"].ph--compact .ph__chip {
+  background: var(--ph-accent-bg);
+  color: var(--ph-primary);
+  border-color: var(--ph-accent-border);
+}
+[data-theme="moderator"] .ph--default .ph__chip,
+[data-theme="moderator"] .ph--compact .ph__chip {
+  background: var(--ph-accent-bg);
+  color: var(--ph-primary);
+  border-color: var(--ph-accent-border);
+}
+
+/* ── Theme outline button adapts per theme ── */
+[data-theme="student"] .ph--default .ph__btn--outline,
+[data-theme="student"] .ph--compact .ph__btn--outline {
+  color: var(--ph-primary);
+  border-color: var(--ph-primary);
+}
+[data-theme="student"] .ph--default .ph__btn--outline:hover,
+[data-theme="student"] .ph--compact .ph__btn--outline:hover {
+  background: var(--ph-accent-bg);
+}
+
+[data-theme="assessor"] .ph--default .ph__btn--outline,
+[data-theme="assessor"] .ph--compact .ph__btn--outline {
+  color: var(--ph-primary);
+  border-color: var(--ph-primary);
+}
+[data-theme="assessor"] .ph--default .ph__btn--outline:hover,
+[data-theme="assessor"] .ph--compact .ph__btn--outline:hover {
+  background: var(--ph-accent-bg);
+}
+
+[data-theme="facilitator"].ph--default .ph__btn--outline,
+[data-theme="facilitator"].ph--compact .ph__btn--outline {
+  color: var(--ph-primary);
+  border-color: var(--ph-primary);
+}
+[data-theme="facilitator"].ph--default .ph__btn--outline:hover,
+[data-theme="facilitator"].ph--compact .ph__btn--outline:hover {
+  background: var(--ph-accent-bg);
+}
+
+[data-theme="moderator"] .ph--default .ph__btn--outline,
+[data-theme="moderator"] .ph--compact .ph__btn--outline {
+  color: var(--ph-primary);
+  border-color: var(--ph-primary);
+}
+[data-theme="moderator"] .ph--default .ph__btn--outline:hover,
+[data-theme="moderator"] .ph--compact .ph__btn--outline:hover {
+  background: var(--ph-accent-bg);
+}

@@ -1,0 +1,179 @@
+/* src/components/common/StatusModal.css
+   mLab CI v2.1 — ViewPortfolio aesthetic                                    */
+
+:root {
+  --mlab-blue: #073f4e;
+  --mlab-blue-dark: #052e3a;
+  --mlab-green: #94c73d;
+  --mlab-green-dark: #7aaa2e;
+  --mlab-green-bg: #f0f7e1;
+  --mlab-grey: #6b6b6b;
+  --mlab-grey-lt: #9b9b9b;
+  --mlab-white: #ffffff;
+  --mlab-bg: #f0f4f6;
+  --mlab-border: #dde4e8;
+  --mlab-light-blue: #e8f0f3;
+  --font-heading: "Oswald", "Trebuchet MS", sans-serif;
+  --font-body: "Trebuchet MS", "Lucida Grande", Arial, sans-serif;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+@keyframes stm-fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* ── OVERLAY ─────────────────────────────────────────────────────────────── */
+.stm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(5, 46, 58, 0.72);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  padding: 1.5rem;
+}
+
+/* ── MODAL SHELL ─────────────────────────────────────────────────────────── */
+.stm-modal {
+  background: var(--mlab-white);
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  border: 2px solid var(--stm-border, var(--mlab-blue));
+  animation: stm-fadeIn 0.2s ease both;
+  overflow: hidden;
+}
+
+/* ── TOP ACCENT BAR ──────────────────────────────────────────────────────── */
+.stm-top-bar {
+  height: 5px;
+  background: var(--stm-accent, var(--mlab-blue));
+  flex-shrink: 0;
+}
+
+/* ── ICON ZONE ───────────────────────────────────────────────────────────── */
+.stm-icon-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1.75rem 1.5rem 0.75rem;
+  background: var(--stm-bg, var(--mlab-light-blue));
+  border-bottom: 2px solid var(--stm-border, var(--mlab-blue));
+}
+
+.stm-icon-ring {
+  width: 64px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--mlab-white);
+  border: 2px solid var(--stm-border, var(--mlab-blue));
+  color: var(--stm-accent, var(--mlab-blue));
+}
+
+.stm-type-label {
+  font-family: var(--font-heading);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  padding-bottom: 0.1rem;
+}
+
+/* ── CONTENT BODY ────────────────────────────────────────────────────────── */
+.stm-body {
+  padding: 1.5rem 1.75rem 1.25rem;
+  text-align: center;
+}
+
+.stm-title {
+  font-family: var(--font-heading);
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--mlab-blue);
+  margin: 0 0 0.75rem;
+  line-height: 1.3;
+}
+
+.stm-message {
+  font-family: var(--font-body);
+  font-size: 0.88rem;
+  color: var(--mlab-grey);
+  line-height: 1.6;
+  margin: 0;
+}
+
+/* ── FOOTER ──────────────────────────────────────────────────────────────── */
+.stm-footer {
+  display: flex;
+  justify-content: center;
+  padding: 1rem 1.75rem 1.5rem;
+  gap: 0.75rem;
+  border-top: 2px solid var(--mlab-border);
+  background: var(--mlab-bg);
+}
+
+.stm-footer--split .stm-btn {
+  flex: 1;
+}
+
+/* ── BUTTONS ─────────────────────────────────────────────────────────────── */
+.stm-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  font-family: var(--font-heading);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 0.65rem 1.5rem;
+  border: none;
+  cursor: pointer;
+  outline: none;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    opacity 0.15s;
+  border-radius: 0;
+  min-width: 100px;
+}
+
+.stm-btn--ghost {
+  background: var(--mlab-white);
+  color: var(--mlab-grey);
+  border: 2px solid var(--mlab-border);
+}
+.stm-btn--ghost:hover {
+  border-color: var(--mlab-blue);
+  color: var(--mlab-blue);
+}
+
+.stm-btn--confirm {
+  background: var(--stm-accent, var(--mlab-blue));
+  color: var(--mlab-white);
+  border: 2px solid var(--stm-accent, var(--mlab-blue));
+}
+.stm-btn--confirm:hover {
+  opacity: 0.88;
+}

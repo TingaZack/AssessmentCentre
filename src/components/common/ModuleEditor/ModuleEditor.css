@@ -1,0 +1,254 @@
+/* src/components/common/ModuleEditor.css
+   mLab CI v2.1 — ViewPortfolio aesthetic                                    */
+
+/* ── TOKENS (idempotent if already declared) ─────────────────────────────── */
+:root {
+  --mlab-blue: #073f4e;
+  --mlab-blue-dark: #052e3a;
+  --mlab-green: #94c73d;
+  --mlab-green-dark: #7aaa2e;
+  --mlab-green-bg: #f0f7e1;
+  --mlab-grey: #6b6b6b;
+  --mlab-grey-lt: #9b9b9b;
+  --mlab-white: #ffffff;
+  --mlab-bg: #f0f4f6;
+  --mlab-border: #dde4e8;
+  --mlab-light-blue: #e8f0f3;
+  --mlab-red: #ef4444;
+  --font-heading: "Oswald", "Trebuchet MS", sans-serif;
+  --font-body: "Trebuchet MS", "Lucida Grande", Arial, sans-serif;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* ── OUTER WRAP ──────────────────────────────────────────────────────────── */
+.me-wrap {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* ── TABLE SCROLL CONTAINER ──────────────────────────────────────────────── */
+.me-table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  border: 2px solid var(--mlab-blue);
+  border-bottom: none;
+}
+
+/* ── TABLE ───────────────────────────────────────────────────────────────── */
+.me-table {
+  width: 100%;
+  min-width: 620px;
+  border-collapse: collapse;
+  background: var(--mlab-white);
+  table-layout: fixed;
+}
+
+/* ── HEADER ROW ──────────────────────────────────────────────────────────── */
+.me-th {
+  background: var(--mlab-blue);
+  color: var(--mlab-white);
+  font-family: var(--font-heading);
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 0.6rem 0.75rem;
+  text-align: left;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  white-space: nowrap;
+}
+.me-th:last-child {
+  border-right: none;
+}
+
+/* Column widths */
+.me-th--name {
+  width: auto;
+}
+.me-th--narrow {
+  width: 72px;
+}
+.me-th--date {
+  width: 148px;
+}
+.me-th--status {
+  width: 160px;
+}
+.me-th--action {
+  width: 44px;
+}
+
+/* Green accent on first header cell — left border strip */
+.me-th:first-child {
+  border-left: 4px solid var(--mlab-green);
+}
+
+/* ── DATA ROWS ───────────────────────────────────────────────────────────── */
+.me-row {
+  border-bottom: 1px solid var(--mlab-border);
+}
+.me-row:last-child {
+  border-bottom: none;
+}
+.me-row:nth-child(even) {
+  background: var(--mlab-bg);
+}
+.me-row:hover {
+  background: var(--mlab-light-blue);
+}
+
+.me-td {
+  padding: 0.4rem 0.5rem;
+  vertical-align: middle;
+  border-right: 1px solid var(--mlab-border);
+}
+.me-td:first-child {
+  border-left: 4px solid var(--mlab-green);
+}
+.me-td:last-child {
+  border-right: none;
+}
+
+/* ── INPUTS ──────────────────────────────────────────────────────────────── */
+.me-input {
+  width: 100%;
+  font-family: var(--font-body);
+  font-size: 0.83rem;
+  color: var(--mlab-blue);
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 0.3rem 0.45rem;
+  outline: none;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+  border-radius: 0;
+  appearance: none;
+}
+.me-input:hover {
+  border-color: var(--mlab-border);
+  background: var(--mlab-white);
+}
+.me-input:focus {
+  border-color: var(--mlab-blue);
+  background: var(--mlab-white);
+}
+.me-input::placeholder {
+  color: var(--mlab-grey-lt);
+  font-style: italic;
+}
+
+.me-input--num {
+  text-align: center;
+  appearance: textfield;
+}
+.me-input[type="date"] {
+  cursor: pointer;
+}
+
+/* ── STATUS SELECT ───────────────────────────────────────────────────────── */
+.me-select {
+  width: 100%;
+  font-family: var(--font-body);
+  font-size: 0.83rem;
+  color: var(--mlab-blue);
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 0.3rem 0.45rem;
+  outline: none;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+  border-radius: 0;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%23073f4e' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.5rem center;
+  padding-right: 1.6rem;
+}
+.me-select:hover {
+  border-color: var(--mlab-border);
+  background-color: var(--mlab-white);
+}
+.me-select:focus {
+  border-color: var(--mlab-blue);
+  background-color: var(--mlab-white);
+}
+
+/* ── REMOVE BUTTON ───────────────────────────────────────────────────────── */
+.me-td--action {
+  text-align: center;
+  padding: 0.3rem;
+}
+
+.me-remove-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--mlab-grey-lt);
+  padding: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  outline: none;
+  transition: color 0.15s;
+  border-radius: 0;
+}
+.me-remove-btn:hover {
+  color: var(--mlab-red);
+}
+
+/* ── EMPTY STATE ─────────────────────────────────────────────────────────── */
+.me-empty {
+  padding: 1.5rem;
+  text-align: center;
+  font-family: var(--font-body);
+  font-size: 0.82rem;
+  color: var(--mlab-grey-lt);
+  font-style: italic;
+  background: var(--mlab-bg);
+}
+
+/* ── ADD MODULE BUTTON ───────────────────────────────────────────────────── */
+.me-add-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  width: 100%;
+  padding: 0.6rem;
+  font-family: var(--font-heading);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--mlab-blue);
+  background: var(--mlab-white);
+  border: 2px dashed var(--mlab-blue);
+  border-top: none;
+  cursor: pointer;
+  outline: none;
+  transition: background 0.15s;
+}
+.me-add-btn:hover {
+  background: var(--mlab-light-blue);
+}
+.me-add-btn svg {
+  color: var(--mlab-green);
+}
+
+/* ── RESPONSIVE ──────────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .me-th--date,
+  .me-td:nth-child(4) {
+    display: none;
+  }
+}

@@ -29,7 +29,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, currentNav, setCurrentNa
             case 'admin':
                 return [
                     { id: 'dashboard', label: 'Overview', icon: LayoutDashboard, path: '/admin' },
-                    { id: 'learners', label: 'Learner Results', icon: Users, path: '/admin' },
+                    // 🚀 NEW: Master Directory (The Humans)
+                    { id: 'directory', label: 'Master Directory', icon: Users, path: '/admin' },
+                    // 🚀 UPDATED: Enrollments (The Academic Records)
+                    { id: 'learners', label: 'Course Enrollments', icon: GraduationCap, path: '/admin' },
                     { id: 'qualifications', label: 'Qualifications', icon: BookOpen, path: '/admin' },
                     { id: 'staff', label: 'Staff Management', icon: UserCheck, path: '/admin' },
                     { id: 'cohorts', label: 'Cohorts (Classes)', icon: Layers, path: '/admin' },
@@ -131,6 +134,141 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, currentNav, setCurrentNa
         </aside>
     );
 };
+
+
+// import React from 'react';
+// import { useNavigate, useLocation } from 'react-router-dom';
+// import {
+//     LayoutDashboard, Users, BookOpen, UserCheck,
+//     Settings, LogOut, Layers, ShieldCheck,
+//     GraduationCap, ClipboardList, CheckSquare, User, UserCircle
+// } from 'lucide-react';
+// import type { UserRole } from '../../types/auth.types';
+// import { useStore } from '../../store/useStore';
+
+// interface SidebarProps {
+//     role?: UserRole;
+//     currentNav?: string;
+//     setCurrentNav?: (nav: any) => void;
+//     onLogout: () => void;
+// }
+
+// export const Sidebar: React.FC<SidebarProps> = ({ role, currentNav, setCurrentNav, onLogout }) => {
+//     const navigate = useNavigate();
+//     const location = useLocation();
+
+//     // Fetch the user from the global store to guarantee we always know the role
+//     const user = useStore((state) => state.user);
+//     const activeRole = role || user?.role;
+
+//     // ─── 1. DEFINE MENUS BASED ON ROLE ──────────────────────────────────────
+//     const getMenuItems = () => {
+//         switch (activeRole) {
+//             case 'admin':
+//                 return [
+//                     { id: 'dashboard', label: 'Overview', icon: LayoutDashboard, path: '/admin' },
+//                     { id: 'learners', label: 'Learner Results', icon: Users, path: '/admin' },
+//                     { id: 'qualifications', label: 'Qualifications', icon: BookOpen, path: '/admin' },
+//                     { id: 'staff', label: 'Staff Management', icon: UserCheck, path: '/admin' },
+//                     { id: 'cohorts', label: 'Cohorts (Classes)', icon: Layers, path: '/admin' },
+//                 ];
+//             case 'assessor':
+//                 return [
+//                     { id: 'dashboard', label: 'Marking Queue', icon: CheckSquare, path: '/marking' },
+//                     { id: 'cohorts', label: 'My Cohorts', icon: Layers, path: '/marking' },
+//                     { id: 'profile', label: 'My Profile', icon: User, path: '/marking' },
+//                 ];
+//             case 'moderator':
+//                 return [
+//                     { id: 'dashboard', label: 'QA Queue', icon: ShieldCheck, path: '/moderation' },
+//                     { id: 'cohorts', label: 'Cohorts', icon: Layers, path: '/moderation' },
+//                     { id: 'profile', label: 'My Profile', icon: User, path: '/moderation' },
+//                 ];
+//             case 'facilitator':
+//                 return [
+//                     { id: 'dashboard', label: 'Overview', icon: LayoutDashboard, path: '/facilitator' },
+//                     { id: 'attendance', label: 'Attendance', icon: Users, path: '/facilitator/attendance' },
+//                     { id: 'assessments', label: 'Assessments', icon: ClipboardList, path: '/facilitator/assessments' },
+//                     { id: 'profile', label: 'My Profile', icon: UserCircle, path: '/facilitator/profile' },
+//                 ];
+//             case 'learner':
+//                 return [
+//                     { id: 'dashboard', label: 'My Classes', icon: LayoutDashboard, path: '/portal' },
+//                     { id: 'profile', label: 'My Profile', icon: User, path: '/portal' },
+//                 ];
+//             default:
+//                 return [];
+//         }
+//     };
+
+//     const menuItems = getMenuItems();
+
+//     // ─── 2. SMART NAVIGATION HANDLER ────────────────────────────────────────
+//     const handleNavigation = (item: any) => {
+//         if (setCurrentNav) {
+//             // Used by Assessor & Admin (Tab switching without unmounting the whole page)
+//             setCurrentNav(item.id);
+//             // Silently update the URL state to persist across refreshes without breaking Roles
+//             navigate(item.path, { state: { activeTab: item.id }, replace: true });
+//         } else {
+//             // Used by Facilitator (Standard URL navigation through <Outlet />)
+//             navigate(item.path);
+//         }
+//     };
+
+//     return (
+//         <aside className="sidebar">
+
+//             {/* ─── BRANDING HEADER ─── */}
+//             <div className="sidebar-header">
+//                 <div className="sidebar-logo">
+//                     <span className="m">m</span><span className="lab">lab</span>
+//                 </div>
+//                 {activeRole !== 'learner' && (
+//                     <div className="sidebar-role-tag">{activeRole?.toUpperCase()}</div>
+//                 )}
+//             </div>
+
+//             {/* ─── NAVIGATION MENU ─── */}
+//             <nav className="sidebar-nav">
+//                 {menuItems.map((item) => {
+//                     const Icon = item.icon;
+
+//                     // It's active if currentNav matches the ID, OR if currentNav is missing but the URL matches the path
+//                     const isActive = currentNav === item.id || (!currentNav && location.pathname === item.path);
+
+//                     return (
+//                         <button
+//                             key={item.id}
+//                             className={`nav-item ${isActive ? 'active' : ''}`}
+//                             onClick={() => handleNavigation(item)}
+//                         >
+//                             <Icon size={20} />
+//                             <span>{item.label}</span>
+//                         </button>
+//                     );
+//                 })}
+//             </nav>
+
+//             {/* ─── FOOTER ACTIONS ─── */}
+//             <div className="sidebar-footer">
+//                 <button className="nav-item">
+//                     <Settings size={20} />
+//                     <span>Settings</span>
+//                 </button>
+//                 <button
+//                     className="nav-item"
+//                     style={{ color: '#ef4444' }}
+//                     onClick={onLogout}
+//                 >
+//                     <LogOut size={20} />
+//                     <span>Logout</span>
+//                 </button>
+//             </div>
+
+//         </aside>
+//     );
+// };
 
 
 
