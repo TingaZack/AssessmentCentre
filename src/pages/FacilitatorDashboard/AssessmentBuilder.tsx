@@ -1,25 +1,32 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { collection, doc, getDoc, setDoc, writeBatch, query, where, getDocs } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
+import { useStore } from '../../store/useStore';
 import {
     Save, ArrowLeft, Trash2, AlignLeft, CheckSquare,
     Layout, Info, ChevronDown, BookOpen, FileText,
     Zap, Eye, Settings, GraduationCap, ListChecks,
     ClipboardList, BookMarked, Plus, Pencil, Check, X,
     AlertTriangle, RotateCcw, EyeOff, Clock, Database,
-    Users, ExternalLink, Calendar, Lock // 🚀 Added Lock icon
+    ExternalLink, Calendar, Lock, Layers, UploadCloud, Mic, Code, Link as LinkIcon, CalendarRange, Timer,
+    Building2,
+    Type
 } from 'lucide-react';
-import { collection, doc, getDoc, setDoc, writeBatch, query, where, getDocs } from 'firebase/firestore';
-import './FacilitatorDashboard.css'; // Adjust path if necessary
-import { useStore } from '../../store/useStore';
-import { db } from '../../lib/firebase';
-import { ToastContainer, useToast } from '../../components/common/Toast/Toast';
 import Tooltip from '../../components/common/Tooltip/Tooltip';
 import type { Cohort, ProgrammeTemplate, DashboardLearner } from '../../types';
 import { CohortFormModal } from '../../components/admin/CohortFormModal/CohortFormModal';
 import { ProgrammeFormModal } from '../../components/admin/ProgrammeFormModal/ProgrammeFormModal';
+import ReactQuill from 'react-quill-new';
+import 'react-quill-new/dist/quill.snow.css';
+import './FacilitatorDashboard.css';
+import { ToastContainer, useToast } from '../../components/common/Toast/Toast';
+
+const quillModules = { toolbar: [['bold', 'italic', 'underline', 'code-block'], [{ 'list': 'ordered' }, { 'list': 'bullet' }], ['clean']] };
+const quillFormats = ['bold', 'italic', 'underline', 'code-block', 'list', 'bullet'];
 
 // ─── TYPES ────────────────────────────────────────────────────────────────────
-type BlockType = 'section' | 'info' | 'mcq' | 'text';
+export type BlockType = 'section' | 'info' | 'mcq' | 'text' | 'task' | 'checklist' | 'logbook';
 type SidebarPanel = 'settings' | 'module' | 'topics' | 'guide' | 'outline';
 
 interface Topic {
@@ -29,7 +36,7 @@ interface Topic {
     weight: string | number;
 }
 
-interface AssessmentBlock {
+export interface AssessmentBlock {
     id: string;
     type: BlockType;
     title?: string;
@@ -39,6 +46,22 @@ interface AssessmentBlock {
     options?: string[];
     correctOption?: number;
     linkedTopicId?: string;
+
+    // Multi-Modal Fields
+    allowText?: boolean;
+    allowUpload?: boolean;
+    allowAudio?: boolean;
+    allowUrl?: boolean;
+    allowCode?: boolean;
+    allowedFileTypes?: 'all' | 'image' | 'document' | 'video' | 'presentation';
+    codeLanguage?: 'javascript' | 'python' | 'html' | 'sql' | 'other';
+
+    // Practical Checklist Fields
+    criteria?: string[];
+    requireTimeTracking?: boolean;
+    requirePerCriterionTiming?: boolean;
+    requireObservationDeclaration?: boolean;
+    requireEvidencePerCriterion?: boolean; // 🚀 NEW: Per-Criterion Evidence
 }
 
 interface ModuleDetails {
@@ -58,8 +81,11 @@ const mkId = () => `t-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 const BLOCK_META: Record<BlockType, { label: string; color: string; icon: React.ReactNode; desc: string }> = {
     section: { label: 'Section', color: '#6366f1', icon: <Layout size={14} />, desc: 'Organises blocks under a heading' },
     info: { label: 'Reading', color: '#0ea5e9', icon: <Info size={14} />, desc: 'Context or learning material' },
-    text: { label: 'Open Answer', color: '#f59e0b', icon: <AlignLeft size={14} />, desc: 'Free-text response question' },
+    text: { label: 'Written', color: '#f59e0b', icon: <AlignLeft size={14} />, desc: 'Standard free-text response' },
     mcq: { label: 'MCQ', color: '#10b981', icon: <CheckSquare size={14} />, desc: 'Select the correct option' },
+    task: { label: 'Multi-Modal', color: '#8b5cf6', icon: <Layers size={14} />, desc: 'Allow file uploads, audio, code, or links' },
+    checklist: { label: 'Checklist', color: '#14b8a6', icon: <ListChecks size={14} />, desc: 'Assessor C/NYC observation list' },
+    logbook: { label: 'Logbook', color: '#f97316', icon: <CalendarRange size={14} />, desc: 'Standard workplace hours logbook' },
 };
 
 // ─── MAIN COMPONENT ───────────────────────────────────────────────────────────
@@ -78,7 +104,7 @@ export const AssessmentBuilder: React.FC = () => {
     const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved');
     const [lastSaved, setLastSaved] = useState<Date | null>(null);
 
-    // 🚀 NEW: OVERALL STATUS TRACKING FOR STRICT MODE
+    // STATUS TRACKING FOR STRICT MODE
     const [assessmentStatus, setAssessmentStatus] = useState<'draft' | 'scheduled' | 'active' | 'completed'>('draft');
 
     // Modals & Linking States
@@ -91,8 +117,9 @@ export const AssessmentBuilder: React.FC = () => {
     const [title, setTitle] = useState('');
     const [cohortIds, setCohortIds] = useState<string[]>([]);
     const [instructions, setInstructions] = useState('');
-    const [type, setType] = useState<'formative' | 'summative'>('formative');
-    const [moduleType, setModuleType] = useState<'knowledge' | 'practical' | 'workplace' | 'other'>('knowledge');
+    const [type, setType] = useState<'formative' | 'summative' | 'Practical Observation' | 'Workplace Logbook'>('formative');
+    const [moduleType, setModuleType] = useState<'knowledge' | 'practical' | 'workplace'>('knowledge');
+    const [companyName, setCompanyName] = useState('');
 
     // SCHEDULING STATES
     const [isScheduled, setIsScheduled] = useState<boolean>(false);
@@ -109,6 +136,7 @@ export const AssessmentBuilder: React.FC = () => {
     const [entryRequirements, setEntryRequirements] = useState('');
     const [providerRequirements, setProviderRequirements] = useState('');
     const [exemptions, setExemptions] = useState('');
+    const [stakeholderGuidelines, setStakeholderGuidelines] = useState('');
 
     // Content States
     const [topics, setTopics] = useState<Topic[]>([]);
@@ -121,7 +149,7 @@ export const AssessmentBuilder: React.FC = () => {
     const [newTopic, setNewTopic] = useState<Partial<Topic>>({ code: '', title: '', weight: '' });
     const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
-    // 🚀 CALCULATE STRICT MODE
+    // CALCULATE STRICT MODE
     const isDeployed = assessmentStatus !== 'draft' && assessmentId !== undefined;
 
     // ─── INITIAL LOAD ───
@@ -145,9 +173,9 @@ export const AssessmentBuilder: React.FC = () => {
                     setInstructions(data.instructions || '');
                     setType(data.type || 'formative');
                     setModuleType(data.moduleType || 'knowledge');
-                    setAssessmentStatus(data.status || 'draft'); // 🚀 LOAD STATUS
+                    setAssessmentStatus(data.status || 'draft');
+                    setCompanyName(data.companyName || '');
 
-                    // Load Schedule State & Convert ISO back to Local DateTime input format
                     if (data.scheduledDate) {
                         try {
                             const d = new Date(data.scheduledDate);
@@ -164,10 +192,8 @@ export const AssessmentBuilder: React.FC = () => {
                     }
                     setIsScheduled(!!data.scheduledDate);
 
-                    // Restore selected blueprint links
                     setSelectedProgrammeId(data.linkedProgrammeId || '');
                     setSelectedModuleCode(data.linkedModuleCode || '');
-
                     setModuleInfo(data.moduleInfo || {});
                     setShowModuleHeader(data.showModuleHeader ?? true);
                     setBlocks(data.blocks || []);
@@ -178,6 +204,7 @@ export const AssessmentBuilder: React.FC = () => {
                         setEntryRequirements(data.learnerGuide.entryRequirements || '');
                         setProviderRequirements(data.learnerGuide.providerRequirements || '');
                         setExemptions(data.learnerGuide.exemptions || '');
+                        setStakeholderGuidelines(data.learnerGuide.stakeholderGuidelines || '');
                     }
 
                     if (data.topics && Array.isArray(data.topics)) {
@@ -205,12 +232,11 @@ export const AssessmentBuilder: React.FC = () => {
     // ─── CURRICULUM SYNC LOGIC ───
     useEffect(() => {
         if (!selectedProgrammeId || !selectedModuleCode) return;
-        if (assessmentId && topics.length > 0) return; // Don't overwrite existing topics on load
+        if (assessmentId && topics.length > 0) return;
 
         const prog = programmes.find(p => p.id === selectedProgrammeId);
         if (!prog) return;
 
-        // Collect all modules from the 3 buckets and safely find the matching one
         const allMods = [
             ...(prog.knowledgeModules || []),
             ...(prog.practicalModules || []),
@@ -223,7 +249,6 @@ export const AssessmentBuilder: React.FC = () => {
         });
 
         if (mod) {
-            // Auto-fill module details
             setModuleInfo({
                 title: mod.name,
                 nqfLevel: `Level ${mod.nqfLevel || prog.nqfLevel}`,
@@ -236,7 +261,6 @@ export const AssessmentBuilder: React.FC = () => {
                 timeLimit: moduleInfo.timeLimit || 60
             });
 
-            // Auto-fill Topics from the ProgrammeTemplate!
             if (mod.topics && mod.topics.length > 0) {
                 const mappedTopics = mod.topics.map((t: any) => ({
                     id: mkId(),
@@ -260,15 +284,14 @@ export const AssessmentBuilder: React.FC = () => {
 
         const autoSaveTimer = setTimeout(() => {
             if (saveStatus === 'unsaved' && !loading) {
-                // Determine save state based on whether it is already deployed or not
                 handleSave(assessmentStatus === 'draft' ? 'draft' : 'active', true);
             }
         }, 30000);
 
         return () => clearTimeout(autoSaveTimer);
     }, [
-        title, cohortIds, instructions, type, moduleType, moduleInfo, showModuleHeader,
-        learnerNote, modulePurpose, entryRequirements, providerRequirements, exemptions,
+        title, cohortIds, instructions, type, moduleType, companyName, moduleInfo, showModuleHeader,
+        learnerNote, modulePurpose, entryRequirements, providerRequirements, exemptions, stakeholderGuidelines,
         topics, blocks, selectedProgrammeId, selectedModuleCode, scheduledDate, isScheduled
     ]);
 
@@ -292,11 +315,7 @@ export const AssessmentBuilder: React.FC = () => {
             };
 
             await setDoc(cohortRef, finalCohort);
-
-            // Sync global store so UI updates immediately
             await fetchCohorts();
-
-            // Auto-select the newly created cohort in the builder
             setCohortIds(prev => [...prev, newId]);
 
             toast.success(`Class "${cohortData.name}" created and assigned!`);
@@ -306,7 +325,6 @@ export const AssessmentBuilder: React.FC = () => {
             throw new Error(err.message);
         }
     };
-
 
     // ── TOPIC HANDLERS ──
     const startEdit = (t: Topic) => { setEditingTopicId(t.id); setEditDraft({ ...t }); setAddingTopic(false); };
@@ -333,18 +351,50 @@ export const AssessmentBuilder: React.FC = () => {
     const cancelAdd = () => { setAddingTopic(false); setNewTopic({}); };
 
     // ── BLOCK HANDLERS ──
-    const addBlock = (bType: BlockType, linkedTopicId?: string) => {
+    const addBlock = (bType: string, linkedTopicId?: string) => {
+
+        let actualType: BlockType = bType as BlockType;
+        if (['upload', 'audio', 'code'].includes(bType)) actualType = 'task';
+
         const nb: AssessmentBlock = {
             id: `b-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-            type: bType,
+            type: actualType,
             linkedTopicId,
-            title: bType === 'section' ? 'New Section' : '',
+            title: actualType === 'section' ? 'New Section' : '',
             content: '',
             question: '',
-            marks: (bType === 'text' || bType === 'mcq') ? 5 : 0,
-            options: bType === 'mcq' ? ['', '', '', ''] : [],
+            marks: (actualType === 'text' || actualType === 'mcq' || actualType === 'task') ? 5 : (actualType === 'checklist' ? 10 : 0),
+            options: actualType === 'mcq' ? ['', '', '', ''] : [],
             correctOption: 0,
         };
+
+        if (actualType === 'section') {
+            nb.title = 'New Section';
+            nb.content = '';
+        } else if (actualType === 'checklist') {
+            nb.title = 'Demonstrate the use of various functionalities:';
+            nb.criteria = ['Task criterion 1', 'Task criterion 2'];
+            nb.requireTimeTracking = true;
+            nb.requirePerCriterionTiming = true;
+            nb.requireObservationDeclaration = true;
+            nb.requireEvidencePerCriterion = true; // 🚀 ON BY DEFAULT
+        } else if (actualType === 'logbook') {
+            nb.title = 'Workplace Logbook Entry';
+            nb.content = 'Learner must log assignment tasks, start/finish times, and total hours.';
+        } else if (actualType === 'task') {
+            nb.question = bType === 'upload' ? 'Please upload your evidence (PDF, Image, Video):' :
+                bType === 'audio' ? 'Please record your verbal response:' :
+                    bType === 'code' ? 'Please write your code or provide a repository link:' :
+                        'Describe or demonstrate your solution:';
+            nb.allowText = bType === 'task';
+            nb.allowUpload = bType === 'upload' || bType === 'task';
+            nb.allowAudio = bType === 'audio' || bType === 'task';
+            nb.allowUrl = bType === 'code' || bType === 'task';
+            nb.allowCode = bType === 'code' || bType === 'task';
+            nb.allowedFileTypes = 'all';
+            nb.codeLanguage = 'javascript';
+        }
+
         setBlocks(p => [...p, nb]);
         setTimeout(() => {
             setFocusedBlock(nb.id);
@@ -392,10 +442,9 @@ export const AssessmentBuilder: React.FC = () => {
         }
     };
 
-    const totalMarks = blocks.reduce((s, b) => s + (b.marks || 0), 0);
-    const qCount = blocks.filter(b => b.type === 'text' || b.type === 'mcq').length;
+    const totalMarks = blocks.reduce((s, b) => s + (Number(b.marks) || 0), 0);
+    const qCount = blocks.filter(b => ['text', 'mcq', 'task', 'checklist'].includes(b.type)).length;
     const coveredTopicIds = new Set(blocks.map(b => b.linkedTopicId).filter(Boolean) as string[]);
-
 
     // ─── PROGRAMME (BLUEPRINT) SAVE LOGIC ───
     const handleSaveNewProgramme = async (newProg: ProgrammeTemplate) => {
@@ -418,7 +467,7 @@ export const AssessmentBuilder: React.FC = () => {
             toast.success("Curriculum Blueprint created successfully!");
             setShowProgrammeModal(false);
 
-            await fetchProgrammes(); // refresh dropdown
+            await fetchProgrammes();
             setSelectedProgrammeId(customId);
             setSelectedModuleCode('');
         } catch (err: any) {
@@ -450,17 +499,37 @@ export const AssessmentBuilder: React.FC = () => {
                     if (t) c.linkedTopicCode = t.code;
                     c.linkedTopicId = b.linkedTopicId;
                 }
-                if (b.type === 'section') c.title = b.title || 'Untitled Section';
-                if (b.type === 'info') c.content = b.content || '';
-                if (b.type === 'text' || b.type === 'mcq') c.question = b.question || '';
+
+                if (b.type === 'section') {
+                    c.title = b.title || 'Untitled Section';
+                    c.content = b.content || '';
+                }
+                if (b.type === 'checklist' || b.type === 'logbook') c.title = b.title || 'Untitled';
+                if (b.type === 'info' || b.type === 'logbook') c.content = b.content || '';
+                if (b.type === 'text' || b.type === 'mcq' || b.type === 'task') c.question = b.question || '';
                 if (b.type === 'mcq') {
                     c.options = b.options || ['', '', '', ''];
                     c.correctOption = b.correctOption || 0;
                 }
+                if (b.type === 'checklist') {
+                    c.criteria = b.criteria || [];
+                    c.requireTimeTracking = b.requireTimeTracking !== false;
+                    c.requirePerCriterionTiming = b.requirePerCriterionTiming !== false;
+                    c.requireObservationDeclaration = b.requireObservationDeclaration !== false;
+                    c.requireEvidencePerCriterion = b.requireEvidencePerCriterion !== false; // 🚀
+                }
+                if (b.type === 'task') {
+                    c.allowText = b.allowText;
+                    c.allowUpload = b.allowUpload;
+                    c.allowAudio = b.allowAudio;
+                    c.allowUrl = b.allowUrl;
+                    c.allowCode = b.allowCode;
+                    c.allowedFileTypes = b.allowedFileTypes;
+                    c.codeLanguage = b.codeLanguage;
+                }
                 return c;
             });
 
-            // Update status and format to ISO 8601
             let finalStatus: string = status;
             let finalScheduledDate: string | null = null;
 
@@ -469,20 +538,20 @@ export const AssessmentBuilder: React.FC = () => {
                 finalScheduledDate = new Date(scheduledDate).toISOString();
             }
 
-            // 🚀 Do not revert to draft if it's already active/completed!
             if (isDeployed && status === 'draft' && !isAutoSave) {
                 finalStatus = assessmentStatus;
             }
 
             const payload = {
-                title, type, moduleType, cohortIds,
+                title, type, moduleType, cohortIds, companyName,
                 linkedProgrammeId: selectedProgrammeId,
                 linkedModuleCode: selectedModuleCode,
                 scheduledDate: finalScheduledDate,
                 instructions: instructions || '', moduleInfo, showModuleHeader,
                 learnerGuide: {
                     note: learnerNote, purpose: modulePurpose, entryRequirements,
-                    providerRequirements, exemptions, assessmentInfo: instructions
+                    providerRequirements, exemptions, assessmentInfo: instructions,
+                    stakeholderGuidelines
                 },
                 topics, blocks: sanitizedBlocks, totalMarks, status: finalStatus,
                 facilitatorId: user?.uid, lastUpdated: new Date().toISOString(), isWorkbook: true,
@@ -504,7 +573,7 @@ export const AssessmentBuilder: React.FC = () => {
                 });
             }
 
-            // 🚀 READ-BEFORE-WRITE DEPLOYMENT LOGIC 🚀
+            // READ-BEFORE-WRITE DEPLOYMENT LOGIC
             if (finalStatus === 'active' || finalStatus === 'scheduled') {
                 const cohortLearners = learners.filter(l => {
                     const lId = String(l.cohortId || '').trim();
@@ -512,7 +581,6 @@ export const AssessmentBuilder: React.FC = () => {
                 });
 
                 if (cohortLearners.length > 0) {
-                    // Fetch existing submissions to prevent overwriting active ones!
                     const existingSubsQ = query(
                         collection(db, 'learner_submissions'),
                         where('assessmentId', '==', currentAssessmentId)
@@ -526,12 +594,10 @@ export const AssessmentBuilder: React.FC = () => {
                         const qualName = learner.qualification?.name || '';
                         const targetCohort = learner.cohortId || 'Unassigned';
 
-                        // Format: [CohortID]_[HumanID]_[AssessmentID]
                         const submissionId = `${targetCohort}_${humanId}_${currentAssessmentId}`;
                         const submissionRef = doc(db, 'learner_submissions', submissionId);
 
                         if (!existingSubIds.has(submissionId)) {
-                            // BRAND NEW LEARNER: Safe to set default destructive fields
                             batch.set(submissionRef, {
                                 learnerId: humanId,
                                 enrollmentId: enrolId,
@@ -541,16 +607,15 @@ export const AssessmentBuilder: React.FC = () => {
                                 title: title,
                                 type: type,
                                 moduleType: moduleType,
-                                status: 'not_started', // Safe because it's new
+                                status: 'not_started',
                                 assignedAt: new Date().toISOString(),
-                                marks: 0,              // Safe because it's new
+                                marks: 0,
                                 totalMarks: totalMarks,
                                 moduleNumber: moduleInfo.moduleNumber,
                                 createdAt: new Date().toISOString(),
                                 createdBy: user?.uid || 'System'
                             });
                         } else {
-                            // EXISTING LEARNER: ONLY update metadata, NEVER overwrite status/marks/answers
                             batch.set(submissionRef, {
                                 title: title,
                                 type: type,
@@ -590,7 +655,7 @@ export const AssessmentBuilder: React.FC = () => {
     const activeProgramme = programmes.find(p => p.id === selectedProgrammeId);
 
     return (
-        <div className="ab-root animate-fade-in" style={{ margin: 0 }} >
+        <div className="ab-root animate-fade-in" style={{ margin: 0, paddingBottom: '100px' }} >
             <ToastContainer toasts={toast.toasts} onClose={toast.closeToast} />
 
             <header className="ab-topbar">
@@ -606,6 +671,7 @@ export const AssessmentBuilder: React.FC = () => {
                     <span className={`ab-topbar-badge ${type}`}>{type}</span>
                 </div>
                 <div className="ab-topbar-actions">
+
                     <div className="ab-stats-pill">
                         <span><strong>{qCount}</strong> Qs</span>
                         <div className="ab-sdiv" />
@@ -697,7 +763,7 @@ export const AssessmentBuilder: React.FC = () => {
                                                 value={selectedProgrammeId}
                                                 onChange={e => {
                                                     setSelectedProgrammeId(e.target.value);
-                                                    setSelectedModuleCode(''); // Reset module when programme changes
+                                                    setSelectedModuleCode('');
                                                 }}
                                             >
                                                 <option value="">-- Custom / Blank --</option>
@@ -729,8 +795,6 @@ export const AssessmentBuilder: React.FC = () => {
                                                 onChange={e => setSelectedModuleCode(e.target.value)}
                                             >
                                                 <option value="">-- Select Module --</option>
-
-                                                {/* Group 1: Knowledge Modules */}
                                                 {(activeProgramme.knowledgeModules || []).length > 0 && (
                                                     <optgroup label="Knowledge Modules (KM)">
                                                         {activeProgramme.knowledgeModules.map((moduleItem: any, idx: number) => {
@@ -740,8 +804,6 @@ export const AssessmentBuilder: React.FC = () => {
                                                         })}
                                                     </optgroup>
                                                 )}
-
-                                                {/* Group 2: Practical Modules */}
                                                 {(activeProgramme.practicalModules || []).length > 0 && (
                                                     <optgroup label="Practical Modules (PM)">
                                                         {activeProgramme.practicalModules.map((moduleItem: any, idx: number) => {
@@ -751,8 +813,6 @@ export const AssessmentBuilder: React.FC = () => {
                                                         })}
                                                     </optgroup>
                                                 )}
-
-                                                {/* Group 3: Workplace Modules */}
                                                 {(activeProgramme.workExperienceModules || []).length > 0 && (
                                                     <optgroup label="Workplace Modules (WM)">
                                                         {activeProgramme.workExperienceModules.map((moduleItem: any, idx: number) => {
@@ -762,7 +822,6 @@ export const AssessmentBuilder: React.FC = () => {
                                                         })}
                                                     </optgroup>
                                                 )}
-
                                             </select>
                                             <ChevronDown size={12} className="ab-sel-arr" />
                                         </div>
@@ -772,60 +831,61 @@ export const AssessmentBuilder: React.FC = () => {
                                 <div style={{ borderBottom: '1px solid #e2e8f0', margin: '1rem 0' }} />
 
                                 <SectionHdr icon={<BookOpen size={13} />} label="Workbook Metadata" />
+
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1rem', background: '#f8fafc', padding: '1rem', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '1rem' }}>
+                                    <div className="ab-form-group" style={{ marginBottom: 0 }}>
+                                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><BookOpen size={14} /> Module Curriculum Type</label>
+                                        <select className="ab-input" value={moduleType} onChange={e => setModuleType(e.target.value as any)} style={{ borderColor: 'var(--mlab-blue)', fontWeight: 'bold' }}>
+                                            <option value="knowledge">Knowledge Module (Standard Questions)</option>
+                                            <option value="practical">Practical Skill Module (Checklists/Tasks)</option>
+                                            <option value="workplace">Workplace Experience Module (Logbooks)</option>
+                                        </select>
+                                        <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block', marginTop: '4px' }}>* Helps categorize the assessment type in your database.</span>
+                                    </div>
+                                    <div className="ab-form-group" style={{ marginBottom: 0 }}>
+                                        <label>Assessment Type Category</label>
+                                        <select className="ab-input" value={type} onChange={e => setType(e.target.value as any)}>
+                                            <option value="formative">Formative Assessment</option>
+                                            <option value="summative">Summative Assessment</option>
+                                            <option value="Practical Observation">Practical Observation</option>
+                                            <option value="Workplace Logbook">Workplace Logbook</option>
+                                        </select>
+                                    </div>
+                                    {/* 🚀 CONDITIONAL COMPANY NAME FIELD */}
+                                    {(moduleType === 'practical' || moduleType === 'workplace') && (
+                                        <div className="ab-form-group" style={{ marginBottom: 0 }}>
+                                            <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Building2 size={14} /> Host Company / Workplace Name</label>
+                                            <input className="ab-input" value={companyName} onChange={e => setCompanyName(e.target.value)} placeholder="e.g. mLab South Africa" />
+                                            <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block', marginTop: '4px' }}>Where the practicals/workplace experience is taking place.</span>
+                                        </div>
+                                    )}
+                                </div>
+
                                 <FG label="Title">
-                                    <input
-                                        className="ab-input"
-                                        value={title}
-                                        onChange={e => setTitle(e.target.value)}
-                                    />
+                                    <input className="ab-input" value={title} onChange={e => setTitle(e.target.value)} />
                                 </FG>
 
-                                {/* 🚀 NEW: SCHEDULED DATE FIELD WITH TOGGLE */}
                                 <div className="ab-meta-grid-inputs">
                                     <FG label="Time Limit (Mins)">
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                             <Clock size={16} color="#64748b" />
-                                            <input
-                                                type="number"
-                                                className="ab-input"
-                                                placeholder="e.g. 60"
-                                                value={moduleInfo.timeLimit || ''}
-                                                onChange={e => setModuleInfo({ ...moduleInfo, timeLimit: Number(e.target.value) })}
-                                            />
+                                            <input type="number" className="ab-input" placeholder="e.g. 60" value={moduleInfo.timeLimit || ''} onChange={e => setModuleInfo({ ...moduleInfo, timeLimit: Number(e.target.value) })} />
                                         </div>
                                         <span style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '4px', display: 'block' }}>0 for no limit.</span>
                                     </FG>
 
                                     <FG label="Scheduling">
                                         <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', marginBottom: isScheduled ? '8px' : '4px' }}>
-                                            <input
-                                                type="checkbox"
-                                                checked={isScheduled}
-                                                onChange={(e) => {
-                                                    setIsScheduled(e.target.checked);
-                                                    if (!e.target.checked) setScheduledDate('');
-                                                }}
-                                                style={{ width: '15px', height: '15px', cursor: 'pointer', accentColor: 'var(--mlab-blue)' }}
-                                            />
-                                            <span style={{ fontSize: '0.85rem', color: '#334155', fontWeight: 600 }}>
-                                                Schedule specific date/time
-                                            </span>
+                                            <input type="checkbox" checked={isScheduled} onChange={(e) => { setIsScheduled(e.target.checked); if (!e.target.checked) setScheduledDate(''); }} style={{ width: '15px', height: '15px', cursor: 'pointer', accentColor: 'var(--mlab-blue)' }} />
+                                            <span style={{ fontSize: '0.85rem', color: '#334155', fontWeight: 600 }}>Schedule specific date/time</span>
                                         </label>
-
                                         {isScheduled ? (
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', paddingLeft: '23px' }}>
                                                 <Calendar size={16} color="#64748b" />
-                                                <input
-                                                    type="datetime-local"
-                                                    className="ab-input"
-                                                    value={scheduledDate}
-                                                    onChange={e => setScheduledDate(e.target.value)}
-                                                />
+                                                <input type="datetime-local" className="ab-input" value={scheduledDate} onChange={e => setScheduledDate(e.target.value)} />
                                             </div>
                                         ) : (
-                                            <p style={{ margin: '0 0 0 23px', fontSize: '0.75rem', color: '#64748b', fontStyle: 'italic' }}>
-                                                Available anytime after publishing.
-                                            </p>
+                                            <p style={{ margin: '0 0 0 23px', fontSize: '0.75rem', color: '#64748b', fontStyle: 'italic' }}>Available anytime after publishing.</p>
                                         )}
                                     </FG>
                                 </div>
@@ -834,40 +894,18 @@ export const AssessmentBuilder: React.FC = () => {
                                 <div style={{ marginBottom: '1rem' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                                         <label className="ab-fg-label" style={{ marginBottom: 0 }}>Assign to Cohorts</label>
-                                        <button
-                                            type="button"
-                                            className="ab-text-btn"
-                                            style={{ fontSize: '0.75rem', color: 'var(--mlab-blue)', fontWeight: 600 }}
-                                            onClick={() => setShowCohortModal(true)}
-                                        >
-                                            + Create New Class
-                                        </button>
+                                        <button type="button" className="ab-text-btn" style={{ fontSize: '0.75rem', color: 'var(--mlab-blue)', fontWeight: 600 }} onClick={() => setShowCohortModal(true)}>+ Create New Class</button>
                                     </div>
-                                    <div style={{
-                                        border: '1px solid #cbd5e1', borderRadius: '6px',
-                                        maxHeight: '130px', overflowY: 'auto', padding: '0.5rem',
-                                        background: '#fff'
-                                    }}>
+                                    <div style={{ border: '1px solid #cbd5e1', borderRadius: '6px', maxHeight: '130px', overflowY: 'auto', padding: '0.5rem', background: '#fff' }}>
                                         {cohorts.map(c => (
                                             <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.4rem', cursor: 'pointer' }}>
-                                                <input
-                                                    type="checkbox"
-                                                    checked={cohortIds.includes(c.id)}
-                                                    onChange={(e) => {
-                                                        if (e.target.checked) setCohortIds(prev => [...prev, c.id]);
-                                                        else setCohortIds(prev => prev.filter(id => id !== c.id));
-                                                    }}
-                                                />
+                                                <input type="checkbox" checked={cohortIds.includes(c.id)} onChange={(e) => {
+                                                    if (e.target.checked) setCohortIds(prev => [...prev, c.id]);
+                                                    else setCohortIds(prev => prev.filter(id => id !== c.id));
+                                                }} />
                                                 <span style={{ fontSize: '0.85rem', color: '#334155', flex: 1 }}>{c.name}</span>
                                                 <Tooltip content="View Class Register" placement="left">
-                                                    <ExternalLink
-                                                        size={12}
-                                                        style={{ opacity: 0.5, color: '#334155' }}
-                                                        onClick={(e) => {
-                                                            e.preventDefault();
-                                                            navigate(`/cohorts/${c.id}`);
-                                                        }}
-                                                    />
+                                                    <ExternalLink size={12} style={{ opacity: 0.5, color: '#334155' }} onClick={(e) => { e.preventDefault(); navigate(`/cohorts/${c.id}`); }} />
                                                 </Tooltip>
                                             </label>
                                         ))}
@@ -875,24 +913,6 @@ export const AssessmentBuilder: React.FC = () => {
                                     </div>
                                 </div>
 
-                                <FG label="QCTO Module Type">
-                                    <div className="ab-sel-wrap">
-                                        <select className="ab-input ab-sel" value={moduleType} onChange={e => setModuleType(e.target.value as any)}>
-                                            <option value="knowledge">Knowledge Module (KM)</option>
-                                            <option value="practical">Practical Module (PM)</option>
-                                            <option value="workplace">Workplace Module (WM)</option>
-                                            <option value="other">Other / Practice Test</option>
-                                        </select>
-                                        <ChevronDown size={12} className="ab-sel-arr" />
-                                    </div>
-                                </FG>
-
-                                <FG label="Type">
-                                    <div className="ab-type-tog">
-                                        <button className={`ab-type-btn ${type === 'formative' ? 'active' : ''}`} onClick={() => setType('formative')}>Formative</button>
-                                        <button className={`ab-type-btn ${type === 'summative' ? 'active' : ''}`} onClick={() => setType('summative')}>Summative</button>
-                                    </div>
-                                </FG>
                                 <SectionHdr icon={<ClipboardList size={13} />} label="Instructions" />
                                 <textarea className="ab-input ab-textarea" rows={5} value={instructions} onChange={e => setInstructions(e.target.value)} />
                             </>
@@ -969,7 +989,22 @@ export const AssessmentBuilder: React.FC = () => {
                                 <FG label="Note to Learner"><textarea className="ab-input ab-textarea" rows={4} value={learnerNote} onChange={e => setLearnerNote(e.target.value)} /></FG>
                                 <FG label="Module Purpose"><textarea className="ab-input ab-textarea" rows={4} value={modulePurpose} onChange={e => setModulePurpose(e.target.value)} /></FG>
                                 <FG label="Entry Requirements"><textarea className="ab-input ab-textarea" rows={2} value={entryRequirements} onChange={e => setEntryRequirements(e.target.value)} /></FG>
-                                <FG label="Provider Requirements"><textarea className="ab-input ab-textarea" rows={8} value={providerRequirements} onChange={e => setProviderRequirements(e.target.value)} /></FG>
+
+                                {/* 🚀 NEW RICH TEXT GUIDELINES BLOCK FOR MENTORS/EMPLOYERS */}
+                                <FG label="Stakeholder Guidelines (Mentors, Employers, Providers)">
+                                    <div className={`ab-quill-wrapper ${isDeployed ? 'locked' : ''}`} style={{ marginTop: '5px' }}>
+                                        <ReactQuill
+                                            theme="snow"
+                                            value={stakeholderGuidelines}
+                                            onChange={setStakeholderGuidelines}
+                                            readOnly={isDeployed}
+                                            modules={quillModules}
+                                            formats={quillFormats}
+                                            placeholder="Paste the Instructions to Mentor, Responsibilities of the Employer, and Training Provider Responsibility here..."
+                                        />
+                                    </div>
+                                </FG>
+
                                 <FG label="Exemptions"><textarea className="ab-input ab-textarea" rows={2} value={exemptions} onChange={e => setExemptions(e.target.value)} /></FG>
                             </>
                         )}
@@ -1000,77 +1035,98 @@ export const AssessmentBuilder: React.FC = () => {
                 </aside>
 
                 <main className="ab-canvas">
-                    {/* 🚀 NEW: STRICT MODE BANNER */}
-                    {isDeployed && (
-                        <div style={{ background: '#fef2f2', border: '1px solid #ef4444', padding: '10px 15px', borderRadius: '6px', color: '#b91c1c', display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '1.5rem', fontSize: '0.85rem' }}>
-                            <AlertTriangle size={24} style={{ flexShrink: 0 }} />
-                            <div>
-                                <strong>Strict Mode Enabled (Assessment Deployed):</strong> Structural changes (adding/removing blocks, adding/removing topics, changing mark values) are locked to protect learner data integrity. You may only edit text to fix typos, or update scheduled dates and cohort assignments via the settings panel.
-                            </div>
-                        </div>
-                    )}
 
-                    {showModuleHeader && (
-                        <div className="ab-module-card clickable" onClick={() => setActivePanel('module')}>
-                            <div className="ab-mc-left">
-                                <div className="ab-mc-badges">
-                                    <span className="ab-mc-b nqf">{moduleInfo.nqfLevel}</span>
-                                    <span className="ab-mc-b cr">{moduleInfo.credits} Credits</span>
-                                    <span className="ab-mc-b hr">{moduleInfo.notionalHours}h</span>
-                                    {moduleInfo.timeLimit ? (
-                                        <span className="ab-mc-b" style={{ background: '#fef3c7', color: '#b45309' }}>
-                                            <Clock size={12} style={{ display: 'inline', marginRight: '4px' }} />
-                                            {moduleInfo.timeLimit}m Limit
-                                        </span>
-                                    ) : null}
-                                    <span className={`ab-mc-b type-${type}`}>{type}</span>
-                                </div>
-                                <h1 className="ab-mc-title">{title || 'Untitled Workbook'}</h1>
-                                <p className="ab-mc-sub">{moduleInfo.qualificationTitle} · {moduleInfo.moduleNumber}</p>
-                            </div>
-                            <div className="ab-mc-right">
-                                <div className="ab-mc-stat">
-                                    <span className="ab-mc-val">{qCount}</span>
-                                    <span className="ab-mc-lbl">Qs</span>
-                                </div>
-                                <div className="ab-mc-div" />
-                                <div className="ab-mc-stat">
-                                    <span className="ab-mc-val">{totalMarks}</span>
-                                    <span className="ab-mc-lbl">Marks</span>
-                                </div>
-                            </div>
-                            <div className="ab-mc-edit-hint"><Pencil size={12} /> Edit</div>
-                        </div>
-                    )}
-
-                    {blocks.length === 0 ? (
-                        <EmptyCanvas onAdd={addBlock} />
-                    ) : (
-                        <div className="ab-blocks-list">
-                            {blocks.map((b, idx) => (
-                                <BlockCard
-                                    key={b.id} block={b} index={idx} total={blocks.length} topics={topics}
-                                    focused={focusedBlock === b.id} onFocus={() => setFocusedBlock(b.id)}
-                                    isDeployed={isDeployed}
-                                    onUpdate={updateBlock} onUpdateOption={updateOption} onRemove={removeBlock} onMove={moveBlock}
-                                />
-                            ))}
-                        </div>
-                    )}
-
-                    {/* Hide the insert toolbar completely if the assessment is deployed */}
+                    {/* 🚀 FIXED BOTTOM FLOATING TOOLBAR */}
                     {!isDeployed && (
-                        <div className="ab-add-toolbar">
-                            <span className="ab-add-label">Insert</span>
-                            {(Object.keys(BLOCK_META) as BlockType[]).map(bt => (
-                                <Tooltip key={bt} content={BLOCK_META[bt].desc} placement="top">
-                                    <button className="ab-add-btn" style={{ '--block-color': BLOCK_META[bt].color } as React.CSSProperties} onClick={() => addBlock(bt)}>
-                                        {BLOCK_META[bt].icon}<span>{BLOCK_META[bt].label}</span>
-                                    </button>
-                                </Tooltip>
-                            ))}
+                        <div style={{
+                            position: 'fixed', bottom: '2rem', left: '50%', transform: 'translateX(-50%)',
+                            padding: '0.75rem 1.25rem', borderRadius: '50px',
+                            boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04)',
+                            display: 'flex', gap: '0.5rem', zIndex: 1000, border: '1px solid #cbd5e1', alignItems: 'center'
+                        }}>
+                            <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#64748b', marginRight: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Add:</span>
+
+                            <Tooltip content="Add Section Title" placement="top"><button className="ab-tool-btn icon-only" style={{ padding: '8px 12px' }} onClick={() => addBlock('section')}><Type size={16} /></button></Tooltip>
+                            <Tooltip content="Add Reading Material" placement="top"><button className="ab-tool-btn icon-only" style={{ padding: '8px 12px' }} onClick={() => addBlock('info')}><Info size={16} /></button></Tooltip>
+
+                            <div style={{ width: '1px', height: '24px', background: '#cbd5e1', margin: '0 4px' }} />
+
+                            <Tooltip content="Add MCQ" placement="top"><button className="ab-tool-btn icon-only" style={{ padding: '8px 12px' }} onClick={() => addBlock('mcq')}><CheckSquare size={16} /></button></Tooltip>
+                            <Tooltip content="Add Written Question" placement="top"><button className="ab-tool-btn icon-only" style={{ padding: '8px 12px' }} onClick={() => addBlock('text')}><AlignLeft size={16} /></button></Tooltip>
+
+                            <div style={{ width: '1px', height: '24px', background: '#cbd5e1', margin: '0 4px' }} />
+
+                            <Tooltip content="Add File Upload" placement="top"><button className="ab-tool-btn icon-only ab-tool-btn--primary" style={{ padding: '8px 12px', background: '#f5f3ff', color: '#8b5cf6' }} onClick={() => addBlock('upload')}><UploadCloud size={16} /></button></Tooltip>
+                            <Tooltip content="Add Audio Recording" placement="top"><button className="ab-tool-btn icon-only ab-tool-btn--primary" style={{ padding: '8px 12px', background: '#fdf4ff', color: '#d946ef' }} onClick={() => addBlock('audio')}><Mic size={16} /></button></Tooltip>
+                            <Tooltip content="Add Code Submission" placement="top"><button className="ab-tool-btn icon-only ab-tool-btn--primary" style={{ padding: '8px 12px', background: '#fdf2f8', color: '#ec4899' }} onClick={() => addBlock('code')}><Code size={16} /></button></Tooltip>
+                            <Tooltip content="Advanced Multi-Modal Task" placement="top"><button className="ab-tool-btn icon-only ab-tool-btn--primary" style={{ padding: '8px 12px' }} onClick={() => addBlock('task')}><Layers size={16} /></button></Tooltip>
+
+                            <div style={{ width: '1px', height: '24px', background: '#cbd5e1', margin: '0 4px' }} />
+
+                            <Tooltip content="Add Observation Checklist" placement="top"><button className="ab-tool-btn icon-only ab-tool-btn--practical" style={{ padding: '8px 12px' }} onClick={() => addBlock('checklist')}><ListChecks size={16} /></button></Tooltip>
+                            <Tooltip content="Add Standard Logbook" placement="top"><button className="ab-tool-btn icon-only ab-tool-btn--practical" style={{ padding: '8px 12px' }} onClick={() => addBlock('logbook')}><CalendarRange size={16} /></button></Tooltip>
                         </div>
                     )}
+
+
+                    <div className="ab-canvas-inner">
+                        {isDeployed && (
+                            <div style={{ background: '#fef2f2', border: '1px solid #ef4444', padding: '10px 15px', borderRadius: '6px', color: '#b91c1c', display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '1.5rem', fontSize: '0.85rem' }}>
+                                <AlertTriangle size={24} style={{ flexShrink: 0 }} />
+                                <div>
+                                    <strong>Strict Mode Enabled (Assessment Deployed):</strong> Structural changes (adding/removing blocks, adding/removing topics, changing mark values) are locked to protect learner data integrity. You may only edit text to fix typos, or update scheduled dates and cohort assignments via the settings panel.
+                                </div>
+                            </div>
+                        )}
+
+                        {showModuleHeader && (
+                            <div className="ab-module-card clickable" onClick={() => setActivePanel('module')}>
+                                <div className="ab-mc-left">
+                                    <div className="ab-mc-badges">
+                                        <span className="ab-mc-b nqf">{moduleInfo.nqfLevel}</span>
+                                        <span className="ab-mc-b cr">{moduleInfo.credits} Credits</span>
+                                        <span className="ab-mc-b hr">{moduleInfo.notionalHours}h</span>
+                                        {moduleInfo.timeLimit ? (
+                                            <span className="ab-mc-b" style={{ background: '#fef3c7', color: '#b45309' }}>
+                                                <Clock size={12} style={{ display: 'inline', marginRight: '4px' }} />
+                                                {moduleInfo.timeLimit}m Limit
+                                            </span>
+                                        ) : null}
+                                        <span className={`ab-mc-b type-${type}`}>{type}</span>
+                                    </div>
+                                    <h1 className="ab-mc-title">{title || 'Untitled Workbook'}</h1>
+                                    <p className="ab-mc-sub">{moduleInfo.qualificationTitle} · {moduleInfo.moduleNumber}</p>
+                                </div>
+                                <div className="ab-mc-right">
+                                    <div className="ab-mc-stat">
+                                        <span className="ab-mc-val">{qCount}</span>
+                                        <span className="ab-mc-lbl">Qs</span>
+                                    </div>
+                                    <div className="ab-mc-div" />
+                                    <div className="ab-mc-stat">
+                                        <span className="ab-mc-val">{totalMarks}</span>
+                                        <span className="ab-mc-lbl">Marks</span>
+                                    </div>
+                                </div>
+                                <div className="ab-mc-edit-hint"><Pencil size={12} /> Edit</div>
+                            </div>
+                        )}
+
+                        {blocks.length === 0 ? (
+                            <EmptyCanvas onAdd={addBlock} />
+                        ) : (
+                            <div className="ab-blocks-list">
+                                {blocks.map((b, idx) => (
+                                    <BlockCard
+                                        key={b.id} block={b} index={idx} total={blocks.length} topics={topics}
+                                        focused={focusedBlock === b.id} onFocus={() => setFocusedBlock(b.id)}
+                                        isDeployed={isDeployed}
+                                        onUpdate={updateBlock} onUpdateOption={updateOption} onRemove={removeBlock} onMove={moveBlock}
+                                    />
+                                ))}
+                            </div>
+                        )}
+                    </div>
                 </main>
             </div>
 
@@ -1091,7 +1147,6 @@ export const AssessmentBuilder: React.FC = () => {
                 />
             )}
 
-            {/* ─── 🚀 THE UNIFIED COHORT MODAL 🚀 ─── */}
             {showCohortModal && (
                 <CohortFormModal
                     onClose={() => setShowCohortModal(false)}
@@ -1124,7 +1179,7 @@ interface TopicsPanelProps {
     onNewTopicChange: (p: Partial<Topic>) => void;
     onCommitAdd: () => void;
     onCancelAdd: () => void;
-    onAddBlock: (bt: BlockType, tid: string) => void;
+    onAddBlock: (bt: BlockType | string, tid?: string) => void;
 }
 
 const TopicsPanel: React.FC<TopicsPanelProps> = (props) => (
@@ -1205,7 +1260,7 @@ interface BlockCardProps {
     isDeployed: boolean;
     topics: Topic[];
     onFocus: () => void;
-    onUpdate: (id: string, field: keyof AssessmentBlock, val: string | number | undefined) => void;
+    onUpdate: (id: string, field: keyof AssessmentBlock, val: any) => void;
     onUpdateOption: (bid: string, idx: number, val: string) => void;
     onRemove: (id: string) => void;
     onMove: (id: string, dir: 'up' | 'down') => void;
@@ -1214,6 +1269,21 @@ interface BlockCardProps {
 const BlockCard: React.FC<BlockCardProps> = ({ block, index, total, focused, topics, isDeployed, onFocus, onUpdate, onUpdateOption, onRemove, onMove }) => {
     const meta = BLOCK_META[block.type];
     const topic = topics.find((t: Topic) => t.id === block.linkedTopicId);
+
+    const updateCriterion = (i: number, val: string) => {
+        const c = [...(block.criteria || [])];
+        c[i] = val;
+        onUpdate(block.id, 'criteria', c);
+    };
+
+    const removeCriterion = (i: number) => {
+        const c = (block.criteria || []).filter((_, idx) => idx !== i);
+        onUpdate(block.id, 'criteria', c);
+    };
+
+    const addCriterion = () => {
+        onUpdate(block.id, 'criteria', [...(block.criteria || []), '']);
+    };
 
     return (
         <div id={`block-${block.id}`} className={`ab-block ${focused ? 'is-focused' : ''} ${isDeployed ? 'is-locked' : ''}`} style={{ '--block-accent': meta.color } as React.CSSProperties} onClick={onFocus}>
@@ -1233,9 +1303,33 @@ const BlockCard: React.FC<BlockCardProps> = ({ block, index, total, focused, top
                 )}
             </div>
 
-            {block.type === 'section' && <input className="ab-section-input" value={block.title || ''} placeholder="Section title..." onChange={e => onUpdate(block.id, 'title', e.target.value)} onClick={e => e.stopPropagation()} />}
-            {block.type === 'info' && <div className="ab-info-body"><textarea className="ab-textarea-block" rows={5} value={block.content || ''} onChange={e => onUpdate(block.id, 'content', e.target.value)} onClick={e => e.stopPropagation()} /></div>}
-            {(block.type === 'text' || block.type === 'mcq') && (
+            {/* 🚀 SECTION (UPGRADED TO REACT QUILL) 🚀 */}
+            {block.type === 'section' && (
+                <div className="ab-q-body" onClick={e => e.stopPropagation()}>
+                    <div className="ab-form-group" style={{ marginBottom: '10px' }}>
+                        <label style={{ fontSize: '0.75rem', color: '#64748b' }}>Section Outline Label (Short Title)</label>
+                        <input className="ab-input" value={block.title || ''} placeholder="e.g. SECTION B- PM-01-PS02" onChange={e => onUpdate(block.id, 'title', e.target.value)} disabled={isDeployed} />
+                    </div>
+                    <div className={`ab-quill-wrapper ${isDeployed ? 'locked' : ''}`}>
+                        <label style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: '6px', display: 'block' }}>Section Content / Criteria details</label>
+                        <ReactQuill
+                            theme="snow"
+                            value={block.content || ''}
+                            onChange={(content) => onUpdate(block.id, 'content', content)}
+                            readOnly={isDeployed}
+                            modules={quillModules}
+                            formats={quillFormats}
+                            placeholder="e.g. PM-01-PS02: Use software packages...&#10;Applied Knowledge...&#10;Internal Assessment Criteria..."
+                        />
+                    </div>
+                </div>
+            )}
+
+            {/* INFO */}
+            {block.type === 'info' && <div className="ab-info-body"><textarea className="ab-textarea-block" rows={5} value={block.content || ''} onChange={e => onUpdate(block.id, 'content', e.target.value)} onClick={e => e.stopPropagation()} placeholder="Enter reading material..." /></div>}
+
+            {/* WRITTEN QUESTION */}
+            {block.type === 'text' && (
                 <div className="ab-q-body">
                     <div className="ab-q-top">
                         <span className="ab-q-num">Q{index + 1}</span>
@@ -1253,19 +1347,233 @@ const BlockCard: React.FC<BlockCardProps> = ({ block, index, total, focused, top
                         </div>
                     </div>
                     <textarea className="ab-q-input" rows={2} value={block.question || ''} onChange={e => onUpdate(block.id, 'question', e.target.value)} onClick={e => e.stopPropagation()} placeholder="Type question here..." />
-                    {block.type === 'text' && <div className="ab-answer-placeholder"><FileText size={14} /><span>Learner types answer here</span></div>}
-                    {block.type === 'mcq' && (
-                        <div className="ab-mcq-opts">
-                            {block.options?.map((opt, i) => (
-                                <div key={i} className={`ab-opt-row ${block.correctOption === i ? 'correct' : ''}`} onClick={e => { if (isDeployed) return; e.stopPropagation(); onUpdate(block.id, 'correctOption', i); }}>
-                                    <div className="ab-radio">{block.correctOption === i && <div className="ab-radio-dot" />}</div>
-                                    <span className="ab-opt-letter">{String.fromCharCode(65 + i)}</span>
-                                    <input className="ab-opt-input" value={opt} placeholder={`Option ${String.fromCharCode(65 + i)}`} onChange={e => { e.stopPropagation(); onUpdateOption(block.id, i, e.target.value); }} onClick={e => e.stopPropagation()} />
-                                    {block.correctOption === i && <span className="ab-correct-tag">Correct</span>}
-                                </div>
-                            ))}
+                    <div className="ab-answer-placeholder"><FileText size={14} /><span>Learner types answer here</span></div>
+                </div>
+            )}
+
+            {/* MCQ */}
+            {block.type === 'mcq' && (
+                <div className="ab-q-body">
+                    <div className="ab-q-top">
+                        <span className="ab-q-num">Q{index + 1}</span>
+                        <div className="ab-marks-stepper">
+                            <button className="ab-step-btn" disabled={isDeployed} onClick={e => { e.stopPropagation(); onUpdate(block.id, 'marks', Math.max(0, (block.marks || 0) - 1)); }}>−</button>
+                            <span className="ab-step-val">{block.marks}</span>
+                            <button className="ab-step-btn" disabled={isDeployed} onClick={e => { e.stopPropagation(); onUpdate(block.id, 'marks', (block.marks || 0) + 1); }}>+</button>
                         </div>
-                    )}
+                        <div className="ab-topic-sel-wrap">
+                            <select className="ab-topic-sel" value={block.linkedTopicId || ''} disabled={isDeployed} onChange={e => onUpdate(block.id, 'linkedTopicId', e.target.value || undefined)} onClick={e => e.stopPropagation()}>
+                                <option value="">Link topic…</option>
+                                {topics.map((t: Topic) => <option key={t.id} value={t.id}>{t.code}</option>)}
+                            </select>
+                            {!isDeployed && <ChevronDown size={11} className="ab-topic-sel-arr" />}
+                        </div>
+                    </div>
+                    <textarea className="ab-q-input" rows={2} value={block.question || ''} onChange={e => onUpdate(block.id, 'question', e.target.value)} onClick={e => e.stopPropagation()} placeholder="Type question here..." />
+                    <div className="ab-mcq-opts">
+                        {block.options?.map((opt, i) => (
+                            <div key={i} className={`ab-opt-row ${block.correctOption === i ? 'correct' : ''}`} onClick={e => { if (isDeployed) return; e.stopPropagation(); onUpdate(block.id, 'correctOption', i); }}>
+                                <div className="ab-radio">{block.correctOption === i && <div className="ab-radio-dot" />}</div>
+                                <span className="ab-opt-letter">{String.fromCharCode(65 + i)}</span>
+                                <input className="ab-opt-input" value={opt} placeholder={`Option ${String.fromCharCode(65 + i)}`} onChange={e => { e.stopPropagation(); onUpdateOption(block.id, i, e.target.value); }} onClick={e => e.stopPropagation()} />
+                                {block.correctOption === i && <span className="ab-correct-tag">Correct</span>}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* 🚀 MULTI-MODAL TASK BLOCK */}
+            {block.type === 'task' && (
+                <div className="ab-q-body">
+                    <div className="ab-q-top">
+                        <span className="ab-q-num" style={{ background: '#ede9fe', color: '#8b5cf6' }}>Q{index + 1}</span>
+                        <div className="ab-marks-stepper">
+                            <button className="ab-step-btn" disabled={isDeployed} onClick={e => { e.stopPropagation(); onUpdate(block.id, 'marks', Math.max(0, (block.marks || 0) - 1)); }}>−</button>
+                            <span className="ab-step-val">{block.marks}</span>
+                            <button className="ab-step-btn" disabled={isDeployed} onClick={e => { e.stopPropagation(); onUpdate(block.id, 'marks', (block.marks || 0) + 1); }}>+</button>
+                        </div>
+                        <div className="ab-topic-sel-wrap">
+                            <select className="ab-topic-sel" value={block.linkedTopicId || ''} disabled={isDeployed} onChange={e => onUpdate(block.id, 'linkedTopicId', e.target.value || undefined)} onClick={e => e.stopPropagation()}>
+                                <option value="">Link topic…</option>
+                                {topics.map((t: Topic) => <option key={t.id} value={t.id}>{t.code}</option>)}
+                            </select>
+                            {!isDeployed && <ChevronDown size={11} className="ab-topic-sel-arr" />}
+                        </div>
+                    </div>
+                    <textarea className="ab-q-input" rows={2} value={block.question || ''} onChange={e => onUpdate(block.id, 'question', e.target.value)} onClick={e => e.stopPropagation()} placeholder="Describe the task or evidence request..." />
+
+                    <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '1rem', marginTop: '1rem' }} onClick={e => e.stopPropagation()}>
+                        <label style={{ display: 'block', fontWeight: 'bold', color: '#334155', marginBottom: '10px', fontSize: '0.85rem' }}>Allowed Evidence Types (Learner can choose any combination)</label>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px' }}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: isDeployed ? 'not-allowed' : 'pointer' }}>
+                                <input type="checkbox" checked={block.allowText} disabled={isDeployed} onChange={e => onUpdate(block.id, 'allowText', e.target.checked)} style={{ width: '16px', height: '16px', accentColor: 'var(--mlab-blue)' }} />
+                                <AlignLeft size={16} color="#64748b" /> <span style={{ fontSize: '0.85rem' }}>Rich Text Typing</span>
+                            </label>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: isDeployed ? 'not-allowed' : 'pointer' }}>
+                                <input type="checkbox" checked={block.allowAudio} disabled={isDeployed} onChange={e => onUpdate(block.id, 'allowAudio', e.target.checked)} style={{ width: '16px', height: '16px', accentColor: 'var(--mlab-blue)' }} />
+                                <Mic size={16} color="#64748b" /> <span style={{ fontSize: '0.85rem' }}>Audio Recording</span>
+                            </label>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: isDeployed ? 'not-allowed' : 'pointer' }}>
+                                <input type="checkbox" checked={block.allowUrl} disabled={isDeployed} onChange={e => onUpdate(block.id, 'allowUrl', e.target.checked)} style={{ width: '16px', height: '16px', accentColor: 'var(--mlab-blue)' }} />
+                                <LinkIcon size={16} color="#64748b" /> <span style={{ fontSize: '0.85rem' }}>External URL/Link</span>
+                            </label>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: isDeployed ? 'not-allowed' : 'pointer' }}>
+                                <input type="checkbox" checked={block.allowUpload} disabled={isDeployed} onChange={e => onUpdate(block.id, 'allowUpload', e.target.checked)} style={{ width: '16px', height: '16px', accentColor: 'var(--mlab-blue)' }} />
+                                <UploadCloud size={16} color="#64748b" /> <span style={{ fontSize: '0.85rem' }}>File Upload</span>
+                            </label>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: isDeployed ? 'not-allowed' : 'pointer' }}>
+                                <input type="checkbox" checked={block.allowCode} disabled={isDeployed} onChange={e => onUpdate(block.id, 'allowCode', e.target.checked)} style={{ width: '16px', height: '16px', accentColor: 'var(--mlab-blue)' }} />
+                                <Code size={16} color="#64748b" /> <span style={{ fontSize: '0.85rem' }}>Code Editor</span>
+                            </label>
+                        </div>
+                        {(block.allowUpload || block.allowCode) && (
+                            <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px dashed #cbd5e1', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                                {block.allowUpload && (
+                                    <div className="ab-form-group" style={{ flex: 1, minWidth: '200px', marginBottom: 0 }}>
+                                        <label style={{ fontSize: '0.75rem' }}>Restrict File Type (Uploads)</label>
+                                        <select className="ab-input" value={block.allowedFileTypes || 'all'} disabled={isDeployed} onChange={e => onUpdate(block.id, 'allowedFileTypes', e.target.value)}>
+                                            <option value="all">Any File (Images, Docs, Video, Presentations)</option>
+                                            <option value="presentation">Presentations Only (.pptx, .pdf)</option>
+                                            <option value="video">Video Evidence Only (.mp4, .mov)</option>
+                                            <option value="image">Images Only (.png, .jpg)</option>
+                                        </select>
+                                    </div>
+                                )}
+                                {block.allowCode && (
+                                    <div className="ab-form-group" style={{ flex: 1, minWidth: '200px', marginBottom: 0 }}>
+                                        <label style={{ fontSize: '0.75rem' }}>Syntax Highlighting (Code)</label>
+                                        <select className="ab-input" value={block.codeLanguage || 'javascript'} disabled={isDeployed} onChange={e => onUpdate(block.id, 'codeLanguage', e.target.value)}>
+                                            <option value="javascript">JavaScript / TypeScript</option>
+                                            <option value="python">Python</option>
+                                            <option value="html">HTML / CSS</option>
+                                            <option value="sql">SQL</option>
+                                            <option value="other">Other / Plain Text</option>
+                                        </select>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* 🚀 PRACTICAL CHECKLIST BLOCK */}
+            {block.type === 'checklist' && (
+                <div className="ab-q-body">
+                    <div className="ab-q-top" style={{ marginBottom: '10px' }}>
+                        <span className="ab-q-num" style={{ background: '#ccfbf1', color: '#0d9488' }}>CHK</span>
+
+                        <div className="ab-marks-stepper">
+                            <button className="ab-step-btn" disabled={isDeployed} onClick={e => { e.stopPropagation(); onUpdate(block.id, 'marks', Math.max(0, (block.marks || 0) - 1)); }}>−</button>
+                            <span className="ab-step-val">{block.marks || 0}</span>
+                            <button className="ab-step-btn" disabled={isDeployed} onClick={e => { e.stopPropagation(); onUpdate(block.id, 'marks', (block.marks || 0) + 1); }}>+</button>
+                        </div>
+
+                        <div className="ab-topic-sel-wrap">
+                            <select className="ab-topic-sel" value={block.linkedTopicId || ''} disabled={isDeployed} onChange={e => onUpdate(block.id, 'linkedTopicId', e.target.value || undefined)} onClick={e => e.stopPropagation()}>
+                                <option value="">Link topic…</option>
+                                {topics.map((t: Topic) => <option key={t.id} value={t.id}>{t.code}</option>)}
+                            </select>
+                            {!isDeployed && <ChevronDown size={11} className="ab-topic-sel-arr" />}
+                        </div>
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} onClick={e => e.stopPropagation()}>
+                        <div className="ab-form-group" style={{ flex: 1, marginBottom: '10px' }}>
+                            <label>Practical Task Outcome / Instruction</label>
+                            <input type="text" className="ab-input" value={block.title} onChange={e => onUpdate(block.id, 'title', e.target.value)} placeholder="e.g. PA0101 Demonstrate the use of various functionalities:" />
+                        </div>
+                    </div>
+
+                    {/* 🚀 TOGGLES */}
+                    <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', marginBottom: '15px', background: '#fffbeb', border: '1px solid #fde68a', padding: '10px', borderRadius: '6px' }} onClick={e => e.stopPropagation()}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: isDeployed ? 'not-allowed' : 'pointer' }}>
+                            <input type="checkbox" disabled={isDeployed} checked={block.requirePerCriterionTiming !== false} onChange={e => onUpdate(block.id, 'requirePerCriterionTiming', e.target.checked)} style={{ width: '16px', height: '16px', accentColor: '#d97706' }} />
+                            <span style={{ fontSize: '0.85rem', color: '#92400e', fontWeight: 'bold' }}>Require Timers per task</span>
+                        </label>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: isDeployed ? 'not-allowed' : 'pointer', borderLeft: '1px solid #fcd34d', paddingLeft: '15px' }}>
+                            <input type="checkbox" disabled={isDeployed} checked={block.requireEvidencePerCriterion !== false} onChange={e => onUpdate(block.id, 'requireEvidencePerCriterion', e.target.checked)} style={{ width: '16px', height: '16px', accentColor: '#d97706' }} />
+                            <span style={{ fontSize: '0.85rem', color: '#92400e', fontWeight: 'bold' }}>Require Learner Evidence per task</span>
+                        </label>
+                    </div>
+
+                    <div style={{ background: '#f8fafc', padding: '1.5rem', borderRadius: '8px', border: '1px solid #e2e8f0' }} onClick={e => e.stopPropagation()}>
+                        <label style={{ fontWeight: 'bold', color: '#334155', marginBottom: '15px', display: 'block', fontSize: '0.85rem' }}>Evaluation Criterions to Observe:</label>
+                        {block.criteria?.map((criterion, i) => (
+                            <div key={i} style={{ marginBottom: '1.5rem', padding: '15px', background: 'white', border: '1px solid #cbd5e1', borderRadius: '6px' }}>
+                                <div style={{ display: 'flex', gap: '10px', marginBottom: '12px' }}>
+                                    <div style={{ background: '#e2e8f0', padding: '8px 12px', borderRadius: '4px', color: '#475569', fontSize: '0.85rem', fontWeight: 'bold', display: 'flex', alignItems: 'center' }}>{i + 1}</div>
+                                    <input type="text" className="ab-input" style={{ flex: 1, fontWeight: 'bold', color: '#0f172a' }} value={criterion} disabled={isDeployed} onChange={e => updateCriterion(i, e.target.value)} placeholder="e.g. Open files and folders" />
+                                    {!isDeployed && <button className="ab-btn-icon-danger" onClick={() => removeCriterion(i)}><X size={16} /></button>}
+                                </div>
+
+                                {/* 🚀 UI PREVIEW FOR FACILITATOR */}
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingLeft: '45px', opacity: 0.6, pointerEvents: 'none' }}>
+
+                                    {block.requireEvidencePerCriterion !== false && (
+                                        <div style={{ padding: '8px', background: '#f1f5f9', borderRadius: '4px', border: '1px dashed #cbd5e1', display: 'flex', alignItems: 'center', gap: '10px', color: '#475569', fontSize: '0.75rem' }}>
+                                            <UploadCloud size={14} /> <em>Learner will be able to upload a file or link evidence here...</em>
+                                        </div>
+                                    )}
+
+                                    {block.requirePerCriterionTiming !== false && (
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: '#f1f5f9', padding: '6px 10px', borderRadius: '4px', border: '1px solid #cbd5e1', alignSelf: 'flex-start' }}>
+                                            <Timer size={14} color="#64748b" />
+                                            <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#475569' }}>Task Timer:</span>
+                                            <button className="ab-btn sm" disabled style={{ background: '#3b82f6', color: 'white', border: 'none', padding: '2px 10px', borderRadius: '4px', fontSize: '0.7rem' }}>Start Task</button>
+                                            <span style={{ fontSize: '0.75rem', color: '#64748b', fontFamily: 'monospace' }}>00:00:00</span>
+                                        </div>
+                                    )}
+
+                                    <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-start' }}>
+                                        <div style={{ display: 'flex', gap: '10px' }}>
+                                            <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem', background: '#f0fdf4', padding: '6px 10px', borderRadius: '4px', border: '1px solid #bbf7d0', color: '#166534', fontWeight: 'bold' }}>
+                                                <input type="radio" disabled /> Competent (C)
+                                            </label>
+                                            <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem', background: '#fef2f2', padding: '6px 10px', borderRadius: '4px', border: '1px solid #fecaca', color: '#991b1b', fontWeight: 'bold' }}>
+                                                <input type="radio" disabled /> NYC
+                                            </label>
+                                        </div>
+                                        <div style={{ flex: 1 }}>
+                                            <input type="text" className="ab-input" disabled placeholder="Assessor comments..." style={{ fontSize: '0.8rem', padding: '6px 10px', background: '#f1f5f9' }} />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                        {!isDeployed && <button className="ab-btn-text" onClick={addCriterion} style={{ marginTop: '5px' }}><Plus size={14} /> Add Criterion</button>}
+
+                        <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px dashed #cbd5e1', opacity: 0.8, pointerEvents: 'none' }}>
+                            <h4 style={{ fontSize: '0.8rem', color: '#475569', marginBottom: '10px', textTransform: 'uppercase' }}>Global Assessor / Mentor Sign-off Preview</h4>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginBottom: '10px' }}>
+                                <input type="text" className="ab-input" disabled placeholder="Date..." />
+                                <input type="text" className="ab-input" disabled placeholder="Overall Time Started..." />
+                                <input type="text" className="ab-input" disabled placeholder="Overall Time Completed..." />
+                            </div>
+                            <textarea className="ab-input" rows={2} disabled placeholder="General Comments of Observer..."></textarea>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px', fontSize: '0.8rem', color: '#334155', fontWeight: 'bold' }}>
+                                <input type="checkbox" disabled checked style={{ accentColor: 'var(--mlab-blue)' }} />
+                                I declare that I have observed the learner performing these tasks and that the evidence was submitted by the learner.
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* 🚀 LOGBOOK BLOCK */}
+            {block.type === 'logbook' && (
+                <div className="ab-q-body">
+                    <div className="ab-q-top" style={{ marginBottom: '10px' }}>
+                        <span className="ab-q-num" style={{ background: '#ffedd5', color: '#ea580c' }}>LOG</span>
+                    </div>
+                    <div style={{ background: '#fffbeb', border: '1px solid #fde68a', padding: '1.5rem', borderRadius: '6px' }}>
+                        <h4 style={{ margin: '0 0 10px 0', color: '#b45309', display: 'flex', alignItems: 'center', gap: '8px' }}><CalendarRange size={18} /> Standard Logbook Table Inserted</h4>
+                        <p style={{ margin: 0, fontSize: '0.85rem', color: '#92400e', lineHeight: 1.5 }}>
+                            When the learner takes this assessment, they will be presented with a dynamic table to log their Date, Assignment Task, Start Time, Finish Time, and Total Hours.<br /><br />
+                            No further configuration is needed here.
+                        </p>
+                    </div>
                 </div>
             )}
         </div>
@@ -1289,7 +1597,7 @@ const DeleteOverlay: React.FC<{ topic: Topic; linkedCount: number; onConfirm: ()
 
 const SectionHdr: React.FC<{ icon: React.ReactNode; label: string }> = ({ icon, label }) => (<div className="ab-section-hdr">{icon}<span>{label}</span></div>);
 const FG: React.FC<{ label: string; children: React.ReactNode; style?: React.CSSProperties }> = ({ label, children, style }) => (<div className="ab-fg" style={style}>{label && <label className="ab-fg-label">{label}</label>}{children}</div>);
-const EmptyCanvas: React.FC<{ onAdd: (t: BlockType) => void }> = ({ onAdd }) => (
+const EmptyCanvas: React.FC<{ onAdd: (t: string) => void }> = ({ onAdd }) => (
     <div className="ab-empty-canvas">
         <div className="ab-empty-inner">
             <div className="ab-empty-icon"><BookOpen size={30} /></div>
@@ -1310,6 +1618,9 @@ const EmptyCanvas: React.FC<{ onAdd: (t: BlockType) => void }> = ({ onAdd }) => 
 
 export default AssessmentBuilder;
 
+
+
+
 // import React, { useState, useEffect } from 'react';
 // import { useNavigate, useParams } from 'react-router-dom';
 // import {
@@ -1318,9 +1629,9 @@ export default AssessmentBuilder;
 //     Zap, Eye, Settings, GraduationCap, ListChecks,
 //     ClipboardList, BookMarked, Plus, Pencil, Check, X,
 //     AlertTriangle, RotateCcw, EyeOff, Clock, Database,
-//     Users, ExternalLink, Calendar
+//     Users, ExternalLink, Calendar, Lock // 🚀 Added Lock icon
 // } from 'lucide-react';
-// import { collection, doc, getDoc, setDoc, writeBatch } from 'firebase/firestore';
+// import { collection, doc, getDoc, setDoc, writeBatch, query, where, getDocs } from 'firebase/firestore';
 // import './FacilitatorDashboard.css'; // Adjust path if necessary
 // import { useStore } from '../../store/useStore';
 // import { db } from '../../lib/firebase';
@@ -1390,6 +1701,9 @@ export default AssessmentBuilder;
 //     const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved');
 //     const [lastSaved, setLastSaved] = useState<Date | null>(null);
 
+//     // 🚀 NEW: OVERALL STATUS TRACKING FOR STRICT MODE
+//     const [assessmentStatus, setAssessmentStatus] = useState<'draft' | 'scheduled' | 'active' | 'completed'>('draft');
+
 //     // Modals & Linking States
 //     const [selectedProgrammeId, setSelectedProgrammeId] = useState<string>('');
 //     const [selectedModuleCode, setSelectedModuleCode] = useState<string>('');
@@ -1403,7 +1717,7 @@ export default AssessmentBuilder;
 //     const [type, setType] = useState<'formative' | 'summative'>('formative');
 //     const [moduleType, setModuleType] = useState<'knowledge' | 'practical' | 'workplace' | 'other'>('knowledge');
 
-//     // 🚀 SCHEDULING STATES
+//     // SCHEDULING STATES
 //     const [isScheduled, setIsScheduled] = useState<boolean>(false);
 //     const [scheduledDate, setScheduledDate] = useState<string>('');
 
@@ -1430,6 +1744,9 @@ export default AssessmentBuilder;
 //     const [newTopic, setNewTopic] = useState<Partial<Topic>>({ code: '', title: '', weight: '' });
 //     const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
+//     // 🚀 CALCULATE STRICT MODE
+//     const isDeployed = assessmentStatus !== 'draft' && assessmentId !== undefined;
+
 //     // ─── INITIAL LOAD ───
 //     useEffect(() => {
 //         if (cohorts.length === 0) fetchCohorts();
@@ -1451,9 +1768,23 @@ export default AssessmentBuilder;
 //                     setInstructions(data.instructions || '');
 //                     setType(data.type || 'formative');
 //                     setModuleType(data.moduleType || 'knowledge');
+//                     setAssessmentStatus(data.status || 'draft'); // 🚀 LOAD STATUS
 
-//                     // 🚀 Load Schedule State
-//                     setScheduledDate(data.scheduledDate || '');
+//                     // Load Schedule State & Convert ISO back to Local DateTime input format
+//                     if (data.scheduledDate) {
+//                         try {
+//                             const d = new Date(data.scheduledDate);
+//                             if (!isNaN(d.getTime())) {
+//                                 const pad = (n: number) => n.toString().padStart(2, '0');
+//                                 const localStr = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+//                                 setScheduledDate(localStr);
+//                             } else {
+//                                 setScheduledDate(data.scheduledDate);
+//                             }
+//                         } catch {
+//                             setScheduledDate(data.scheduledDate);
+//                         }
+//                     }
 //                     setIsScheduled(!!data.scheduledDate);
 
 //                     // Restore selected blueprint links
@@ -1509,8 +1840,8 @@ export default AssessmentBuilder;
 //             ...(prog.workExperienceModules || [])
 //         ];
 
-//         const mod = allMods.find((m: any, idx: number) => {
-//             const uniqueVal = m.code || m.name || `mod-${idx}`;
+//         const mod: any = allMods.find((moduleItem: any, idx: number) => {
+//             const uniqueVal = moduleItem.code || moduleItem.name || `mod-${idx}`;
 //             return uniqueVal === selectedModuleCode;
 //         });
 
@@ -1552,7 +1883,8 @@ export default AssessmentBuilder;
 
 //         const autoSaveTimer = setTimeout(() => {
 //             if (saveStatus === 'unsaved' && !loading) {
-//                 handleSave('draft', true);
+//                 // Determine save state based on whether it is already deployed or not
+//                 handleSave(assessmentStatus === 'draft' ? 'draft' : 'active', true);
 //             }
 //         }, 30000);
 
@@ -1563,7 +1895,7 @@ export default AssessmentBuilder;
 //         topics, blocks, selectedProgrammeId, selectedModuleCode, scheduledDate, isScheduled
 //     ]);
 
-//     // ─── 🚀 UNIFIED COHORT CREATION LOGIC ───
+//     // ─── UNIFIED COHORT CREATION LOGIC ───
 //     const handleSaveNewCohort = async (
 //         cohortData: Omit<Cohort, 'id' | 'createdAt' | 'staffHistory' | 'isArchived'>,
 //         reasons?: { facilitator?: string; assessor?: string; moderator?: string }
@@ -1725,8 +2057,8 @@ export default AssessmentBuilder;
 //             toast.warning('Please enter a Workbook Title.');
 //             return;
 //         }
-//         if (cohortIds.length === 0 && !isAutoSave) {
-//             toast.warning('Please select at least one Cohort.');
+//         if (cohortIds.length === 0 && !isAutoSave && status === 'active') {
+//             toast.warning('Please select at least one Cohort before publishing.');
 //             return;
 //         }
 
@@ -1751,17 +2083,25 @@ export default AssessmentBuilder;
 //                 return c;
 //             });
 
-//             // 🚀 SCHEDULE LOGIC: Update status if draft has a future schedule date
-//             let finalStatus = status;
-//             if (status === 'draft' && isScheduled && scheduledDate) {
-//                 finalStatus = 'scheduled';
+//             // Update status and format to ISO 8601
+//             let finalStatus: string = status;
+//             let finalScheduledDate: string | null = null;
+
+//             if (isScheduled && scheduledDate) {
+//                 if (status === 'draft') finalStatus = 'scheduled';
+//                 finalScheduledDate = new Date(scheduledDate).toISOString();
+//             }
+
+//             // 🚀 Do not revert to draft if it's already active/completed!
+//             if (isDeployed && status === 'draft' && !isAutoSave) {
+//                 finalStatus = assessmentStatus;
 //             }
 
 //             const payload = {
 //                 title, type, moduleType, cohortIds,
 //                 linkedProgrammeId: selectedProgrammeId,
 //                 linkedModuleCode: selectedModuleCode,
-//                 scheduledDate: isScheduled ? (scheduledDate || null) : null, // 🚀 SAVE EXACT SCHEDULE
+//                 scheduledDate: finalScheduledDate,
 //                 instructions: instructions || '', moduleInfo, showModuleHeader,
 //                 learnerGuide: {
 //                     note: learnerNote, purpose: modulePurpose, entryRequirements,
@@ -1787,54 +2127,73 @@ export default AssessmentBuilder;
 //                 });
 //             }
 
-//             // 🚀 CRITICAL FIX: COLLISION-PROOF ASSIGNMENT LOGIC 🚀
-//             if (status === 'active') {
+//             // 🚀 READ-BEFORE-WRITE DEPLOYMENT LOGIC 🚀
+//             if (finalStatus === 'active' || finalStatus === 'scheduled') {
 //                 const cohortLearners = learners.filter(l => {
 //                     const lId = String(l.cohortId || '').trim();
 //                     return cohortIds.includes(lId);
 //                 });
 
 //                 if (cohortLearners.length > 0) {
+//                     // Fetch existing submissions to prevent overwriting active ones!
+//                     const existingSubsQ = query(
+//                         collection(db, 'learner_submissions'),
+//                         where('assessmentId', '==', currentAssessmentId)
+//                     );
+//                     const existingSubsSnap = await getDocs(existingSubsQ);
+//                     const existingSubIds = new Set(existingSubsSnap.docs.map(d => d.id));
+
 //                     cohortLearners.forEach((learner: DashboardLearner) => {
 //                         const enrolId = learner.enrollmentId || learner.id;
 //                         const humanId = learner.learnerId || learner.id;
 //                         const qualName = learner.qualification?.name || '';
-
-//                         // Use the explicit cohort from the learner profile
 //                         const targetCohort = learner.cohortId || 'Unassigned';
 
-//                         // 🚀 ULTIMATE FIX: Create a globally unique composite ID
 //                         // Format: [CohortID]_[HumanID]_[AssessmentID]
 //                         const submissionId = `${targetCohort}_${humanId}_${currentAssessmentId}`;
 //                         const submissionRef = doc(db, 'learner_submissions', submissionId);
 
-//                         batch.set(submissionRef, {
-//                             learnerId: humanId,
-//                             enrollmentId: enrolId,
-//                             qualificationName: qualName,
-//                             assessmentId: currentAssessmentId,
-//                             cohortId: targetCohort, // Explicitly save the context
-//                             title: title,
-//                             type: type,
-//                             moduleType: moduleType,
-//                             status: 'not_started',
-//                             assignedAt: new Date().toISOString(),
-//                             marks: 0,
-//                             totalMarks: totalMarks,
-//                             moduleNumber: moduleInfo.moduleNumber,
-//                             createdAt: new Date().toISOString(),
-//                             createdBy: user?.uid || 'System'
-//                         }, { merge: true }); // Merge ensures we don't wipe out answers if re-publishing
+//                         if (!existingSubIds.has(submissionId)) {
+//                             // BRAND NEW LEARNER: Safe to set default destructive fields
+//                             batch.set(submissionRef, {
+//                                 learnerId: humanId,
+//                                 enrollmentId: enrolId,
+//                                 qualificationName: qualName,
+//                                 assessmentId: currentAssessmentId,
+//                                 cohortId: targetCohort,
+//                                 title: title,
+//                                 type: type,
+//                                 moduleType: moduleType,
+//                                 status: 'not_started', // Safe because it's new
+//                                 assignedAt: new Date().toISOString(),
+//                                 marks: 0,              // Safe because it's new
+//                                 totalMarks: totalMarks,
+//                                 moduleNumber: moduleInfo.moduleNumber,
+//                                 createdAt: new Date().toISOString(),
+//                                 createdBy: user?.uid || 'System'
+//                             });
+//                         } else {
+//                             // EXISTING LEARNER: ONLY update metadata, NEVER overwrite status/marks/answers
+//                             batch.set(submissionRef, {
+//                                 title: title,
+//                                 type: type,
+//                                 moduleType: moduleType,
+//                                 totalMarks: totalMarks,
+//                                 moduleNumber: moduleInfo.moduleNumber
+//                             }, { merge: true });
+//                         }
 //                     });
 //                 }
 //             }
 
 //             await batch.commit();
+//             setAssessmentStatus(finalStatus as any);
 //             setSaveStatus('saved');
 //             setLastSaved(new Date());
 
 //             if (!isAutoSave) {
-//                 if (status === 'active') toast.success('Workbook Published & Assigned!');
+//                 if (finalStatus === 'active') toast.success('Workbook Published & Assigned!');
+//                 else if (finalStatus === 'scheduled') toast.success('Workbook Scheduled & Assigned!');
 //                 else toast.success('Draft saved successfully!');
 //             }
 
@@ -1914,12 +2273,14 @@ export default AssessmentBuilder;
 //                         </Tooltip>
 //                     )}
 
-//                     <button className="ab-btn ab-btn-ghost" onClick={() => handleSave('draft')} disabled={loading}>
-//                         {loading ? 'Saving...' : 'Save Draft'}
-//                     </button>
+//                     {!isDeployed && (
+//                         <button className="ab-btn ab-btn-ghost" onClick={() => handleSave('draft')} disabled={loading}>
+//                             {loading ? 'Saving...' : 'Save Draft'}
+//                         </button>
+//                     )}
 //                     <button className="ab-btn ab-btn-primary" onClick={() => handleSave('active')} disabled={loading}>
 //                         <Zap size={15} />
-//                         {assessmentId ? 'Update' : 'Publish'}
+//                         {isDeployed ? 'Update Settings' : 'Publish'}
 //                     </button>
 //                 </div>
 //             </header>
@@ -1995,7 +2356,8 @@ export default AssessmentBuilder;
 //                                                 {/* Group 1: Knowledge Modules */}
 //                                                 {(activeProgramme.knowledgeModules || []).length > 0 && (
 //                                                     <optgroup label="Knowledge Modules (KM)">
-//                                                         {activeProgramme.knowledgeModules.map((m: any, idx: number) => {
+//                                                         {activeProgramme.knowledgeModules.map((moduleItem: any, idx: number) => {
+//                                                             const m = moduleItem as any;
 //                                                             const val = m.code || m.name || `mod-km-${idx}`;
 //                                                             return <option key={val} value={val}>{m.code ? `${m.code} - ` : ''}{m.name || 'Unnamed Module'}</option>
 //                                                         })}
@@ -2005,7 +2367,8 @@ export default AssessmentBuilder;
 //                                                 {/* Group 2: Practical Modules */}
 //                                                 {(activeProgramme.practicalModules || []).length > 0 && (
 //                                                     <optgroup label="Practical Modules (PM)">
-//                                                         {activeProgramme.practicalModules.map((m: any, idx: number) => {
+//                                                         {activeProgramme.practicalModules.map((moduleItem: any, idx: number) => {
+//                                                             const m = moduleItem as any;
 //                                                             const val = m.code || m.name || `mod-pm-${idx}`;
 //                                                             return <option key={val} value={val}>{m.code ? `${m.code} - ` : ''}{m.name || 'Unnamed Module'}</option>
 //                                                         })}
@@ -2015,7 +2378,8 @@ export default AssessmentBuilder;
 //                                                 {/* Group 3: Workplace Modules */}
 //                                                 {(activeProgramme.workExperienceModules || []).length > 0 && (
 //                                                     <optgroup label="Workplace Modules (WM)">
-//                                                         {activeProgramme.workExperienceModules.map((m: any, idx: number) => {
+//                                                         {activeProgramme.workExperienceModules.map((moduleItem: any, idx: number) => {
+//                                                             const m = moduleItem as any;
 //                                                             const val = m.code || m.name || `mod-wm-${idx}`;
 //                                                             return <option key={val} value={val}>{m.code ? `${m.code} - ` : ''}{m.name || 'Unnamed Module'}</option>
 //                                                         })}
@@ -2067,7 +2431,7 @@ export default AssessmentBuilder;
 //                                                 style={{ width: '15px', height: '15px', cursor: 'pointer', accentColor: 'var(--mlab-blue)' }}
 //                                             />
 //                                             <span style={{ fontSize: '0.85rem', color: '#334155', fontWeight: 600 }}>
-//                                                 Schedule specific date
+//                                                 Schedule specific date/time
 //                                             </span>
 //                                         </label>
 
@@ -2075,7 +2439,7 @@ export default AssessmentBuilder;
 //                                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', paddingLeft: '23px' }}>
 //                                                 <Calendar size={16} color="#64748b" />
 //                                                 <input
-//                                                     type="date"
+//                                                     type="datetime-local"
 //                                                     className="ab-input"
 //                                                     value={scheduledDate}
 //                                                     onChange={e => setScheduledDate(e.target.value)}
@@ -2205,6 +2569,7 @@ export default AssessmentBuilder;
 //                                 addingTopic={addingTopic}
 //                                 newTopic={newTopic}
 //                                 deleteConfirmId={deleteConfirmId}
+//                                 isDeployed={isDeployed}
 //                                 onStartEdit={startEdit}
 //                                 onEditChange={p => setEditDraft(d => ({ ...d, ...p }))}
 //                                 onCommitEdit={commitEdit}
@@ -2258,6 +2623,16 @@ export default AssessmentBuilder;
 //                 </aside>
 
 //                 <main className="ab-canvas">
+//                     {/* 🚀 NEW: STRICT MODE BANNER */}
+//                     {isDeployed && (
+//                         <div style={{ background: '#fef2f2', border: '1px solid #ef4444', padding: '10px 15px', borderRadius: '6px', color: '#b91c1c', display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '1.5rem', fontSize: '0.85rem' }}>
+//                             <AlertTriangle size={24} style={{ flexShrink: 0 }} />
+//                             <div>
+//                                 <strong>Strict Mode Enabled (Assessment Deployed):</strong> Structural changes (adding/removing blocks, adding/removing topics, changing mark values) are locked to protect learner data integrity. You may only edit text to fix typos, or update scheduled dates and cohort assignments via the settings panel.
+//                             </div>
+//                         </div>
+//                     )}
+
 //                     {showModuleHeader && (
 //                         <div className="ab-module-card clickable" onClick={() => setActivePanel('module')}>
 //                             <div className="ab-mc-left">
@@ -2299,22 +2674,26 @@ export default AssessmentBuilder;
 //                                 <BlockCard
 //                                     key={b.id} block={b} index={idx} total={blocks.length} topics={topics}
 //                                     focused={focusedBlock === b.id} onFocus={() => setFocusedBlock(b.id)}
+//                                     isDeployed={isDeployed}
 //                                     onUpdate={updateBlock} onUpdateOption={updateOption} onRemove={removeBlock} onMove={moveBlock}
 //                                 />
 //                             ))}
 //                         </div>
 //                     )}
 
-//                     <div className="ab-add-toolbar">
-//                         <span className="ab-add-label">Insert</span>
-//                         {(Object.keys(BLOCK_META) as BlockType[]).map(bt => (
-//                             <Tooltip key={bt} content={BLOCK_META[bt].desc} placement="top">
-//                                 <button className="ab-add-btn" style={{ '--block-color': BLOCK_META[bt].color } as React.CSSProperties} onClick={() => addBlock(bt)}>
-//                                     {BLOCK_META[bt].icon}<span>{BLOCK_META[bt].label}</span>
-//                                 </button>
-//                             </Tooltip>
-//                         ))}
-//                     </div>
+//                     {/* Hide the insert toolbar completely if the assessment is deployed */}
+//                     {!isDeployed && (
+//                         <div className="ab-add-toolbar">
+//                             <span className="ab-add-label">Insert</span>
+//                             {(Object.keys(BLOCK_META) as BlockType[]).map(bt => (
+//                                 <Tooltip key={bt} content={BLOCK_META[bt].desc} placement="top">
+//                                     <button className="ab-add-btn" style={{ '--block-color': BLOCK_META[bt].color } as React.CSSProperties} onClick={() => addBlock(bt)}>
+//                                         {BLOCK_META[bt].icon}<span>{BLOCK_META[bt].label}</span>
+//                                     </button>
+//                                 </Tooltip>
+//                             ))}
+//                         </div>
+//                     )}
 //                 </main>
 //             </div>
 
@@ -2356,6 +2735,7 @@ export default AssessmentBuilder;
 //     addingTopic: boolean;
 //     newTopic: Partial<Topic>;
 //     deleteConfirmId: string | null;
+//     isDeployed: boolean;
 //     onStartEdit: (t: Topic) => void;
 //     onEditChange: (p: Partial<Topic>) => void;
 //     onCommitEdit: () => void;
@@ -2374,7 +2754,7 @@ export default AssessmentBuilder;
 //     <>
 //         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
 //             <SectionHdr icon={<ListChecks size={13} />} label="Topic Elements" />
-//             {!props.addingTopic && (
+//             {!props.addingTopic && !props.isDeployed && (
 //                 <Tooltip content="Add new topic element" placement="left">
 //                     <button className="ab-tadd-icon-btn" onClick={props.onStartAdd}>
 //                         <Plus size={14} />
@@ -2382,7 +2762,7 @@ export default AssessmentBuilder;
 //                 </Tooltip>
 //             )}
 //         </div>
-//         {props.addingTopic && (
+//         {props.addingTopic && !props.isDeployed && (
 //             <div className="ab-topic-form">
 //                 <div className="ab-topic-form-row">
 //                     <input className="ab-input sm" placeholder="Code" value={props.newTopic.code || ''} onChange={e => props.onNewTopicChange({ code: e.target.value })} />
@@ -2424,10 +2804,14 @@ export default AssessmentBuilder;
 //                             <span className="ab-topic-title">{t.title}</span>
 //                         </div>
 //                         <div className="ab-topic-actions">
-//                             <Tooltip content="Add question for this topic" placement="top"><button className="ab-tadd-btn" onClick={() => props.onAddBlock('text', t.id)}>+Q</button></Tooltip>
-//                             <Tooltip content="Add reading material for this topic" placement="top"><button className="ab-tadd-btn reading" onClick={() => props.onAddBlock('info', t.id)}>+R</button></Tooltip>
-//                             <Tooltip content="Edit topic" placement="top"><button className="ab-icon-action" onClick={() => props.onStartEdit(t)}><Pencil size={12} /></button></Tooltip>
-//                             <Tooltip content="Delete topic" placement="top"><button className="ab-icon-action danger" onClick={() => props.onConfirmDelete(t.id)}><Trash2 size={12} /></button></Tooltip>
+//                             {!props.isDeployed && (
+//                                 <>
+//                                     <Tooltip content="Add question for this topic" placement="top"><button className="ab-tadd-btn" onClick={() => props.onAddBlock('text', t.id)}>+Q</button></Tooltip>
+//                                     <Tooltip content="Add reading material for this topic" placement="top"><button className="ab-tadd-btn reading" onClick={() => props.onAddBlock('info', t.id)}>+R</button></Tooltip>
+//                                     <Tooltip content="Delete topic" placement="top"><button className="ab-icon-action danger" onClick={() => props.onConfirmDelete(t.id)}><Trash2 size={12} /></button></Tooltip>
+//                                 </>
+//                             )}
+//                             <Tooltip content="Edit topic details (Text only)" placement="top"><button className="ab-icon-action" onClick={() => props.onStartEdit(t)}><Pencil size={12} /></button></Tooltip>
 //                         </div>
 //                     </div>
 //                 );
@@ -2441,6 +2825,7 @@ export default AssessmentBuilder;
 //     index: number;
 //     total: number;
 //     focused: boolean;
+//     isDeployed: boolean;
 //     topics: Topic[];
 //     onFocus: () => void;
 //     onUpdate: (id: string, field: keyof AssessmentBlock, val: string | number | undefined) => void;
@@ -2449,23 +2834,26 @@ export default AssessmentBuilder;
 //     onMove: (id: string, dir: 'up' | 'down') => void;
 // }
 
-// const BlockCard: React.FC<BlockCardProps> = ({ block, index, total, focused, topics, onFocus, onUpdate, onUpdateOption, onRemove, onMove }) => {
+// const BlockCard: React.FC<BlockCardProps> = ({ block, index, total, focused, topics, isDeployed, onFocus, onUpdate, onUpdateOption, onRemove, onMove }) => {
 //     const meta = BLOCK_META[block.type];
 //     const topic = topics.find((t: Topic) => t.id === block.linkedTopicId);
 
 //     return (
-//         <div id={`block-${block.id}`} className={`ab-block ${focused ? 'is-focused' : ''}`} style={{ '--block-accent': meta.color } as React.CSSProperties} onClick={onFocus}>
+//         <div id={`block-${block.id}`} className={`ab-block ${focused ? 'is-focused' : ''} ${isDeployed ? 'is-locked' : ''}`} style={{ '--block-accent': meta.color } as React.CSSProperties} onClick={onFocus}>
 //             <div className="ab-block-strip" style={{ background: meta.color }} />
 //             <div className="ab-block-ctrl-row">
 //                 <div className="ab-block-left">
 //                     <span className="ab-block-type-badge" style={{ color: meta.color, background: `${meta.color}18`, borderColor: `${meta.color}35` }}>{meta.icon}{meta.label}</span>
 //                     {topic && <span className="ab-block-topic-tag">{topic.code}</span>}
+//                     {isDeployed && <span title="Structure Locked" style={{ marginLeft: '8px', color: '#94a3b8', display: 'flex', alignItems: 'center' }}><Lock size={12} /></span>}
 //                 </div>
-//                 <div className="ab-block-actions">
-//                     <Tooltip content="Move block up" placement="top"><button className="ab-ctrl-btn" onClick={e => { e.stopPropagation(); onMove(block.id, 'up'); }} disabled={index === 0}>↑</button></Tooltip>
-//                     <Tooltip content="Move block down" placement="top"><button className="ab-ctrl-btn" onClick={e => { e.stopPropagation(); onMove(block.id, 'down'); }} disabled={index === total - 1}>↓</button></Tooltip>
-//                     <Tooltip content="Delete block" placement="top"><button className="ab-ctrl-btn ab-ctrl-del" onClick={e => { e.stopPropagation(); onRemove(block.id); }}><Trash2 size={13} /></button></Tooltip>
-//                 </div>
+//                 {!isDeployed && (
+//                     <div className="ab-block-actions">
+//                         <Tooltip content="Move block up" placement="top"><button className="ab-ctrl-btn" onClick={e => { e.stopPropagation(); onMove(block.id, 'up'); }} disabled={index === 0}>↑</button></Tooltip>
+//                         <Tooltip content="Move block down" placement="top"><button className="ab-ctrl-btn" onClick={e => { e.stopPropagation(); onMove(block.id, 'down'); }} disabled={index === total - 1}>↓</button></Tooltip>
+//                         <Tooltip content="Delete block" placement="top"><button className="ab-ctrl-btn ab-ctrl-del" onClick={e => { e.stopPropagation(); onRemove(block.id); }}><Trash2 size={13} /></button></Tooltip>
+//                     </div>
+//                 )}
 //             </div>
 
 //             {block.type === 'section' && <input className="ab-section-input" value={block.title || ''} placeholder="Section title..." onChange={e => onUpdate(block.id, 'title', e.target.value)} onClick={e => e.stopPropagation()} />}
@@ -2475,16 +2863,16 @@ export default AssessmentBuilder;
 //                     <div className="ab-q-top">
 //                         <span className="ab-q-num">Q{index + 1}</span>
 //                         <div className="ab-marks-stepper">
-//                             <button className="ab-step-btn" onClick={e => { e.stopPropagation(); onUpdate(block.id, 'marks', Math.max(0, (block.marks || 0) - 1)); }}>−</button>
+//                             <button className="ab-step-btn" disabled={isDeployed} onClick={e => { e.stopPropagation(); onUpdate(block.id, 'marks', Math.max(0, (block.marks || 0) - 1)); }}>−</button>
 //                             <span className="ab-step-val">{block.marks}</span>
-//                             <button className="ab-step-btn" onClick={e => { e.stopPropagation(); onUpdate(block.id, 'marks', (block.marks || 0) + 1); }}>+</button>
+//                             <button className="ab-step-btn" disabled={isDeployed} onClick={e => { e.stopPropagation(); onUpdate(block.id, 'marks', (block.marks || 0) + 1); }}>+</button>
 //                         </div>
 //                         <div className="ab-topic-sel-wrap">
-//                             <select className="ab-topic-sel" value={block.linkedTopicId || ''} onChange={e => onUpdate(block.id, 'linkedTopicId', e.target.value || undefined)} onClick={e => e.stopPropagation()}>
+//                             <select className="ab-topic-sel" value={block.linkedTopicId || ''} disabled={isDeployed} onChange={e => onUpdate(block.id, 'linkedTopicId', e.target.value || undefined)} onClick={e => e.stopPropagation()}>
 //                                 <option value="">Link topic…</option>
 //                                 {topics.map((t: Topic) => <option key={t.id} value={t.id}>{t.code}</option>)}
 //                             </select>
-//                             <ChevronDown size={11} className="ab-topic-sel-arr" />
+//                             {!isDeployed && <ChevronDown size={11} className="ab-topic-sel-arr" />}
 //                         </div>
 //                     </div>
 //                     <textarea className="ab-q-input" rows={2} value={block.question || ''} onChange={e => onUpdate(block.id, 'question', e.target.value)} onClick={e => e.stopPropagation()} placeholder="Type question here..." />
@@ -2492,10 +2880,10 @@ export default AssessmentBuilder;
 //                     {block.type === 'mcq' && (
 //                         <div className="ab-mcq-opts">
 //                             {block.options?.map((opt, i) => (
-//                                 <div key={i} className={`ab-opt-row ${block.correctOption === i ? 'correct' : ''}`} onClick={e => { e.stopPropagation(); onUpdate(block.id, 'correctOption', i); }}>
+//                                 <div key={i} className={`ab-opt-row ${block.correctOption === i ? 'correct' : ''}`} onClick={e => { if (isDeployed) return; e.stopPropagation(); onUpdate(block.id, 'correctOption', i); }}>
 //                                     <div className="ab-radio">{block.correctOption === i && <div className="ab-radio-dot" />}</div>
 //                                     <span className="ab-opt-letter">{String.fromCharCode(65 + i)}</span>
-//                                     <input className="ab-opt-input" value={opt} placeholder={`Option ${StringfromCharCode(65 + i)}`} onChange={e => { e.stopPropagation(); onUpdateOption(block.id, i, e.target.value); }} onClick={e => e.stopPropagation()} />
+//                                     <input className="ab-opt-input" value={opt} placeholder={`Option ${String.fromCharCode(65 + i)}`} onChange={e => { e.stopPropagation(); onUpdateOption(block.id, i, e.target.value); }} onClick={e => e.stopPropagation()} />
 //                                     {block.correctOption === i && <span className="ab-correct-tag">Correct</span>}
 //                                 </div>
 //                             ))}
@@ -2545,8 +2933,6 @@ export default AssessmentBuilder;
 
 // export default AssessmentBuilder;
 
-
-
 // // import React, { useState, useEffect } from 'react';
 // // import { useNavigate, useParams } from 'react-router-dom';
 // // import {
@@ -2555,7 +2941,7 @@ export default AssessmentBuilder;
 // //     Zap, Eye, Settings, GraduationCap, ListChecks,
 // //     ClipboardList, BookMarked, Plus, Pencil, Check, X,
 // //     AlertTriangle, RotateCcw, EyeOff, Clock, Database,
-// //     Users, ExternalLink, Loader2
+// //     Users, ExternalLink, Calendar
 // // } from 'lucide-react';
 // // import { collection, doc, getDoc, setDoc, writeBatch } from 'firebase/firestore';
 // // import './FacilitatorDashboard.css'; // Adjust path if necessary
@@ -2640,6 +3026,10 @@ export default AssessmentBuilder;
 // //     const [type, setType] = useState<'formative' | 'summative'>('formative');
 // //     const [moduleType, setModuleType] = useState<'knowledge' | 'practical' | 'workplace' | 'other'>('knowledge');
 
+// //     // 🚀 SCHEDULING STATES
+// //     const [isScheduled, setIsScheduled] = useState<boolean>(false);
+// //     const [scheduledDate, setScheduledDate] = useState<string>('');
+
 // //     // Module & Guide States
 // //     const [showModuleHeader, setShowModuleHeader] = useState(true);
 // //     const [moduleInfo, setModuleInfo] = useState<ModuleDetails>({
@@ -2684,6 +3074,10 @@ export default AssessmentBuilder;
 // //                     setInstructions(data.instructions || '');
 // //                     setType(data.type || 'formative');
 // //                     setModuleType(data.moduleType || 'knowledge');
+
+// //                     // 🚀 Load Schedule State
+// //                     setScheduledDate(data.scheduledDate || '');
+// //                     setIsScheduled(!!data.scheduledDate);
 
 // //                     // Restore selected blueprint links
 // //                     setSelectedProgrammeId(data.linkedProgrammeId || '');
@@ -2789,7 +3183,7 @@ export default AssessmentBuilder;
 // //     }, [
 // //         title, cohortIds, instructions, type, moduleType, moduleInfo, showModuleHeader,
 // //         learnerNote, modulePurpose, entryRequirements, providerRequirements, exemptions,
-// //         topics, blocks, selectedProgrammeId, selectedModuleCode
+// //         topics, blocks, selectedProgrammeId, selectedModuleCode, scheduledDate, isScheduled
 // //     ]);
 
 // //     // ─── 🚀 UNIFIED COHORT CREATION LOGIC ───
@@ -2980,16 +3374,23 @@ export default AssessmentBuilder;
 // //                 return c;
 // //             });
 
+// //             // 🚀 SCHEDULE LOGIC: Update status if draft has a future schedule date
+// //             let finalStatus = status;
+// //             if (status === 'draft' && isScheduled && scheduledDate) {
+// //                 finalStatus = 'scheduled';
+// //             }
+
 // //             const payload = {
 // //                 title, type, moduleType, cohortIds,
 // //                 linkedProgrammeId: selectedProgrammeId,
 // //                 linkedModuleCode: selectedModuleCode,
+// //                 scheduledDate: isScheduled ? (scheduledDate || null) : null, // 🚀 SAVE EXACT SCHEDULE
 // //                 instructions: instructions || '', moduleInfo, showModuleHeader,
 // //                 learnerGuide: {
 // //                     note: learnerNote, purpose: modulePurpose, entryRequirements,
 // //                     providerRequirements, exemptions, assessmentInfo: instructions
 // //                 },
-// //                 topics, blocks: sanitizedBlocks, totalMarks, status,
+// //                 topics, blocks: sanitizedBlocks, totalMarks, status: finalStatus,
 // //                 facilitatorId: user?.uid, lastUpdated: new Date().toISOString(), isWorkbook: true,
 // //             };
 
@@ -3261,20 +3662,55 @@ export default AssessmentBuilder;
 // //                                     />
 // //                                 </FG>
 
-// //                                 <FG label="Time Limit (Minutes)">
-// //                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-// //                                         <Clock size={16} color="#64748b" />
-// //                                         <input
-// //                                             type="number"
-// //                                             className="ab-input"
-// //                                             placeholder="e.g. 60"
-// //                                             style={{ width: '100px' }}
-// //                                             value={moduleInfo.timeLimit || ''}
-// //                                             onChange={e => setModuleInfo({ ...moduleInfo, timeLimit: Number(e.target.value) })}
-// //                                         />
-// //                                         <span style={{ fontSize: '0.85rem', color: '#64748b' }}>0 for no limit.</span>
-// //                                     </div>
-// //                                 </FG>
+// //                                 {/* 🚀 NEW: SCHEDULED DATE FIELD WITH TOGGLE */}
+// //                                 <div className="ab-meta-grid-inputs">
+// //                                     <FG label="Time Limit (Mins)">
+// //                                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+// //                                             <Clock size={16} color="#64748b" />
+// //                                             <input
+// //                                                 type="number"
+// //                                                 className="ab-input"
+// //                                                 placeholder="e.g. 60"
+// //                                                 value={moduleInfo.timeLimit || ''}
+// //                                                 onChange={e => setModuleInfo({ ...moduleInfo, timeLimit: Number(e.target.value) })}
+// //                                             />
+// //                                         </div>
+// //                                         <span style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '4px', display: 'block' }}>0 for no limit.</span>
+// //                                     </FG>
+
+// //                                     <FG label="Scheduling">
+// //                                         <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', marginBottom: isScheduled ? '8px' : '4px' }}>
+// //                                             <input
+// //                                                 type="checkbox"
+// //                                                 checked={isScheduled}
+// //                                                 onChange={(e) => {
+// //                                                     setIsScheduled(e.target.checked);
+// //                                                     if (!e.target.checked) setScheduledDate('');
+// //                                                 }}
+// //                                                 style={{ width: '15px', height: '15px', cursor: 'pointer', accentColor: 'var(--mlab-blue)' }}
+// //                                             />
+// //                                             <span style={{ fontSize: '0.85rem', color: '#334155', fontWeight: 600 }}>
+// //                                                 Schedule specific date
+// //                                             </span>
+// //                                         </label>
+
+// //                                         {isScheduled ? (
+// //                                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', paddingLeft: '23px' }}>
+// //                                                 <Calendar size={16} color="#64748b" />
+// //                                                 <input
+// //                                                     type="date"
+// //                                                     className="ab-input"
+// //                                                     value={scheduledDate}
+// //                                                     onChange={e => setScheduledDate(e.target.value)}
+// //                                                 />
+// //                                             </div>
+// //                                         ) : (
+// //                                             <p style={{ margin: '0 0 0 23px', fontSize: '0.75rem', color: '#64748b', fontStyle: 'italic' }}>
+// //                                                 Available anytime after publishing.
+// //                                             </p>
+// //                                         )}
+// //                                     </FG>
+// //                                 </div>
 
 // //                                 {/* ── 🚀 UNIFIED COHORT ASSIGNMENT PANEL 🚀 ── */}
 // //                                 <div style={{ marginBottom: '1rem' }}>
@@ -3682,7 +4118,7 @@ export default AssessmentBuilder;
 // //                                 <div key={i} className={`ab-opt-row ${block.correctOption === i ? 'correct' : ''}`} onClick={e => { e.stopPropagation(); onUpdate(block.id, 'correctOption', i); }}>
 // //                                     <div className="ab-radio">{block.correctOption === i && <div className="ab-radio-dot" />}</div>
 // //                                     <span className="ab-opt-letter">{String.fromCharCode(65 + i)}</span>
-// //                                     <input className="ab-opt-input" value={opt} placeholder={`Option ${String.fromCharCode(65 + i)}`} onChange={e => { e.stopPropagation(); onUpdateOption(block.id, i, e.target.value); }} onClick={e => e.stopPropagation()} />
+// //                                     <input className="ab-opt-input" value={opt} placeholder={`Option ${StringfromCharCode(65 + i)}`} onChange={e => { e.stopPropagation(); onUpdateOption(block.id, i, e.target.value); }} onClick={e => e.stopPropagation()} />
 // //                                     {block.correctOption === i && <span className="ab-correct-tag">Correct</span>}
 // //                                 </div>
 // //                             ))}
@@ -3741,7 +4177,8 @@ export default AssessmentBuilder;
 // // //     Layout, Info, ChevronDown, BookOpen, FileText,
 // // //     Zap, Eye, Settings, GraduationCap, ListChecks,
 // // //     ClipboardList, BookMarked, Plus, Pencil, Check, X,
-// // //     AlertTriangle, RotateCcw, EyeOff, Clock
+// // //     AlertTriangle, RotateCcw, EyeOff, Clock, Database,
+// // //     Users, ExternalLink, Loader2
 // // // } from 'lucide-react';
 // // // import { collection, doc, getDoc, setDoc, writeBatch } from 'firebase/firestore';
 // // // import './FacilitatorDashboard.css'; // Adjust path if necessary
@@ -3749,6 +4186,9 @@ export default AssessmentBuilder;
 // // // import { db } from '../../lib/firebase';
 // // // import { ToastContainer, useToast } from '../../components/common/Toast/Toast';
 // // // import Tooltip from '../../components/common/Tooltip/Tooltip';
+// // // import type { Cohort, ProgrammeTemplate, DashboardLearner } from '../../types';
+// // // import { CohortFormModal } from '../../components/admin/CohortFormModal/CohortFormModal';
+// // // import { ProgrammeFormModal } from '../../components/admin/ProgrammeFormModal/ProgrammeFormModal';
 
 // // // // ─── TYPES ────────────────────────────────────────────────────────────────────
 // // // type BlockType = 'section' | 'info' | 'mcq' | 'text';
@@ -3758,7 +4198,7 @@ export default AssessmentBuilder;
 // // //     id: string;
 // // //     code: string;
 // // //     title: string;
-// // //     weight: string;
+// // //     weight: string | number;
 // // // }
 
 // // // interface AssessmentBlock {
@@ -3782,40 +4222,10 @@ export default AssessmentBuilder;
 // // //     occupationalCode: string;
 // // //     saqaQualId: string;
 // // //     qualificationTitle: string;
-// // //     timeLimit?: number; // ✅ ADDED: Time limit in minutes
+// // //     timeLimit?: number;
 // // // }
 
-// // // // ─── DEFAULTS ─────────────────────────────────────────────────────────────────
-// // // const INITIAL_MODULE_INFO: ModuleDetails = {
-// // //     title: 'Computers and Computing Systems',
-// // //     nqfLevel: 'Level 4',
-// // //     credits: 12,
-// // //     notionalHours: 120,
-// // //     moduleNumber: '251201-005-00-KM-01',
-// // //     occupationalCode: '251201005',
-// // //     saqaQualId: '118707',
-// // //     qualificationTitle: 'Occupational Certificate: Software Developer',
-// // //     timeLimit: 60, // ✅ Default to 60 minutes
-// // // };
-
-// // // const LEARNER_NOTE = `This Learner Guide provides a comprehensive overview of the module. It is designed to improve the skills and knowledge of learners, and thus enabling them to effectively and efficiently complete specific tasks.`;
-
-// // // const MODULE_PURPOSE = `The main focus of the learning in this knowledge module is to build an understanding of what computers can do and the processes that make them function in terms of the four major parts: input, output, CPU (central processing unit) and memory.`;
-
-// // // const ASSESSMENT_NOTE = `The only way to establish whether you are competent and have accomplished the learning outcomes is through continuous assessments. This module includes assessments in the form of self-evaluations/activities and exercises. Listen carefully to the instructions of the facilitator and do the given activities in the time given to you.`;
-
-// // // const ENTRY_REQUIREMENTS = `NQF 4`;
-
-// // // const PROVIDER_REQUIREMENTS = `Physical Requirements:\nThe provider must have lesson plans and structured learning material or provide learners with access to structured learning material.\n\nHuman Resource Requirements:\nLecturer/learner ratio of 1:20 (Maximum)`;
-
-// // // const EXEMPTIONS = `No exemptions, but the module can be achieved in full through a normal RPL process`;
-
 // // // const mkId = () => `t-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-
-// // // const DEFAULT_TOPICS: Topic[] = [
-// // //     { id: mkId(), code: 'KM-01-KT01', title: 'Problem solving skills for IT Professionals', weight: '5%' },
-// // //     { id: mkId(), code: 'KM-01-KT02', title: 'Techniques for safety', weight: '5%' },
-// // // ];
 
 // // // const BLOCK_META: Record<BlockType, { label: string; color: string; icon: React.ReactNode; desc: string }> = {
 // // //     section: { label: 'Section', color: '#6366f1', icon: <Layout size={14} />, desc: 'Organises blocks under a heading' },
@@ -3830,6 +4240,9 @@ export default AssessmentBuilder;
 // // //     const navigate = useNavigate();
 // // //     const toast = useToast();
 
+// // //     // Store Data
+// // //     const { user, cohorts, learners, programmes, fetchCohorts, fetchLearners, fetchProgrammes } = useStore();
+
 // // //     // UI States
 // // //     const [loading, setLoading] = useState(false);
 // // //     const [activePanel, setActivePanel] = useState<SidebarPanel>('settings');
@@ -3837,24 +4250,33 @@ export default AssessmentBuilder;
 // // //     const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved');
 // // //     const [lastSaved, setLastSaved] = useState<Date | null>(null);
 
+// // //     // Modals & Linking States
+// // //     const [selectedProgrammeId, setSelectedProgrammeId] = useState<string>('');
+// // //     const [selectedModuleCode, setSelectedModuleCode] = useState<string>('');
+// // //     const [showProgrammeModal, setShowProgrammeModal] = useState(false);
+// // //     const [showCohortModal, setShowCohortModal] = useState(false);
+
 // // //     // Data States
-// // //     const [title, setTitle] = useState(INITIAL_MODULE_INFO.title);
+// // //     const [title, setTitle] = useState('');
 // // //     const [cohortIds, setCohortIds] = useState<string[]>([]);
-// // //     const [instructions, setInstructions] = useState(ASSESSMENT_NOTE);
+// // //     const [instructions, setInstructions] = useState('');
 // // //     const [type, setType] = useState<'formative' | 'summative'>('formative');
 // // //     const [moduleType, setModuleType] = useState<'knowledge' | 'practical' | 'workplace' | 'other'>('knowledge');
 
 // // //     // Module & Guide States
 // // //     const [showModuleHeader, setShowModuleHeader] = useState(true);
-// // //     const [moduleInfo, setModuleInfo] = useState<ModuleDetails>(INITIAL_MODULE_INFO);
-// // //     const [learnerNote, setLearnerNote] = useState(LEARNER_NOTE);
-// // //     const [modulePurpose, setModulePurpose] = useState(MODULE_PURPOSE);
-// // //     const [entryRequirements, setEntryRequirements] = useState(ENTRY_REQUIREMENTS);
-// // //     const [providerRequirements, setProviderRequirements] = useState(PROVIDER_REQUIREMENTS);
-// // //     const [exemptions, setExemptions] = useState(EXEMPTIONS);
+// // //     const [moduleInfo, setModuleInfo] = useState<ModuleDetails>({
+// // //         title: '', nqfLevel: '', credits: 0, notionalHours: 0,
+// // //         moduleNumber: '', occupationalCode: '', saqaQualId: '', qualificationTitle: '', timeLimit: 60
+// // //     });
+// // //     const [learnerNote, setLearnerNote] = useState('');
+// // //     const [modulePurpose, setModulePurpose] = useState('');
+// // //     const [entryRequirements, setEntryRequirements] = useState('');
+// // //     const [providerRequirements, setProviderRequirements] = useState('');
+// // //     const [exemptions, setExemptions] = useState('');
 
 // // //     // Content States
-// // //     const [topics, setTopics] = useState<Topic[]>(DEFAULT_TOPICS);
+// // //     const [topics, setTopics] = useState<Topic[]>([]);
 // // //     const [blocks, setBlocks] = useState<AssessmentBlock[]>([]);
 
 // // //     // CRUD States
@@ -3864,12 +4286,11 @@ export default AssessmentBuilder;
 // // //     const [newTopic, setNewTopic] = useState<Partial<Topic>>({ code: '', title: '', weight: '' });
 // // //     const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
-// // //     const { user, cohorts, learners, fetchCohorts, fetchLearners } = useStore();
-
 // // //     // ─── INITIAL LOAD ───
 // // //     useEffect(() => {
-// // //         fetchCohorts();
+// // //         if (cohorts.length === 0) fetchCohorts();
 // // //         if (learners.length === 0) fetchLearners();
+// // //         if (programmes.length === 0) fetchProgrammes();
 
 // // //         const loadData = async () => {
 // // //             if (!assessmentId) return;
@@ -3883,19 +4304,24 @@ export default AssessmentBuilder;
 // // //                     const data = snap.data();
 // // //                     setTitle(data.title || '');
 // // //                     setCohortIds(data.cohortIds || (data.cohortId ? [data.cohortId] : []));
-// // //                     setInstructions(data.instructions || ASSESSMENT_NOTE);
+// // //                     setInstructions(data.instructions || '');
 // // //                     setType(data.type || 'formative');
 // // //                     setModuleType(data.moduleType || 'knowledge');
-// // //                     setModuleInfo(data.moduleInfo || INITIAL_MODULE_INFO);
+
+// // //                     // Restore selected blueprint links
+// // //                     setSelectedProgrammeId(data.linkedProgrammeId || '');
+// // //                     setSelectedModuleCode(data.linkedModuleCode || '');
+
+// // //                     setModuleInfo(data.moduleInfo || {});
 // // //                     setShowModuleHeader(data.showModuleHeader ?? true);
 // // //                     setBlocks(data.blocks || []);
 
 // // //                     if (data.learnerGuide) {
-// // //                         setLearnerNote(data.learnerGuide.note || LEARNER_NOTE);
-// // //                         setModulePurpose(data.learnerGuide.purpose || MODULE_PURPOSE);
-// // //                         setEntryRequirements(data.learnerGuide.entryRequirements || ENTRY_REQUIREMENTS);
-// // //                         setProviderRequirements(data.learnerGuide.providerRequirements || PROVIDER_REQUIREMENTS);
-// // //                         setExemptions(data.learnerGuide.exemptions || EXEMPTIONS);
+// // //                         setLearnerNote(data.learnerGuide.note || '');
+// // //                         setModulePurpose(data.learnerGuide.purpose || '');
+// // //                         setEntryRequirements(data.learnerGuide.entryRequirements || '');
+// // //                         setProviderRequirements(data.learnerGuide.providerRequirements || '');
+// // //                         setExemptions(data.learnerGuide.exemptions || '');
 // // //                     }
 
 // // //                     if (data.topics && Array.isArray(data.topics)) {
@@ -3920,6 +4346,57 @@ export default AssessmentBuilder;
 // // //         // eslint-disable-next-line react-hooks/exhaustive-deps
 // // //     }, [assessmentId]);
 
+// // //     // ─── CURRICULUM SYNC LOGIC ───
+// // //     useEffect(() => {
+// // //         if (!selectedProgrammeId || !selectedModuleCode) return;
+// // //         if (assessmentId && topics.length > 0) return; // Don't overwrite existing topics on load
+
+// // //         const prog = programmes.find(p => p.id === selectedProgrammeId);
+// // //         if (!prog) return;
+
+// // //         // Collect all modules from the 3 buckets and safely find the matching one
+// // //         const allMods = [
+// // //             ...(prog.knowledgeModules || []),
+// // //             ...(prog.practicalModules || []),
+// // //             ...(prog.workExperienceModules || [])
+// // //         ];
+
+// // //         const mod = allMods.find((m: any, idx: number) => {
+// // //             const uniqueVal = m.code || m.name || `mod-${idx}`;
+// // //             return uniqueVal === selectedModuleCode;
+// // //         });
+
+// // //         if (mod) {
+// // //             // Auto-fill module details
+// // //             setModuleInfo({
+// // //                 title: mod.name,
+// // //                 nqfLevel: `Level ${mod.nqfLevel || prog.nqfLevel}`,
+// // //                 credits: mod.credits || 0,
+// // //                 notionalHours: mod.notionalHours || 0,
+// // //                 moduleNumber: mod.code || '',
+// // //                 occupationalCode: (prog as any).curriculumCode || prog.saqaId || '',
+// // //                 saqaQualId: prog.saqaId || '',
+// // //                 qualificationTitle: prog.name || '',
+// // //                 timeLimit: moduleInfo.timeLimit || 60
+// // //             });
+
+// // //             // Auto-fill Topics from the ProgrammeTemplate!
+// // //             if (mod.topics && mod.topics.length > 0) {
+// // //                 const mappedTopics = mod.topics.map((t: any) => ({
+// // //                     id: mkId(),
+// // //                     code: t.code || '',
+// // //                     title: t.title || 'Unnamed Topic',
+// // //                     weight: t.weight || '0'
+// // //                 }));
+// // //                 setTopics(mappedTopics);
+// // //                 toast.success(`Imported ${mappedTopics.length} topics from Curriculum!`);
+// // //             } else {
+// // //                 setTopics([]);
+// // //             }
+// // //         }
+// // //     }, [selectedProgrammeId, selectedModuleCode]);
+
+
 // // //     // ─── AUTO-SAVE ───
 // // //     useEffect(() => {
 // // //         if (!assessmentId) return;
@@ -3927,7 +4404,7 @@ export default AssessmentBuilder;
 
 // // //         const autoSaveTimer = setTimeout(() => {
 // // //             if (saveStatus === 'unsaved' && !loading) {
-// // //                 handleAutoSave();
+// // //                 handleSave('draft', true);
 // // //             }
 // // //         }, 30000);
 
@@ -3935,27 +4412,44 @@ export default AssessmentBuilder;
 // // //     }, [
 // // //         title, cohortIds, instructions, type, moduleType, moduleInfo, showModuleHeader,
 // // //         learnerNote, modulePurpose, entryRequirements, providerRequirements, exemptions,
-// // //         topics, blocks
+// // //         topics, blocks, selectedProgrammeId, selectedModuleCode
 // // //     ]);
 
-// // //     // ─── LOCAL STORAGE BACKUP ───
-// // //     useEffect(() => {
-// // //         const backupData = {
-// // //             title, cohortIds, instructions, type, moduleType, moduleInfo, showModuleHeader,
-// // //             learnerNote, modulePurpose, entryRequirements, providerRequirements, exemptions,
-// // //             topics, blocks, timestamp: new Date().toISOString()
-// // //         };
-
+// // //     // ─── 🚀 UNIFIED COHORT CREATION LOGIC ───
+// // //     const handleSaveNewCohort = async (
+// // //         cohortData: Omit<Cohort, 'id' | 'createdAt' | 'staffHistory' | 'isArchived'>,
+// // //         reasons?: { facilitator?: string; assessor?: string; moderator?: string }
+// // //     ) => {
 // // //         try {
-// // //             localStorage.setItem(`workbook-backup-${assessmentId || 'new'}`, JSON.stringify(backupData));
-// // //         } catch (error) {
-// // //             console.warn('Failed to backup to localStorage:', error);
+// // //             const cohortRef = doc(collection(db, 'cohorts'));
+// // //             const newId = cohortRef.id;
+
+// // //             const finalCohort = {
+// // //                 ...cohortData,
+// // //                 id: newId,
+// // //                 createdAt: new Date().toISOString(),
+// // //                 isArchived: false,
+// // //                 staffHistory: [],
+// // //                 status: 'active',
+// // //                 changeReasons: reasons || {}
+// // //             };
+
+// // //             await setDoc(cohortRef, finalCohort);
+
+// // //             // Sync global store so UI updates immediately
+// // //             await fetchCohorts();
+
+// // //             // Auto-select the newly created cohort in the builder
+// // //             setCohortIds(prev => [...prev, newId]);
+
+// // //             toast.success(`Class "${cohortData.name}" created and assigned!`);
+// // //             setShowCohortModal(false);
+// // //         } catch (err: any) {
+// // //             console.error("New Cohort Error:", err);
+// // //             throw new Error(err.message);
 // // //         }
-// // //     }, [
-// // //         assessmentId, title, cohortIds, instructions, type, moduleType, moduleInfo, showModuleHeader,
-// // //         learnerNote, modulePurpose, entryRequirements, providerRequirements, exemptions,
-// // //         topics, blocks
-// // //     ]);
+// // //     };
+
 
 // // //     // ── TOPIC HANDLERS ──
 // // //     const startEdit = (t: Topic) => { setEditingTopicId(t.id); setEditDraft({ ...t }); setAddingTopic(false); };
@@ -3997,7 +4491,7 @@ export default AssessmentBuilder;
 // // //         setBlocks(p => [...p, nb]);
 // // //         setTimeout(() => {
 // // //             setFocusedBlock(nb.id);
-// // //             document.getElementById(`block-${nb.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+// // //             document.getElementById(`block-${nb.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' as const });
 // // //         }, 60);
 // // //     };
 
@@ -4035,6 +4529,9 @@ export default AssessmentBuilder;
 // // //                 title: '', nqfLevel: '', credits: 0, notionalHours: 0,
 // // //                 moduleNumber: '', occupationalCode: '', saqaQualId: '', qualificationTitle: '', timeLimit: 0
 // // //             });
+// // //             setSelectedProgrammeId('');
+// // //             setSelectedModuleCode('');
+// // //             setTopics([]);
 // // //         }
 // // //     };
 
@@ -4042,62 +4539,50 @@ export default AssessmentBuilder;
 // // //     const qCount = blocks.filter(b => b.type === 'text' || b.type === 'mcq').length;
 // // //     const coveredTopicIds = new Set(blocks.map(b => b.linkedTopicId).filter(Boolean) as string[]);
 
-// // //     // ── AUTO-SAVE HANDLER ──
-// // //     const handleAutoSave = async () => {
-// // //         if (!assessmentId || !title.trim() || cohortIds.length === 0) return;
 
-// // //         setSaveStatus('saving');
+// // //     // ─── PROGRAMME (BLUEPRINT) SAVE LOGIC ───
+// // //     const handleSaveNewProgramme = async (newProg: ProgrammeTemplate) => {
 // // //         try {
-// // //             const sanitizedBlocks = blocks.map(b => {
-// // //                 const c: any = { id: b.id, type: b.type, marks: b.marks || 0 };
-// // //                 if (b.linkedTopicId) {
-// // //                     const t = topics.find(topic => topic.id === b.linkedTopicId);
-// // //                     if (t) c.linkedTopicCode = t.code;
-// // //                     c.linkedTopicId = b.linkedTopicId;
-// // //                 }
-// // //                 if (b.type === 'section') c.title = b.title || 'Untitled Section';
-// // //                 if (b.type === 'info') c.content = b.content || '';
-// // //                 if (b.type === 'text' || b.type === 'mcq') c.question = b.question || '';
-// // //                 if (b.type === 'mcq') {
-// // //                     c.options = b.options || ['', '', '', ''];
-// // //                     c.correctOption = b.correctOption || 0;
-// // //                 }
-// // //                 return c;
-// // //             });
+// // //             let customId = (newProg as any).curriculumCode?.toString().trim() || newProg.saqaId?.toString().trim();
+// // //             if (!customId) throw new Error("A Curriculum Code or SAQA ID is required to save the Blueprint.");
 
-// // //             const payload = {
-// // //                 title, type, moduleType, cohortIds,
-// // //                 instructions: instructions || '', moduleInfo, showModuleHeader,
-// // //                 learnerGuide: {
-// // //                     note: learnerNote, purpose: modulePurpose, entryRequirements,
-// // //                     providerRequirements, exemptions, assessmentInfo: instructions
-// // //                 },
-// // //                 topics, blocks: sanitizedBlocks, totalMarks,
-// // //                 facilitatorId: user?.uid, lastUpdated: new Date().toISOString(), isWorkbook: true,
+// // //             customId = customId.replace(/[\s/]+/g, '-');
+// // //             const progRef = doc(db, 'programmes', customId);
+
+// // //             const progToSave = {
+// // //                 ...newProg,
+// // //                 id: customId,
+// // //                 createdAt: new Date().toISOString(),
+// // //                 createdBy: user?.fullName || 'Facilitator'
 // // //             };
 
-// // //             await setDoc(doc(db, 'assessments', assessmentId), payload, { merge: true });
-// // //             setSaveStatus('saved');
-// // //             setLastSaved(new Date());
+// // //             await setDoc(progRef, progToSave, { merge: true });
+
+// // //             toast.success("Curriculum Blueprint created successfully!");
+// // //             setShowProgrammeModal(false);
+
+// // //             await fetchProgrammes(); // refresh dropdown
+// // //             setSelectedProgrammeId(customId);
+// // //             setSelectedModuleCode('');
 // // //         } catch (err: any) {
-// // //             console.error('Auto-save failed:', err);
-// // //             setSaveStatus('unsaved');
-// // //             toast.error('Auto-save failed. Please save manually.');
+// // //             console.error("Failed to create programme:", err);
+// // //             toast.error(`Failed to create blueprint: ${err.message}`);
 // // //         }
 // // //     };
 
-// // //     // ─── MAIN SAVE LOGIC ───
-// // //     const handleSave = async (status: 'draft' | 'active') => {
-// // //         if (!title.trim()) {
+
+// // //     // ─── MAIN WORKBOOK SAVE LOGIC ───
+// // //     const handleSave = async (status: 'draft' | 'active', isAutoSave = false) => {
+// // //         if (!title.trim() && !isAutoSave) {
 // // //             toast.warning('Please enter a Workbook Title.');
 // // //             return;
 // // //         }
-// // //         if (cohortIds.length === 0) {
+// // //         if (cohortIds.length === 0 && !isAutoSave) {
 // // //             toast.warning('Please select at least one Cohort.');
 // // //             return;
 // // //         }
 
-// // //         setLoading(true);
+// // //         if (!isAutoSave) setLoading(true);
 // // //         setSaveStatus('saving');
 
 // // //         try {
@@ -4120,6 +4605,8 @@ export default AssessmentBuilder;
 
 // // //             const payload = {
 // // //                 title, type, moduleType, cohortIds,
+// // //                 linkedProgrammeId: selectedProgrammeId,
+// // //                 linkedModuleCode: selectedModuleCode,
 // // //                 instructions: instructions || '', moduleInfo, showModuleHeader,
 // // //                 learnerGuide: {
 // // //                     note: learnerNote, purpose: modulePurpose, entryRequirements,
@@ -4145,69 +4632,74 @@ export default AssessmentBuilder;
 // // //                 });
 // // //             }
 
+// // //             // 🚀 CRITICAL FIX: COLLISION-PROOF ASSIGNMENT LOGIC 🚀
 // // //             if (status === 'active') {
 // // //                 const cohortLearners = learners.filter(l => {
 // // //                     const lId = String(l.cohortId || '').trim();
 // // //                     return cohortIds.includes(lId);
 // // //                 });
 
-// // //                 if (cohortLearners.length === 0) {
-// // //                     toast.warning("No learners found in selected cohorts. Saved as Draft instead.");
-// // //                     setSaveStatus('saved');
-// // //                     setLoading(false);
-// // //                     return;
+// // //                 if (cohortLearners.length > 0) {
+// // //                     cohortLearners.forEach((learner: DashboardLearner) => {
+// // //                         const enrolId = learner.enrollmentId || learner.id;
+// // //                         const humanId = learner.learnerId || learner.id;
+// // //                         const qualName = learner.qualification?.name || '';
+
+// // //                         // Use the explicit cohort from the learner profile
+// // //                         const targetCohort = learner.cohortId || 'Unassigned';
+
+// // //                         // 🚀 ULTIMATE FIX: Create a globally unique composite ID
+// // //                         // Format: [CohortID]_[HumanID]_[AssessmentID]
+// // //                         const submissionId = `${targetCohort}_${humanId}_${currentAssessmentId}`;
+// // //                         const submissionRef = doc(db, 'learner_submissions', submissionId);
+
+// // //                         batch.set(submissionRef, {
+// // //                             learnerId: humanId,
+// // //                             enrollmentId: enrolId,
+// // //                             qualificationName: qualName,
+// // //                             assessmentId: currentAssessmentId,
+// // //                             cohortId: targetCohort, // Explicitly save the context
+// // //                             title: title,
+// // //                             type: type,
+// // //                             moduleType: moduleType,
+// // //                             status: 'not_started',
+// // //                             assignedAt: new Date().toISOString(),
+// // //                             marks: 0,
+// // //                             totalMarks: totalMarks,
+// // //                             moduleNumber: moduleInfo.moduleNumber,
+// // //                             createdAt: new Date().toISOString(),
+// // //                             createdBy: user?.uid || 'System'
+// // //                         }, { merge: true }); // Merge ensures we don't wipe out answers if re-publishing
+// // //                     });
 // // //                 }
-
-// // //                 cohortLearners.forEach(learner => {
-// // //                     const submissionId = `${learner.id}_${currentAssessmentId}`;
-// // //                     const submissionRef = doc(db, 'learner_submissions', submissionId);
-
-// // //                     batch.set(submissionRef, {
-// // //                         learnerId: learner.id,
-// // //                         assessmentId: currentAssessmentId,
-// // //                         cohortId: learner.cohortId,
-// // //                         title: title,
-// // //                         type: type,
-// // //                         moduleType: moduleType,
-// // //                         status: 'not_started',
-// // //                         assignedAt: new Date().toISOString(),
-// // //                         marks: 0,
-// // //                         totalMarks: totalMarks,
-// // //                         moduleNumber: moduleInfo.moduleNumber
-// // //                     }, { merge: true });
-// // //                 });
 // // //             }
 
 // // //             await batch.commit();
 // // //             setSaveStatus('saved');
 // // //             setLastSaved(new Date());
 
-// // //             if (status === 'active') {
-// // //                 toast.success('Workbook Published & Assigned to Learners!');
-// // //             } else {
-// // //                 toast.success('Draft saved successfully!');
+// // //             if (!isAutoSave) {
+// // //                 if (status === 'active') toast.success('Workbook Published & Assigned!');
+// // //                 else toast.success('Draft saved successfully!');
 // // //             }
 
-// // //             if (!assessmentId && currentAssessmentId) {
+// // //             if (!assessmentId && currentAssessmentId && !isAutoSave) {
 // // //                 navigate(`/facilitator/assessments/builder/${currentAssessmentId}`, { replace: true });
 // // //             }
 
 // // //         } catch (err: any) {
 // // //             console.error("Save Error:", err);
 // // //             setSaveStatus('unsaved');
-// // //             toast.error(`Failed to save: ${err.message}`);
+// // //             if (!isAutoSave) toast.error(`Failed to save: ${err.message}`);
 // // //         } finally {
-// // //             setLoading(false);
+// // //             if (!isAutoSave) setLoading(false);
 // // //         }
 // // //     };
 
-// // //     const scrollTo = (id: string) => {
-// // //         setFocusedBlock(id);
-// // //         document.getElementById(`block-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-// // //     };
+// // //     const activeProgramme = programmes.find(p => p.id === selectedProgrammeId);
 
 // // //     return (
-// // //         <div className="ab-root animate-fade-in">
+// // //         <div className="ab-root animate-fade-in" style={{ margin: 0 }} >
 // // //             <ToastContainer toasts={toast.toasts} onClose={toast.closeToast} />
 
 // // //             <header className="ab-topbar">
@@ -4255,7 +4747,7 @@ export default AssessmentBuilder;
 // // //                         )}
 // // //                     </div>
 // // //                     {assessmentId && (
-// // //                         <Tooltip content="Preview what learners will see (opens in new tab)" placement="bottom">
+// // //                         <Tooltip content="Preview what learners will see" placement="bottom">
 // // //                             <button
 // // //                                 className="ab-btn ab-btn-ghost"
 // // //                                 onClick={() => window.open(`/admin/assessment/preview/${assessmentId}`, '_blank')}
@@ -4267,23 +4759,19 @@ export default AssessmentBuilder;
 // // //                         </Tooltip>
 // // //                     )}
 
-// // //                     <Tooltip content="Save as draft without publishing" placement="bottom">
-// // //                         <button className="ab-btn ab-btn-ghost" onClick={() => handleSave('draft')} disabled={loading}>
-// // //                             {loading ? 'Saving...' : 'Save Draft'}
-// // //                         </button>
-// // //                     </Tooltip>
-// // //                     <Tooltip content={assessmentId ? "Update and publish workbook" : "Publish workbook to learners"} placement="bottom">
-// // //                         <button className="ab-btn ab-btn-primary" onClick={() => handleSave('active')} disabled={loading}>
-// // //                             <Zap size={15} />
-// // //                             {assessmentId ? 'Update' : 'Publish'}
-// // //                         </button>
-// // //                     </Tooltip>
+// // //                     <button className="ab-btn ab-btn-ghost" onClick={() => handleSave('draft')} disabled={loading}>
+// // //                         {loading ? 'Saving...' : 'Save Draft'}
+// // //                     </button>
+// // //                     <button className="ab-btn ab-btn-primary" onClick={() => handleSave('active')} disabled={loading}>
+// // //                         <Zap size={15} />
+// // //                         {assessmentId ? 'Update' : 'Publish'}
+// // //                     </button>
 // // //                 </div>
 // // //             </header>
 
 // // //             <div className="ab-body">
 // // //                 <aside className="ab-sidebar">
-// // //                     <nav className="ab-sidebar-nav">
+// // //                     <nav className="ab-sidebar-nav" >
 // // //                         {([
 // // //                             { id: 'settings', icon: <Settings size={14} />, label: 'Settings', tooltip: 'Basic workbook settings' },
 // // //                             { id: 'module', icon: <GraduationCap size={14} />, label: 'Module', tooltip: 'QCTO module information' },
@@ -4307,6 +4795,86 @@ export default AssessmentBuilder;
 // // //                         {/* 1. SETTINGS */}
 // // //                         {activePanel === 'settings' && (
 // // //                             <>
+// // //                                 <SectionHdr icon={<Database size={13} />} label="Curriculum Link" />
+// // //                                 <FG label="Select Programme Template">
+// // //                                     <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+// // //                                         <div className="ab-sel-wrap" style={{ flex: 1 }}>
+// // //                                             <select
+// // //                                                 className="ab-input ab-sel"
+// // //                                                 value={selectedProgrammeId}
+// // //                                                 onChange={e => {
+// // //                                                     setSelectedProgrammeId(e.target.value);
+// // //                                                     setSelectedModuleCode(''); // Reset module when programme changes
+// // //                                                 }}
+// // //                                             >
+// // //                                                 <option value="">-- Custom / Blank --</option>
+// // //                                                 {programmes.filter(p => !p.isArchived).map(p => (
+// // //                                                     <option key={p.id} value={p.id}>{p.name} ({p.saqaId})</option>
+// // //                                                 ))}
+// // //                                             </select>
+// // //                                             <ChevronDown size={12} className="ab-sel-arr" />
+// // //                                         </div>
+// // //                                         <Tooltip content="Create a new Curriculum Blueprint" placement="top">
+// // //                                             <button
+// // //                                                 type="button"
+// // //                                                 className="ab-btn ab-btn-ghost"
+// // //                                                 style={{ padding: '0.45rem 0.75rem', border: '1px solid #cbd5e1' }}
+// // //                                                 onClick={() => setShowProgrammeModal(true)}
+// // //                                             >
+// // //                                                 <Plus size={14} /> New
+// // //                                             </button>
+// // //                                         </Tooltip>
+// // //                                     </div>
+// // //                                 </FG>
+
+// // //                                 {selectedProgrammeId && activeProgramme && (
+// // //                                     <FG label="Select Module (Auto-populates Topics)">
+// // //                                         <div className="ab-sel-wrap">
+// // //                                             <select
+// // //                                                 className="ab-input ab-sel"
+// // //                                                 value={selectedModuleCode}
+// // //                                                 onChange={e => setSelectedModuleCode(e.target.value)}
+// // //                                             >
+// // //                                                 <option value="">-- Select Module --</option>
+
+// // //                                                 {/* Group 1: Knowledge Modules */}
+// // //                                                 {(activeProgramme.knowledgeModules || []).length > 0 && (
+// // //                                                     <optgroup label="Knowledge Modules (KM)">
+// // //                                                         {activeProgramme.knowledgeModules.map((m: any, idx: number) => {
+// // //                                                             const val = m.code || m.name || `mod-km-${idx}`;
+// // //                                                             return <option key={val} value={val}>{m.code ? `${m.code} - ` : ''}{m.name || 'Unnamed Module'}</option>
+// // //                                                         })}
+// // //                                                     </optgroup>
+// // //                                                 )}
+
+// // //                                                 {/* Group 2: Practical Modules */}
+// // //                                                 {(activeProgramme.practicalModules || []).length > 0 && (
+// // //                                                     <optgroup label="Practical Modules (PM)">
+// // //                                                         {activeProgramme.practicalModules.map((m: any, idx: number) => {
+// // //                                                             const val = m.code || m.name || `mod-pm-${idx}`;
+// // //                                                             return <option key={val} value={val}>{m.code ? `${m.code} - ` : ''}{m.name || 'Unnamed Module'}</option>
+// // //                                                         })}
+// // //                                                     </optgroup>
+// // //                                                 )}
+
+// // //                                                 {/* Group 3: Workplace Modules */}
+// // //                                                 {(activeProgramme.workExperienceModules || []).length > 0 && (
+// // //                                                     <optgroup label="Workplace Modules (WM)">
+// // //                                                         {activeProgramme.workExperienceModules.map((m: any, idx: number) => {
+// // //                                                             const val = m.code || m.name || `mod-wm-${idx}`;
+// // //                                                             return <option key={val} value={val}>{m.code ? `${m.code} - ` : ''}{m.name || 'Unnamed Module'}</option>
+// // //                                                         })}
+// // //                                                     </optgroup>
+// // //                                                 )}
+
+// // //                                             </select>
+// // //                                             <ChevronDown size={12} className="ab-sel-arr" />
+// // //                                         </div>
+// // //                                     </FG>
+// // //                                 )}
+
+// // //                                 <div style={{ borderBottom: '1px solid #e2e8f0', margin: '1rem 0' }} />
+
 // // //                                 <SectionHdr icon={<BookOpen size={13} />} label="Workbook Metadata" />
 // // //                                 <FG label="Title">
 // // //                                     <input
@@ -4316,7 +4884,6 @@ export default AssessmentBuilder;
 // // //                                     />
 // // //                                 </FG>
 
-// // //                                 {/* ✅ ADDED TIMER INPUT */}
 // // //                                 <FG label="Time Limit (Minutes)">
 // // //                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
 // // //                                         <Clock size={16} color="#64748b" />
@@ -4328,17 +4895,27 @@ export default AssessmentBuilder;
 // // //                                             value={moduleInfo.timeLimit || ''}
 // // //                                             onChange={e => setModuleInfo({ ...moduleInfo, timeLimit: Number(e.target.value) })}
 // // //                                         />
-// // //                                         <span style={{ fontSize: '0.85rem', color: '#64748b' }}>
-// // //                                             0 for no limit.
-// // //                                         </span>
+// // //                                         <span style={{ fontSize: '0.85rem', color: '#64748b' }}>0 for no limit.</span>
 // // //                                     </div>
 // // //                                 </FG>
 
-// // //                                 <FG label="Assign to Cohorts">
+// // //                                 {/* ── 🚀 UNIFIED COHORT ASSIGNMENT PANEL 🚀 ── */}
+// // //                                 <div style={{ marginBottom: '1rem' }}>
+// // //                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+// // //                                         <label className="ab-fg-label" style={{ marginBottom: 0 }}>Assign to Cohorts</label>
+// // //                                         <button
+// // //                                             type="button"
+// // //                                             className="ab-text-btn"
+// // //                                             style={{ fontSize: '0.75rem', color: 'var(--mlab-blue)', fontWeight: 600 }}
+// // //                                             onClick={() => setShowCohortModal(true)}
+// // //                                         >
+// // //                                             + Create New Class
+// // //                                         </button>
+// // //                                     </div>
 // // //                                     <div style={{
 // // //                                         border: '1px solid #cbd5e1', borderRadius: '6px',
 // // //                                         maxHeight: '130px', overflowY: 'auto', padding: '0.5rem',
-// // //                                         color: 'white'
+// // //                                         background: '#fff'
 // // //                                     }}>
 // // //                                         {cohorts.map(c => (
 // // //                                             <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.4rem', cursor: 'pointer' }}>
@@ -4346,30 +4923,30 @@ export default AssessmentBuilder;
 // // //                                                     type="checkbox"
 // // //                                                     checked={cohortIds.includes(c.id)}
 // // //                                                     onChange={(e) => {
-// // //                                                         if (e.target.checked) {
-// // //                                                             setCohortIds(prev => [...prev, c.id]);
-// // //                                                         } else {
-// // //                                                             setCohortIds(prev => prev.filter(id => id !== c.id));
-// // //                                                         }
+// // //                                                         if (e.target.checked) setCohortIds(prev => [...prev, c.id]);
+// // //                                                         else setCohortIds(prev => prev.filter(id => id !== c.id));
 // // //                                                     }}
 // // //                                                 />
-// // //                                                 <span style={{ fontSize: '0.85rem', color: '#334155' }}>{c.name}</span>
+// // //                                                 <span style={{ fontSize: '0.85rem', color: '#334155', flex: 1 }}>{c.name}</span>
+// // //                                                 <Tooltip content="View Class Register" placement="left">
+// // //                                                     <ExternalLink
+// // //                                                         size={12}
+// // //                                                         style={{ opacity: 0.5, color: '#334155' }}
+// // //                                                         onClick={(e) => {
+// // //                                                             e.preventDefault();
+// // //                                                             navigate(`/cohorts/${c.id}`);
+// // //                                                         }}
+// // //                                                     />
+// // //                                                 </Tooltip>
 // // //                                             </label>
 // // //                                         ))}
-// // //                                         {cohorts.length === 0 && <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>No active cohorts available.</div>}
+// // //                                         {cohorts.length === 0 && <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>No active classes available.</div>}
 // // //                                     </div>
-// // //                                     <span style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.25rem', display: 'block' }}>
-// // //                                         {cohortIds.length} cohort(s) selected
-// // //                                     </span>
-// // //                                 </FG>
+// // //                                 </div>
 
 // // //                                 <FG label="QCTO Module Type">
 // // //                                     <div className="ab-sel-wrap">
-// // //                                         <select
-// // //                                             className="ab-input ab-sel"
-// // //                                             value={moduleType}
-// // //                                             onChange={e => setModuleType(e.target.value as any)}
-// // //                                         >
+// // //                                         <select className="ab-input ab-sel" value={moduleType} onChange={e => setModuleType(e.target.value as any)}>
 // // //                                             <option value="knowledge">Knowledge Module (KM)</option>
 // // //                                             <option value="practical">Practical Module (PM)</option>
 // // //                                             <option value="workplace">Workplace Module (WM)</option>
@@ -4381,27 +4958,12 @@ export default AssessmentBuilder;
 
 // // //                                 <FG label="Type">
 // // //                                     <div className="ab-type-tog">
-// // //                                         <button
-// // //                                             className={`ab-type-btn ${type === 'formative' ? 'active' : ''}`}
-// // //                                             onClick={() => setType('formative')}
-// // //                                         >
-// // //                                             Formative
-// // //                                         </button>
-// // //                                         <button
-// // //                                             className={`ab-type-btn ${type === 'summative' ? 'active' : ''}`}
-// // //                                             onClick={() => setType('summative')}
-// // //                                         >
-// // //                                             Summative
-// // //                                         </button>
+// // //                                         <button className={`ab-type-btn ${type === 'formative' ? 'active' : ''}`} onClick={() => setType('formative')}>Formative</button>
+// // //                                         <button className={`ab-type-btn ${type === 'summative' ? 'active' : ''}`} onClick={() => setType('summative')}>Summative</button>
 // // //                                     </div>
 // // //                                 </FG>
 // // //                                 <SectionHdr icon={<ClipboardList size={13} />} label="Instructions" />
-// // //                                 <textarea
-// // //                                     className="ab-input ab-textarea"
-// // //                                     rows={5}
-// // //                                     value={instructions}
-// // //                                     onChange={e => setInstructions(e.target.value)}
-// // //                                 />
+// // //                                 <textarea className="ab-input ab-textarea" rows={5} value={instructions} onChange={e => setInstructions(e.target.value)} />
 // // //                             </>
 // // //                         )}
 
@@ -4411,10 +4973,7 @@ export default AssessmentBuilder;
 // // //                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
 // // //                                     <SectionHdr icon={<GraduationCap size={13} />} label="Module Header" />
 // // //                                     <Tooltip content={showModuleHeader ? "Hide module header" : "Show module header"} placement="left">
-// // //                                         <button
-// // //                                             className={`ab-toggle-icon ${!showModuleHeader ? 'off' : ''}`}
-// // //                                             onClick={() => setShowModuleHeader(!showModuleHeader)}
-// // //                                         >
+// // //                                         <button className={`ab-toggle-icon ${!showModuleHeader ? 'off' : ''}`} onClick={() => setShowModuleHeader(!showModuleHeader)}>
 // // //                                             {showModuleHeader ? <Eye size={14} /> : <EyeOff size={14} />}
 // // //                                         </button>
 // // //                                     </Tooltip>
@@ -4428,71 +4987,20 @@ export default AssessmentBuilder;
 // // //                                                 </button>
 // // //                                             </Tooltip>
 // // //                                         </div>
-// // //                                         <FG label="Qualification Title">
-// // //                                             <input
-// // //                                                 className="ab-input"
-// // //                                                 value={moduleInfo.qualificationTitle}
-// // //                                                 onChange={e => setModuleInfo({ ...moduleInfo, qualificationTitle: e.target.value })}
-// // //                                             />
-// // //                                         </FG>
-// // //                                         <FG label="Module Number">
-// // //                                             <input
-// // //                                                 className="ab-input"
-// // //                                                 value={moduleInfo.moduleNumber}
-// // //                                                 onChange={e => setModuleInfo({ ...moduleInfo, moduleNumber: e.target.value })}
-// // //                                             />
-// // //                                         </FG>
+// // //                                         <FG label="Qualification Title"><input className="ab-input" value={moduleInfo.qualificationTitle} onChange={e => setModuleInfo({ ...moduleInfo, qualificationTitle: e.target.value })} /></FG>
+// // //                                         <FG label="Module Number"><input className="ab-input" value={moduleInfo.moduleNumber} onChange={e => setModuleInfo({ ...moduleInfo, moduleNumber: e.target.value })} /></FG>
 // // //                                         <div className="ab-meta-grid-inputs">
-// // //                                             <FG label="Credits">
-// // //                                                 <input
-// // //                                                     type="number"
-// // //                                                     className="ab-input"
-// // //                                                     value={moduleInfo.credits}
-// // //                                                     onChange={e => setModuleInfo({ ...moduleInfo, credits: Number(e.target.value) })}
-// // //                                                 />
-// // //                                             </FG>
-// // //                                             <FG label="Hours">
-// // //                                                 <input
-// // //                                                     type="number"
-// // //                                                     className="ab-input"
-// // //                                                     value={moduleInfo.notionalHours}
-// // //                                                     onChange={e => setModuleInfo({ ...moduleInfo, notionalHours: Number(e.target.value) })}
-// // //                                                 />
-// // //                                             </FG>
+// // //                                             <FG label="Credits"><input type="number" className="ab-input" value={moduleInfo.credits} onChange={e => setModuleInfo({ ...moduleInfo, credits: Number(e.target.value) })} /></FG>
+// // //                                             <FG label="Hours"><input type="number" className="ab-input" value={moduleInfo.notionalHours} onChange={e => setModuleInfo({ ...moduleInfo, notionalHours: Number(e.target.value) })} /></FG>
 // // //                                         </div>
 // // //                                         <div className="ab-meta-grid-inputs">
-// // //                                             <FG label="Occ. Code">
-// // //                                                 <input
-// // //                                                     className="ab-input"
-// // //                                                     value={moduleInfo.occupationalCode}
-// // //                                                     onChange={e => setModuleInfo({ ...moduleInfo, occupationalCode: e.target.value })}
-// // //                                                 />
-// // //                                             </FG>
-// // //                                             <FG label="SAQA ID">
-// // //                                                 <input
-// // //                                                     className="ab-input"
-// // //                                                     value={moduleInfo.saqaQualId}
-// // //                                                     onChange={e => setModuleInfo({ ...moduleInfo, saqaQualId: e.target.value })}
-// // //                                                 />
-// // //                                             </FG>
+// // //                                             <FG label="Occ. Code"><input className="ab-input" value={moduleInfo.occupationalCode} onChange={e => setModuleInfo({ ...moduleInfo, occupationalCode: e.target.value })} /></FG>
+// // //                                             <FG label="SAQA ID"><input className="ab-input" value={moduleInfo.saqaQualId} onChange={e => setModuleInfo({ ...moduleInfo, saqaQualId: e.target.value })} /></FG>
 // // //                                         </div>
-// // //                                         <FG label="NQF Level">
-// // //                                             <input
-// // //                                                 className="ab-input"
-// // //                                                 value={moduleInfo.nqfLevel}
-// // //                                                 onChange={e => setModuleInfo({ ...moduleInfo, nqfLevel: e.target.value })}
-// // //                                             />
-// // //                                         </FG>
-
-// // //                                         <SectionHdr icon={<Info size={13} />} label="Standard Text" />
-// // //                                         <p className="ab-prose sm">{learnerNote}</p>
-// // //                                         <p className="ab-prose sm" style={{ marginTop: '0.5rem' }}>{modulePurpose}</p>
+// // //                                         <FG label="NQF Level"><input className="ab-input" value={moduleInfo.nqfLevel} onChange={e => setModuleInfo({ ...moduleInfo, nqfLevel: e.target.value })} /></FG>
 // // //                                     </div>
 // // //                                 ) : (
-// // //                                     <div className="ab-hidden-state">
-// // //                                         <EyeOff size={24} />
-// // //                                         <p>Header hidden.</p>
-// // //                                     </div>
+// // //                                     <div className="ab-hidden-state"><EyeOff size={24} /><p>Header hidden.</p></div>
 // // //                                 )}
 // // //                             </>
 // // //                         )}
@@ -4526,46 +5034,11 @@ export default AssessmentBuilder;
 // // //                         {activePanel === 'guide' && (
 // // //                             <>
 // // //                                 <SectionHdr icon={<BookMarked size={13} />} label="Learner Guide" />
-// // //                                 <FG label="Note to Learner">
-// // //                                     <textarea
-// // //                                         className="ab-input ab-textarea"
-// // //                                         rows={4}
-// // //                                         value={learnerNote}
-// // //                                         onChange={e => setLearnerNote(e.target.value)}
-// // //                                     />
-// // //                                 </FG>
-// // //                                 <FG label="Module Purpose">
-// // //                                     <textarea
-// // //                                         className="ab-input ab-textarea"
-// // //                                         rows={4}
-// // //                                         value={modulePurpose}
-// // //                                         onChange={e => setModulePurpose(e.target.value)}
-// // //                                     />
-// // //                                 </FG>
-// // //                                 <FG label="Entry Requirements">
-// // //                                     <textarea
-// // //                                         className="ab-input ab-textarea"
-// // //                                         rows={2}
-// // //                                         value={entryRequirements}
-// // //                                         onChange={e => setEntryRequirements(e.target.value)}
-// // //                                     />
-// // //                                 </FG>
-// // //                                 <FG label="Provider Requirements">
-// // //                                     <textarea
-// // //                                         className="ab-input ab-textarea"
-// // //                                         rows={8}
-// // //                                         value={providerRequirements}
-// // //                                         onChange={e => setProviderRequirements(e.target.value)}
-// // //                                     />
-// // //                                 </FG>
-// // //                                 <FG label="Exemptions">
-// // //                                     <textarea
-// // //                                         className="ab-input ab-textarea"
-// // //                                         rows={2}
-// // //                                         value={exemptions}
-// // //                                         onChange={e => setExemptions(e.target.value)}
-// // //                                     />
-// // //                                 </FG>
+// // //                                 <FG label="Note to Learner"><textarea className="ab-input ab-textarea" rows={4} value={learnerNote} onChange={e => setLearnerNote(e.target.value)} /></FG>
+// // //                                 <FG label="Module Purpose"><textarea className="ab-input ab-textarea" rows={4} value={modulePurpose} onChange={e => setModulePurpose(e.target.value)} /></FG>
+// // //                                 <FG label="Entry Requirements"><textarea className="ab-input ab-textarea" rows={2} value={entryRequirements} onChange={e => setEntryRequirements(e.target.value)} /></FG>
+// // //                                 <FG label="Provider Requirements"><textarea className="ab-input ab-textarea" rows={8} value={providerRequirements} onChange={e => setProviderRequirements(e.target.value)} /></FG>
+// // //                                 <FG label="Exemptions"><textarea className="ab-input ab-textarea" rows={2} value={exemptions} onChange={e => setExemptions(e.target.value)} /></FG>
 // // //                             </>
 // // //                         )}
 
@@ -4578,22 +5051,11 @@ export default AssessmentBuilder;
 // // //                                 ) : (
 // // //                                     <ol className="ab-outline-list">
 // // //                                         {blocks.map((b, i) => (
-// // //                                             <li
-// // //                                                 key={b.id}
-// // //                                                 className={`ab-outline-item ${focusedBlock === b.id ? 'focused' : ''}`}
-// // //                                                 onClick={() => scrollTo(b.id)}
-// // //                                             >
-// // //                                                 <span
-// // //                                                     className="ab-ol-dot"
-// // //                                                     style={{ background: BLOCK_META[b.type].color }}
-// // //                                                 />
+// // //                                             <li key={b.id} className={`ab-outline-item ${focusedBlock === b.id ? 'focused' : ''}`} onClick={() => document.getElementById(`block-${b.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })}>
+// // //                                                 <span className="ab-ol-dot" style={{ background: BLOCK_META[b.type].color }} />
 // // //                                                 <div className="ab-ol-text">
 // // //                                                     <span className="ab-ol-main">
-// // //                                                         {b.type === 'section'
-// // //                                                             ? (b.title || 'Section')
-// // //                                                             : b.type === 'info'
-// // //                                                                 ? 'Reading Material'
-// // //                                                                 : (b.question?.slice(0, 40) || `Question ${i + 1}`)}
+// // //                                                         {b.type === 'section' ? (b.title || 'Section') : b.type === 'info' ? 'Reading Material' : (b.question?.slice(0, 40) || `Question ${i + 1}`)}
 // // //                                                     </span>
 // // //                                                 </div>
 // // //                                             </li>
@@ -4613,7 +5075,6 @@ export default AssessmentBuilder;
 // // //                                     <span className="ab-mc-b nqf">{moduleInfo.nqfLevel}</span>
 // // //                                     <span className="ab-mc-b cr">{moduleInfo.credits} Credits</span>
 // // //                                     <span className="ab-mc-b hr">{moduleInfo.notionalHours}h</span>
-// // //                                     {/* ✅ TIMER BADGE */}
 // // //                                     {moduleInfo.timeLimit ? (
 // // //                                         <span className="ab-mc-b" style={{ background: '#fef3c7', color: '#b45309' }}>
 // // //                                             <Clock size={12} style={{ display: 'inline', marginRight: '4px' }} />
@@ -4636,9 +5097,7 @@ export default AssessmentBuilder;
 // // //                                     <span className="ab-mc-lbl">Marks</span>
 // // //                                 </div>
 // // //                             </div>
-// // //                             <div className="ab-mc-edit-hint">
-// // //                                 <Pencil size={12} /> Edit
-// // //                             </div>
+// // //                             <div className="ab-mc-edit-hint"><Pencil size={12} /> Edit</div>
 // // //                         </div>
 // // //                     )}
 
@@ -4648,17 +5107,9 @@ export default AssessmentBuilder;
 // // //                         <div className="ab-blocks-list">
 // // //                             {blocks.map((b, idx) => (
 // // //                                 <BlockCard
-// // //                                     key={b.id}
-// // //                                     block={b}
-// // //                                     index={idx}
-// // //                                     total={blocks.length}
-// // //                                     topics={topics}
-// // //                                     focused={focusedBlock === b.id}
-// // //                                     onFocus={() => setFocusedBlock(b.id)}
-// // //                                     onUpdate={updateBlock}
-// // //                                     onUpdateOption={updateOption}
-// // //                                     onRemove={removeBlock}
-// // //                                     onMove={moveBlock}
+// // //                                     key={b.id} block={b} index={idx} total={blocks.length} topics={topics}
+// // //                                     focused={focusedBlock === b.id} onFocus={() => setFocusedBlock(b.id)}
+// // //                                     onUpdate={updateBlock} onUpdateOption={updateOption} onRemove={removeBlock} onMove={moveBlock}
 // // //                                 />
 // // //                             ))}
 // // //                         </div>
@@ -4668,13 +5119,8 @@ export default AssessmentBuilder;
 // // //                         <span className="ab-add-label">Insert</span>
 // // //                         {(Object.keys(BLOCK_META) as BlockType[]).map(bt => (
 // // //                             <Tooltip key={bt} content={BLOCK_META[bt].desc} placement="top">
-// // //                                 <button
-// // //                                     className="ab-add-btn"
-// // //                                     style={{ '--block-color': BLOCK_META[bt].color } as React.CSSProperties}
-// // //                                     onClick={() => addBlock(bt)}
-// // //                                 >
-// // //                                     {BLOCK_META[bt].icon}
-// // //                                     <span>{BLOCK_META[bt].label}</span>
+// // //                                 <button className="ab-add-btn" style={{ '--block-color': BLOCK_META[bt].color } as React.CSSProperties} onClick={() => addBlock(bt)}>
+// // //                                     {BLOCK_META[bt].icon}<span>{BLOCK_META[bt].label}</span>
 // // //                                 </button>
 // // //                             </Tooltip>
 // // //                         ))}
@@ -4686,8 +5132,24 @@ export default AssessmentBuilder;
 // // //                 <DeleteOverlay
 // // //                     topic={topics.find(t => t.id === deleteConfirmId)!}
 // // //                     linkedCount={blocks.filter(b => b.linkedTopicId === deleteConfirmId).length}
-// // //                     onConfirm={executeDelete}
-// // //                     onCancel={cancelDelete}
+// // //                     onConfirm={executeDelete} onCancel={cancelDelete}
+// // //                 />
+// // //             )}
+
+// // //             {showProgrammeModal && (
+// // //                 <ProgrammeFormModal
+// // //                     existingProgrammes={programmes}
+// // //                     onClose={() => setShowProgrammeModal(false)}
+// // //                     onSave={handleSaveNewProgramme}
+// // //                     title="Create Curriculum Blueprint"
+// // //                 />
+// // //             )}
+
+// // //             {/* ─── 🚀 THE UNIFIED COHORT MODAL 🚀 ─── */}
+// // //             {showCohortModal && (
+// // //                 <CohortFormModal
+// // //                     onClose={() => setShowCohortModal(false)}
+// // //                     onSave={handleSaveNewCohort}
 // // //                 />
 // // //             )}
 // // //         </div>
@@ -4733,27 +5195,10 @@ export default AssessmentBuilder;
 // // //         {props.addingTopic && (
 // // //             <div className="ab-topic-form">
 // // //                 <div className="ab-topic-form-row">
-// // //                     <input
-// // //                         className="ab-input sm"
-// // //                         placeholder="Code"
-// // //                         value={props.newTopic.code || ''}
-// // //                         onChange={e => props.onNewTopicChange({ code: e.target.value })}
-// // //                     />
-// // //                     <input
-// // //                         className="ab-input sm"
-// // //                         placeholder="Weight"
-// // //                         style={{ width: '60px' }}
-// // //                         value={props.newTopic.weight || ''}
-// // //                         onChange={e => props.onNewTopicChange({ weight: e.target.value })}
-// // //                     />
+// // //                     <input className="ab-input sm" placeholder="Code" value={props.newTopic.code || ''} onChange={e => props.onNewTopicChange({ code: e.target.value })} />
+// // //                     <input className="ab-input sm" placeholder="Weight" style={{ width: '60px' }} value={props.newTopic.weight || ''} onChange={e => props.onNewTopicChange({ weight: e.target.value })} />
 // // //                 </div>
-// // //                 <textarea
-// // //                     className="ab-input sm"
-// // //                     rows={2}
-// // //                     placeholder="Description..."
-// // //                     value={props.newTopic.title || ''}
-// // //                     onChange={e => props.onNewTopicChange({ title: e.target.value })}
-// // //                 />
+// // //                 <textarea className="ab-input sm" rows={2} placeholder="Description..." value={props.newTopic.title || ''} onChange={e => props.onNewTopicChange({ title: e.target.value })} />
 // // //                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 5, marginTop: 5 }}>
 // // //                     <button className="ab-text-btn" onClick={props.onCancelAdd}>Cancel</button>
 // // //                     <button className="ab-btn sm ab-btn-primary" onClick={props.onCommitAdd}>Add</button>
@@ -4761,6 +5206,7 @@ export default AssessmentBuilder;
 // // //             </div>
 // // //         )}
 // // //         <div className="ab-topics-list">
+// // //             {props.topics.length === 0 && <p className="ab-prose sm" style={{ fontStyle: 'italic', opacity: 0.7 }}>No topics found. Select a module from Settings.</p>}
 // // //             {props.topics.map((t: Topic) => {
 // // //                 const covered = props.coveredTopicIds.has(t.id);
 // // //                 const isEditing = props.editingTopicId === t.id;
@@ -4768,24 +5214,12 @@ export default AssessmentBuilder;
 // // //                 if (isEditing) return (
 // // //                     <div key={t.id} className="ab-topic-row editing">
 // // //                         <div className="ab-topic-edit-fields">
-// // //                             <input
-// // //                                 className="ab-topic-edit-input"
-// // //                                 value={props.editDraft.code || ''}
-// // //                                 onChange={e => props.onEditChange({ code: e.target.value })}
-// // //                             />
-// // //                             <input
-// // //                                 className="ab-topic-edit-input"
-// // //                                 value={props.editDraft.title || ''}
-// // //                                 onChange={e => props.onEditChange({ title: e.target.value })}
-// // //                             />
+// // //                             <input className="ab-topic-edit-input" value={props.editDraft.code || ''} onChange={e => props.onEditChange({ code: e.target.value })} />
+// // //                             <input className="ab-topic-edit-input" value={props.editDraft.title || ''} onChange={e => props.onEditChange({ title: e.target.value })} />
 // // //                         </div>
 // // //                         <div className="ab-topic-edit-actions">
-// // //                             <button onClick={props.onCommitEdit} className="ab-te-btn save">
-// // //                                 <Check size={14} />
-// // //                             </button>
-// // //                             <button onClick={props.onCancelEdit} className="ab-te-btn cancel">
-// // //                                 <X size={14} />
-// // //                             </button>
+// // //                             <button onClick={props.onCommitEdit} className="ab-te-btn save"><Check size={14} /></button>
+// // //                             <button onClick={props.onCancelEdit} className="ab-te-btn cancel"><X size={14} /></button>
 // // //                         </div>
 // // //                     </div>
 // // //                 );
@@ -4795,31 +5229,15 @@ export default AssessmentBuilder;
 // // //                         <div className="ab-topic-main">
 // // //                             <div className="ab-topic-top-row">
 // // //                                 <span className="ab-topic-code">{t.code}</span>
-// // //                                 <span className="ab-topic-weight">{t.weight}</span>
+// // //                                 <span className="ab-topic-weight">{t.weight}%</span>
 // // //                             </div>
 // // //                             <span className="ab-topic-title">{t.title}</span>
 // // //                         </div>
 // // //                         <div className="ab-topic-actions">
-// // //                             <Tooltip content="Add question for this topic" placement="top">
-// // //                                 <button className="ab-tadd-btn" onClick={() => props.onAddBlock('text', t.id)}>
-// // //                                     +Q
-// // //                                 </button>
-// // //                             </Tooltip>
-// // //                             <Tooltip content="Add reading material for this topic" placement="top">
-// // //                                 <button className="ab-tadd-btn reading" onClick={() => props.onAddBlock('info', t.id)}>
-// // //                                     +R
-// // //                                 </button>
-// // //                             </Tooltip>
-// // //                             <Tooltip content="Edit topic" placement="top">
-// // //                                 <button className="ab-icon-action" onClick={() => props.onStartEdit(t)}>
-// // //                                     <Pencil size={12} />
-// // //                                 </button>
-// // //                             </Tooltip>
-// // //                             <Tooltip content="Delete topic" placement="top">
-// // //                                 <button className="ab-icon-action danger" onClick={() => props.onConfirmDelete(t.id)}>
-// // //                                     <Trash2 size={12} />
-// // //                                 </button>
-// // //                             </Tooltip>
+// // //                             <Tooltip content="Add question for this topic" placement="top"><button className="ab-tadd-btn" onClick={() => props.onAddBlock('text', t.id)}>+Q</button></Tooltip>
+// // //                             <Tooltip content="Add reading material for this topic" placement="top"><button className="ab-tadd-btn reading" onClick={() => props.onAddBlock('info', t.id)}>+R</button></Tooltip>
+// // //                             <Tooltip content="Edit topic" placement="top"><button className="ab-icon-action" onClick={() => props.onStartEdit(t)}><Pencil size={12} /></button></Tooltip>
+// // //                             <Tooltip content="Delete topic" placement="top"><button className="ab-icon-action danger" onClick={() => props.onConfirmDelete(t.id)}><Trash2 size={12} /></button></Tooltip>
 // // //                         </div>
 // // //                     </div>
 // // //                 );
@@ -4841,166 +5259,54 @@ export default AssessmentBuilder;
 // // //     onMove: (id: string, dir: 'up' | 'down') => void;
 // // // }
 
-// // // const BlockCard: React.FC<BlockCardProps> = ({
-// // //     block, index, total, focused, topics, onFocus, onUpdate, onUpdateOption, onRemove, onMove
-// // // }) => {
+// // // const BlockCard: React.FC<BlockCardProps> = ({ block, index, total, focused, topics, onFocus, onUpdate, onUpdateOption, onRemove, onMove }) => {
 // // //     const meta = BLOCK_META[block.type];
 // // //     const topic = topics.find((t: Topic) => t.id === block.linkedTopicId);
 
 // // //     return (
-// // //         <div
-// // //             id={`block-${block.id}`}
-// // //             className={`ab-block ${focused ? 'is-focused' : ''}`}
-// // //             style={{ '--block-accent': meta.color } as React.CSSProperties}
-// // //             onClick={onFocus}
-// // //         >
+// // //         <div id={`block-${block.id}`} className={`ab-block ${focused ? 'is-focused' : ''}`} style={{ '--block-accent': meta.color } as React.CSSProperties} onClick={onFocus}>
 // // //             <div className="ab-block-strip" style={{ background: meta.color }} />
 // // //             <div className="ab-block-ctrl-row">
 // // //                 <div className="ab-block-left">
-// // //                     <span
-// // //                         className="ab-block-type-badge"
-// // //                         style={{
-// // //                             color: meta.color,
-// // //                             background: `${meta.color}18`,
-// // //                             borderColor: `${meta.color}35`
-// // //                         }}
-// // //                     >
-// // //                         {meta.icon}
-// // //                         {meta.label}
-// // //                     </span>
+// // //                     <span className="ab-block-type-badge" style={{ color: meta.color, background: `${meta.color}18`, borderColor: `${meta.color}35` }}>{meta.icon}{meta.label}</span>
 // // //                     {topic && <span className="ab-block-topic-tag">{topic.code}</span>}
 // // //                 </div>
 // // //                 <div className="ab-block-actions">
-// // //                     <Tooltip content="Move block up" placement="top">
-// // //                         <button
-// // //                             className="ab-ctrl-btn"
-// // //                             onClick={e => { e.stopPropagation(); onMove(block.id, 'up'); }}
-// // //                             disabled={index === 0}
-// // //                         >
-// // //                             ↑
-// // //                         </button>
-// // //                     </Tooltip>
-// // //                     <Tooltip content="Move block down" placement="top">
-// // //                         <button
-// // //                             className="ab-ctrl-btn"
-// // //                             onClick={e => { e.stopPropagation(); onMove(block.id, 'down'); }}
-// // //                             disabled={index === total - 1}
-// // //                         >
-// // //                             ↓
-// // //                         </button>
-// // //                     </Tooltip>
-// // //                     <Tooltip content="Delete block" placement="top">
-// // //                         <button
-// // //                             className="ab-ctrl-btn ab-ctrl-del"
-// // //                             onClick={e => { e.stopPropagation(); onRemove(block.id); }}
-// // //                         >
-// // //                             <Trash2 size={13} />
-// // //                         </button>
-// // //                     </Tooltip>
+// // //                     <Tooltip content="Move block up" placement="top"><button className="ab-ctrl-btn" onClick={e => { e.stopPropagation(); onMove(block.id, 'up'); }} disabled={index === 0}>↑</button></Tooltip>
+// // //                     <Tooltip content="Move block down" placement="top"><button className="ab-ctrl-btn" onClick={e => { e.stopPropagation(); onMove(block.id, 'down'); }} disabled={index === total - 1}>↓</button></Tooltip>
+// // //                     <Tooltip content="Delete block" placement="top"><button className="ab-ctrl-btn ab-ctrl-del" onClick={e => { e.stopPropagation(); onRemove(block.id); }}><Trash2 size={13} /></button></Tooltip>
 // // //                 </div>
 // // //             </div>
 
-// // //             {block.type === 'section' && (
-// // //                 <input
-// // //                     className="ab-section-input"
-// // //                     value={block.title || ''}
-// // //                     placeholder="Section title..."
-// // //                     onChange={e => onUpdate(block.id, 'title', e.target.value)}
-// // //                     onClick={e => e.stopPropagation()}
-// // //                 />
-// // //             )}
-
-// // //             {block.type === 'info' && (
-// // //                 <div className="ab-info-body">
-// // //                     <textarea
-// // //                         className="ab-textarea-block"
-// // //                         rows={5}
-// // //                         value={block.content || ''}
-// // //                         onChange={e => onUpdate(block.id, 'content', e.target.value)}
-// // //                         onClick={e => e.stopPropagation()}
-// // //                     />
-// // //                 </div>
-// // //             )}
-
+// // //             {block.type === 'section' && <input className="ab-section-input" value={block.title || ''} placeholder="Section title..." onChange={e => onUpdate(block.id, 'title', e.target.value)} onClick={e => e.stopPropagation()} />}
+// // //             {block.type === 'info' && <div className="ab-info-body"><textarea className="ab-textarea-block" rows={5} value={block.content || ''} onChange={e => onUpdate(block.id, 'content', e.target.value)} onClick={e => e.stopPropagation()} /></div>}
 // // //             {(block.type === 'text' || block.type === 'mcq') && (
 // // //                 <div className="ab-q-body">
 // // //                     <div className="ab-q-top">
 // // //                         <span className="ab-q-num">Q{index + 1}</span>
 // // //                         <div className="ab-marks-stepper">
-// // //                             <button
-// // //                                 className="ab-step-btn"
-// // //                                 onClick={e => {
-// // //                                     e.stopPropagation();
-// // //                                     onUpdate(block.id, 'marks', Math.max(0, (block.marks || 0) - 1));
-// // //                                 }}
-// // //                             >
-// // //                                 −
-// // //                             </button>
+// // //                             <button className="ab-step-btn" onClick={e => { e.stopPropagation(); onUpdate(block.id, 'marks', Math.max(0, (block.marks || 0) - 1)); }}>−</button>
 // // //                             <span className="ab-step-val">{block.marks}</span>
-// // //                             <button
-// // //                                 className="ab-step-btn"
-// // //                                 onClick={e => {
-// // //                                     e.stopPropagation();
-// // //                                     onUpdate(block.id, 'marks', (block.marks || 0) + 1);
-// // //                                 }}
-// // //                             >
-// // //                                 +
-// // //                             </button>
+// // //                             <button className="ab-step-btn" onClick={e => { e.stopPropagation(); onUpdate(block.id, 'marks', (block.marks || 0) + 1); }}>+</button>
 // // //                         </div>
 // // //                         <div className="ab-topic-sel-wrap">
-// // //                             <select
-// // //                                 className="ab-topic-sel"
-// // //                                 value={block.linkedTopicId || ''}
-// // //                                 onChange={e => onUpdate(block.id, 'linkedTopicId', e.target.value || undefined)}
-// // //                                 onClick={e => e.stopPropagation()}
-// // //                             >
+// // //                             <select className="ab-topic-sel" value={block.linkedTopicId || ''} onChange={e => onUpdate(block.id, 'linkedTopicId', e.target.value || undefined)} onClick={e => e.stopPropagation()}>
 // // //                                 <option value="">Link topic…</option>
-// // //                                 {topics.map((t: Topic) => (
-// // //                                     <option key={t.id} value={t.id}>{t.code}</option>
-// // //                                 ))}
+// // //                                 {topics.map((t: Topic) => <option key={t.id} value={t.id}>{t.code}</option>)}
 // // //                             </select>
 // // //                             <ChevronDown size={11} className="ab-topic-sel-arr" />
 // // //                         </div>
 // // //                     </div>
-// // //                     <textarea
-// // //                         className="ab-q-input"
-// // //                         rows={2}
-// // //                         value={block.question || ''}
-// // //                         onChange={e => onUpdate(block.id, 'question', e.target.value)}
-// // //                         onClick={e => e.stopPropagation()}
-// // //                         placeholder="Type question here..."
-// // //                     />
-// // //                     {block.type === 'text' && (
-// // //                         <div className="ab-answer-placeholder">
-// // //                             <FileText size={14} />
-// // //                             <span>Learner types answer here</span>
-// // //                         </div>
-// // //                     )}
+// // //                     <textarea className="ab-q-input" rows={2} value={block.question || ''} onChange={e => onUpdate(block.id, 'question', e.target.value)} onClick={e => e.stopPropagation()} placeholder="Type question here..." />
+// // //                     {block.type === 'text' && <div className="ab-answer-placeholder"><FileText size={14} /><span>Learner types answer here</span></div>}
 // // //                     {block.type === 'mcq' && (
 // // //                         <div className="ab-mcq-opts">
 // // //                             {block.options?.map((opt, i) => (
-// // //                                 <div
-// // //                                     key={i}
-// // //                                     className={`ab-opt-row ${block.correctOption === i ? 'correct' : ''}`}
-// // //                                     onClick={e => { e.stopPropagation(); onUpdate(block.id, 'correctOption', i); }}
-// // //                                 >
-// // //                                     <div className="ab-radio">
-// // //                                         {block.correctOption === i && <div className="ab-radio-dot" />}
-// // //                                     </div>
+// // //                                 <div key={i} className={`ab-opt-row ${block.correctOption === i ? 'correct' : ''}`} onClick={e => { e.stopPropagation(); onUpdate(block.id, 'correctOption', i); }}>
+// // //                                     <div className="ab-radio">{block.correctOption === i && <div className="ab-radio-dot" />}</div>
 // // //                                     <span className="ab-opt-letter">{String.fromCharCode(65 + i)}</span>
-// // //                                     <input
-// // //                                         className="ab-opt-input"
-// // //                                         value={opt}
-// // //                                         placeholder={`Option ${String.fromCharCode(65 + i)}`}
-// // //                                         onChange={e => {
-// // //                                             e.stopPropagation();
-// // //                                             onUpdateOption(block.id, i, e.target.value);
-// // //                                         }}
-// // //                                         onClick={e => e.stopPropagation()}
-// // //                                     />
-// // //                                     {block.correctOption === i && (
-// // //                                         <span className="ab-correct-tag">Correct</span>
-// // //                                     )}
+// // //                                     <input className="ab-opt-input" value={opt} placeholder={`Option ${String.fromCharCode(65 + i)}`} onChange={e => { e.stopPropagation(); onUpdateOption(block.id, i, e.target.value); }} onClick={e => e.stopPropagation()} />
+// // //                                     {block.correctOption === i && <span className="ab-correct-tag">Correct</span>}
 // // //                                 </div>
 // // //                             ))}
 // // //                         </div>
@@ -5011,44 +5317,23 @@ export default AssessmentBuilder;
 // // //     );
 // // // };
 
-// // // const DeleteOverlay: React.FC<{
-// // //     topic: Topic;
-// // //     linkedCount: number;
-// // //     onConfirm: () => void;
-// // //     onCancel: () => void
-// // // }> = ({ topic, linkedCount, onConfirm, onCancel }) => (
+// // // const DeleteOverlay: React.FC<{ topic: Topic; linkedCount: number; onConfirm: () => void; onCancel: () => void }> = ({ topic, linkedCount, onConfirm, onCancel }) => (
 // // //     <div className="ab-overlay-backdrop" onClick={onCancel}>
 // // //         <div className="ab-delete-dialog" onClick={e => e.stopPropagation()}>
 // // //             <div className="ab-dd-icon"><AlertTriangle size={22} /></div>
 // // //             <h3 className="ab-dd-title">Delete Topic?</h3>
 // // //             <p className="ab-dd-topic"><strong>{topic.code}</strong>: {topic.title}</p>
-// // //             {linkedCount > 0 && (
-// // //                 <p className="ab-dd-warning">{linkedCount} block(s) will be unlinked.</p>
-// // //             )}
+// // //             {linkedCount > 0 && <p className="ab-dd-warning">{linkedCount} block(s) will be unlinked.</p>}
 // // //             <div className="ab-dd-actions">
 // // //                 <button className="ab-btn ab-btn-ghost" onClick={onCancel}>Cancel</button>
-// // //                 <button className="ab-btn ab-btn-danger" onClick={onConfirm}>
-// // //                     <Trash2 size={14} /> Delete
-// // //                 </button>
+// // //                 <button className="ab-btn ab-btn-danger" onClick={onConfirm}><Trash2 size={14} /> Delete</button>
 // // //             </div>
 // // //         </div>
 // // //     </div>
 // // // );
 
-// // // const SectionHdr: React.FC<{ icon: React.ReactNode; label: string }> = ({ icon, label }) => (
-// // //     <div className="ab-section-hdr">
-// // //         {icon}
-// // //         <span>{label}</span>
-// // //     </div>
-// // // );
-
-// // // const FG: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
-// // //     <div className="ab-fg">
-// // //         {label && <label className="ab-fg-label">{label}</label>}
-// // //         {children}
-// // //     </div>
-// // // );
-
+// // // const SectionHdr: React.FC<{ icon: React.ReactNode; label: string }> = ({ icon, label }) => (<div className="ab-section-hdr">{icon}<span>{label}</span></div>);
+// // // const FG: React.FC<{ label: string; children: React.ReactNode; style?: React.CSSProperties }> = ({ label, children, style }) => (<div className="ab-fg" style={style}>{label && <label className="ab-fg-label">{label}</label>}{children}</div>);
 // // // const EmptyCanvas: React.FC<{ onAdd: (t: BlockType) => void }> = ({ onAdd }) => (
 // // //     <div className="ab-empty-canvas">
 // // //         <div className="ab-empty-inner">
@@ -5057,12 +5342,7 @@ export default AssessmentBuilder;
 // // //             <p className="ab-empty-sub">Choose a block type to begin</p>
 // // //             <div className="ab-empty-grid">
 // // //                 {(Object.keys(BLOCK_META) as BlockType[]).map(bt => (
-// // //                     <button
-// // //                         key={bt}
-// // //                         className="ab-empty-card"
-// // //                         style={{ '--block-color': BLOCK_META[bt].color } as React.CSSProperties}
-// // //                         onClick={() => onAdd(bt)}
-// // //                     >
+// // //                     <button key={bt} className="ab-empty-card" style={{ '--block-color': BLOCK_META[bt].color } as React.CSSProperties} onClick={() => onAdd(bt)}>
 // // //                         <span className="ab-empty-icon-bt">{BLOCK_META[bt].icon}</span>
 // // //                         <span className="ab-empty-lbl">{BLOCK_META[bt].label}</span>
 // // //                         <span className="ab-empty-desc">{BLOCK_META[bt].desc}</span>
@@ -5074,6 +5354,3 @@ export default AssessmentBuilder;
 // // // );
 
 // // // export default AssessmentBuilder;
-
-
-

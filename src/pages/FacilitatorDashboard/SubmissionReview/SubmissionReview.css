@@ -1766,3 +1766,43 @@
     display: none !important;
   }
 }
+
+/* ── PRINT-SPECIFIC OVERRIDES FOR TRUNCATION FIXES ── */
+.print-only {
+  display: none !important;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+
+  /* Force the main layouts to break free from fixed screen bounds */
+  body,
+  html,
+  #root,
+  .sr-root,
+  .ap-player,
+  .sr-layout,
+  .sr-content-pane,
+  .ap-player-body,
+  .ap-player-content {
+    height: auto !important;
+    overflow: visible !important;
+    position: static !important;
+  }
+
+  /* Prevent specific cards from breaking awkwardly across two pages */
+  .sr-q-card,
+  .ap-block-question,
+  .sr-summary-card,
+  .ap-audit-card,
+  .print-page {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    margin-bottom: 25px !important;
+  }
+}

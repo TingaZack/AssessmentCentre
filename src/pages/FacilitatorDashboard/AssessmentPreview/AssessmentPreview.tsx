@@ -1,13 +1,13 @@
 // src/pages/FacilitatorDashboard/AssessmentPreview.tsx
 
 
-// src/pages/FacilitatorDashboard/AssessmentPreview/AssessmentPreview.tsx
-// mLab CI v2.1 — Official QCTO workbook preview aesthetic
-
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { doc, getDoc } from 'firebase/firestore';
-import { ArrowLeft, Info, Clock, FileText, CheckSquare } from 'lucide-react';
+import {
+    ArrowLeft, Info, Clock, FileText, CheckSquare,
+    Layers, UploadCloud, Mic, Link as LinkIcon, Code, Timer, ListChecks, CalendarRange
+} from 'lucide-react';
 import { db } from '../../../lib/firebase';
 import './AssessmentPreview.css';
 
@@ -37,9 +37,10 @@ export const AssessmentPreview: React.FC = () => {
 
     // Derived stats
     const blocks = assessment.blocks || [];
-    const qBlocks = blocks.filter((b: any) => b.type === 'text' || b.type === 'mcq');
+    // 🚀 Include 'task' and 'checklist' in the question count
+    const qBlocks = blocks.filter((b: any) => ['text', 'mcq', 'task', 'checklist'].includes(b.type));
     const qCount = qBlocks.length;
-    const totalMarks = assessment.totalMarks ?? qBlocks.reduce((s: number, b: any) => s + (b.marks || 0), 0);
+    const totalMarks = assessment.totalMarks ?? blocks.reduce((s: number, b: any) => s + (Number(b.marks) || 0), 0);
     const timeLimit = assessment.moduleInfo?.timeLimit;
 
     // Running question number across all blocks
@@ -79,7 +80,7 @@ export const AssessmentPreview: React.FC = () => {
                             {totalMarks} Marks
                         </span>
                         <span className="mlab-meta-chip mlab-meta-chip--default">
-                            <FileText size={11} /> {qCount} Questions
+                            <FileText size={11} /> {qCount} Questions/Tasks
                         </span>
                         {timeLimit ? (
                             <span className="mlab-meta-chip mlab-meta-chip--time">
@@ -101,10 +102,13 @@ export const AssessmentPreview: React.FC = () => {
                 <div className="mlab-blocks">
                     {blocks.map((block: any) => {
 
-                        /* Section header */
+                        /* Section header (Upgraded for Rich Text) */
                         if (block.type === 'section') return (
-                            <div key={block.id} className="mlab-block-section">
-                                {block.title}
+                            <div key={block.id} className="mlab-block-section" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#073f4e' }}>{block.title}</div>
+                                {block.content && (
+                                    <div className="quill-read-only-content" style={{ fontSize: '0.95rem', color: '#334155' }} dangerouslySetInnerHTML={{ __html: block.content }} />
+                                )}
                             </div>
                         );
 
@@ -178,6 +182,122 @@ export const AssessmentPreview: React.FC = () => {
                             );
                         }
 
+                        /* 🚀 Multi-Modal Task */
+                        if (block.type === 'task') {
+                            qNum++;
+                            return (
+                                <div key={block.id} className="mlab-block-question">
+                                    <div className="mlab-block-question__header">
+                                        <span className="mlab-block-question__num" style={{ background: '#ede9fe', color: '#8b5cf6' }}>Q{qNum}</span>
+                                        <span className="mlab-block-question__text">{block.question}</span>
+                                        <span className="mlab-block-question__marks">{block.marks} Marks</span>
+                                    </div>
+                                    <div className="mlab-block-question__body" style={{ background: '#f8fafc', padding: '1rem', borderRadius: '6px', border: '1px dashed #cbd5e1' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                                            <Layers size={16} color="#8b5cf6" />
+                                            <span style={{ fontSize: '0.85rem', color: '#334155', fontWeight: 'bold' }}>Multi-Modal Task (Learner Evidence Options):</span>
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                                            {block.allowText && <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', background: '#e2e8f0', padding: '4px 10px', borderRadius: '20px', color: '#475569' }}><FileText size={12} /> Rich Text</span>}
+                                            {block.allowAudio && <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', background: '#fdf4ff', padding: '4px 10px', borderRadius: '20px', color: '#d946ef', border: '1px solid #fbcfe8' }}><Mic size={12} /> Audio Recording</span>}
+                                            {block.allowUrl && <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', background: '#eff6ff', padding: '4px 10px', borderRadius: '20px', color: '#3b82f6', border: '1px solid #bfdbfe' }}><LinkIcon size={12} /> External URL</span>}
+                                            {block.allowUpload && <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', background: '#f5f3ff', padding: '4px 10px', borderRadius: '20px', color: '#8b5cf6', border: '1px solid #ddd6fe' }}><UploadCloud size={12} /> File Upload ({block.allowedFileTypes})</span>}
+                                            {block.allowCode && <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', background: '#fdf2f8', padding: '4px 10px', borderRadius: '20px', color: '#ec4899', border: '1px solid #fbcfe8' }}><Code size={12} /> IDE / Code ({block.codeLanguage})</span>}
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        }
+
+                        /* 🚀 Practical Checklist */
+                        if (block.type === 'checklist') {
+                            qNum++;
+                            return (
+                                <div key={block.id} className="mlab-block-question">
+                                    <div className="mlab-block-question__header">
+                                        <span className="mlab-block-question__num" style={{ background: '#ccfbf1', color: '#0d9488' }}>CHK</span>
+                                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                            <span className="mlab-block-question__text">{block.title}</span>
+                                            <span style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '4px' }}>This section is completed by the Assessor/Mentor during observation.</span>
+                                        </div>
+                                        <span className="mlab-block-question__marks">{block.marks} Marks</span>
+                                    </div>
+                                    <div className="mlab-block-question__body">
+                                        {block.criteria?.map((crit: string, i: number) => (
+                                            <div key={i} style={{ marginBottom: '1rem', padding: '1rem', border: '1px solid #e2e8f0', borderRadius: '6px', background: '#f8fafc' }}>
+                                                <p style={{ margin: '0 0 10px 0', fontWeight: 'bold', color: '#334155' }}>{i + 1}. {crit}</p>
+
+                                                <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center', opacity: 0.7 }}>
+                                                    {block.requirePerCriterionTiming !== false && (
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.75rem', background: '#e2e8f0', padding: '4px 8px', borderRadius: '4px', color: '#475569' }}>
+                                                            <Timer size={14} /> Start Task
+                                                        </div>
+                                                    )}
+                                                    <div style={{ display: 'flex', gap: '5px' }}>
+                                                        <span style={{ fontSize: '0.8rem', padding: '4px 8px', border: '1px solid #bbf7d0', borderRadius: '4px', background: '#f0fdf4', color: '#166534', fontWeight: 'bold' }}>○ Competent (C)</span>
+                                                        <span style={{ fontSize: '0.8rem', padding: '4px 8px', border: '1px solid #fecaca', borderRadius: '4px', background: '#fef2f2', color: '#991b1b', fontWeight: 'bold' }}>○ NYC</span>
+                                                    </div>
+                                                    <input type="text" disabled placeholder="Assessor comments..." style={{ flex: 1, minWidth: '200px', padding: '6px 10px', border: '1px solid #cbd5e1', borderRadius: '4px', background: 'white' }} />
+                                                </div>
+                                            </div>
+                                        ))}
+
+                                        {block.requireObservationDeclaration !== false && (
+                                            <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px dashed #cbd5e1', opacity: 0.8 }}>
+                                                <h4 style={{ fontSize: '0.8rem', color: '#475569', marginBottom: '10px', textTransform: 'uppercase' }}>Global Assessor / Mentor Sign-off</h4>
+                                                {block.requireTimeTracking !== false && (
+                                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '10px', marginBottom: '10px' }}>
+                                                        <input type="text" className="ab-input" disabled placeholder="Date..." style={{ padding: '6px' }} />
+                                                        <input type="text" className="ab-input" disabled placeholder="Time Started..." style={{ padding: '6px' }} />
+                                                        <input type="text" className="ab-input" disabled placeholder="Time Completed..." style={{ padding: '6px' }} />
+                                                    </div>
+                                                )}
+                                                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px', fontSize: '0.8rem', color: '#334155', fontWeight: 'bold' }}>
+                                                    <input type="checkbox" disabled checked />
+                                                    I declare that I have observed the learner performing these tasks and that the evidence was submitted by the learner.
+                                                </label>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        }
+
+                        /* 🚀 Workplace Logbook */
+                        if (block.type === 'logbook') {
+                            return (
+                                <div key={block.id} className="mlab-block-question">
+                                    <div className="mlab-block-question__header">
+                                        <span className="mlab-block-question__num" style={{ background: '#ffedd5', color: '#ea580c' }}>LOG</span>
+                                        <span className="mlab-block-question__text">{block.title}</span>
+                                    </div>
+                                    <div className="mlab-block-question__body">
+                                        <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '10px' }}>{block.content}</p>
+                                        <div style={{ width: '100%', overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: '6px' }}>
+                                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem', textAlign: 'left' }}>
+                                                <thead>
+                                                    <tr style={{ background: '#f8fafc', borderBottom: '2px solid #cbd5e1' }}>
+                                                        <th style={{ padding: '10px' }}>Date</th>
+                                                        <th style={{ padding: '10px' }}>Assignment Task</th>
+                                                        <th style={{ padding: '10px' }}>Start Time</th>
+                                                        <th style={{ padding: '10px' }}>Finish Time</th>
+                                                        <th style={{ padding: '10px' }}>Total Hours</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    <tr style={{ background: 'white' }}>
+                                                        <td colSpan={5} style={{ padding: '20px', textAlign: 'center', color: '#94a3b8', fontStyle: 'italic' }}>
+                                                            Learner will be able to dynamically add and fill rows here.
+                                                        </td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        }
+
                         return null;
                     })}
                 </div>
@@ -189,7 +309,7 @@ export const AssessmentPreview: React.FC = () => {
 
                         <div className="mlab-preview-footer__stat">
                             <span className="mlab-preview-footer__num">{qCount}</span>
-                            <span className="mlab-preview-footer__unit">Questions</span>
+                            <span className="mlab-preview-footer__unit">Questions / Tasks</span>
                         </div>
 
                         <div className="mlab-preview-footer__divider" />
@@ -217,10 +337,13 @@ export const AssessmentPreview: React.FC = () => {
 };
 
 
+// // src/pages/FacilitatorDashboard/AssessmentPreview/AssessmentPreview.tsx
+// // mLab CI v2.1 — Official QCTO workbook preview aesthetic
+
 // import React, { useState, useEffect } from 'react';
 // import { useParams, useNavigate } from 'react-router-dom';
 // import { doc, getDoc } from 'firebase/firestore';
-// import { ArrowLeft, Info } from 'lucide-react';
+// import { ArrowLeft, Info, Clock, FileText, CheckSquare } from 'lucide-react';
 // import { db } from '../../../lib/firebase';
 // import './AssessmentPreview.css';
 
@@ -248,121 +371,334 @@ export const AssessmentPreview: React.FC = () => {
 //     if (loading) return <div className="mlab-preview-state">Loading Preview…</div>;
 //     if (!assessment) return <div className="mlab-preview-state">Assessment not found.</div>;
 
+//     // Derived stats
+//     const blocks = assessment.blocks || [];
+//     const qBlocks = blocks.filter((b: any) => b.type === 'text' || b.type === 'mcq');
+//     const qCount = qBlocks.length;
+//     const totalMarks = assessment.totalMarks ?? qBlocks.reduce((s: number, b: any) => s + (b.marks || 0), 0);
+//     const timeLimit = assessment.moduleInfo?.timeLimit;
+
+//     // Running question number across all blocks
+//     let qNum = 0;
+
 //     return (
 //         <div className="mlab-preview">
 
-//             {/* ── Admin Warning Banner ──────────────────────────────────── */}
+//             {/* ── Admin warning banner ── */}
 //             <div className="mlab-preview-banner">
 //                 <span className="mlab-preview-banner__title">Admin Preview Mode</span>
 //                 <span className="mlab-preview-banner__body">
-//                     You are viewing the assessment template. Answers cannot be saved here.
+//                     You are viewing the assessment template. Learner answers cannot be saved here.
 //                 </span>
 //             </div>
 
-//             {/* ── Back Button ───────────────────────────────────────────── */}
-//             <button className="mlab-back-btn" onClick={() => navigate(-1)}>
-//                 <ArrowLeft size={15} /> Go Back
-//             </button>
+//             {/* ── Back nav ── */}
+//             <div className="mlab-preview-nav">
+//                 <button className="mlab-back-btn" onClick={() => navigate(-1)}>
+//                     <ArrowLeft size={14} /> Back to Builder
+//                 </button>
+//             </div>
 
-//             {/* ── Assessment Header ─────────────────────────────────────── */}
-//             <header className="mlab-preview-header">
-//                 <h1 className="mlab-preview-header__title">{assessment.title}</h1>
-//                 <div className="mlab-preview-header__meta">
-//                     <span>
-//                         Type: <strong>{assessment.type}</strong>
+//             <div className="mlab-preview-doc">
+
+//                 {/* ── Assessment Header ── */}
+//                 <header className="mlab-preview-header">
+//                     <span className="mlab-preview-header__eyebrow">
+//                         {assessment.moduleType?.toUpperCase() || 'Assessment'} · {assessment.moduleInfo?.moduleNumber || ''}
 //                     </span>
-//                     <span className="mlab-preview-header__meta-sep">•</span>
-//                     <span>
-//                         Total Marks:&nbsp;
-//                         <span className="mlab-meta-chip">{assessment.totalMarks} Marks</span>
-//                     </span>
-//                 </div>
-//             </header>
+//                     <h1 className="mlab-preview-header__title">{assessment.title}</h1>
+//                     <div className="mlab-preview-header__meta">
+//                         <span className={`mlab-meta-chip mlab-meta-chip--type-${assessment.type}`}>
+//                             {assessment.type}
+//                         </span>
+//                         <span className="mlab-meta-chip mlab-meta-chip--marks">
+//                             {totalMarks} Marks
+//                         </span>
+//                         <span className="mlab-meta-chip mlab-meta-chip--default">
+//                             <FileText size={11} /> {qCount} Questions
+//                         </span>
+//                         {timeLimit ? (
+//                             <span className="mlab-meta-chip mlab-meta-chip--time">
+//                                 <Clock size={11} /> {timeLimit} Min Limit
+//                             </span>
+//                         ) : null}
+//                     </div>
+//                 </header>
 
-//             {/* ── Assessment Blocks ─────────────────────────────────────── */}
-//             <div className="mlab-blocks">
-//                 {assessment.blocks?.map((block: any) => {
+//                 {/* ── Instructions ── */}
+//                 {assessment.instructions && (
+//                     <div className="mlab-preview-instructions">
+//                         <span className="mlab-preview-instructions__label">Learner Instructions</span>
+//                         <p className="mlab-preview-instructions__text">{assessment.instructions}</p>
+//                     </div>
+//                 )}
 
-//                     /* ── Section Header ──────────────────────────────────── */
-//                     if (block.type === 'section') {
-//                         return (
+//                 {/* ── Blocks ── */}
+//                 <div className="mlab-blocks">
+//                     {blocks.map((block: any) => {
+
+//                         /* Section header */
+//                         if (block.type === 'section') return (
 //                             <div key={block.id} className="mlab-block-section">
 //                                 {block.title}
 //                             </div>
 //                         );
-//                     }
 
-//                     /* ── Info / Reading Block ─────────────────────────────── */
-//                     if (block.type === 'info') {
-//                         return (
+//                         /* Reading / info block */
+//                         if (block.type === 'info') return (
 //                             <div key={block.id} className="mlab-block-info">
 //                                 <div className="mlab-block-info__label">
-//                                     <Info size={15} /> Reading Material
+//                                     <Info size={13} /> Reading Material
 //                                 </div>
 //                                 <p className="mlab-block-info__content">{block.content}</p>
 //                             </div>
 //                         );
-//                     }
 
-//                     /* ── Text Question ────────────────────────────────────── */
-//                     if (block.type === 'text') {
-//                         return (
-//                             <div key={block.id} className="mlab-block-question">
-//                                 <div className="mlab-block-question__header">
-//                                     <span className="mlab-block-question__text">{block.question}</span>
-//                                     <span className="mlab-block-question__marks">{block.marks} Marks</span>
-//                                 </div>
-//                                 <div className="mlab-block-question__body">
-//                                     <textarea
-//                                         className="mlab-answer-textarea"
-//                                         disabled
-//                                         placeholder="Learner will type their answer here…"
-//                                         rows={4}
-//                                     />
-//                                 </div>
-//                             </div>
-//                         );
-//                     }
-
-//                     /* ── MCQ Question ─────────────────────────────────────── */
-//                     if (block.type === 'mcq') {
-//                         return (
-//                             <div key={block.id} className="mlab-block-question">
-//                                 <div className="mlab-block-question__header">
-//                                     <span className="mlab-block-question__text">{block.question}</span>
-//                                     <span className="mlab-block-question__marks">{block.marks} Marks</span>
-//                                 </div>
-//                                 <div className="mlab-block-question__body">
-//                                     <div className="mlab-mcq-options">
-//                                         {block.options.map((opt: string, i: number) => {
-//                                             const isCorrect = block.correctOption === i;
-//                                             return (
-//                                                 <div
-//                                                     key={i}
-//                                                     className={`mlab-mcq-option${isCorrect ? ' mlab-mcq-option--correct' : ''}`}
-//                                                 >
-//                                                     <input type="radio" disabled checked={isCorrect} readOnly />
-//                                                     <span className="mlab-mcq-option__letter">
-//                                                         {String.fromCharCode(65 + i)}.
-//                                                     </span>
-//                                                     <span className="mlab-mcq-option__text">{opt}</span>
-//                                                     {isCorrect && (
-//                                                         <span className="mlab-mcq-option__correct-tag">
-//                                                             Correct Answer
-//                                                         </span>
-//                                                     )}
-//                                                 </div>
-//                                             );
-//                                         })}
+//                         /* Text question */
+//                         if (block.type === 'text') {
+//                             qNum++;
+//                             return (
+//                                 <div key={block.id} className="mlab-block-question">
+//                                     <div className="mlab-block-question__header">
+//                                         <span className="mlab-block-question__num">Q{qNum}</span>
+//                                         <span className="mlab-block-question__text">{block.question}</span>
+//                                         <span className="mlab-block-question__marks">{block.marks} Marks</span>
+//                                     </div>
+//                                     <div className="mlab-block-question__body">
+//                                         <textarea
+//                                             className="mlab-answer-textarea"
+//                                             disabled
+//                                             placeholder="Learner will type their answer here…"
+//                                             rows={4}
+//                                         />
 //                                     </div>
 //                                 </div>
-//                             </div>
-//                         );
-//                     }
+//                             );
+//                         }
 
-//                     return null;
-//                 })}
+//                         /* MCQ question */
+//                         if (block.type === 'mcq') {
+//                             qNum++;
+//                             return (
+//                                 <div key={block.id} className="mlab-block-question">
+//                                     <div className="mlab-block-question__header">
+//                                         <span className="mlab-block-question__num">Q{qNum}</span>
+//                                         <span className="mlab-block-question__text">{block.question}</span>
+//                                         <span className="mlab-block-question__marks">{block.marks} Marks</span>
+//                                     </div>
+//                                     <div className="mlab-block-question__body">
+//                                         <div className="mlab-mcq-options">
+//                                             {block.options.map((opt: string, i: number) => {
+//                                                 const isCorrect = block.correctOption === i;
+//                                                 return (
+//                                                     <div
+//                                                         key={i}
+//                                                         className={`mlab-mcq-option${isCorrect ? ' mlab-mcq-option--correct' : ''}`}
+//                                                     >
+//                                                         <input type="radio" disabled checked={isCorrect} readOnly />
+//                                                         <span className="mlab-mcq-option__letter">
+//                                                             {String.fromCharCode(65 + i)}.
+//                                                         </span>
+//                                                         <span className="mlab-mcq-option__text">{opt}</span>
+//                                                         {isCorrect && (
+//                                                             <span className="mlab-mcq-option__correct-tag">
+//                                                                 Correct Answer
+//                                                             </span>
+//                                                         )}
+//                                                     </div>
+//                                                 );
+//                                             })}
+//                                         </div>
+//                                     </div>
+//                                 </div>
+//                             );
+//                         }
+
+//                         return null;
+//                     })}
+//                 </div>
+
+//                 {/* ── Footer summary ── */}
+//                 {blocks.length > 0 && (
+//                     <div className="mlab-preview-footer">
+//                         <span className="mlab-preview-footer__label">Assessment Summary</span>
+
+//                         <div className="mlab-preview-footer__stat">
+//                             <span className="mlab-preview-footer__num">{qCount}</span>
+//                             <span className="mlab-preview-footer__unit">Questions</span>
+//                         </div>
+
+//                         <div className="mlab-preview-footer__divider" />
+
+//                         <div className="mlab-preview-footer__stat">
+//                             <span className="mlab-preview-footer__num">{totalMarks}</span>
+//                             <span className="mlab-preview-footer__unit">Total Marks</span>
+//                         </div>
+
+//                         {timeLimit ? (
+//                             <>
+//                                 <div className="mlab-preview-footer__divider" />
+//                                 <div className="mlab-preview-footer__stat">
+//                                     <span className="mlab-preview-footer__num">{timeLimit}</span>
+//                                     <span className="mlab-preview-footer__unit">Minutes</span>
+//                                 </div>
+//                             </>
+//                         ) : null}
+//                     </div>
+//                 )}
+
 //             </div>
 //         </div>
 //     );
 // };
+
+
+// // import React, { useState, useEffect } from 'react';
+// // import { useParams, useNavigate } from 'react-router-dom';
+// // import { doc, getDoc } from 'firebase/firestore';
+// // import { ArrowLeft, Info } from 'lucide-react';
+// // import { db } from '../../../lib/firebase';
+// // import './AssessmentPreview.css';
+
+// // export const AssessmentPreview: React.FC = () => {
+// //     const { assessmentId } = useParams<{ assessmentId: string }>();
+// //     const navigate = useNavigate();
+// //     const [assessment, setAssessment] = useState<any>(null);
+// //     const [loading, setLoading] = useState(true);
+
+// //     useEffect(() => {
+// //         const fetchAssessment = async () => {
+// //             if (!assessmentId) return;
+// //             try {
+// //                 const snap = await getDoc(doc(db, 'assessments', assessmentId));
+// //                 if (snap.exists()) setAssessment(snap.data());
+// //             } catch (err) {
+// //                 console.error('Error loading preview:', err);
+// //             } finally {
+// //                 setLoading(false);
+// //             }
+// //         };
+// //         fetchAssessment();
+// //     }, [assessmentId]);
+
+// //     if (loading) return <div className="mlab-preview-state">Loading Preview…</div>;
+// //     if (!assessment) return <div className="mlab-preview-state">Assessment not found.</div>;
+
+// //     return (
+// //         <div className="mlab-preview">
+
+// //             {/* ── Admin Warning Banner ──────────────────────────────────── */}
+// //             <div className="mlab-preview-banner">
+// //                 <span className="mlab-preview-banner__title">Admin Preview Mode</span>
+// //                 <span className="mlab-preview-banner__body">
+// //                     You are viewing the assessment template. Answers cannot be saved here.
+// //                 </span>
+// //             </div>
+
+// //             {/* ── Back Button ───────────────────────────────────────────── */}
+// //             <button className="mlab-back-btn" onClick={() => navigate(-1)}>
+// //                 <ArrowLeft size={15} /> Go Back
+// //             </button>
+
+// //             {/* ── Assessment Header ─────────────────────────────────────── */}
+// //             <header className="mlab-preview-header">
+// //                 <h1 className="mlab-preview-header__title">{assessment.title}</h1>
+// //                 <div className="mlab-preview-header__meta">
+// //                     <span>
+// //                         Type: <strong>{assessment.type}</strong>
+// //                     </span>
+// //                     <span className="mlab-preview-header__meta-sep">•</span>
+// //                     <span>
+// //                         Total Marks:&nbsp;
+// //                         <span className="mlab-meta-chip">{assessment.totalMarks} Marks</span>
+// //                     </span>
+// //                 </div>
+// //             </header>
+
+// //             {/* ── Assessment Blocks ─────────────────────────────────────── */}
+// //             <div className="mlab-blocks">
+// //                 {assessment.blocks?.map((block: any) => {
+
+// //                     /* ── Section Header ──────────────────────────────────── */
+// //                     if (block.type === 'section') {
+// //                         return (
+// //                             <div key={block.id} className="mlab-block-section">
+// //                                 {block.title}
+// //                             </div>
+// //                         );
+// //                     }
+
+// //                     /* ── Info / Reading Block ─────────────────────────────── */
+// //                     if (block.type === 'info') {
+// //                         return (
+// //                             <div key={block.id} className="mlab-block-info">
+// //                                 <div className="mlab-block-info__label">
+// //                                     <Info size={15} /> Reading Material
+// //                                 </div>
+// //                                 <p className="mlab-block-info__content">{block.content}</p>
+// //                             </div>
+// //                         );
+// //                     }
+
+// //                     /* ── Text Question ────────────────────────────────────── */
+// //                     if (block.type === 'text') {
+// //                         return (
+// //                             <div key={block.id} className="mlab-block-question">
+// //                                 <div className="mlab-block-question__header">
+// //                                     <span className="mlab-block-question__text">{block.question}</span>
+// //                                     <span className="mlab-block-question__marks">{block.marks} Marks</span>
+// //                                 </div>
+// //                                 <div className="mlab-block-question__body">
+// //                                     <textarea
+// //                                         className="mlab-answer-textarea"
+// //                                         disabled
+// //                                         placeholder="Learner will type their answer here…"
+// //                                         rows={4}
+// //                                     />
+// //                                 </div>
+// //                             </div>
+// //                         );
+// //                     }
+
+// //                     /* ── MCQ Question ─────────────────────────────────────── */
+// //                     if (block.type === 'mcq') {
+// //                         return (
+// //                             <div key={block.id} className="mlab-block-question">
+// //                                 <div className="mlab-block-question__header">
+// //                                     <span className="mlab-block-question__text">{block.question}</span>
+// //                                     <span className="mlab-block-question__marks">{block.marks} Marks</span>
+// //                                 </div>
+// //                                 <div className="mlab-block-question__body">
+// //                                     <div className="mlab-mcq-options">
+// //                                         {block.options.map((opt: string, i: number) => {
+// //                                             const isCorrect = block.correctOption === i;
+// //                                             return (
+// //                                                 <div
+// //                                                     key={i}
+// //                                                     className={`mlab-mcq-option${isCorrect ? ' mlab-mcq-option--correct' : ''}`}
+// //                                                 >
+// //                                                     <input type="radio" disabled checked={isCorrect} readOnly />
+// //                                                     <span className="mlab-mcq-option__letter">
+// //                                                         {String.fromCharCode(65 + i)}.
+// //                                                     </span>
+// //                                                     <span className="mlab-mcq-option__text">{opt}</span>
+// //                                                     {isCorrect && (
+// //                                                         <span className="mlab-mcq-option__correct-tag">
+// //                                                             Correct Answer
+// //                                                         </span>
+// //                                                     )}
+// //                                                 </div>
+// //                                             );
+// //                                         })}
+// //                                     </div>
+// //                                 </div>
+// //                             </div>
+// //                         );
+// //                     }
+
+// //                     return null;
+// //                 })}
+// //             </div>
+// //         </div>
+// //     );
+// // };
