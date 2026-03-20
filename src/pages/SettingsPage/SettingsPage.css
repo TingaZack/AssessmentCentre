@@ -1,0 +1,916 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   SettingsPage.css
+   mLab Corporate Identity Brand Guide 2019
+   Consistent with AdminDashboard.css · LearnerProfileView.css · Sidebar.css
+
+   Colours:
+     --mlab-blue:   #073f4e  (Midnight Blue)
+     --mlab-green:  #94c73d  (Green – primary accent)
+     --mlab-grey:   #6b6b6b  (Grey – secondary text)
+     --mlab-white:  #ffffff
+
+   Typefaces:
+     Oswald       – headings, nav items, labels, buttons (uppercase)
+     Trebuchet MS – body, descriptions, input values
+───────────────────────────────────────────────────────────────────────────── */
+
+@import url("https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&display=swap");
+
+/* ── CSS Variables ─────────────────────────────────────────────────────────── */
+:root {
+  --mlab-blue: #073f4e;
+  --mlab-blue-dark: #052e3a;
+  --mlab-green: #94c73d;
+  --mlab-green-dark: #7aaa2e;
+  --mlab-grey: #6b6b6b;
+  --mlab-white: #ffffff;
+  --mlab-light-blue: #e8f0f3;
+  --mlab-light-green: #f0f7e1;
+  --mlab-amber: #d97706;
+  --mlab-red: #ef4444;
+  --mlab-border: #d1dde3;
+  --mlab-bg: #f4f7f9;
+
+  --font-heading: "Oswald", "Trebuchet MS", sans-serif;
+  --font-body:
+    "Trebuchet MS", "Lucida Grande", "Lucida Sans Unicode", Arial, sans-serif;
+
+  --radius-sm: 3px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --transition: 0.18s ease;
+}
+
+/* ── Spinner & fade ────────────────────────────────────────────────────────── */
+@keyframes sp-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.spin {
+  animation: sp-spin 0.8s linear infinite;
+}
+
+@keyframes sp-fade {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-fade-in {
+  animation: sp-fade 0.22s ease both;
+}
+
+/* ── Utility ───────────────────────────────────────────────────────────────── */
+.mt-2 {
+  margin-top: 0.5rem;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   MAIN-WRAPPER EXTENSION
+   settings-wrapper adds bottom padding so save bar never covers content
+══════════════════════════════════════════════════════════════════════════════ */
+.settings-wrapper {
+  /* overflow-y is intentionally NOT set here — main-wrapper handles scroll.
+     The save bar is position:fixed outside main-wrapper so it works correctly.
+     We add bottom padding so the bar never obscures content. */
+  padding-bottom: 80px;
+  width: 100%;
+  min-height: 100%;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   TWO-COLUMN SETTINGS LAYOUT
+   settings-sidebar (fixed nav left) + settings-content (scrollable right)
+══════════════════════════════════════════════════════════════════════════════ */
+.settings-container {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 2rem;
+  padding: 0 2rem 2rem;
+  align-items: start;
+}
+
+/* ── Left sidebar nav ─────────────────────────────────────────────────────── */
+.settings-sidebar {
+  position: sticky;
+  top: 1.5rem;
+}
+
+.settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--mlab-white);
+  border: 1px solid var(--mlab-border);
+  border-top: 4px solid var(--mlab-blue);
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  padding: 0.5rem;
+  overflow: hidden;
+}
+
+.settings-nav__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 0.65rem 0.85rem;
+  background: transparent;
+  border: none;
+  border-left: 3px solid transparent;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  cursor: pointer;
+  font-family: var(--font-heading);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--mlab-grey);
+  text-align: left;
+  transition: all var(--transition);
+  outline: none;
+  white-space: nowrap;
+}
+.settings-nav__item:hover {
+  background: var(--mlab-light-blue);
+  color: var(--mlab-blue);
+  border-left-color: rgba(7, 63, 78, 0.25);
+}
+.settings-nav__item.active {
+  background: var(--mlab-light-blue);
+  color: var(--mlab-blue);
+  border-left-color: var(--mlab-green);
+  font-weight: 700;
+}
+.settings-nav__icon {
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+.settings-nav__item.active .settings-nav__icon,
+.settings-nav__item:hover .settings-nav__icon {
+  opacity: 1;
+}
+
+/* ── Right content pane ───────────────────────────────────────────────────── */
+.settings-content {
+  min-width: 0;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   SECTION
+══════════════════════════════════════════════════════════════════════════════ */
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.settings-section__title {
+  font-family: var(--font-heading);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--mlab-blue);
+  margin: 0 0 0.35rem;
+}
+
+.settings-section__desc {
+  font-size: 0.84rem;
+  color: var(--mlab-grey);
+  line-height: 1.6;
+  margin: 0 0 1.25rem;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   SETTINGS CARD  (white content panel)
+══════════════════════════════════════════════════════════════════════════════ */
+
+/* Sub-heading inside settings-card (Web3 section separators) */
+.settings-card__subheading {
+  font-family: var(--font-heading);
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--mlab-blue);
+  margin: 0 0 1.25rem;
+}
+.settings-card__subheading + .settings-form-grid {
+  margin-top: 0;
+}
+.settings-card {
+  background: var(--mlab-white);
+  border: 1px solid var(--mlab-border);
+  border-top: 4px solid var(--mlab-blue);
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  padding: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+/* ── Form grid inside card ────────────────────────────────────────────────── */
+.settings-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.col-span-2 {
+  grid-column: 1 / -1;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   SHARED FORM ELEMENTS  (mlab-* namespace for cross-component reuse)
+══════════════════════════════════════════════════════════════════════════════ */
+.mlab-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.mlab-form-group label {
+  font-family: var(--font-heading);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--mlab-grey);
+}
+
+.mlab-input {
+  font-family: var(--font-body);
+  font-size: 0.88rem;
+  color: var(--mlab-blue);
+  background: var(--mlab-white);
+  border: 1.5px solid var(--mlab-border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  width: 100%;
+  box-sizing: border-box;
+  outline: none;
+  transition:
+    border-color var(--transition),
+    box-shadow var(--transition);
+  resize: vertical;
+  appearance: none; /* normalise <select> */
+  cursor: text;
+}
+select.mlab-input {
+  cursor: pointer;
+}
+.mlab-input:focus {
+  border-color: var(--mlab-blue);
+  box-shadow: 0 0 0 3px rgba(7, 63, 78, 0.1);
+}
+
+/* Input with unit suffix */
+.input-with-suffix {
+  display: flex;
+  align-items: stretch;
+  border: 1.5px solid var(--mlab-border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  transition:
+    border-color var(--transition),
+    box-shadow var(--transition);
+}
+.input-with-suffix:focus-within {
+  border-color: var(--mlab-blue);
+  box-shadow: 0 0 0 3px rgba(7, 63, 78, 0.1);
+}
+.input-with-suffix .mlab-input {
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  flex: 1;
+}
+.input-with-suffix .mlab-input:focus {
+  box-shadow: none;
+}
+
+.suffix {
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  background: var(--mlab-bg);
+  border-left: 1.5px solid var(--mlab-border);
+  font-family: var(--font-heading);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--mlab-grey);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.input-help {
+  font-size: 0.72rem;
+  color: #94a3b8;
+  line-height: 1.45;
+  margin-top: 1px;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   BRAND ASSETS GRID
+══════════════════════════════════════════════════════════════════════════════ */
+.brand-assets-grid {
+  display: flex;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.asset-upload-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 160px;
+}
+
+.asset-preview {
+  width: 100%;
+  min-height: 100px;
+  background: var(--mlab-bg);
+  border: 2px dashed var(--mlab-border);
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 12px;
+}
+.asset-preview img {
+  max-width: 100%;
+  max-height: 80px;
+  object-fit: contain;
+}
+
+.logo-preview {
+  border-color: rgba(7, 63, 78, 0.25);
+  background: var(--mlab-light-blue);
+}
+.signature-preview {
+  border-color: rgba(148, 199, 61, 0.35);
+  background: var(--mlab-light-green);
+}
+
+.asset-help {
+  font-size: 0.72rem;
+  color: #94a3b8;
+  text-align: center;
+  font-style: italic;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   DIVIDER & TOGGLE ROW  (Academic Rules card)
+══════════════════════════════════════════════════════════════════════════════ */
+.settings-divider {
+  border: none;
+  border-top: 1px solid var(--mlab-border);
+  margin: 1.5rem 0;
+}
+
+.setting-row-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2rem;
+  flex-wrap: wrap;
+}
+.setting-toggle-text h4 {
+  font-family: var(--font-heading);
+  font-size: 0.88rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--mlab-blue);
+  margin: 0 0 3px;
+}
+.setting-toggle-text p {
+  font-size: 0.82rem;
+  color: var(--mlab-grey);
+  margin: 0;
+  line-height: 1.55;
+  max-width: 480px;
+}
+
+/* iOS-style toggle */
+.mlab-toggle {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.mlab-toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.mlab-toggle-slider {
+  position: absolute;
+  inset: 0;
+  background: var(--mlab-border);
+  border-radius: 24px;
+  transition: background var(--transition);
+  cursor: pointer;
+}
+.mlab-toggle-slider::before {
+  content: "";
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  left: 3px;
+  top: 3px;
+  background: var(--mlab-white);
+  border-radius: 50%;
+  transition: transform var(--transition);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+.mlab-toggle input:checked + .mlab-toggle-slider {
+  background: var(--mlab-green);
+}
+.mlab-toggle input:checked + .mlab-toggle-slider::before {
+  transform: translateX(20px);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   BUTTONS
+══════════════════════════════════════════════════════════════════════════════ */
+.mlab-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0.6rem 1.25rem;
+  border: 2px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 0.8rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  transition: all var(--transition);
+  outline: none;
+}
+.mlab-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.mlab-btn--sm {
+  padding: 0.4rem 0.9rem;
+  font-size: 0.72rem;
+}
+
+.mlab-btn--outline-blue {
+  background: transparent;
+  color: var(--mlab-blue);
+  border-color: var(--mlab-blue);
+}
+.mlab-btn--outline-blue:hover:not(:disabled) {
+  opacity: 0.75;
+}
+
+.mlab-btn--green {
+  background: var(--mlab-green);
+  color: var(--mlab-white);
+  border-color: var(--mlab-green);
+}
+.mlab-btn--green:hover:not(:disabled) {
+  background: var(--mlab-green-dark);
+  border-color: var(--mlab-green-dark);
+}
+
+.mlab-btn--ghost {
+  background: transparent;
+  color: var(--mlab-grey);
+  border-color: var(--mlab-border);
+}
+.mlab-btn--ghost:hover:not(:disabled) {
+  background: var(--mlab-light-blue);
+  color: var(--mlab-blue);
+  border-color: var(--mlab-border);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   EMPTY / PLACEHOLDER TAB
+══════════════════════════════════════════════════════════════════════════════ */
+.empty-tab {
+  align-items: center;
+  justify-content: center;
+  padding: 4rem 2rem;
+  text-align: center;
+  color: var(--mlab-grey);
+  background: var(--mlab-white);
+  border: 1px dashed var(--mlab-border);
+  border-radius: var(--radius-lg);
+}
+.empty-tab h2 {
+  font-family: var(--font-heading);
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--mlab-blue);
+  margin: 0.75rem 0 0.4rem;
+}
+.empty-tab p {
+  font-size: 0.84rem;
+  color: var(--mlab-grey);
+  margin: 0;
+  max-width: 380px;
+  line-height: 1.6;
+}
+.empty-icon {
+  color: var(--mlab-border);
+  display: block;
+  margin: 0 auto;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   FLOATING SAVE BAR
+══════════════════════════════════════════════════════════════════════════════ */
+.settings-save-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 9999; /* must exceed sidebar (50) and any stacking contexts */
+  background: var(--mlab-white);
+  border-top: 3px solid var(--mlab-amber);
+  box-shadow: 0 -4px 20px rgba(7, 63, 78, 0.12);
+  transform: translateY(100%);
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: none;
+  will-change: transform; /* forces own compositing layer — escapes stacking contexts */
+}
+.settings-save-bar.visible {
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.save-bar-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0.85rem 2rem;
+  flex-wrap: wrap;
+}
+
+.save-bar-text {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.88rem;
+  color: var(--mlab-blue);
+  font-weight: 600;
+  font-family: var(--font-body);
+}
+
+.save-bar-actions {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   CAMPUS / TRAINING LOCATIONS MANAGER
+   Dynamic list of physical campuses with add / remove / set-default
+══════════════════════════════════════════════════════════════════════════════ */
+.settings-locations-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+/* ── Individual location card ─────────────────────────────────────────────── */
+.location-card {
+  background: var(--mlab-white);
+  border: 1.5px solid var(--mlab-border);
+  border-left: 4px solid var(--mlab-border);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  padding: 1.25rem 1.5rem;
+  transition:
+    border-color var(--transition),
+    box-shadow var(--transition);
+}
+.location-card:hover {
+  box-shadow: 0 3px 12px rgba(7, 63, 78, 0.07);
+}
+
+/* Default / primary campus — green left accent */
+.location-card--default {
+  border-left-color: var(--mlab-green);
+  background: #fafffe;
+}
+
+/* ── Card header row: icon + number + badge | actions ─────────────────────── */
+.location-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0;
+  flex-wrap: wrap;
+}
+
+.location-card__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Index number pill */
+.badge-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  background: var(--mlab-blue);
+  color: var(--mlab-white);
+  border-radius: 50%;
+  font-family: var(--font-heading);
+  font-size: 0.68rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.location-card--default .badge-number {
+  background: var(--mlab-green-dark);
+}
+
+/* "Primary Location" green pill badge */
+.default-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  font-family: var(--font-heading);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  background: var(--mlab-light-green);
+  color: var(--mlab-green-dark);
+  border: 1px solid #c2e08a;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+
+/* ── Action buttons row ───────────────────────────────────────────────────── */
+.location-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.location-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  background: none;
+  border: 1.5px solid currentColor;
+  border-radius: var(--radius-sm);
+  padding: 4px 10px;
+  cursor: pointer;
+  font-family: var(--font-heading);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition: all var(--transition);
+  outline: none;
+  white-space: nowrap;
+}
+.location-action-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* "Set as Primary" — blue */
+.location-action-btn.text-blue {
+  color: var(--mlab-blue);
+  border-color: var(--mlab-blue);
+}
+.location-action-btn.text-blue:hover:not(:disabled) {
+  background: var(--mlab-light-blue);
+}
+
+/* Delete — red */
+.location-action-btn.text-red {
+  color: var(--mlab-red);
+  border-color: #fca5a5;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+}
+.location-action-btn.text-red:hover:not(:disabled) {
+  background: #fee2e2;
+  border-color: var(--mlab-red);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   CAMPUS / TRAINING LOCATIONS MANAGER
+══════════════════════════════════════════════════════════════════════════════ */
+.settings-locations-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.location-card {
+  background: var(--mlab-white);
+  border: 1px solid var(--mlab-border);
+  border-left: 4px solid var(--mlab-border);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  padding: 1.25rem 1.5rem;
+  transition:
+    border-left-color var(--transition),
+    box-shadow var(--transition);
+}
+.location-card:hover {
+  box-shadow: 0 3px 12px rgba(7, 63, 78, 0.07);
+}
+.location-card--default {
+  border-left-color: var(--mlab-green);
+  background: #fafffe;
+}
+
+/* Card header: icon + number + badge | action buttons */
+.location-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0;
+}
+
+.location-card__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Numbered index pill */
+.badge-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  background: var(--mlab-blue);
+  color: var(--mlab-white);
+  font-family: var(--font-heading);
+  font-size: 0.68rem;
+  font-weight: 700;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.location-card--default .badge-number {
+  background: var(--mlab-green-dark);
+}
+
+/* "Primary Location" green pill */
+.default-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  font-family: var(--font-heading);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  background: var(--mlab-light-green);
+  color: var(--mlab-green-dark);
+  border: 1px solid #c2e08a;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+
+/* Action buttons right side */
+.location-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* Text-style action buttons (Set as Primary / delete) */
+.location-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  background: none;
+  border: 1.5px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-family: var(--font-heading);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  transition: all var(--transition);
+  outline: none;
+  white-space: nowrap;
+}
+.location-action-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.location-action-btn.text-blue {
+  color: var(--mlab-blue);
+  border-color: var(--mlab-border);
+}
+.location-action-btn.text-blue:hover:not(:disabled) {
+  background: var(--mlab-light-blue);
+  border-color: var(--mlab-blue);
+}
+
+.location-action-btn.text-red {
+  color: var(--mlab-red);
+  border-color: transparent;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+}
+.location-action-btn.text-red:hover:not(:disabled) {
+  background: #fee2e2;
+  border-color: #fca5a5;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   RESPONSIVE
+══════════════════════════════════════════════════════════════════════════════ */
+@media (max-width: 900px) {
+  .settings-container {
+    grid-template-columns: 1fr;
+    padding: 0 1rem 2rem;
+  }
+  .settings-sidebar {
+    position: static;
+  }
+  .settings-nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+    border-top-width: 0;
+    border-left: 4px solid var(--mlab-blue);
+    border-top-left-radius: 0;
+  }
+  .settings-nav__item {
+    border-left: none;
+    border-bottom: 3px solid transparent;
+    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+    padding: 0.55rem 0.85rem;
+  }
+  .settings-nav__item.active {
+    border-left-color: transparent;
+    border-bottom-color: var(--mlab-green);
+  }
+  .settings-form-grid {
+    grid-template-columns: 1fr;
+  }
+  .col-span-2 {
+    grid-column: 1;
+  }
+}
+
+@media (max-width: 640px) {
+  .brand-assets-grid {
+    flex-direction: column;
+  }
+  .save-bar-content {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .save-bar-actions {
+    width: 100%;
+  }
+  .save-bar-actions .mlab-btn {
+    flex: 1;
+    justify-content: center;
+  }
+  .setting-row-toggle {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+}

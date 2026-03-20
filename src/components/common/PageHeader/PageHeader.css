@@ -1,18 +1,29 @@
 /* ─────────────────────────────────────────────────────────────────────────────
-   PageHeader.css  —  mLab Corporate Identity v2.1
-   Matches ViewPortfolio.css aesthetic:
-   · Title: Oswald 700, uppercase, mlab-blue
-   · Subtitle: Trebuchet MS, mlab-grey
-   · Buttons: mlab-btn system (primary = mlab-blue fill, outline = bordered)
-   · Back button: ghost, Trebuchet, mlab-grey
-   · Breadcrumb: Trebuchet, small, left-to-right with › separator
-   · Meta chips: mlab-badge style (inline, Oswald, uppercase)
-   · Status badge: mlab-badge system with colour variants
-   · No drop shadows heavier than 2px solid border treatment
+   PageHeader.css
+   mLab Corporate Identity Brand Guide 2019
+   Consistent with LearnersView.css · AdminDashboard.css · Sidebar.css
+
+   ── Theme accent colours (via data-theme attribute) ──────────────────────────
+   default    → Midnight Blue  #073f4e
+   admin      → Midnight Blue  #073f4e
+   assessor   → Red            #dc2626
+   moderator  → Green          #16a34a
+   facilitator→ Sky Blue       #0284c7
+   student    → Brand Green    #94c73d
+
+   ── Variants ─────────────────────────────────────────────────────────────────
+   ph--default  → white panel, green left-border accent
+   ph--hero     → dark midnight-blue full-bleed panel, white text
+   ph--compact  → minimal flush underline, no padding/background
+
+   Typefaces:
+     Oswald       – title, eyebrow, buttons, status chips (uppercase)
+     Trebuchet MS – description, breadcrumb, meta chips
 ───────────────────────────────────────────────────────────────────────────── */
 
 @import url("https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&display=swap");
 
+/* ── CSS Variables ─────────────────────────────────────────────────────────── */
 :root {
   --mlab-blue: #073f4e;
   --mlab-blue-dark: #052e3a;
@@ -21,73 +32,68 @@
   --mlab-grey: #6b6b6b;
   --mlab-white: #ffffff;
   --mlab-light-blue: #e8f0f3;
-  --mlab-light-green: #f0f7e1;
-  --mlab-red: #ef4444;
-  --mlab-red-light: #fef2f2;
   --mlab-amber: #d97706;
+  --mlab-red: #ef4444;
+  --mlab-border: #d1dde3;
+  --mlab-bg: #f4f7f9;
+
   --font-heading: "Oswald", "Trebuchet MS", sans-serif;
-  --font-body: "Trebuchet MS", "Lucida Grande", Arial, sans-serif;
+  --font-body:
+    "Trebuchet MS", "Lucida Grande", "Lucida Sans Unicode", Arial, sans-serif;
+
+  --radius-sm: 3px;
+  --transition: 0.18s ease;
+
+  /* Per-theme accent — overridden by [data-theme] selectors below */
+  --ph-accent: var(--mlab-blue);
+  --ph-accent-light: var(--mlab-light-blue);
+  --ph-hero-bg: var(--mlab-blue);
+  --ph-hero-border: var(--mlab-green);
 }
 
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
+/* ══════════════════════════════════════════════════════════════════════════════
+   THEME OVERRIDES  (data-theme attribute on <header>)
+══════════════════════════════════════════════════════════════════════════════ */
+[data-theme="admin"] {
+  --ph-accent: var(--mlab-blue);
+  --ph-accent-light: #e8f0f3;
+  --ph-hero-border: var(--mlab-green);
+}
+[data-theme="default"] {
+  --ph-accent: var(--mlab-blue);
+  --ph-accent-light: #e8f0f3;
+  --ph-hero-border: var(--mlab-green);
+}
+[data-theme="assessor"] {
+  --ph-accent: #dc2626;
+  --ph-accent-light: #fef2f2;
+  --ph-hero-border: #ef4444;
+}
+[data-theme="moderator"] {
+  --ph-accent: #16a34a;
+  --ph-accent-light: #f0fdf4;
+  --ph-hero-border: #22c55e;
+}
+[data-theme="facilitator"] {
+  --ph-accent: #0284c7;
+  --ph-accent-light: #e0f2fe;
+  --ph-hero-border: #38bdf8;
+}
+[data-theme="student"] {
+  --ph-accent: var(--mlab-green);
+  --ph-accent-light: #f0f7e1;
+  --ph-hero-border: #bef264;
 }
 
-@keyframes ph-fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-/* ══════════════════════════════════════════════════════════════════════════
-   BASE
-══════════════════════════════════════════════════════════════════════════ */
+/* ══════════════════════════════════════════════════════════════════════════════
+   BASE HEADER — shared across all variants
+══════════════════════════════════════════════════════════════════════════════ */
 .ph {
   font-family: var(--font-body);
-  animation: ph-fadeIn 0.25s ease both;
+  width: 100%;
 }
 
-/* ── VARIANT: default — white, blue top-left border ─────────────────────── */
-.ph--default {
-  background: var(--mlab-white);
-  border: 2px solid var(--mlab-blue);
-  border-left: 5px solid var(--mlab-green);
-  padding: 1.5rem 1.75rem;
-  margin-bottom: 1.75rem;
-}
-
-/* ── VARIANT: hero — dark blue panel with texture ───────────────────────── */
-.ph--hero {
-  background: var(--mlab-blue);
-  border-bottom: 3px solid var(--mlab-green);
-  padding: 2.25rem 2.5rem 2rem;
-  margin-bottom: 1.75rem;
-  background-image: repeating-linear-gradient(
-    -45deg,
-    transparent,
-    transparent 40px,
-    rgba(255, 255, 255, 0.015) 40px,
-    rgba(255, 255, 255, 0.015) 41px
-  );
-}
-
-/* ── VARIANT: compact — tight, light-blue rule underneath ───────────────── */
-.ph--compact {
-  border-bottom: 3px solid var(--mlab-blue);
-  padding: 1rem 0 0.85rem;
-  margin-bottom: 1.75rem;
-}
-
-/* ══════════════════════════════════════════════════════════════════════════
-   LAYOUT
-══════════════════════════════════════════════════════════════════════════ */
+/* ── Inner flex row ─────────────────────────────────────────────────────────── */
 .ph__inner {
   display: flex;
   align-items: flex-start;
@@ -96,578 +102,569 @@
   flex-wrap: wrap;
 }
 
+/* ── Left column ─────────────────────────────────────────────────────────────── */
 .ph__left {
   display: flex;
   align-items: flex-start;
-  gap: 1rem;
-  min-width: 0;
+  gap: 0.75rem;
   flex: 1;
+  min-width: 0;
 }
 
+/* ── Right column ────────────────────────────────────────────────────────────── */
 .ph__right {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.75rem;
   flex-shrink: 0;
   flex-wrap: wrap;
 }
 
-/* ══════════════════════════════════════════════════════════════════════════
-   BACK BUTTON
-══════════════════════════════════════════════════════════════════════════ */
-.ph__back {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  background: none;
-  border: none;
-  cursor: pointer;
-  outline: none;
-  padding: 0.15rem 0;
-  margin-top: 0.3rem;
-  flex-shrink: 0;
-  font-family: var(--font-body);
-  font-size: 0.85rem;
-  transition: color 0.15s;
-}
-
-.ph--default .ph__back,
-.ph--compact .ph__back {
-  color: var(--mlab-grey);
-}
-.ph--default .ph__back:hover,
-.ph--compact .ph__back:hover {
-  color: var(--mlab-blue);
-}
-
-.ph--hero .ph__back {
-  color: rgba(255, 255, 255, 0.55);
-}
-.ph--hero .ph__back:hover {
-  color: var(--mlab-white);
-}
-
-/* ══════════════════════════════════════════════════════════════════════════
-   ICON SLOT
-══════════════════════════════════════════════════════════════════════════ */
+/* ── Icon slot ────────────────────────────────────────────────────────────────── */
 .ph__icon {
-  width: 48px;
-  height: 48px;
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 44px;
+  height: 44px;
+  background: var(--ph-accent-light);
+  color: var(--ph-accent);
+  border: 2px solid var(--ph-accent);
   flex-shrink: 0;
-  border: 2px solid var(--mlab-blue);
+  border-radius: var(--radius-sm);
 }
 
-.ph--default .ph__icon,
-.ph--compact .ph__icon {
-  background: var(--mlab-light-blue);
-  color: var(--mlab-blue);
-}
-.ph--hero .ph__icon {
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--mlab-green);
-  border-color: rgba(255, 255, 255, 0.15);
-}
-
-/* ══════════════════════════════════════════════════════════════════════════
-   TEXT BLOCK
-══════════════════════════════════════════════════════════════════════════ */
+/* ── Text stack ─────────────────────────────────────────────────────────────── */
 .ph__text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
   min-width: 0;
 }
 
 .ph__eyebrow {
-  font-family: var(--font-heading);
-  font-size: 0.68rem;
-  font-weight: 600;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
   display: block;
-  margin-bottom: 0.2rem;
-}
-.ph--default .ph__eyebrow,
-.ph--compact .ph__eyebrow {
-  color: var(--mlab-green-dark);
-}
-.ph--hero .ph__eyebrow {
-  color: var(--mlab-green);
+  font-family: var(--font-heading);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ph-accent);
+  opacity: 0.85;
 }
 
 .ph__title {
   font-family: var(--font-heading);
+  font-size: 1.5rem;
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
+  color: var(--mlab-blue);
   margin: 0;
-  line-height: 1.1;
-}
-
-.ph--default .ph__title {
-  font-size: clamp(1.2rem, 2.5vw, 1.55rem);
-  color: var(--mlab-blue);
-}
-.ph--hero .ph__title {
-  font-size: clamp(1.4rem, 3vw, 2rem);
-  color: var(--mlab-white);
-}
-.ph--compact .ph__title {
-  font-size: 1.05rem;
-  color: var(--mlab-blue);
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .ph__desc {
-  font-size: 0.87rem;
-  line-height: 1.6;
-  margin: 0.35rem 0 0;
-}
-.ph--default .ph__desc,
-.ph--compact .ph__desc {
+  font-size: 0.85rem;
   color: var(--mlab-grey);
-}
-.ph--hero .ph__desc {
-  color: rgba(255, 255, 255, 0.55);
-}
-
-/* ══════════════════════════════════════════════════════════════════════════
-   META CHIPS — matches mlab-badge system
-══════════════════════════════════════════════════════════════════════════ */
-.ph__meta {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-top: 0.65rem;
-  flex-wrap: wrap;
+  margin: 2px 0 0;
+  line-height: 1.5;
 }
 
-.ph__chip {
+/* ── Back button ─────────────────────────────────────────────────────────────── */
+.ph__back {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 3px 10px;
+  background: none;
+  border: none;
+  cursor: pointer;
   font-family: var(--font-heading);
-  font-size: 0.65rem;
-  font-weight: 700;
-  letter-spacing: 0.1em;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.65);
+  padding: 0;
+  outline: none;
+  transition: color var(--transition);
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-top: 4px;
+}
+.ph__back:hover {
+  color: var(--mlab-white);
 }
 
-.ph--default .ph__chip,
-.ph--compact .ph__chip {
-  background: var(--mlab-light-blue);
-  color: var(--mlab-blue);
-  border: 1px solid #b0c4cc;
-}
-.ph--hero .ph__chip {
-  background: rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+/* ── Meta chips (module, marks, time etc.) ──────────────────────────────────── */
+.ph__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
 }
 
-.ph__chip--green {
-  background: var(--mlab-light-green) !important;
-  color: var(--mlab-green-dark) !important;
-  border-color: #c2e08a !important;
-}
-.ph__chip--amber {
-  background: #fef9c3 !important;
-  color: #854d0e !important;
-  border-color: #fde047 !important;
-}
-.ph__chip--red {
-  background: var(--mlab-red-light) !important;
-  color: #991b1b !important;
-  border-color: #fca5a5 !important;
-}
-
-/* ══════════════════════════════════════════════════════════════════════════
-   STATUS BADGE — matches mlab-badge variants exactly
-══════════════════════════════════════════════════════════════════════════ */
-.ph__status {
+.ph__chip {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   padding: 3px 10px;
   font-family: var(--font-heading);
   font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.1em;
+  font-weight: 600;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  border: 1px solid;
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: var(--radius-sm);
+}
+
+/* Colour overrides for meta chips */
+.ph__chip--green {
+  background: rgba(148, 199, 61, 0.2);
+  color: #bef264;
+  border-color: rgba(148, 199, 61, 0.35);
+}
+.ph__chip--amber {
+  background: rgba(245, 158, 11, 0.18);
+  color: #fcd34d;
+  border-color: rgba(245, 158, 11, 0.35);
+}
+.ph__chip--red {
+  background: rgba(239, 68, 68, 0.18);
+  color: #fca5a5;
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
+/* ── Status badge ─────────────────────────────────────────────────────────────── */
+.ph__status {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  font-family: var(--font-heading);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  border-radius: 20px;
+  white-space: nowrap;
+  border: 1.5px solid transparent;
 }
 
 .ph__status--active {
-  background: var(--mlab-light-green);
-  color: var(--mlab-green-dark);
-  border-color: #c2e08a;
+  background: rgba(148, 199, 61, 0.2);
+  color: #a3e635;
+  border-color: rgba(148, 199, 61, 0.4);
 }
 .ph__status--draft {
-  background: var(--mlab-light-blue);
-  color: var(--mlab-grey);
-  border-color: #b0c4cc;
+  background: rgba(245, 158, 11, 0.18);
+  color: #fcd34d;
+  border-color: rgba(245, 158, 11, 0.4);
 }
 .ph__status--locked {
-  background: #e0f2fe;
-  color: #075985;
-  border-color: #7dd3fc;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.55);
+  border-color: rgba(255, 255, 255, 0.15);
 }
 .ph__status--warning {
-  background: #fef9c3;
-  color: #854d0e;
-  border-color: #fde047;
+  background: rgba(245, 158, 11, 0.18);
+  color: #fcd34d;
+  border-color: rgba(245, 158, 11, 0.4);
 }
 .ph__status--error {
-  background: var(--mlab-red-light);
-  color: #991b1b;
-  border-color: #fca5a5;
+  background: rgba(239, 68, 68, 0.18);
+  color: #fca5a5;
+  border-color: rgba(239, 68, 68, 0.4);
 }
 
-/* ══════════════════════════════════════════════════════════════════════════
-   BREADCRUMB
-══════════════════════════════════════════════════════════════════════════ */
+/* ── Breadcrumb ───────────────────────────────────────────────────────────────── */
 .ph__breadcrumb {
   display: flex;
   align-items: center;
-  gap: 0.35rem;
-  margin-top: 0.85rem;
-  padding-top: 0.75rem;
+  gap: 4px;
   flex-wrap: wrap;
-}
-.ph--default .ph__breadcrumb {
-  border-top: 1px solid var(--mlab-light-blue);
-}
-.ph--hero .ph__breadcrumb {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
-}
-.ph--compact .ph__breadcrumb {
-  border-top: 1px solid var(--mlab-light-blue);
 }
 
 .ph__crumb {
+  display: inline-flex;
+  align-items: center;
   font-family: var(--font-body);
-  font-size: 0.8rem;
+  font-size: 0.78rem;
+  color: rgba(255, 255, 255, 0.5);
   background: none;
   border: none;
+  cursor: pointer;
   padding: 0;
   outline: none;
-  cursor: pointer;
-  transition: color 0.14s;
+  transition: color var(--transition);
 }
-.ph--default .ph__crumb,
-.ph--compact .ph__crumb {
-  color: var(--mlab-grey);
-}
-.ph--default .ph__crumb:hover,
-.ph--compact .ph__crumb:hover {
-  color: var(--mlab-blue);
-}
-
-.ph--hero .ph__crumb {
-  color: rgba(255, 255, 255, 0.45);
-}
-.ph--hero .ph__crumb:hover {
+.ph__crumb:hover {
   color: rgba(255, 255, 255, 0.85);
 }
 
 .ph__crumb--active {
+  color: var(--mlab-white);
   font-weight: 600;
   cursor: default;
-}
-.ph--default .ph__crumb--active,
-.ph--compact .ph__crumb--active {
-  color: var(--mlab-blue);
-}
-.ph--hero .ph__crumb--active {
-  color: rgba(255, 255, 255, 0.85);
+  pointer-events: none;
 }
 
 .ph__crumb-sep {
-  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.3);
+  font-size: 0.9rem;
   user-select: none;
 }
-.ph--default .ph__crumb-sep,
-.ph--compact .ph__crumb-sep {
-  color: #b0c4cc;
-}
-.ph--hero .ph__crumb-sep {
-  color: rgba(255, 255, 255, 0.2);
-}
 
-/* ══════════════════════════════════════════════════════════════════════════
-   ACTION BUTTONS — matches mlab-btn system
-══════════════════════════════════════════════════════════════════════════ */
+/* ── Action buttons (PageHeader.Btn) ─────────────────────────────────────────── */
 .ph__btn {
   display: inline-flex;
   align-items: center;
-  gap: 0.45rem;
-  padding: 0.55rem 1.15rem;
+  justify-content: center;
+  gap: 6px;
+  padding: 0.55rem 1.1rem;
+  border-radius: var(--radius-sm);
   border: 2px solid transparent;
   cursor: pointer;
   font-family: var(--font-heading);
-  font-weight: 700;
+  font-weight: 600;
   font-size: 0.78rem;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
   white-space: nowrap;
-  outline: none;
   transition:
-    background 0.18s,
-    border-color 0.18s,
-    color 0.18s;
+    background var(--transition),
+    border-color var(--transition),
+    color var(--transition),
+    opacity var(--transition);
+  outline: none;
 }
-
-.ph__btn--primary {
-  background: var(--mlab-blue);
-  color: var(--mlab-white);
-  border-color: var(--mlab-blue);
-}
-.ph__btn--primary:hover {
-  background: var(--mlab-blue-dark);
-  border-color: var(--mlab-blue-dark);
-}
-
-.ph__btn--green {
-  background: var(--mlab-green);
-  color: var(--mlab-white);
-  border-color: var(--mlab-green-dark);
-}
-.ph__btn--green:hover {
-  background: var(--mlab-green-dark);
-}
-
-.ph__btn--outline {
-  background: transparent;
-  color: var(--mlab-blue);
-  border-color: var(--mlab-blue);
-}
-.ph__btn--outline:hover {
-  background: var(--mlab-light-blue);
-}
-
-/* Hero variant outline adapts */
-.ph--hero .ph__btn--outline {
-  color: rgba(255, 255, 255, 0.85);
-  border-color: rgba(255, 255, 255, 0.3);
-  background: rgba(255, 255, 255, 0.07);
-}
-.ph--hero .ph__btn--outline:hover {
-  background: rgba(255, 255, 255, 0.15);
-  color: var(--mlab-white);
-}
-
-.ph__btn--ghost {
-  background: transparent;
-  color: var(--mlab-grey);
-  border-color: transparent;
-  padding: 0.55rem 0.65rem;
-}
-.ph__btn--ghost:hover {
-  background: var(--mlab-light-blue);
-  color: var(--mlab-blue);
-}
-
-.ph--hero .ph__btn--ghost {
-  color: rgba(255, 255, 255, 0.5);
-}
-.ph--hero .ph__btn--ghost:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--mlab-white);
-}
-
 .ph__btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
 
-/* ── Responsive ──────────────────────────────────────────────────────────── */
+.ph__btn--primary {
+  background: var(--mlab-green);
+  color: var(--mlab-white);
+  border-color: var(--mlab-green);
+}
+.ph__btn--primary:hover:not(:disabled) {
+  background: var(--mlab-green-dark);
+  border-color: var(--mlab-green-dark);
+}
+
+.ph__btn--green {
+  background: var(--mlab-green);
+  color: var(--mlab-white);
+  border-color: var(--mlab-green);
+}
+.ph__btn--green:hover:not(:disabled) {
+  background: var(--mlab-green-dark);
+  border-color: var(--mlab-green-dark);
+}
+
+.ph__btn--outline {
+  background: transparent;
+  color: rgba(255, 255, 255, 0.85);
+  border-color: rgba(255, 255, 255, 0.35);
+}
+.ph__btn--outline:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.6);
+  color: var(--mlab-white);
+}
+
+.ph__btn--ghost {
+  background: transparent;
+  color: rgba(255, 255, 255, 0.55);
+  border-color: transparent;
+}
+.ph__btn--ghost:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.85);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   VARIANT: ph--default
+   White panel, green left-border accent, dark text
+══════════════════════════════════════════════════════════════════════════════ */
+.ph--default {
+  background: var(--mlab-white);
+  border-left: 5px solid var(--ph-accent);
+  border-bottom: 1px solid var(--mlab-border);
+  padding: 1.25rem 2rem;
+  margin-bottom: 1.75rem;
+}
+
+.ph--default .ph__eyebrow {
+  color: var(--ph-accent);
+  opacity: 1;
+}
+.ph--default .ph__title {
+  color: var(--mlab-blue);
+}
+.ph--default .ph__desc {
+  color: var(--mlab-grey);
+}
+
+/* Back button on default variant — dark text */
+.ph--default .ph__back {
+  color: var(--mlab-grey);
+  margin-bottom: 0.5rem;
+  align-self: flex-start;
+}
+.ph--default .ph__back:hover {
+  color: var(--mlab-blue);
+}
+
+/* Meta chips on default — muted dark */
+.ph--default .ph__chip {
+  background: var(--ph-accent-light);
+  color: var(--ph-accent);
+  border-color: rgba(0, 0, 0, 0.1);
+}
+.ph--default .ph__chip--green {
+  background: #f0f7e1;
+  color: var(--mlab-green-dark);
+  border-color: #c2e08a;
+}
+.ph--default .ph__chip--amber {
+  background: #fffbeb;
+  color: #92400e;
+  border-color: #fde68a;
+}
+.ph--default .ph__chip--red {
+  background: #fef2f2;
+  color: #991b1b;
+  border-color: #fca5a5;
+}
+
+/* Status badge on default — dark text on tinted bg */
+.ph--default .ph__status--active {
+  background: #dcfce7;
+  color: #166534;
+  border-color: #86efac;
+}
+.ph--default .ph__status--draft {
+  background: #fef3c7;
+  color: #92400e;
+  border-color: #fde68a;
+}
+.ph--default .ph__status--locked {
+  background: var(--mlab-light-blue);
+  color: var(--mlab-grey);
+  border-color: var(--mlab-border);
+}
+.ph--default .ph__status--warning {
+  background: #fef3c7;
+  color: #92400e;
+  border-color: #fde68a;
+}
+.ph--default .ph__status--error {
+  background: #fef2f2;
+  color: #991b1b;
+  border-color: #fca5a5;
+}
+
+/* Breadcrumb on default — dark text */
+.ph--default .ph__breadcrumb {
+  border-top-color: var(--mlab-border);
+}
+.ph--default .ph__crumb {
+  color: var(--mlab-grey);
+}
+.ph--default .ph__crumb:hover {
+  color: var(--mlab-blue);
+}
+.ph--default .ph__crumb--active {
+  color: var(--mlab-blue);
+}
+.ph--default .ph__crumb-sep {
+  color: var(--mlab-border);
+}
+
+/* Buttons on default variant */
+.ph--default .ph__btn--outline {
+  color: var(--mlab-blue);
+  border-color: var(--mlab-blue);
+}
+.ph--default .ph__btn--outline:hover:not(:disabled) {
+  background: var(--mlab-light-blue);
+  border-color: var(--mlab-blue);
+}
+.ph--default .ph__btn--ghost {
+  color: var(--mlab-grey);
+}
+.ph--default .ph__btn--ghost:hover:not(:disabled) {
+  background: var(--mlab-light-blue);
+  color: var(--mlab-blue);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   VARIANT: ph--hero
+   Dark midnight-blue full-bleed panel, white text, role-coloured bottom border
+══════════════════════════════════════════════════════════════════════════════ */
+.ph--hero {
+  background: var(--mlab-blue);
+  border-bottom: 4px solid var(--ph-hero-border);
+  padding: 1.5rem 2rem 1.25rem;
+  margin-bottom: 1.75rem;
+}
+
+.ph--hero .ph__title {
+  color: var(--mlab-white);
+}
+.ph--hero .ph__desc {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+/* Left flex column on hero: vertical stack (back on top, icon+text below) */
+.ph--hero .ph__left {
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* Inner row wrapping icon + text on hero */
+.ph--hero .ph__left > .ph__text {
+  flex: 1;
+}
+
+/* Icon on hero — semi-transparent white */
+.ph--hero .ph__icon {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--mlab-white);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   VARIANT: ph--compact
+   Minimal flush underline, no background, tight spacing
+══════════════════════════════════════════════════════════════════════════════ */
+.ph--compact {
+  background: transparent;
+  border-bottom: 3px solid var(--mlab-blue);
+  padding: 0 0 0.85rem;
+  margin-bottom: 1.5rem;
+}
+
+.ph--compact .ph__title {
+  font-size: 1.2rem;
+}
+.ph--compact .ph__desc {
+  color: var(--mlab-grey);
+}
+.ph--compact .ph__eyebrow {
+  color: var(--ph-accent);
+}
+
+.ph--compact .ph__breadcrumb {
+  border-top-color: var(--mlab-border);
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+}
+.ph--compact .ph__crumb {
+  color: var(--mlab-grey);
+}
+.ph--compact .ph__crumb:hover {
+  color: var(--mlab-blue);
+}
+.ph--compact .ph__crumb--active {
+  color: var(--mlab-blue);
+}
+.ph--compact .ph__crumb-sep {
+  color: var(--mlab-border);
+}
+
+/* Status & buttons on compact — dark-mode styles not applicable */
+.ph--compact .ph__status--active {
+  background: #dcfce7;
+  color: #166534;
+  border-color: #86efac;
+}
+.ph--compact .ph__status--draft {
+  background: #fef3c7;
+  color: #92400e;
+  border-color: #fde68a;
+}
+.ph--compact .ph__status--locked {
+  background: var(--mlab-light-blue);
+  color: var(--mlab-grey);
+  border-color: var(--mlab-border);
+}
+.ph--compact .ph__status--warning {
+  background: #fef3c7;
+  color: #92400e;
+  border-color: #fde68a;
+}
+.ph--compact .ph__status--error {
+  background: #fef2f2;
+  color: #991b1b;
+  border-color: #fca5a5;
+}
+
+.ph--compact .ph__chip {
+  background: var(--ph-accent-light);
+  color: var(--ph-accent);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+.ph--compact .ph__btn--outline {
+  color: var(--mlab-blue);
+  border-color: var(--mlab-blue);
+}
+.ph--compact .ph__btn--outline:hover:not(:disabled) {
+  background: var(--mlab-light-blue);
+}
+.ph--compact .ph__btn--ghost {
+  color: var(--mlab-grey);
+  border-color: transparent;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   RESPONSIVE
+══════════════════════════════════════════════════════════════════════════════ */
 @media (max-width: 768px) {
-  .ph--default {
-    padding: 1.25rem;
-  }
+  .ph--default,
   .ph--hero {
-    padding: 1.5rem 1.25rem;
+    padding: 1rem 1rem 0.85rem;
+  }
+  .ph__inner {
+    flex-direction: column;
+    gap: 0.75rem;
   }
   .ph__right {
     width: 100%;
+    justify-content: flex-start;
+  }
+  .ph__title {
+    font-size: 1.25rem;
+    white-space: normal;
+  }
+  .ph__btn {
+    padding: 0.5rem 0.85rem;
+    font-size: 0.72rem;
   }
 }
 
-/* ══════════════════════════════════════════════════════════════════════════
-   THEME OVERRIDES — data-theme attribute on .ph
-   Controls accent colour (green by default) for role-based portal tinting.
-   Only the accent/highlight colour changes; all typography and structure
-   remain consistent with the CI.
-══════════════════════════════════════════════════════════════════════════ */
-
-/* admin: default blue/green — no overrides needed */
-[data-theme="admin"] {
-  /* inherits base */
-}
-
-/* student — warm teal accent */
-[data-theme="student"] {
-  --ph-primary: #0e6b7a;
-  --ph-primary-dark: #094f5a;
-  --ph-accent: #29b6c8;
-  --ph-accent-bg: #e0f7fa;
-  --ph-accent-border: #80deea;
-}
-
-/* assessor — deep purple */
-[data-theme="assessor"] {
-  --ph-primary: #5b21b6;
-  --ph-primary-dark: #3b0e8a;
-  --ph-accent: #7c3aed;
-  --ph-accent-bg: #f5f3ff;
-  --ph-accent-border: #c4b5fd;
-}
-
-/* facilitator — forest green */
-[data-theme="facilitator"] {
-  --ph-primary: #15652e;
-  --ph-primary-dark: #0d4620;
-  --ph-accent: #22c55e;
-  --ph-accent-bg: #f0fdf4;
-  --ph-accent-border: #86efac;
-}
-
-/* moderator — amber */
-[data-theme="moderator"] {
-  --ph-primary: #92400e;
-  --ph-primary-dark: #6b2d07;
-  --ph-accent: #f59e0b;
-  --ph-accent-bg: #fffbeb;
-  --ph-accent-border: #fcd34d;
-}
-
-/* ── Apply theme accent to hero header bottom border ── */
-[data-theme="student"] .ph--hero,
-[data-theme="assessor"] .ph--hero,
-[data-theme="facilitator"].ph--hero,
-[data-theme="moderator"] .ph--hero {
-  border-bottom-color: var(--ph-accent);
-}
-
-/* ── Apply theme accent to compact header bottom border ── */
-[data-theme="student"] .ph--compact,
-[data-theme="assessor"] .ph--compact,
-[data-theme="facilitator"].ph--compact,
-[data-theme="moderator"] .ph--compact {
-  border-bottom-color: var(--ph-primary);
-}
-
-/* ── Apply theme accent to default header left border ── */
-[data-theme="student"] .ph--default,
-[data-theme="assessor"] .ph--default,
-[data-theme="facilitator"].ph--default,
-[data-theme="moderator"] .ph--default {
-  border-left-color: var(--ph-accent);
-}
-
-/* ── Theme eyebrow colour ── */
-[data-theme="student"] .ph__eyebrow {
-  color: var(--ph-accent);
-}
-[data-theme="assessor"] .ph__eyebrow {
-  color: var(--ph-accent);
-}
-[data-theme="facilitator"].ph__eyebrow {
-  color: var(--ph-accent);
-}
-[data-theme="moderator"] .ph__eyebrow {
-  color: var(--ph-accent);
-}
-
-/* ── Theme icon slot (default/compact variants) ── */
-[data-theme="student"] .ph--default .ph__icon,
-[data-theme="student"] .ph--compact .ph__icon {
-  background: var(--ph-accent-bg);
-  color: var(--ph-primary);
-  border-color: var(--ph-primary);
-}
-[data-theme="assessor"] .ph--default .ph__icon,
-[data-theme="assessor"] .ph--compact .ph__icon {
-  background: var(--ph-accent-bg);
-  color: var(--ph-primary);
-  border-color: var(--ph-primary);
-}
-[data-theme="facilitator"].ph--default .ph__icon,
-[data-theme="facilitator"].ph--compact .ph__icon {
-  background: var(--ph-accent-bg);
-  color: var(--ph-primary);
-  border-color: var(--ph-primary);
-}
-[data-theme="moderator"] .ph--default .ph__icon,
-[data-theme="moderator"] .ph--compact .ph__icon {
-  background: var(--ph-accent-bg);
-  color: var(--ph-primary);
-  border-color: var(--ph-primary);
-}
-
-/* ── Theme chip in default/compact ── */
-[data-theme="student"] .ph--default .ph__chip,
-[data-theme="student"] .ph--compact .ph__chip {
-  background: var(--ph-accent-bg);
-  color: var(--ph-primary);
-  border-color: var(--ph-accent-border);
-}
-[data-theme="assessor"] .ph--default .ph__chip,
-[data-theme="assessor"] .ph--compact .ph__chip {
-  background: var(--ph-accent-bg);
-  color: var(--ph-primary);
-  border-color: var(--ph-accent-border);
-}
-[data-theme="facilitator"].ph--default .ph__chip,
-[data-theme="facilitator"].ph--compact .ph__chip {
-  background: var(--ph-accent-bg);
-  color: var(--ph-primary);
-  border-color: var(--ph-accent-border);
-}
-[data-theme="moderator"] .ph--default .ph__chip,
-[data-theme="moderator"] .ph--compact .ph__chip {
-  background: var(--ph-accent-bg);
-  color: var(--ph-primary);
-  border-color: var(--ph-accent-border);
-}
-
-/* ── Theme outline button adapts per theme ── */
-[data-theme="student"] .ph--default .ph__btn--outline,
-[data-theme="student"] .ph--compact .ph__btn--outline {
-  color: var(--ph-primary);
-  border-color: var(--ph-primary);
-}
-[data-theme="student"] .ph--default .ph__btn--outline:hover,
-[data-theme="student"] .ph--compact .ph__btn--outline:hover {
-  background: var(--ph-accent-bg);
-}
-
-[data-theme="assessor"] .ph--default .ph__btn--outline,
-[data-theme="assessor"] .ph--compact .ph__btn--outline {
-  color: var(--ph-primary);
-  border-color: var(--ph-primary);
-}
-[data-theme="assessor"] .ph--default .ph__btn--outline:hover,
-[data-theme="assessor"] .ph--compact .ph__btn--outline:hover {
-  background: var(--ph-accent-bg);
-}
-
-[data-theme="facilitator"].ph--default .ph__btn--outline,
-[data-theme="facilitator"].ph--compact .ph__btn--outline {
-  color: var(--ph-primary);
-  border-color: var(--ph-primary);
-}
-[data-theme="facilitator"].ph--default .ph__btn--outline:hover,
-[data-theme="facilitator"].ph--compact .ph__btn--outline:hover {
-  background: var(--ph-accent-bg);
-}
-
-[data-theme="moderator"] .ph--default .ph__btn--outline,
-[data-theme="moderator"] .ph--compact .ph__btn--outline {
-  color: var(--ph-primary);
-  border-color: var(--ph-primary);
-}
-[data-theme="moderator"] .ph--default .ph__btn--outline:hover,
-[data-theme="moderator"] .ph--compact .ph__btn--outline:hover {
-  background: var(--ph-accent-bg);
+@media (max-width: 480px) {
+  .ph--default,
+  .ph--hero {
+    padding: 0.85rem 0.75rem;
+  }
+  .ph__title {
+    font-size: 1.1rem;
+  }
+  .ph__meta {
+    gap: 4px;
+  }
+  .ph__chip {
+    font-size: 0.62rem;
+    padding: 2px 7px;
+  }
 }

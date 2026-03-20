@@ -1,0 +1,279 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   Sidebar.css
+   mLab Corporate Identity Brand Guide 2019
+   Consistent with LearnersView.css · QualificationsView.css · AdminDashboard.css
+
+   Colours:
+     --mlab-blue:   #073f4e  (Midnight Blue)
+     --mlab-green:  #94c73d  (Green – primary accent)
+     --mlab-grey:   #6b6b6b  (Grey – secondary text)
+     --mlab-white:  #ffffff
+
+   Typefaces:
+     Oswald       – logo, labels, role tag, nav items (uppercase)
+     Trebuchet MS – sub-labels
+───────────────────────────────────────────────────────────────────────────── */
+
+@import url("https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&display=swap");
+
+/* ── CSS Variables ─────────────────────────────────────────────────────────── */
+:root {
+  --mlab-blue: #073f4e;
+  --mlab-blue-dark: #052e3a;
+  --mlab-green: #94c73d;
+  --mlab-green-dark: #7aaa2e;
+  --mlab-grey: #6b6b6b;
+  --mlab-white: #ffffff;
+  --mlab-light-blue: #e8f0f3;
+  --mlab-border: #d1dde3;
+  --mlab-red: #ef4444;
+
+  --font-heading: "Oswald", "Trebuchet MS", sans-serif;
+  --font-body:
+    "Trebuchet MS", "Lucida Grande", "Lucida Sans Unicode", Arial, sans-serif;
+
+  --sidebar-width: 240px;
+  --transition: 0.18s ease;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   SIDEBAR SHELL
+   Fixed full-height column — sits as the first flex child of .admin-layout
+══════════════════════════════════════════════════════════════════════════════ */
+.sidebar {
+  width: var(--sidebar-width);
+  min-width: var(--sidebar-width);
+  height: 100vh;
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--mlab-blue);
+  overflow: hidden;
+  flex-shrink: 0;
+  z-index: 50;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   BRANDING HEADER
+══════════════════════════════════════════════════════════════════════════════ */
+.sidebar-header {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.4rem;
+  padding: 1.75rem 1.5rem 1.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
+}
+
+/* ── mlab wordmark ──────────────────────────────────────────────────────────── */
+.sidebar-logo {
+  font-family: var(--font-heading);
+  font-size: 1.9rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  text-transform: lowercase;
+  user-select: none;
+}
+
+/* "m" — white */
+.sidebar-logo .m {
+  color: var(--mlab-white);
+}
+
+/* "lab" — brand green */
+.sidebar-logo .lab {
+  color: var(--mlab-green);
+}
+
+/* ── Role tag pill ──────────────────────────────────────────────────────────── */
+.sidebar-role-tag {
+  display: inline-block;
+  padding: 2px 10px;
+  font-family: var(--font-heading);
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--mlab-blue);
+  background: var(--mlab-green);
+  border-radius: 2px;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   NAVIGATION MENU
+══════════════════════════════════════════════════════════════════════════════ */
+.sidebar-nav {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 1rem 0.75rem;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+.sidebar-nav::-webkit-scrollbar {
+  display: none;
+}
+
+/* ── Nav item button ────────────────────────────────────────────────────────── */
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.7rem 0.875rem;
+  background: transparent;
+  border: none;
+  border-left: 3px solid transparent;
+  border-radius: 0 3px 3px 0;
+  cursor: pointer;
+  font-family: var(--font-heading);
+  font-size: 0.82rem;
+  font-weight: 500;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+  text-align: left;
+  transition:
+    background var(--transition),
+    color var(--transition),
+    border-color var(--transition);
+  outline: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nav-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.85);
+  border-left-color: rgba(148, 199, 61, 0.4);
+}
+
+/* Active state — green left border + brightened text */
+.nav-item.active {
+  background: rgba(148, 199, 61, 0.12);
+  color: var(--mlab-white);
+  border-left-color: var(--mlab-green);
+  font-weight: 700;
+}
+
+.nav-item.active svg {
+  color: var(--mlab-green);
+}
+
+/* Icon inside nav-item */
+.nav-item svg {
+  flex-shrink: 0;
+  opacity: 0.7;
+  transition:
+    opacity var(--transition),
+    color var(--transition);
+}
+.nav-item:hover svg,
+.nav-item.active svg {
+  opacity: 1;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   FOOTER ACTIONS  (Settings · Logout)
+══════════════════════════════════════════════════════════════════════════════ */
+.sidebar-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0.75rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
+}
+
+/* Settings button inherits nav-item styles */
+.sidebar-footer .nav-item {
+  color: rgba(255, 255, 255, 0.4);
+}
+.sidebar-footer .nav-item:hover {
+  color: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.05);
+  border-left-color: transparent;
+}
+
+/* Logout button — red tint on hover, inline color set in TSX */
+.sidebar-footer .nav-item[style*="ef4444"] {
+  color: rgba(239, 68, 68, 0.75) !important;
+}
+.sidebar-footer .nav-item[style*="ef4444"]:hover {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444 !important;
+  border-left-color: transparent;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   RESPONSIVE — collapse to top bar on small screens
+══════════════════════════════════════════════════════════════════════════════ */
+@media (max-width: 640px) {
+  .sidebar {
+    width: 100%;
+    min-width: 100%;
+    height: auto;
+    position: relative;
+    flex-direction: row;
+    flex-wrap: wrap;
+    overflow: visible;
+  }
+
+  .sidebar-header {
+    flex-direction: row;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    border-bottom: none;
+    border-right: 1px solid rgba(255, 255, 255, 0.08);
+    flex-shrink: 0;
+  }
+
+  .sidebar-logo {
+    font-size: 1.4rem;
+  }
+
+  .sidebar-nav {
+    flex-direction: row;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0.5rem;
+    gap: 2px;
+    flex: 1;
+  }
+
+  .nav-item {
+    border-left: none;
+    border-bottom: 3px solid transparent;
+    border-radius: 3px 3px 0 0;
+    padding: 0.5rem 0.75rem;
+    flex-shrink: 0;
+    font-size: 0.72rem;
+  }
+  .nav-item:hover {
+    border-left-color: transparent;
+    border-bottom-color: rgba(148, 199, 61, 0.4);
+  }
+  .nav-item.active {
+    border-left-color: transparent;
+    border-bottom-color: var(--mlab-green);
+  }
+
+  .sidebar-footer {
+    flex-direction: row;
+    padding: 0.5rem;
+    border-top: none;
+    border-left: 1px solid rgba(255, 255, 255, 0.08);
+    flex-shrink: 0;
+  }
+
+  .sidebar-role-tag {
+    display: none;
+  }
+}

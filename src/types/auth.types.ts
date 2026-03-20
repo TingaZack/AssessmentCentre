@@ -39,7 +39,9 @@ export interface UserProfile {
   authUid?: string;
   profileCompleted?: boolean;
 
-  // 🚀 Add these Practitioner-specific fields:
+  companyName?: string; // Used by Mentors
+
+  // these Practitioner-specific fields:
   assessorRegNumber?: string;
   bio?: string;
   primarySeta?: string;

@@ -1,12 +1,14 @@
 /* ─────────────────────────────────────────────────────────────────────────────
    CohortsView.css
-   Styled to align with mLab Corporate Identity Brand Guide 2019
+   mLab Corporate Identity Brand Guide 2019
+   Consistent with LearnersView.css · QualificationsView.css
+                   WorkplacesManager.css · Sidebar.css
 
    Colours:
-     --mlab-blue:        #073f4e  (Midnight Blue)
-     --mlab-green:       #94c73d  (Green – primary accent)
-     --mlab-grey:        #6b6b6b  (Grey – secondary text)
-     --mlab-white:       #ffffff
+     --mlab-blue:   #073f4e  (Midnight Blue)
+     --mlab-green:  #94c73d  (Green – primary accent)
+     --mlab-grey:   #6b6b6b  (Grey – secondary text)
+     --mlab-white:  #ffffff
 
    Typefaces:
      Oswald       – headings, labels, buttons (uppercase)
@@ -27,24 +29,38 @@
   --mlab-light-green: #f0f7e1;
   --mlab-amber: #d97706;
   --mlab-red: #ef4444;
+  --mlab-border: #d1dde3;
+  --mlab-bg: #f4f7f9;
 
   --font-heading: "Oswald", "Trebuchet MS", sans-serif;
   --font-body:
     "Trebuchet MS", "Lucida Grande", "Lucida Sans Unicode", Arial, sans-serif;
+
+  --radius-sm: 3px;
+  --radius-md: 8px;
+  --transition: 0.18s ease;
 }
 
-/* ── Wrapper ───────────────────────────────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════════════════════════
+   WRAPPER
+══════════════════════════════════════════════════════════════════════════════ */
 .mlab-cohorts {
   font-family: var(--font-body);
   color: var(--mlab-blue);
 }
 
-/* ── Header row ────────────────────────────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════════════════════════
+   HEADER ROW
+══════════════════════════════════════════════════════════════════════════════ */
 .mlab-cohorts__header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding-bottom: 1.25rem;
   margin-bottom: 1.75rem;
+  border-bottom: 3px solid var(--mlab-blue);
 }
 
 .mlab-cohorts__title {
@@ -57,13 +73,17 @@
   margin: 0;
 }
 
-/* ── Button ────────────────────────────────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════════════════════════
+   BUTTONS
+══════════════════════════════════════════════════════════════════════════════ */
 .mlab-btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.4rem;
   padding: 0.6rem 1.25rem;
   border: 2px solid transparent;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   font-family: var(--font-heading);
   font-weight: 600;
@@ -71,11 +91,15 @@
   letter-spacing: 0.07em;
   text-transform: uppercase;
   transition:
-    background 0.18s,
-    border-color 0.18s,
-    opacity 0.18s;
+    background var(--transition),
+    border-color var(--transition),
+    opacity var(--transition);
   outline: none;
   white-space: nowrap;
+}
+.mlab-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .mlab-btn--green {
@@ -83,41 +107,79 @@
   color: var(--mlab-white);
   border-color: var(--mlab-green);
 }
-.mlab-btn--green:hover {
+.mlab-btn--green:hover:not(:disabled) {
   background: var(--mlab-green-dark);
   border-color: var(--mlab-green-dark);
 }
 
-/* ── Card Grid ─────────────────────────────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════════════════════════
+   ICON BUTTONS
+══════════════════════════════════════════════════════════════════════════════ */
+.mlab-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  background: transparent;
+  border: 1.5px solid currentColor;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition:
+    opacity var(--transition),
+    transform var(--transition);
+  padding: 0;
+  outline: none;
+  flex-shrink: 0;
+}
+.mlab-icon-btn:hover {
+  opacity: 0.75;
+  transform: scale(1.1);
+}
+.mlab-icon-btn--blue {
+  color: var(--mlab-blue);
+}
+.mlab-icon-btn--amber {
+  color: var(--mlab-amber);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   CARD GRID
+══════════════════════════════════════════════════════════════════════════════ */
 .mlab-cohort-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 1.5rem;
+  gap: 1.25rem;
 }
 
-/* ── Cohort Card ───────────────────────────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════════════════════════
+   COHORT CARD
+══════════════════════════════════════════════════════════════════════════════ */
 .mlab-cohort-card {
   background: var(--mlab-white);
-  border: 2px solid var(--mlab-blue);
-  padding: 1.5rem;
+  border: 1px solid var(--mlab-border);
+  border-top: 4px solid var(--mlab-blue);
+  border-radius: var(--radius-md);
+  padding: 1.25rem;
   display: flex;
   flex-direction: column;
+  gap: 0;
   transition:
-    box-shadow 0.2s,
-    transform 0.2s;
+    box-shadow var(--transition),
+    transform var(--transition);
 }
-
 .mlab-cohort-card:hover {
-  box-shadow: 0 6px 20px rgba(7, 63, 78, 0.12);
+  box-shadow: 0 6px 20px rgba(7, 63, 78, 0.1);
   transform: translateY(-2px);
 }
 
-/* ── Card Header ───────────────────────────────────────────────────────────── */
+/* ── Card header ───────────────────────────────────────────────────────────── */
 .mlab-cohort-card__header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   margin-bottom: 0.85rem;
+  gap: 0.5rem;
 }
 
 .mlab-cohort-card__name {
@@ -129,79 +191,50 @@
   color: var(--mlab-blue);
   margin: 0;
   flex: 1;
-  padding-right: 0.5rem;
+  line-height: 1.3;
 }
 
 .mlab-cohort-card__actions {
   display: flex;
-  gap: 6px;
+  gap: 5px;
   flex-shrink: 0;
 }
 
-/* ── Icon Buttons ──────────────────────────────────────────────────────────── */
-.mlab-icon-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  background: transparent;
-  border: 1.5px solid currentColor;
-  cursor: pointer;
-  transition:
-    opacity 0.15s,
-    transform 0.15s;
-  padding: 0;
-  outline: none;
-}
-
-.mlab-icon-btn:hover {
-  opacity: 0.7;
-  transform: scale(1.08);
-}
-
-.mlab-icon-btn--blue {
-  color: var(--mlab-blue);
-}
-.mlab-icon-btn--amber {
-  color: var(--mlab-amber);
-}
-
-/* ── Date Range ────────────────────────────────────────────────────────────── */
+/* ── Date range ────────────────────────────────────────────────────────────── */
 .mlab-cohort-card__dates {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   color: var(--mlab-grey);
-  margin-bottom: 1.1rem;
-  padding: 0.4rem 0.6rem;
+  margin-bottom: 1rem;
+  padding: 0.4rem 0.75rem;
   background: var(--mlab-light-blue);
   border-left: 3px solid var(--mlab-green);
 }
 
-/* ── Role List ─────────────────────────────────────────────────────────────── */
+/* ── Role list ─────────────────────────────────────────────────────────────── */
 .mlab-cohort-card__roles {
   display: flex;
   flex-direction: column;
-  gap: 0.45rem;
-  font-size: 0.85rem;
+  gap: 0.4rem;
   flex: 1;
+  margin-bottom: 0.25rem;
 }
 
 .mlab-role-row {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  color: var(--mlab-grey);
+  font-size: 0.82rem;
 }
 
 .mlab-role-dot {
   width: 8px;
   height: 8px;
+  border-radius: 50%;
   flex-shrink: 0;
 }
-
 .mlab-role-dot--blue {
   background: var(--mlab-blue);
 }
@@ -214,86 +247,119 @@
 
 .mlab-role-label {
   color: var(--mlab-grey);
-  min-width: 80px;
+  min-width: 76px;
+  flex-shrink: 0;
 }
 
 .mlab-role-name {
   font-weight: 700;
   color: var(--mlab-blue);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-/* ── Card Footer ───────────────────────────────────────────────────────────── */
+/* ── Card footer ───────────────────────────────────────────────────────────── */
 .mlab-cohort-card__footer {
-  margin-top: 1.25rem;
-  padding-top: 1rem;
-  border-top: 2px solid var(--mlab-light-blue);
+  margin-top: 1.1rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--mlab-border);
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 0.5rem;
 }
 
 .mlab-cohort-card__learner-count {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  font-size: 0.82rem;
   color: var(--mlab-grey);
-  font-size: 0.85rem;
 }
-
 .mlab-cohort-card__learner-count strong {
-  color: var(--mlab-blue);
   font-family: var(--font-heading);
   font-size: 1rem;
   font-weight: 700;
+  color: var(--mlab-blue);
 }
 
+/* Manage → button */
 .mlab-cohort-card__manage {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   font-family: var(--font-heading);
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--mlab-white);
   background: var(--mlab-blue);
   border: 2px solid var(--mlab-blue);
+  border-radius: var(--radius-sm);
   padding: 0.4rem 0.85rem;
   cursor: pointer;
   transition:
-    background 0.18s,
-    border-color 0.18s;
+    background var(--transition),
+    border-color var(--transition);
   outline: none;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
-
 .mlab-cohort-card__manage:hover {
   background: var(--mlab-blue-dark);
   border-color: var(--mlab-blue-dark);
 }
 
-/* ── Empty State ───────────────────────────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════════════════════════
+   EMPTY STATE
+   spans full grid width
+══════════════════════════════════════════════════════════════════════════════ */
 .mlab-cohort-empty {
   grid-column: 1 / -1;
   text-align: center;
-  padding: 4rem;
+  padding: 4rem 2rem;
   background: var(--mlab-light-blue);
   border-top: 4px solid var(--mlab-green);
-  color: var(--mlab-grey);
 }
 
 .mlab-cohort-empty__title {
   font-family: var(--font-heading);
   font-size: 1.1rem;
   font-weight: 700;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--mlab-blue);
-  margin: 1rem 0 0.5rem;
+  margin: 1rem 0 0.4rem;
 }
 
 .mlab-cohort-empty__desc {
-  font-size: 0.88rem;
+  font-size: 0.86rem;
   color: var(--mlab-grey);
   margin: 0;
+  line-height: 1.6;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   RESPONSIVE
+══════════════════════════════════════════════════════════════════════════════ */
+@media (max-width: 900px) {
+  .mlab-cohort-grid {
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 1rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .mlab-cohort-grid {
+    grid-template-columns: 1fr;
+  }
+  .mlab-cohorts__header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .mlab-cohort-empty {
+    padding: 3rem 1.25rem;
+  }
 }

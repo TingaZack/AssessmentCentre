@@ -9,7 +9,7 @@ import {
     Clock, CheckCircle, AlertTriangle, FileText,
     Layers, Info, User, Activity, Timer
 } from 'lucide-react';
-import { Sidebar } from '../../../components/dashboard/Sidebar';
+import { Sidebar } from '../../../components/dashboard/Sidebar/Sidebar';
 import { useStore } from '../../../store/useStore';
 import { auth, db } from '../../../lib/firebase';
 import './AssessorDashboard.css';

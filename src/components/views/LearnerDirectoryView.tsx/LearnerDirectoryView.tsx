@@ -1,8 +1,14 @@
+// src/components/views/LearnerDirectoryView/LearnerDirectoryView.tsx
+// Styled to align with mLab Corporate Identity Brand Guide 2019
+// Inherits shared mlab-* classes from LearnersView.css
+// Component-specific classes live in LearnerDirectoryView.css
+
 import React, { useState, useMemo } from 'react';
 import { Search, Mail, Phone, Eye, UserCheck, Users, ShieldAlert, GraduationCap } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import type { DashboardLearner } from '../../../types';
 import '../LearnersView/LearnersView.css';
+import './LearnerDirectoryView.css';
 
 interface LearnerDirectoryViewProps {
     learners: DashboardLearner[];
@@ -12,12 +18,11 @@ export const LearnerDirectoryView: React.FC<LearnerDirectoryViewProps> = ({ lear
     const navigate = useNavigate();
     const [searchTerm, setSearchTerm] = useState('');
 
-    // ─── 🚀 SMART GROUPING: EXTRACT UNIQUE HUMANS 🚀 ───
+    // ─── SMART GROUPING: EXTRACT UNIQUE HUMANS ───────────────────────────────
     const directoryData = useMemo(() => {
         const profileMap = new Map<string, any>();
 
         learners.forEach(l => {
-            // Fallback for legacy records that might not have a learnerId mapped yet
             const humanId = l.learnerId || l.id;
 
             if (!profileMap.has(humanId)) {
@@ -30,19 +35,15 @@ export const LearnerDirectoryView: React.FC<LearnerDirectoryViewProps> = ({ lear
                     authStatus: l.authStatus || 'pending',
                     isArchived: l.isArchived,
                     enrollmentCount: 1,
-                    latestCohort: l.cohortId // Just for a quick glance
+                    latestCohort: l.cohortId,
                 });
             } else {
                 const existing = profileMap.get(humanId);
                 existing.enrollmentCount += 1;
-                // If they have an active course, prioritize that over an archived one
-                if (!l.isArchived) {
-                    existing.isArchived = false;
-                }
+                if (!l.isArchived) existing.isArchived = false;
             }
         });
 
-        // Filter by search term
         let results = Array.from(profileMap.values());
 
         if (searchTerm.trim()) {
@@ -54,30 +55,27 @@ export const LearnerDirectoryView: React.FC<LearnerDirectoryViewProps> = ({ lear
             );
         }
 
-        // Sort alphabetically
         return results.sort((a, b) => a.fullName.localeCompare(b.fullName));
     }, [learners, searchTerm]);
 
-    const totalHumans = directoryData.length;
-
     return (
-        <div className="mlab-learners animate-fade-in">
+        <div className="mlab-learners ld-root">
 
-            {/* ── HEADER & SEARCH ── */}
-            <div className="mlab-toolbar" style={{ borderBottom: '1px solid #e2e8f0', paddingBottom: '1rem', marginBottom: '1rem', display: 'flex', justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                    <div style={{ background: '#e0e7ff', padding: '10px', borderRadius: '8px', color: '#3730a3' }}>
+            {/* ── HEADER ── */}
+            <div className="ld-header">
+                <div className="ld-header__identity">
+                    <div className="ld-header__icon-box">
                         <Users size={24} />
                     </div>
                     <div>
-                        <h2 style={{ margin: 0, fontSize: '1.2rem', color: '#1e293b' }}>Master Directory</h2>
-                        <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748b' }}>
-                            {totalHumans} unique individual(s) registered on the platform.
+                        <h2 className="ld-header__title">Master Directory</h2>
+                        <p className="ld-header__sub">
+                            {directoryData.length} unique individual{directoryData.length !== 1 ? 's' : ''} registered on the platform.
                         </p>
                     </div>
                 </div>
 
-                <div className="mlab-search" style={{ minWidth: '300px' }}>
+                <div className="mlab-search ld-search">
                     <Search size={18} color="var(--mlab-grey)" />
                     <input
                         type="text"
@@ -88,7 +86,7 @@ export const LearnerDirectoryView: React.FC<LearnerDirectoryViewProps> = ({ lear
                 </div>
             </div>
 
-            {/* ── DIRECTORY TABLE ── */}
+            {/* ── TABLE ── */}
             <div className="mlab-table-wrap">
                 <table className="mlab-table">
                     <thead>
@@ -97,69 +95,61 @@ export const LearnerDirectoryView: React.FC<LearnerDirectoryViewProps> = ({ lear
                             <th>Contact Info</th>
                             <th>Auth Status</th>
                             <th>History</th>
-                            <th style={{ textAlign: 'right' }}>Actions</th>
+                            <th className="ld-th--right">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {directoryData.length > 0 ? directoryData.map((profile) => (
+                        {directoryData.length > 0 ? directoryData.map(profile => (
                             <tr key={profile.learnerId}>
 
-                                {/* Identity Column */}
+                                {/* Identity */}
                                 <td>
-                                    <div>
-                                        <div style={{ fontWeight: 600, color: '#1e293b', fontSize: '0.95rem' }}>
-                                            {profile.fullName}
+                                    <div className="ld-identity">
+                                        <span className="ld-identity__name">{profile.fullName}</span>
+                                        <span className="ld-identity__id">ID: {profile.idNumber}</span>
+                                    </div>
+                                </td>
+
+                                {/* Contact */}
+                                <td>
+                                    <div className="ld-contact">
+                                        <div className="ld-contact__row">
+                                            <Mail size={12} />
+                                            <span>{profile.email || <em className="ld-empty-val">No email</em>}</span>
                                         </div>
-                                        <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                            <span>ID: {profile.idNumber}</span>
+                                        <div className="ld-contact__row">
+                                            <Phone size={12} />
+                                            <span>{profile.phone || <em className="ld-empty-val">No phone</em>}</span>
                                         </div>
                                     </div>
                                 </td>
 
-                                {/* Contact Column */}
-                                <td>
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', color: '#475569' }}>
-                                            <Mail size={12} /> {profile.email || <span style={{ opacity: 0.5 }}>No email</span>}
-                                        </div>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', color: '#475569' }}>
-                                            <Phone size={12} /> {profile.phone || <span style={{ opacity: 0.5 }}>No phone</span>}
-                                        </div>
-                                    </div>
-                                </td>
-
-                                {/* System Auth Status */}
+                                {/* Auth Status */}
                                 <td>
                                     {profile.authStatus === 'active' ? (
-                                        <span className="mlab-badge mlab-badge--active" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                        <span className="mlab-badge mlab-badge--active ld-badge">
                                             <UserCheck size={12} /> Active
                                         </span>
                                     ) : (
-                                        <span className="mlab-badge mlab-badge--draft" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                        <span className="mlab-badge mlab-badge--draft ld-badge">
                                             <ShieldAlert size={12} /> Pending / Invited
                                         </span>
                                     )}
                                 </td>
 
-                                {/* Enrollments Column */}
+                                {/* Enrollments */}
                                 <td>
-                                    <span style={{
-                                        display: 'inline-flex', alignItems: 'center', gap: '6px',
-                                        background: profile.enrollmentCount > 1 ? '#dbeafe' : '#f1f5f9',
-                                        color: profile.enrollmentCount > 1 ? '#1d4ed8' : '#475569',
-                                        padding: '4px 10px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600
-                                    }}>
+                                    <span className={`ld-enrol-chip${profile.enrollmentCount > 1 ? ' ld-enrol-chip--multi' : ''}`}>
                                         <GraduationCap size={14} />
                                         {profile.enrollmentCount} {profile.enrollmentCount === 1 ? 'Enrollment' : 'Enrollments'}
                                     </span>
                                 </td>
 
                                 {/* Actions */}
-                                <td style={{ textAlign: 'right' }}>
+                                <td className="ld-td--right">
                                     <button
-                                        className="mlab-btn mlab-btn--outline mlab-btn--outline-blue"
+                                        className="mlab-btn mlab-btn--outline mlab-btn--outline-blue ld-view-btn"
                                         onClick={() => navigate(`/admin/learners/${profile.learnerId}`)}
-                                        style={{ padding: '6px 12px', fontSize: '0.8rem' }}
                                     >
                                         <Eye size={14} /> View 360° Profile
                                     </button>
@@ -167,9 +157,9 @@ export const LearnerDirectoryView: React.FC<LearnerDirectoryViewProps> = ({ lear
                             </tr>
                         )) : (
                             <tr>
-                                <td colSpan={5}>
-                                    <div className="mlab-empty" style={{ padding: '3rem 0' }}>
-                                        <Users size={40} color="#cbd5e1" style={{ marginBottom: '1rem' }} />
+                                <td colSpan={5} style={{ padding: 0 }}>
+                                    <div className="mlab-empty">
+                                        <Users size={40} color="var(--mlab-green)" style={{ opacity: 0.6 }} />
                                         <p className="mlab-empty__title">No Learners Found</p>
                                         <p className="mlab-empty__desc">Try adjusting your search criteria.</p>
                                     </div>

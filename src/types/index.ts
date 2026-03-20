@@ -10,6 +10,22 @@ export type ModuleStatus =
   | "Not Started"
   | "Pending Grading";
 
+export interface SystemSettings {
+  institutionName: string;
+  sdpNumber: string;
+  phone: string;
+  email: string;
+  address: string;
+  passMarkThreshold: number;
+  attendanceRequirement: number;
+  defaultCohortMonths: number;
+  eisaLockEnabled: boolean;
+  contractAddress: string;
+  blockchainNetwork: string;
+  rpcUrl: string;
+  ipfsGateway: string;
+}
+
 export interface BaseModule {
   name: string;
   credits: number;
@@ -161,6 +177,7 @@ export interface EnrollmentRecord {
   programmeId: string;
   status: "active" | "dropped" | "completed";
   dateAssigned: string;
+  dateCompleted?: string;
   exitDate?: string | null;
   exitReason?: string;
 }
@@ -186,9 +203,23 @@ export interface DashboardLearner
   createdAt: string;
   createdBy: string;
   updatedAt?: string;
+  nextEisaDate?: string;
   updatedBy?: string;
 
+  trainingEndDate?: string;
+
+  // these Web3 / Blockchain properties:
+  ipfsHash?: string;
+  blockchainFingerprint?: string;
+  isBlockchainVerified?: boolean;
+
+  isOffline?: boolean;
+
   enrollmentHistory?: EnrollmentRecord[];
+
+  // Workplace Placements linked to this specific enrollment
+  employerId?: string;
+  mentorId?: string;
 }
 
 // ============================================================================
@@ -265,6 +296,20 @@ export interface StaffHistoryEntry {
 
   //Strict Audit Requirement
   changeReason?: string;
+}
+
+export interface Employer {
+  id: string;
+  name: string;
+  registrationNumber: string;
+  physicalAddress: string;
+  lat?: number | null;
+  lng?: number | null;
+  contactPerson: string;
+  contactEmail: string;
+  contactPhone: string;
+  status: "active" | "archived";
+  createdAt: string;
 }
 
 // // ---------- Common Types ----------

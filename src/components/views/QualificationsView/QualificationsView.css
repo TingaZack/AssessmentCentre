@@ -1,6 +1,7 @@
 /* ─────────────────────────────────────────────────────────────────────────────
    QualificationsView.css
-   Styled to align with mLab Corporate Identity Brand Guide 2019
+   mLab Corporate Identity Brand Guide 2019
+   Consistent with LearnersView.css
 
    Colours:
      --mlab-blue:        #073f4e  (Midnight Blue)
@@ -9,8 +10,8 @@
      --mlab-white:       #ffffff
 
    Typefaces:
-     Oswald       – headings, labels, buttons (uppercase)
-     Trebuchet MS – body, data text
+     Oswald       – headings, labels, badges, buttons (uppercase)
+     Trebuchet MS – body, data, inputs
 ───────────────────────────────────────────────────────────────────────────── */
 
 @import url("https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&display=swap");
@@ -25,12 +26,18 @@
   --mlab-white: #ffffff;
   --mlab-light-blue: #e8f0f3;
   --mlab-light-green: #f0f7e1;
-  --mlab-red: #ef4444;
   --mlab-amber: #d97706;
+  --mlab-red: #ef4444;
+  --mlab-border: #d1dde3;
+  --mlab-bg: #f4f7f9;
 
   --font-heading: "Oswald", "Trebuchet MS", sans-serif;
   --font-body:
     "Trebuchet MS", "Lucida Grande", "Lucida Sans Unicode", Arial, sans-serif;
+
+  --radius-sm: 3px;
+  --radius-md: 6px;
+  --transition: 0.18s ease;
 }
 
 /* ── Wrapper ───────────────────────────────────────────────────────────────── */
@@ -39,7 +46,9 @@
   color: var(--mlab-blue);
 }
 
-/* ── Header Row ────────────────────────────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════════════════════════
+   HEADER ROW
+══════════════════════════════════════════════════════════════════════════════ */
 .mlab-qualifications__header {
   display: flex;
   justify-content: space-between;
@@ -47,6 +56,8 @@
   margin-bottom: 1.75rem;
   flex-wrap: wrap;
   gap: 1rem;
+  padding-bottom: 1.25rem;
+  border-bottom: 3px solid var(--mlab-blue);
 }
 
 .mlab-qualifications__title {
@@ -65,13 +76,17 @@
   align-items: center;
 }
 
-/* ── Buttons ───────────────────────────────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════════════════════════
+   BUTTONS
+══════════════════════════════════════════════════════════════════════════════ */
 .mlab-btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.4rem;
   padding: 0.6rem 1.25rem;
   border: 2px solid transparent;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   font-family: var(--font-heading);
   font-weight: 600;
@@ -79,12 +94,16 @@
   letter-spacing: 0.07em;
   text-transform: uppercase;
   transition:
-    background 0.18s,
-    border-color 0.18s,
-    color 0.18s,
-    opacity 0.18s;
+    background var(--transition),
+    border-color var(--transition),
+    color var(--transition),
+    opacity var(--transition);
   outline: none;
   white-space: nowrap;
+}
+.mlab-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .mlab-btn--green {
@@ -92,7 +111,7 @@
   color: var(--mlab-white);
   border-color: var(--mlab-green);
 }
-.mlab-btn--green:hover {
+.mlab-btn--green:hover:not(:disabled) {
   background: var(--mlab-green-dark);
   border-color: var(--mlab-green-dark);
 }
@@ -102,11 +121,13 @@
   color: var(--mlab-blue);
   border-color: var(--mlab-blue);
 }
-.mlab-btn--outline-blue:hover {
-  background: var(--mlab-light-blue);
+.mlab-btn--outline-blue:hover:not(:disabled) {
+  opacity: 0.75;
 }
 
-/* ── Table ─────────────────────────────────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════════════════════════
+   TABLE
+══════════════════════════════════════════════════════════════════════════════ */
 .mlab-table-wrap {
   overflow-x: auto;
   border: 2px solid var(--mlab-blue);
@@ -120,6 +141,9 @@
 
 .mlab-table thead {
   background: var(--mlab-blue);
+  position: sticky;
+  top: 0;
+  z-index: 2;
 }
 
 .mlab-table th {
@@ -127,109 +151,131 @@
   text-align: left;
   font-family: var(--font-heading);
   font-weight: 700;
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--mlab-white);
   border-right: 1px solid rgba(255, 255, 255, 0.1);
+  white-space: nowrap;
 }
-
 .mlab-table th:last-child {
   border-right: none;
 }
 
 .mlab-table td {
-  padding: 0.9rem 1rem;
+  padding: 0.85rem 1rem;
   border-bottom: 1px solid var(--mlab-light-blue);
   vertical-align: middle;
+  transition: background var(--transition);
 }
 
 .mlab-table tbody tr {
-  transition: background 0.15s;
+  transition: opacity var(--transition);
 }
-
 .mlab-table tbody tr:hover td {
-  background: var(--mlab-light-blue);
+  background: #f0f6f9;
+}
+.mlab-table tbody tr:last-child td {
+  border-bottom: none;
 }
 
-/* ── Cell Helpers ──────────────────────────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════════════════════════
+   CELL HELPERS
+══════════════════════════════════════════════════════════════════════════════ */
 .mlab-cell-name {
   font-weight: 700;
+  font-size: 0.9rem;
   color: var(--mlab-blue);
-  font-size: 0.92rem;
+  line-height: 1.4;
 }
 
 .mlab-cell-meta {
-  font-size: 0.88rem;
+  font-size: 0.85rem;
   color: var(--mlab-grey);
+  font-family: var(--font-body);
 }
 
-/* ── NQF Level Badge ───────────────────────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════════════════════════
+   NQF LEVEL BADGE
+══════════════════════════════════════════════════════════════════════════════ */
 .mlab-nqf-badge {
   display: inline-flex;
   align-items: center;
   padding: 3px 10px;
   font-family: var(--font-heading);
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   background: var(--mlab-blue);
   color: var(--mlab-white);
+  border-radius: var(--radius-sm);
 }
 
-/* ── Module Chips ──────────────────────────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════════════════════════
+   MODULE COUNT CHIPS  (K = Knowledge · P = Practical · W = Workplace)
+══════════════════════════════════════════════════════════════════════════════ */
 .mlab-module-chips {
   display: flex;
   gap: 0.4rem;
   flex-wrap: wrap;
+  align-items: center;
 }
 
 .mlab-chip {
+  display: inline-flex;
+  align-items: center;
   font-family: var(--font-heading);
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   font-weight: 700;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   padding: 3px 9px;
+  border-radius: var(--radius-sm);
 }
 
+/* Knowledge — blue tones */
 .mlab-chip--k {
   background: var(--mlab-light-blue);
   color: var(--mlab-blue);
   border: 1px solid #b0c4cc;
 }
 
+/* Practical — green tones */
 .mlab-chip--p {
   background: var(--mlab-light-green);
   color: var(--mlab-green-dark);
   border: 1px solid #c2e08a;
 }
 
-/* ── Icon Buttons ──────────────────────────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════════════════════════
+   ICON BUTTONS
+══════════════════════════════════════════════════════════════════════════════ */
 .mlab-icon-btn-group {
   display: flex;
-  gap: 6px;
+  gap: 5px;
+  align-items: center;
 }
 
 .mlab-icon-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 30px;
   background: transparent;
   border: 1.5px solid currentColor;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   transition:
-    opacity 0.15s,
-    transform 0.15s;
+    opacity var(--transition),
+    transform var(--transition);
   padding: 0;
   outline: none;
+  flex-shrink: 0;
 }
-
 .mlab-icon-btn:hover {
-  opacity: 0.7;
-  transform: scale(1.08);
+  opacity: 0.75;
+  transform: scale(1.1);
 }
 
 .mlab-icon-btn--blue {
@@ -239,28 +285,51 @@
   color: var(--mlab-amber);
 }
 
-/* ── Empty State ───────────────────────────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════════════════════════
+   EMPTY STATE
+══════════════════════════════════════════════════════════════════════════════ */
 .mlab-table-empty {
   text-align: center;
-  padding: 3.5rem;
-  color: var(--mlab-grey);
+  padding: 4rem 2rem;
   background: var(--mlab-light-blue);
   border-top: 4px solid var(--mlab-green);
 }
 
 .mlab-table-empty__title {
+  display: block;
   font-family: var(--font-heading);
-  font-size: 1rem;
+  font-size: 1.1rem;
   font-weight: 700;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--mlab-blue);
-  margin: 0.75rem 0 0.4rem;
-  display: block;
+  margin: 1rem 0 0.4rem;
 }
 
 .mlab-table-empty__desc {
-  font-size: 0.88rem;
+  font-size: 0.86rem;
   color: var(--mlab-grey);
   margin: 0;
+  line-height: 1.6;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   RESPONSIVE
+══════════════════════════════════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+  .mlab-qualifications__header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .mlab-qualifications__actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+  .mlab-table th,
+  .mlab-table td {
+    padding: 0.65rem 0.75rem;
+  }
+  .mlab-module-chips {
+    gap: 0.3rem;
+  }
 }

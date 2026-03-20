@@ -11,6 +11,11 @@ import { setGlobalOptions } from "firebase-functions";
 import { HttpsError, onCall, onRequest } from "firebase-functions/https";
 import * as logger from "firebase-functions/logger";
 
+const { PDFDocument, StandardFonts, rgb } = require("pdf-lib");
+
+const puppeteer = require("puppeteer-core");
+const chromium = require("@sparticuz/chromium");
+
 // Start writing functions
 // https://firebase.google.com/docs/functions/typescript
 
@@ -54,9 +59,11 @@ const transporter = nodemailer.createTransport({
 //   fullName: string;
 //   role: string;
 // }
+
 export const createStaffAccount = onCall(async (request) => {
   // 1. EXTRACT DATA & AUTH FROM THE SINGLE 'request' OBJECT
-  const { email, fullName, role, phone } = request.data;
+  const { email, fullName, role, phone, employerId, assessorRegNumber } =
+    request.data;
   const auth = request.auth;
 
   // 2. Security Check: Ensure caller is Authenticated
@@ -87,47 +94,159 @@ export const createStaffAccount = onCall(async (request) => {
       emailVerified: true,
     });
 
-    // 5. Create Firestore Profile
-    await admin.firestore().collection("users").doc(userRecord.uid).set({
+    // 5. 🚀 Set Custom Claims for strict Role-Based Access Control (RBAC)
+    await admin.auth().setCustomUserClaims(userRecord.uid, { role: role });
+
+    // 6. Build the Firestore Profile
+    const userData: any = {
       uid: userRecord.uid,
       fullName: fullName,
       email: email,
       role: role,
-      phone: phone,
+      phone: phone || "",
+      status: "active",
       createdAt: new Date().toISOString(),
       signatureUrl: "", // Empty until they log in
-    });
+    };
 
-    // 6. Generate Password Reset Link
+    // 🚀 Add specific fields based on Role
+    if (role === "mentor" && employerId) {
+      userData.employerId = employerId;
+    } else if (["assessor", "moderator"].includes(role) && assessorRegNumber) {
+      userData.assessorRegNumber = assessorRegNumber;
+    }
+
+    // Save to Firestore
+    await admin
+      .firestore()
+      .collection("users")
+      .doc(userRecord.uid)
+      .set(userData);
+
+    // 7. Generate Password Reset Link
     const link = await admin.auth().generatePasswordResetLink(email);
 
-    // 7. Send Email via Nodemailer
+    // Format role nicely for the email
+    const displayRole =
+      role.charAt(0).toUpperCase() + role.slice(1).replace("_", " ");
+
+    // 8. Send Email via Nodemailer
     const mailOptions = {
       from: '"mLab Admin" <brndkt@gmail.com>',
       to: email,
-      subject: "Welcome to mLab Assessment Platform",
+      subject: `Welcome to mLab Assessment Platform - ${displayRole}`,
       html: `
-        <h3>Welcome, ${fullName}!</h3>
-        <p>You have been registered as a <strong>${role}</strong>.</p>
-        <p>Please click the link below to set your password and access the dashboard:</p>
-        <a href="${link}" style="padding: 10px 20px; background-color: #94c73d; color: white; text-decoration: none; border-radius: 5px;">Set Password & Login</a>
-        <br /><br />
-        <p>Regards,<br/>mLab Admin Team</p>
+        <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #eee;">
+            <h2 style="color: #0f172a;">Welcome, ${fullName}!</h2>
+            <p>You have been registered as a <strong>${displayRole}</strong> on the mLab Assessment Platform.</p>
+            <p>Please click the button below to set your secure password and access your dashboard:</p>
+            
+            <div style="margin: 30px 0;">
+                <a href="${link}" style="background-color: #6366f1; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">
+                    Set Password & Login
+                </a>
+            </div>
+            
+            <p style="color: #64748b; font-size: 12px;">
+                If the button above doesn't work, copy and paste this link into your browser:<br/>
+                <a href="${link}">${link}</a>
+            </p>
+            <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
+            <p style="font-size: 12px; color: #94a3b8;">mLab Admin Team</p>
+        </div>
       `,
     };
 
     await transporter.sendMail(mailOptions);
 
-    return { success: true, message: `Account created for ${email}` };
+    return {
+      success: true,
+      message: `Account created for ${email}`,
+      uid: userRecord.uid,
+    };
   } catch (error: any) {
     console.error("Error creating staff:", error);
-    // Return a structured error to the client
     throw new HttpsError(
       "internal",
       error.message || "Unable to create account.",
     );
   }
 });
+
+// export const createStaffAccount = onCall(async (request) => {
+//   // 1. EXTRACT DATA & AUTH FROM THE SINGLE 'request' OBJECT
+//   const { email, fullName, role, phone } = request.data;
+//   const auth = request.auth;
+
+//   // 2. Security Check: Ensure caller is Authenticated
+//   if (!auth) {
+//     throw new HttpsError("unauthenticated", "Authentication required.");
+//   }
+
+//   // 3. Security Check: Ensure caller is an Admin
+//   const callerUid = auth.uid;
+//   const callerDoc = await admin
+//     .firestore()
+//     .collection("users")
+//     .doc(callerUid)
+//     .get();
+
+//   if (!callerDoc.exists || callerDoc.data()?.role !== "admin") {
+//     throw new HttpsError(
+//       "permission-denied",
+//       "Only Admins can create staff accounts.",
+//     );
+//   }
+
+//   try {
+//     // 4. Create the User in Firebase Auth
+//     const userRecord = await admin.auth().createUser({
+//       email: email,
+//       displayName: fullName,
+//       emailVerified: true,
+//     });
+
+//     // 5. Create Firestore Profile
+//     await admin.firestore().collection("users").doc(userRecord.uid).set({
+//       uid: userRecord.uid,
+//       fullName: fullName,
+//       email: email,
+//       role: role,
+//       phone: phone,
+//       createdAt: new Date().toISOString(),
+//       signatureUrl: "", // Empty until they log in
+//     });
+
+//     // 6. Generate Password Reset Link
+//     const link = await admin.auth().generatePasswordResetLink(email);
+
+//     // 7. Send Email via Nodemailer
+//     const mailOptions = {
+//       from: '"mLab Admin" <brndkt@gmail.com>',
+//       to: email,
+//       subject: "Welcome to mLab Assessment Platform",
+//       html: `
+//         <h3>Welcome, ${fullName}!</h3>
+//         <p>You have been registered as a <strong>${role}</strong>.</p>
+//         <p>Please click the link below to set your password and access the dashboard:</p>
+//         <a href="${link}" style="padding: 10px 20px; background-color: #94c73d; color: white; text-decoration: none; border-radius: 5px;">Set Password & Login</a>
+//         <br /><br />
+//         <p>Regards,<br/>mLab Admin Team</p>
+//       `,
+//     };
+
+//     await transporter.sendMail(mailOptions);
+
+//     return { success: true, message: `Account created for ${email}` };
+//   } catch (error: any) {
+//     console.error("Error creating staff:", error);
+//     // Return a structured error to the client
+//     throw new HttpsError(
+//       "internal",
+//       error.message || "Unable to create account.",
+//     );
+//   }
+// });
 
 // ================= CONFIGURATION =================
 // I will replace this with my actual deployed URL
@@ -459,7 +578,7 @@ export const createLearnerAccount = onRequest((req, res) => {
         from: '"mLab Admin" <brndkt@gmail.com>',
         to: email,
         subject: "Invitation to mLab Learner Portal",
-        // ✅ We inject the 'link' variable here
+        // We inject the 'link' variable here
         html: `
             <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #eee;">
                 <h2 style="color: #0f172a;">Welcome, ${fullName}!</h2>
@@ -498,3 +617,862 @@ export const createLearnerAccount = onRequest((req, res) => {
     }
   });
 });
+
+// const { onDocumentCreated } = require("firebase-functions/v2/firestore");
+// const admin = require("firebase-admin");
+// const puppeteer = require("puppeteer-core");
+// const chromium = require("@sparticuz/chromium");
+// const nodemailer = require("nodemailer");
+// const { PDFDocument, StandardFonts, rgb } = require("pdf-lib");
+
+// if (!admin.apps.length) admin.initializeApp();
+
+// const transporter = nodemailer.createTransport({
+//   service: "gmail",
+//   auth: {
+//     user: process.env.MAIL_USER,
+//     pass: process.env.MAIL_PASS,
+//   },
+// });
+
+interface Submission {
+  id: string;
+  assessmentId: string;
+  title?: string;
+  moduleType?: string;
+  competency?: string;
+  submittedAt?: string;
+  moduleNumber?: string;
+  marks?: number;
+  totalMarks?: number;
+  answers?: Record<string, any>;
+
+  facilitatorId?: string;
+  gradedBy?: string;
+
+  facilitatorName?: string;
+  facilitatorOverallFeedback?: string;
+  facilitatorReviewedAt?: string;
+
+  gradedAt?: string;
+  grading?: {
+    facilitatorName?: string;
+    facilitatorOverallFeedback?: string;
+    facilitatorReviewedAt?: string;
+    facilitatorId?: string;
+
+    assessorName?: string;
+    assessorOverallFeedback?: string;
+    assessorRegNumber?: string;
+    gradedAt?: string;
+    gradedBy?: string;
+    facilitatorBreakdown?: Record<string, any>;
+    assessorBreakdown?: Record<string, any>;
+  };
+
+  moderation?: {
+    moderatedBy?: string;
+    moderatorName?: string;
+    moderatorRegNumber?: string;
+    moderatedAt?: string;
+    feedback?: string;
+    breakdown?: Record<string, any>;
+  };
+  assignedAt?: string;
+  learnerDeclaration?: any;
+  [key: string]: any;
+}
+
+const safelyFormatDate = (dateVal: any) => {
+  if (!dateVal) return "N/A";
+  try {
+    if (dateVal && typeof dateVal.toDate === "function")
+      return dateVal.toDate().toLocaleString();
+    const d = new Date(dateVal);
+    if (isNaN(d.getTime())) return "N/A";
+    return d.toLocaleString();
+  } catch (e) {
+    return "N/A";
+  }
+};
+
+const fetchFileBuffer = async (url: string) => {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Failed to fetch ${url}`);
+    return await res.arrayBuffer();
+  } catch (error) {
+    console.error("Buffer fetch error: ", error);
+    return null;
+  }
+};
+
+exports.generateMasterPoE = onDocumentCreated(
+  {
+    document: "poe_export_requests/{requestId}",
+    timeoutSeconds: 540,
+    memory: "2GiB",
+    region: "us-central1",
+  },
+  async (event) => {
+    const snap = event.data;
+    if (!snap) return;
+
+    const requestData = snap.data();
+    const requestId = event.params.requestId;
+    const learnerId = requestData.learnerId;
+    const requestedByUid = requestData.requestedBy;
+    let requesterEmail = null;
+
+    const updateProgress = async (percent: number, message: string) => {
+      await snap.ref.update({ progress: percent, progressMessage: message });
+    };
+
+    try {
+      await updateProgress(5, "Initializing compliance engine...");
+
+      if (requestedByUid) {
+        try {
+          const user = await admin.auth().getUser(requestedByUid);
+          requesterEmail = user.email;
+        } catch (e) {
+          console.error("Auth fetch failed", e);
+        }
+      }
+
+      const learnerSnap = await admin
+        .firestore()
+        .collection("learners")
+        .doc(learnerId)
+        .get();
+      const learner = learnerSnap.data() || {};
+
+      await updateProgress(15, "Fetching all evidence modules...");
+      const subsSnap = await admin
+        .firestore()
+        .collection("learner_submissions")
+        .where("learnerId", "==", learnerId)
+        .get();
+
+      const submissions: Submission[] = subsSnap.docs.map((d) => {
+        const data = d.data() as any;
+        return {
+          id: d.id,
+          assessmentId: data.assessmentId || "",
+          title: data.title || "",
+          moduleType: data.moduleType || "",
+          competency: data.competency || "",
+          submittedAt: data.submittedAt || "",
+          moduleNumber: data.moduleNumber || "",
+          marks: data.marks,
+          totalMarks: data.totalMarks,
+          answers: data.answers || {},
+          facilitatorId:
+            data.grading?.facilitatorId ||
+            data.facilitatorId ||
+            data.latestCoachingLog?.facilitatorId ||
+            "",
+          gradedBy: data.grading?.gradedBy || data.gradedBy || "",
+          facilitatorName: data.facilitatorName || "",
+          facilitatorOverallFeedback: data.facilitatorOverallFeedback || "",
+          facilitatorReviewedAt: data.facilitatorReviewedAt || "",
+          gradedAt: data.gradedAt || "",
+          grading: data.grading || {},
+          moderation: data.moderation || {},
+          assignedAt: data.assignedAt || "",
+          learnerDeclaration: data.learnerDeclaration || {},
+          ...data,
+        } as Submission;
+      });
+
+      submissions.sort(
+        (a, b) =>
+          new Date(a.assignedAt || 0).getTime() -
+          new Date(b.assignedAt || 0).getTime(),
+      );
+
+      await updateProgress(25, "Retrieving digital signatures & user docs...");
+      const userIdsToFetch = new Set<string>();
+      if (learner.authUid) userIdsToFetch.add(learner.authUid);
+
+      submissions.forEach((sub) => {
+        if (sub.facilitatorId) userIdsToFetch.add(sub.facilitatorId);
+        if (sub.gradedBy) userIdsToFetch.add(sub.gradedBy);
+        if (sub.moderation?.moderatedBy)
+          userIdsToFetch.add(sub.moderation.moderatedBy);
+      });
+
+      const signaturesMap: Record<string, string> = {};
+      let learnerUserDoc: any = null;
+
+      if (userIdsToFetch.size > 0) {
+        const promises = Array.from(userIdsToFetch).map((uid) =>
+          admin.firestore().collection("users").doc(uid).get(),
+        );
+        const userSnaps = await Promise.all(promises);
+        userSnaps.forEach((userSnap) => {
+          if (userSnap.exists) {
+            const data = userSnap.data();
+            if (data?.signatureUrl) {
+              signaturesMap[userSnap.id] = data.signatureUrl;
+            }
+            if (userSnap.id === learner.authUid) {
+              learnerUserDoc = data;
+            }
+          }
+        });
+      }
+
+      const learnerSignatureUrl = learner.authUid
+        ? signaturesMap[learner.authUid]
+        : null;
+
+      await updateProgress(30, "Generating document structure...");
+      const companyLogoUrl =
+        "https://firebasestorage.googleapis.com/v0/b/testpro-8f08c.appspot.com/o/Mlab-Grey-variation-1.png?alt=media&token=e85e0473-97cc-431d-8c08-7a3445806983";
+
+      const offlineEvidenceFiles: {
+        index: number;
+        url: string;
+        label: string;
+      }[] = [];
+
+      let htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <style>
+                @page { size: A4; margin: 15mm; }
+                body { font-family: 'Helvetica', Arial, sans-serif; color: #1e293b; line-height: 1.4; }
+                .page-break { page-break-after: always; }
+                
+                .cover { height: 95vh; display: flex; flex-direction: column; justify-content: center; text-align: center; border: 10px solid #073f4e; padding: 40px; box-sizing: border-box; }
+                .cover-logo { max-width: 250px; margin: 0 auto 40px auto; display: block; }
+                .cover h1 { font-size: 32px; color: #073f4e; text-transform: uppercase; margin-bottom: 10px; }
+                .cover h2 { font-size: 20px; color: #0284c7; margin-bottom: 50px; }
+                .cover-details { font-size: 16px; margin: 0 auto; text-align: left; display: inline-block; background: #f8fafc; padding: 30px; border-radius: 8px; border: 1px solid #e2e8f0; width: 80%; }
+                .cover-details p { margin: 10px 0; border-bottom: 1px solid #cbd5e1; padding-bottom: 5px; }
+                
+                .section-title { background: #073f4e; color: white; padding: 10px; font-weight: bold; text-transform: uppercase; margin-top: 30px; }
+                table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+                th, td { border: 1px solid #e2e8f0; padding: 10px; text-align: left; font-size: 12px; }
+                th { background: #f8fafc; }
+
+                .divider-page { height: 95vh; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; box-sizing: border-box; padding: 40px; border: 10px solid; }
+                .divider-page h1 { font-size: 36px; text-transform: uppercase; margin: 0; }
+                .divider-page p { font-size: 16px; margin-top: 15px; opacity: 0.9; }
+
+                .module-header { border-bottom: 2px solid #0284c7; padding-bottom: 5px; margin-bottom: 15px; }
+                
+                .eval-box { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 15px; margin-bottom: 25px; font-size: 12px; page-break-inside: avoid; }
+                .eval-row { display: flex; margin-bottom: 8px; }
+                .eval-label { font-weight: bold; width: 140px; color: #0f172a; flex-shrink: 0; }
+                .eval-value { flex: 1; color: #475569; }
+                
+                .text-blue { color: #0284c7 !important; }
+                .text-red { color: #dc2626 !important; }
+                .text-green { color: #16a34a !important; }
+
+                .outcome-C { color: #16a34a; font-weight: bold; font-size: 14px; }
+                .outcome-NYC { color: #dc2626; font-weight: bold; font-size: 14px; }
+                .outcome-Pending { color: #b45309; font-weight: bold; font-size: 14px; }
+
+                .question-box { margin-bottom: 20px; border-bottom: 1px solid #f1f5f9; padding-bottom: 15px; page-break-inside: avoid; }
+                .q-text { font-weight: bold; font-size: 13px; margin-bottom: 5px; color: #0f172a; }
+                .a-text { background: #ffffff; padding: 10px; border: 1px solid #e2e8f0; border-left: 4px solid #94a3b8; font-size: 12px; white-space: pre-wrap; border-radius: 4px; overflow-wrap: break-word; }
+                .a-text div { margin-bottom: 8px; }
+                .a-link { color: #0284c7; text-decoration: underline; font-weight: bold; }
+                
+                .f-text { margin-top: 8px; font-size: 11px; background: #f8fafc; padding: 8px; border-radius: 4px; border: 1px solid #e2e8f0; }
+                .f-item { margin-bottom: 4px; padding-bottom: 4px; border-bottom: 1px dashed #cbd5e1; }
+                .f-item:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+                
+                .sig-wrapper { margin-top: 30px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; page-break-inside: avoid; }
+                .sig-box { border: 1px solid #cbd5e1; padding: 10px; text-align: center; font-size: 11px; background: #f8fafc; border-top: 3px solid #cbd5e1; border-radius: 4px; }
+                .sig-box h4 { margin: 0 0 5px 0; color: #0f172a; font-size: 11px; }
+                .sig-img { max-height: 40px; max-width: 100%; object-fit: contain; margin: 4px auto; display: block; mix-blend-mode: multiply; }
+                .sig-placeholder { height: 40px; display: flex; align-items: center; justify-content: center; font-style: italic; color: #cbd5e1; font-size: 10px; margin: 4px 0; }
+                .sig-name { font-weight: bold; font-size: 12px; margin: 8px 0; border-bottom: 1px dashed #cbd5e1; padding-bottom: 5px; }
+                .sig-date { color: #64748b; }
+                
+                .sig-box-fac { border-top-color: #0284c7; }
+                .sig-box-fac h4, .sig-box-fac .sig-name, .sig-box-fac .sig-date, .sig-box-fac .sig-reg { color: #0284c7; border-bottom-color: #0284c7; }
+                .sig-img-fac { filter: invert(36%) sepia(85%) saturate(1637%) hue-rotate(174deg) brightness(96%) contrast(101%); }
+
+                .sig-box-ass { border-top-color: #dc2626; }
+                .sig-box-ass h4, .sig-box-ass .sig-name, .sig-box-ass .sig-date, .sig-box-ass .sig-reg { color: #dc2626; border-bottom-color: #dc2626; }
+                .sig-img-ass { filter: invert(26%) sepia(89%) saturate(5436%) hue-rotate(352deg) brightness(90%) contrast(100%); }
+
+                .sig-box-mod { border-top-color: #16a34a; }
+                .sig-box-mod h4, .sig-box-mod .sig-name, .sig-box-mod .sig-date, .sig-box-mod .sig-reg { color: #16a34a; border-bottom-color: #16a34a; }
+                .sig-img-mod { filter: invert(45%) sepia(74%) saturate(464%) hue-rotate(85deg) brightness(93%) contrast(89%); }
+            </style>
+        </head>
+        <body>
+            <div class="cover">
+                <img src="${companyLogoUrl}" alt="Logo" class="cover-logo" />
+                <h1>Master Portfolio of Evidence</h1>
+                <h2>QCTO QUALIFICATION COMPLIANCE RECORD</h2>
+                <div class="cover-details">
+                    <p><strong>Learner Name:</strong> ${learner.fullName || "N/A"}</p>
+                    <p><strong>Identity Number:</strong> ${learner.idNumber || "N/A"}</p>
+                    <p><strong>Email Address:</strong> ${learner.email || "N/A"}</p>
+                    <p><strong>Date Generated:</strong> ${safelyFormatDate(new Date())}</p>
+                    <p><strong>System Reference:</strong> ${requestId}</p>
+                </div>
+            </div>
+            <div class="page-break"></div>
+
+            <div class="section-title">Statement of Results</div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Code</th>
+                        <th>Module Title</th>
+                        <th>Type</th>
+                        <th>Score</th>
+                        <th>Outcome</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${submissions
+                      .map((s) => {
+                        const compClass =
+                          s.competency === "C"
+                            ? "outcome-C"
+                            : s.competency === "NYC"
+                              ? "outcome-NYC"
+                              : "outcome-Pending";
+                        return `
+                        <tr>
+                            <td>${s.moduleNumber || "N/A"}</td>
+                            <td>${s.title || "Untitled"}</td>
+                            <td>${(s.moduleType || "N/A").toUpperCase()}</td>
+                            <td>${s.marks !== undefined ? s.marks : "-"}/${s.totalMarks || "-"}</td>
+                            <td class="${compClass}">${s.competency || "Pending"}</td>
+                        </tr>
+                        `;
+                      })
+                      .join("")}
+                </tbody>
+            </table>
+            <div class="page-break"></div>
+        `;
+
+      let index = 0;
+      for (const sub of submissions) {
+        index++;
+        await updateProgress(
+          30 + Math.floor((index / submissions.length) * 40),
+          `Compiling: ${sub.title || "Module"}...`,
+        );
+
+        const assessmentSnap = await admin
+          .firestore()
+          .collection("assessments")
+          .doc(sub.assessmentId)
+          .get();
+        const assessmentData = assessmentSnap.data() || {};
+        const blocks = assessmentData.blocks || [];
+
+        const grading = sub.grading || {};
+        const moderation = sub.moderation || {};
+        const answers = sub.answers || {};
+
+        const facFeedback =
+          sub.facilitatorOverallFeedback ||
+          grading.facilitatorOverallFeedback ||
+          "<i>No facilitator comments.</i>";
+        const assFeedback =
+          grading.assessorOverallFeedback || "<i>No assessor feedback.</i>";
+        const modFeedback =
+          moderation.feedback || "<i>No moderation comments.</i>";
+
+        const compClass =
+          sub.competency === "C"
+            ? "outcome-C"
+            : sub.competency === "NYC"
+              ? "outcome-NYC"
+              : "outcome-Pending";
+        const compText =
+          sub.competency === "C"
+            ? "COMPETENT (C)"
+            : sub.competency === "NYC"
+              ? "NOT YET COMPETENT (NYC)"
+              : "PENDING";
+
+        const moduleBreadcrumb = sub.moduleNumber || sub.title || "Module";
+
+        htmlContent += `
+                <div class="module-header">
+                    <h2 style="margin:0; color:#073f4e;">${sub.moduleNumber ? sub.moduleNumber + ": " : ""}${sub.title || "Untitled"}</h2>
+                </div>
+                
+                <div class="eval-box">
+                    <div class="eval-row">
+                        <div class="eval-label">Final Outcome:</div>
+                        <div class="eval-value"><span class="${compClass}">${compText}</span></div>
+                    </div>
+                    <div class="eval-row">
+                        <div class="eval-label">Assessment Score:</div>
+                        <div class="eval-value"><strong>${sub.marks !== undefined ? sub.marks : "-"} / ${sub.totalMarks || "-"}</strong></div>
+                    </div>
+                    <hr style="border:0; border-top:1px solid #e2e8f0; margin:10px 0;" />
+                    <div class="eval-row text-blue">
+                        <div class="eval-label">Facilitator Note:</div>
+                        <div class="eval-value">${facFeedback}</div>
+                    </div>
+                    <div class="eval-row text-red">
+                        <div class="eval-label">Assessor Feedback:</div>
+                        <div class="eval-value">${assFeedback}</div>
+                    </div>
+                    <div class="eval-row text-green">
+                        <div class="eval-label">Moderator Review:</div>
+                        <div class="eval-value">${modFeedback}</div>
+                    </div>
+                </div>
+
+                <div class="evidence-list">
+            `;
+
+        if (blocks.length > 0) {
+          let qNum = 1;
+          blocks.forEach((block: any) => {
+            if (block.type === "section") {
+              htmlContent += `<h3 style="margin-top: 25px; padding-bottom: 5px; border-bottom: 2px solid #cbd5e1;">${block.title}</h3>`;
+              return;
+            }
+            if (block.type === "info") return;
+
+            const blockBreadcrumb =
+              block.weCode || block.code || block.title || `Q${qNum}`;
+
+            const ans =
+              answers[block.id] !== undefined
+                ? answers[block.id]
+                : sub[block.id];
+            let formattedAnswer = "";
+
+            if (ans !== undefined && ans !== null) {
+              if (typeof ans === "string" || typeof ans === "number") {
+                if (
+                  block.type === "mcq" &&
+                  typeof ans === "number" &&
+                  block.options
+                ) {
+                  formattedAnswer = block.options[ans] || String(ans);
+                } else {
+                  formattedAnswer = String(ans);
+                }
+              } else if (typeof ans === "object") {
+                if (ans.text && ans.text !== "<p></p>")
+                  formattedAnswer += `<div>${ans.text}</div>`;
+                if (ans.url)
+                  formattedAnswer += `<div>🔗 <a class="a-link" href="${ans.url}">External Link</a></div>`;
+                if (ans.code)
+                  formattedAnswer += `<pre style="background:#f8fafc; padding:10px; border:1px solid #e2e8f0;">${ans.code}</pre>`;
+
+                if (ans.uploadUrl) {
+                  const annIndex = offlineEvidenceFiles.length + 1;
+                  const detailedLabel = `${moduleBreadcrumb} | ${blockBreadcrumb}`;
+
+                  offlineEvidenceFiles.push({
+                    index: annIndex,
+                    url: ans.uploadUrl,
+                    label: detailedLabel,
+                  });
+                  formattedAnswer += `<div style="margin-top:5px; padding:8px; background:#fffbeb; border:1px solid #fde68a; border-radius:4px; font-size:11px;">
+                        📎 <a class="a-link" href="${ans.uploadUrl}"><strong>Appended as Annexure ${annIndex}</strong> (${detailedLabel})</a>
+                    </div>`;
+                }
+
+                Object.keys(ans).forEach((k) => {
+                  const subAns = ans[k];
+                  if (subAns && typeof subAns === "object") {
+                    let subHtml = "";
+                    if (subAns.text && subAns.text !== "<p></p>")
+                      subHtml += `<div>${subAns.text}</div>`;
+                    if (subAns.url)
+                      subHtml += `<div>🔗 <a class="a-link" href="${subAns.url}">External Link</a></div>`;
+                    if (subAns.code)
+                      subHtml += `<pre style="background:#f8fafc; padding:10px;">${subAns.code}</pre>`;
+
+                    if (subAns.uploadUrl) {
+                      const annIndex = offlineEvidenceFiles.length + 1;
+                      const nestedLabel = `${moduleBreadcrumb} | ${blockBreadcrumb} | ${k.replace(/_/g, " ").toUpperCase()}`;
+
+                      offlineEvidenceFiles.push({
+                        index: annIndex,
+                        url: subAns.uploadUrl,
+                        label: nestedLabel,
+                      });
+                      subHtml += `<div style="margin-top:5px; padding:8px; background:#fffbeb; border:1px solid #fde68a; border-radius:4px; font-size:11px;">
+                            📎 <a class="a-link" href="${subAns.uploadUrl}"><strong>Appended as Annexure ${annIndex}</strong> (${nestedLabel})</a>
+                        </div>`;
+                    }
+
+                    if (subHtml) {
+                      formattedAnswer += `<div style="margin-top:10px; padding:10px; border-left:3px solid #cbd5e1; background:#f8fafc;"><strong>Item: ${k.replace(/_/g, " ")}</strong>${subHtml}</div>`;
+                    }
+                  } else if (
+                    typeof subAns === "string" &&
+                    subAns.trim() !== "" &&
+                    !["text", "url", "uploadUrl", "code"].includes(k)
+                  ) {
+                    formattedAnswer += `<div><strong>${k.replace(/_/g, " ")}:</strong> ${subAns}</div>`;
+                  }
+                });
+              }
+            }
+            if (formattedAnswer === "")
+              formattedAnswer = "<i>No evidence provided.</i>";
+
+            let specificFeedback = "";
+            const seenComments = new Set<string>();
+
+            const addFeedback = (
+              role: string,
+              text: string,
+              colorClass: string,
+            ) => {
+              if (!text || text.trim() === "") return;
+              const cleanText = text.trim();
+              const key = `${role}:${cleanText}`;
+              if (!seenComments.has(key)) {
+                seenComments.add(key);
+                specificFeedback += `<div class="f-item ${colorClass}"><strong>${role} Note:</strong> ${cleanText}</div>`;
+              }
+            };
+
+            const fLayer = grading.facilitatorBreakdown?.[block.id] || {};
+            const aLayer = grading.assessorBreakdown?.[block.id] || {};
+            const mLayer = moderation.breakdown?.[block.id] || {};
+
+            addFeedback("Facilitator", fLayer.feedback, "text-blue");
+            addFeedback("Assessor", aLayer.feedback, "text-red");
+            addFeedback("Moderator", mLayer.feedback, "text-green");
+
+            if (Array.isArray(fLayer.criteriaResults)) {
+              fLayer.criteriaResults.forEach((crit: any) =>
+                addFeedback("Facilitator", crit.comment, "text-blue"),
+              );
+            }
+            if (Array.isArray(aLayer.criteriaResults)) {
+              aLayer.criteriaResults.forEach((crit: any) =>
+                addFeedback("Assessor", crit.comment, "text-red"),
+              );
+            }
+            if (Array.isArray(mLayer.criteriaResults)) {
+              mLayer.criteriaResults.forEach((crit: any) =>
+                addFeedback("Moderator", crit.comment, "text-green"),
+              );
+            }
+
+            htmlContent += `
+                        <div class="question-box">
+                            <div class="q-text">Q${qNum++}. ${block.question || block.title || "Checkpoint"}</div>
+                            <div class="a-text">${formattedAnswer}</div>
+                            ${specificFeedback ? `<div class="f-text">${specificFeedback}</div>` : ""}
+                        </div>
+                    `;
+          });
+        } else {
+          htmlContent += `<p style="color:#94a3b8; font-style:italic; padding: 20px; text-align: center; border: 1px dashed #cbd5e1;">Cannot map evidence: Assessment Template is empty.</p>`;
+        }
+
+        htmlContent += `</div>`;
+
+        const facSigUrl = sub.facilitatorId
+          ? signaturesMap[sub.facilitatorId]
+          : null;
+        const assSigUrl = sub.gradedBy ? signaturesMap[sub.gradedBy] : null;
+        const modSigUrl = sub.moderation?.moderatedBy
+          ? signaturesMap[sub.moderation.moderatedBy]
+          : null;
+
+        const learnerDate = safelyFormatDate(
+          sub.submittedAt || sub.learnerDeclaration?.timestamp,
+        );
+        const facName =
+          sub.facilitatorName || grading.facilitatorName || "Pending";
+        const facDate = safelyFormatDate(
+          sub.facilitatorReviewedAt || grading.facilitatorReviewedAt,
+        );
+        const assessorName = grading.assessorName || "Pending";
+        const assessorReg = grading.assessorRegNumber
+          ? `Reg: ${grading.assessorRegNumber}`
+          : "";
+        const assessorDate = safelyFormatDate(sub.gradedAt || grading.gradedAt);
+        const modName = moderation.moderatorName || "Pending";
+        const modReg = moderation.moderatorRegNumber
+          ? `Reg: ${moderation.moderatorRegNumber}`
+          : "";
+        const modDate = safelyFormatDate(moderation.moderatedAt);
+
+        htmlContent += `
+                <div class="sig-wrapper">
+                    <div class="sig-box">
+                        <h4>Learner Declaration</h4>
+                        ${learnerSignatureUrl ? `<img src="${learnerSignatureUrl}" class="sig-img" />` : `<div class="sig-placeholder">No signature on file</div>`}
+                        <div class="sig-name">${learner.fullName || "Unknown Learner"}</div>
+                        <span class="sig-date">Signed: ${learnerDate}</span>
+                    </div>
+                    <div class="sig-box sig-box-fac">
+                        <h4>Facilitator Review</h4>
+                        ${facSigUrl ? `<img src="${facSigUrl}" class="sig-img sig-img-fac" />` : `<div class="sig-placeholder">No signature on file</div>`}
+                        <div class="sig-name">${facName}</div>
+                        <span class="sig-date">Signed: ${facDate}</span>
+                    </div>
+                    <div class="sig-box sig-box-ass">
+                        <h4>Assessor Endorsement</h4>
+                        ${assSigUrl ? `<img src="${assSigUrl}" class="sig-img sig-img-ass" />` : `<div class="sig-placeholder">No signature on file</div>`}
+                        <div class="sig-name">${assessorName}</div>
+                        ${assessorReg ? `<div class="sig-reg">${assessorReg}</div>` : ""}
+                        <span class="sig-date">Signed: ${assessorDate}</span>
+                    </div>
+                    <div class="sig-box sig-box-mod">
+                        <h4>Moderator Verification</h4>
+                        ${modSigUrl ? `<img src="${modSigUrl}" class="sig-img sig-img-mod" />` : `<div class="sig-placeholder">No signature on file</div>`}
+                        <div class="sig-name">${modName}</div>
+                        ${modReg ? `<div class="sig-reg">${modReg}</div>` : ""}
+                        <span class="sig-date">Signed: ${modDate}</span>
+                    </div>
+                </div>
+                <div class="page-break"></div>
+            `;
+      }
+
+      if (offlineEvidenceFiles.length > 0) {
+        htmlContent += `
+             <div class="divider-page" style="border-color: #94a3b8; color: #475569; background-color: #f8fafc;">
+                 <h1>Annexures</h1>
+                 <h2>Offline Evidence Documents</h2>
+                 <p>The following pages contain the exact files uploaded by the learner, mapped directly to their respective assessment items.</p>
+             </div>
+          `;
+      }
+
+      htmlContent += `</body></html>`;
+
+      await updateProgress(70, "Finalizing Assessment Layout...");
+      const browser = await puppeteer.launch({
+        args: chromium.args,
+        defaultViewport: chromium.defaultViewport,
+        executablePath: await chromium.executablePath(),
+        headless: chromium.headless,
+      });
+
+      const page = await browser.newPage();
+      page.setDefaultNavigationTimeout(120000);
+      page.setDefaultTimeout(120000);
+
+      await page.setContent(htmlContent, {
+        waitUntil: ["load", "networkidle2"],
+        timeout: 120000,
+      });
+
+      const puppeteerPdfBuffer = await page.pdf({
+        format: "A4",
+        printBackground: true,
+        displayHeaderFooter: true,
+        headerTemplate: "<span></span>",
+        footerTemplate: `
+          <div style="font-size: 9px; font-family: Helvetica, Arial, sans-serif; color: #64748b; padding: 0 15mm; width: 100%; display: flex; justify-content: space-between; box-sizing: border-box;">
+            <span>CodeTribe Academy</span>
+            <span>Page <span class="pageNumber"></span> of <span class="totalPages"></span></span>
+          </div>
+        `,
+        margin: { top: "15mm", right: "15mm", bottom: "25mm", left: "15mm" },
+        timeout: 120000,
+      });
+
+      await browser.close();
+
+      await updateProgress(
+        85,
+        "Merging Compliance Documents inside Cover Page...",
+      );
+
+      const masterPdf = await PDFDocument.create();
+      // const font = await masterPdf.embedFont(StandardFonts.Helvetica);
+      const fontBold = await masterPdf.embedFont(StandardFonts.HelveticaBold);
+
+      const assessmentPdfDoc = await PDFDocument.load(puppeteerPdfBuffer);
+      const totalAssessmentPages = assessmentPdfDoc.getPageCount();
+
+      // 1. EXTRACT & APPEND PAGE 1 (THE COVER PAGE)
+      if (totalAssessmentPages > 0) {
+        const [coverPage] = await masterPdf.copyPages(assessmentPdfDoc, [0]);
+        masterPdf.addPage(coverPage);
+      }
+
+      // 2. FETCH & APPEND COMPLIANCE DOCS
+      const docsSource = learnerUserDoc?.documents || learner?.documents || {};
+      const frontMatterUrls = [
+        docsSource.idUrl,
+        docsSource.cvUrl,
+        docsSource.qualUrl,
+      ].filter((url) => url && typeof url === "string");
+
+      for (const url of frontMatterUrls) {
+        try {
+          const fileBuffer = await fetchFileBuffer(url);
+          if (fileBuffer) {
+            const externalPdf = await PDFDocument.load(fileBuffer);
+            const copiedPages = await masterPdf.copyPages(
+              externalPdf,
+              externalPdf.getPageIndices(),
+            );
+            copiedPages.forEach((p: any) => masterPdf.addPage(p));
+          }
+        } catch (err) {
+          console.warn(
+            `Could not merge front-matter document from URL: ${url}. Skipping it.`,
+            err,
+          );
+        }
+      }
+
+      // 3. EXTRACT & APPEND PAGES 2 TO END (THE ASSESSMENTS)
+      if (totalAssessmentPages > 1) {
+        const remainingIndices = Array.from(
+          { length: totalAssessmentPages - 1 },
+          (_, i) => i + 1,
+        );
+        const remainingPages = await masterPdf.copyPages(
+          assessmentPdfDoc,
+          remainingIndices,
+        );
+        remainingPages.forEach((p: any) => masterPdf.addPage(p));
+      }
+
+      // 4. FETCH & APPEND OFFLINE EVIDENCE (ANNEXURES) WITH DETAILED STAMPS
+      if (offlineEvidenceFiles.length > 0) {
+        await updateProgress(90, "Merging Offline Evidence (Annexures)...");
+        for (const evidence of offlineEvidenceFiles) {
+          try {
+            const buffer = await fetchFileBuffer(evidence.url);
+            if (!buffer) continue;
+
+            const stampText = `Annexure ${evidence.index}: ${evidence.label}`;
+
+            try {
+              const extPdf = await PDFDocument.load(buffer);
+              const copiedPages = await masterPdf.copyPages(
+                extPdf,
+                extPdf.getPageIndices(),
+              );
+
+              if (copiedPages.length > 0) {
+                const firstPage = copiedPages[0];
+                const { height } = firstPage.getSize();
+                firstPage.drawText(stampText, {
+                  x: 20,
+                  y: height - 20,
+                  size: 10,
+                  color: rgb(0.86, 0.15, 0.15),
+                  font: fontBold,
+                });
+              }
+              copiedPages.forEach((p: any) => masterPdf.addPage(p));
+            } catch (pdfErr) {
+              let image;
+              try {
+                image = await masterPdf.embedPng(buffer);
+              } catch {
+                try {
+                  image = await masterPdf.embedJpg(buffer);
+                } catch (e) {}
+              }
+
+              if (image) {
+                const page = masterPdf.addPage();
+                const { width, height } = page.getSize();
+
+                page.drawText(stampText, {
+                  x: 20,
+                  y: height - 30,
+                  size: 10,
+                  color: rgb(0.86, 0.15, 0.15),
+                  font: fontBold,
+                });
+
+                const dims = image.scaleToFit(width - 40, height - 80);
+                page.drawImage(image, {
+                  x: width / 2 - dims.width / 2,
+                  y: height / 2 - dims.height / 2 - 20,
+                  width: dims.width,
+                  height: dims.height,
+                });
+              } else {
+                console.warn(
+                  `Format not supported for offline merging: ${evidence.url}`,
+                );
+              }
+            }
+          } catch (err) {
+            console.warn(
+              `Failed to process evidence annexure: ${evidence.url}`,
+              err,
+            );
+          }
+        }
+      }
+
+      const finalPdfBytes = await masterPdf.save();
+      const finalPdfBuffer = Buffer.from(finalPdfBytes);
+
+      // 🚀 STORAGE HOUSEKEEPING: DELETE OLD FILES BEFORE SAVING NEW ONE 🚀
+      await updateProgress(
+        95,
+        "Cleaning up old records and saving to vault...",
+      );
+      const bucket = admin.storage().bucket();
+      const dirPrefix = `poe_exports/${learnerId}/`;
+
+      try {
+        await bucket.deleteFiles({ prefix: dirPrefix });
+        console.log(`Successfully deleted old PoEs for learner ${learnerId}`);
+      } catch (cleanupErr) {
+        console.log("No previous PoE to delete, continuing...");
+      }
+
+      const filePath = `${dirPrefix}Master_PoE_${requestId}.pdf`;
+      const file = bucket.file(filePath);
+
+      await file.save(finalPdfBuffer, {
+        metadata: { contentType: "application/pdf" },
+      });
+
+      const [downloadUrl] = await file.getSignedUrl({
+        action: "read",
+        expires: "01-01-2100",
+      });
+
+      await snap.ref.update({
+        status: "completed",
+        progress: 100,
+        progressMessage: "Done!",
+        downloadUrl,
+      });
+
+      if (requesterEmail) {
+        await transporter.sendMail({
+          from: '"mLab Compliance" <noreply@mlab.co.za>',
+          to: requesterEmail,
+          subject: `✅ Master PoE Ready: ${learner.fullName}`,
+          html: `<p>The full Master Portfolio for <b>${learner.fullName}</b> has been successfully generated.</p>
+                       <p><a href="${downloadUrl}" style="padding:10px 20px; background:#16a34a; color:white; text-decoration:none; border-radius:5px;">Download Master PoE PDF</a></p>`,
+        });
+      }
+    } catch (error: any) {
+      console.error("Master PoE Generation Failed:", error);
+      await snap.ref.update({
+        status: "error",
+        progressMessage: "Generation failed",
+        errorMessage: error.message,
+      });
+    }
+  },
+);

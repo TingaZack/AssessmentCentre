@@ -13,7 +13,7 @@ import type { DashboardLearner } from '../../../types';
 import './LearnerProfileView.css';
 import { useStore } from '../../../store/useStore';
 import { PageHeader, type HeaderTheme } from '../../common/PageHeader/PageHeader';
-import { Sidebar } from '../../dashboard/Sidebar';
+import { Sidebar } from '../../dashboard/Sidebar/Sidebar';
 
 export const LearnerProfileView: React.FC = () => {
     const { learnerId } = useParams<{ learnerId: string }>();

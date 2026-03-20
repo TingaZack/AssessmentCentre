@@ -1,0 +1,202 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   LearnerDirectoryView.css
+   mLab Corporate Identity Brand Guide 2019
+
+   This file covers ONLY the classes unique to LearnerDirectoryView.
+   All shared mlab-* classes (table, search, badge, btn, empty) are
+   inherited from LearnersView.css which is imported first in the TSX.
+
+   Colours / Fonts: see LearnersView.css (shared :root variables)
+───────────────────────────────────────────────────────────────────────────── */
+
+/* ── Page-level fade-in ────────────────────────────────────────────────────── */
+@keyframes ld-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.ld-root {
+  animation: ld-fade-in 0.25s ease both;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   PAGE HEADER
+   Icon box · title · sub · search — all inline-style-free
+══════════════════════════════════════════════════════════════════════════════ */
+.ld-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding-bottom: 1.25rem;
+  margin-bottom: 1.5rem;
+  border-bottom: 3px solid var(--mlab-blue);
+}
+
+.ld-header__identity {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.ld-header__icon-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  background: var(--mlab-light-blue);
+  color: var(--mlab-blue);
+  border: 2px solid var(--mlab-blue);
+  flex-shrink: 0;
+}
+
+.ld-header__title {
+  font-family: var(--font-heading);
+  font-size: 1.3rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--mlab-blue);
+  margin: 0 0 0.15rem;
+}
+
+.ld-header__sub {
+  font-size: 0.84rem;
+  color: var(--mlab-grey);
+  margin: 0;
+  line-height: 1.4;
+}
+
+/* Search box — inherits mlab-search, just constrains the min-width */
+.ld-search {
+  min-width: 280px;
+  flex-shrink: 0;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   TABLE COLUMN ALIGNMENT
+══════════════════════════════════════════════════════════════════════════════ */
+.ld-th--right,
+.ld-td--right {
+  text-align: right;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   IDENTITY CELL
+══════════════════════════════════════════════════════════════════════════════ */
+.ld-identity {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ld-identity__name {
+  font-weight: 700;
+  font-size: 0.92rem;
+  color: var(--mlab-blue);
+  line-height: 1.3;
+}
+
+.ld-identity__id {
+  font-size: 0.78rem;
+  color: var(--mlab-grey);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   CONTACT CELL
+══════════════════════════════════════════════════════════════════════════════ */
+.ld-contact {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ld-contact__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  color: #475569;
+}
+
+.ld-contact__row svg {
+  flex-shrink: 0;
+  color: #94a3b8;
+}
+
+.ld-empty-val {
+  opacity: 0.45;
+  font-style: italic;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   AUTH STATUS BADGE  (extends mlab-badge)
+══════════════════════════════════════════════════════════════════════════════ */
+.ld-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   ENROLLMENT CHIP
+══════════════════════════════════════════════════════════════════════════════ */
+.ld-enrol-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  font-family: var(--font-body);
+  background: #f1f5f9;
+  color: #475569;
+  white-space: nowrap;
+}
+
+/* Multi-course variant — blue tint */
+.ld-enrol-chip--multi {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   VIEW PROFILE BUTTON  (extends mlab-btn)
+   Slightly tighter padding so it sits neatly in the actions cell
+══════════════════════════════════════════════════════════════════════════════ */
+.ld-view-btn {
+  padding: 0.4rem 0.9rem;
+  font-size: 0.75rem;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   RESPONSIVE
+══════════════════════════════════════════════════════════════════════════════ */
+@media (max-width: 900px) {
+  .ld-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .ld-search {
+    min-width: 100%;
+  }
+}
+
+@media (max-width: 640px) {
+  .ld-header__icon-box {
+    width: 38px;
+    height: 38px;
+  }
+  .ld-header__title {
+    font-size: 1.1rem;
+  }
+}

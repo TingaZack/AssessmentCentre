@@ -373,3 +373,25 @@
   margin: 0.75rem 0 0.4rem;
   display: block;
 }
+
+/* Mentor Pill Styling */
+.mlab-role-pill__dot--orange {
+  background-color: #f59e0b; /* Amber 500 */
+}
+
+.mlab-role-pill--active-mentor {
+  background-color: #fef3c7; /* Amber 100 */
+  border-color: #fcd34d; /* Amber 300 */
+  color: #b45309; /* Amber 700 */
+  box-shadow: 0 0 0 1px #fcd34d inset;
+}
+
+/* Mentor Badge Styling */
+.mlab-role-badge--mentor {
+  background-color: #fef3c7; /* Amber 100 */
+  color: #b45309; /* Amber 700 */
+}
+
+.mlab-role-badge--mentor .mlab-role-badge__dot {
+  background-color: #f59e0b; /* Amber 500 */
+}

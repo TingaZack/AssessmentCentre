@@ -42,21 +42,42 @@ export type AnyAssessmentModule =
   | PracticalModule
   | WorkExperienceModule;
 
-// --- Main Learner Data Interface ---
+export interface SoRModule {
+  name: string;
+  credits: number;
+  dateAssessed?: string;
+  dateSignedOff?: string;
+  status: string;
+}
 
 export interface LearnerData {
+  id: string;
+  learnerId?: string;
   fullName: string;
   idNumber: string;
-  dateOfBirth: string;
-  qualification: Qualification;
-  knowledgeModules: KnowledgeModule[];
-  practicalModules: PracticalModule[];
-  workExperienceModules: WorkExperienceModule[];
+  dateOfBirth?: string;
+  isOffline: boolean;
+  qualification: {
+    name: string;
+    saqaId: string;
+    credits: string | number;
+    nqfLevel: string | number;
+    dateAssessed: string;
+  };
+  knowledgeModules: SoRModule[];
+  practicalModules: SoRModule[];
+  workExperienceModules: SoRModule[];
   eisaAdmission: boolean;
   verificationCode: string;
   issueDate: string;
   nextEISADate: string;
-  issuedBy: IssuedBy;
+  ipfsHash?: string;
+  issuedBy: {
+    name: string;
+    title: string;
+  };
+  isBlockchainVerified?: boolean;
+  blockchainFingerprint?: string;
 }
 
 // --- Component Props Interfaces ---

@@ -47,7 +47,7 @@ const STATUS_CONFIG: Record<StatusType, {
         Icon: AlertTriangle,
         accentColor: '#b45309',
         bgColor: '#fffbeb',
-        borderColor: '#f59e0b',
+        borderColor: '#0c0903',
         labelColor: '#b45309',
     },
 };

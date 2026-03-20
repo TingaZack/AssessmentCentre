@@ -7,7 +7,7 @@ import {
     CheckCircle, FileText,
     Layers, Info, Award, Clock, Activity
 } from 'lucide-react';
-import { Sidebar } from '../../../components/dashboard/Sidebar';
+import { Sidebar } from '../../../components/dashboard/Sidebar/Sidebar';
 import { useStore } from '../../../store/useStore';
 import { auth, db } from '../../../lib/firebase';
 import PageHeader from '../../../components/common/PageHeader/PageHeader';

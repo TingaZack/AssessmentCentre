@@ -3,7 +3,7 @@ import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useStore } from '../../store/useStore';
 import { auth } from '../../lib/firebase';
 import { signOut } from 'firebase/auth';
-import { Sidebar } from '../../components/dashboard/Sidebar';
+import { Sidebar } from '../../components/dashboard/Sidebar/Sidebar';
 
 export const FacilitatorLayout: React.FC = () => {
     // 🚀 FIX 1: Destructure 'user' from the store
