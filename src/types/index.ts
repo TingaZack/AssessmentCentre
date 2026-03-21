@@ -10,12 +10,21 @@ export type ModuleStatus =
   | "Not Started"
   | "Pending Grading";
 
+export interface CampusLocation {
+  id: string;
+  name: string;
+  type: "physical" | "online";
+  address: string;
+  siteAccreditationNumber: string;
+  isDefault: boolean;
+}
+
 export interface SystemSettings {
   institutionName: string;
-  sdpNumber: string;
+  companyRegistrationNumber: string;
   phone: string;
   email: string;
-  address: string;
+  campuses: CampusLocation[];
   passMarkThreshold: number;
   attendanceRequirement: number;
   defaultCohortMonths: number;
@@ -25,7 +34,6 @@ export interface SystemSettings {
   rpcUrl: string;
   ipfsGateway: string;
 }
-
 export interface BaseModule {
   name: string;
   credits: number;
@@ -206,6 +214,8 @@ export interface DashboardLearner
   nextEisaDate?: string;
   updatedBy?: string;
 
+  campusId?: string;
+
   trainingEndDate?: string;
 
   // these Web3 / Blockchain properties:
@@ -267,6 +277,8 @@ export interface Cohort {
   startDate: string;
   endDate: string;
   programmeId: string; // Links to the Qualification Template
+
+  campusId: string; // Links to settings.campuses[].id
 
   // The "Triangle of Support" (Staff IDs)
   facilitatorId: string;

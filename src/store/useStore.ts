@@ -55,6 +55,7 @@ export interface StaffMember {
   email: string;
   role: "admin" | "facilitator" | "assessor" | "moderator" | "mentor"; // Added 'mentor'
   phone?: string;
+  authUid: string;
   assessorRegNumber?: string; // New field for SETA registration
   employerId?: string; // New field for Mentor workplace linking
   status?: "active" | "archived";

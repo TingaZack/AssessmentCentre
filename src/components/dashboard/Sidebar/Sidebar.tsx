@@ -24,6 +24,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, currentNav, setCurrentNa
     const navigate = useNavigate();
     const location = useLocation();
 
+    const { settings } = useStore();
+    // const { learners, cohorts, settings } = useStore();
+
     // Fetch the user from the global store to guarantee we always know the role
     const user = useStore((state) => state.user);
     const activeRole = role || user?.role;
@@ -93,7 +96,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, currentNav, setCurrentNa
 
             {/* ─── BRANDING HEADER ─── */}
             <div className="sidebar-header">
-                <img src={mLabLogo} height={50} alt="mLab Logo" />
+                {/* <img src={mLabLogo} height={50} alt="mLab Logo" /> */}
+                <img height={50} src={(settings as any)?.logoUrl || mLabLogo} alt="Institution Logo" />
+
                 {activeRole !== 'learner' && (
                     <div className="sidebar-role-tag">{activeRole?.toUpperCase()}</div>
                 )}
@@ -122,7 +127,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, currentNav, setCurrentNa
 
             {/* ─── FOOTER ACTIONS ─── */}
             <div className="sidebar-footer">
-                {/* 🚀 SETTINGS NAVIGATION WIRED UP */}
+                {/* SETTINGS NAVIGATION WIRED UP */}
                 <button
                     className={`nav-item ${currentNav === 'settings' || location.pathname === '/settings' ? 'active' : ''}`}
                     onClick={() => {

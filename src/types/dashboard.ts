@@ -58,6 +58,8 @@ export interface DashboardLearner {
   email: string;
   phone: string;
 
+  campusId?: string;
+
   // Web3 / Blockchain properties
   ipfsHash?: string;
   blockchainFingerprint?: string;

@@ -1,0 +1,184 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   DashboardOverview.css
+   mLab Corporate Identity Brand Guide 2019
+   Consistent with FacilitatorDashboard.css · AdminDashboard.css
+
+   Colours:
+     --mlab-blue:   #073f4e  (Midnight Blue)
+     --mlab-green:  #94c73d  (Green – primary accent)
+     --mlab-grey:   #6b6b6b  (Grey – secondary text)
+     --mlab-white:  #ffffff
+
+   Typefaces:
+     Oswald       – chart titles, labels (uppercase)
+     Trebuchet MS – body, tooltips
+───────────────────────────────────────────────────────────────────────────── */
+
+@import url("https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&display=swap");
+
+/* ── CSS Variables ─────────────────────────────────────────────────────────── */
+:root {
+  --mlab-blue: #073f4e;
+  --mlab-blue-dark: #052e3a;
+  --mlab-green: #94c73d;
+  --mlab-green-dark: #7aaa2e;
+  --mlab-grey: #6b6b6b;
+  --mlab-white: #ffffff;
+  --mlab-light-blue: #e8f0f3;
+  --mlab-border: #d1dde3;
+  --mlab-bg: #f4f7f9;
+
+  --font-heading: "Oswald", "Trebuchet MS", sans-serif;
+  --font-body:
+    "Trebuchet MS", "Lucida Grande", "Lucida Sans Unicode", Arial, sans-serif;
+
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --transition: 0.18s ease;
+}
+
+/* ── Fade-in ───────────────────────────────────────────────────────────────── */
+@keyframes dov-fade {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-fade-in {
+  animation: dov-fade 0.25s ease both;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   ROOT WRAPPER
+══════════════════════════════════════════════════════════════════════════════ */
+.dashboard-overview {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  font-family: var(--font-body);
+  color: var(--mlab-blue);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   KPI STAT CARD GRID  (edit-grid is shared with AdminDashboard)
+   Two rows of 4 auto-fit cards each
+══════════════════════════════════════════════════════════════════════════════ */
+.edit-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1rem;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   CHART CARD
+   Replaces all the inline style={{ background: 'white', padding: '1.5rem', ... }}
+   on every chart container
+══════════════════════════════════════════════════════════════════════════════ */
+.chart-card {
+  background: var(--mlab-white);
+  border: 1px solid var(--mlab-border);
+  border-top: 4px solid var(--mlab-blue);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+  transition:
+    box-shadow var(--transition),
+    transform var(--transition);
+}
+.chart-card:hover {
+  box-shadow: 0 8px 20px rgba(7, 63, 78, 0.1);
+  transform: translateY(-1px);
+}
+
+/* Chart card title — replaces inline h3 styles */
+.chart-card h3 {
+  font-family: var(--font-heading);
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--mlab-blue);
+  margin: 0 0 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.chart-card h3::after {
+  content: "";
+  flex: 1;
+  height: 2px;
+  background: var(--mlab-light-blue);
+  margin-left: 0.5rem;
+}
+
+/* Chart height container — replaces inline style={{ height: '300px', width: '100%' }} */
+.chart-card .recharts-responsive-container,
+.chart-card > div:last-child {
+  height: 300px;
+  width: 100%;
+}
+
+/* ── Empty chart state — replaces inline flex+center style ─────────────────── */
+.chart-card__empty {
+  display: flex;
+  height: 300px;
+  align-items: center;
+  justify-content: center;
+  color: #94a3b8;
+  font-size: 0.88rem;
+  font-style: italic;
+  font-family: var(--font-body);
+  text-align: center;
+  padding: 1rem;
+}
+
+/* ── Chart row grids — replaces inline display:grid style blocks ───────────── */
+.chart-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+  gap: 1.5rem;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   KPI STACK  (two rows of edit-grid)
+══════════════════════════════════════════════════════════════════════════════ */
+.dov-kpi-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* ── Chart height container ─────────────────────────────────────────────────── */
+/* Replaces inline style={{ height: '300px', width: '100%' }} on every chart */
+.chart-body {
+  height: 300px;
+  width: 100%;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   RESPONSIVE
+══════════════════════════════════════════════════════════════════════════════ */
+@media (max-width: 900px) {
+  .edit-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .chart-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .edit-grid {
+    grid-template-columns: 1fr;
+  }
+  .chart-card {
+    padding: 1rem;
+  }
+  .chart-card h3 {
+    font-size: 0.82rem;
+  }
+}
