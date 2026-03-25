@@ -5,11 +5,11 @@ import {
     User, Upload, FileText, CheckCircle, AlertCircle,
     Save, ChevronRight, ShieldCheck, MapPin, Phone
 } from 'lucide-react';
-import { doc, setDoc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import './LearnerProfile.css'; // We will create this CSS file next
+import './LearnerProfile.css';
+import { db, storage } from '../../lib/firebase';
 
-// ─── QCTO COMPLIANCE TYPES ───
 interface LearnerProfileData {
     // Personal
     idNumber: string;
@@ -53,7 +53,6 @@ export const LearnerProfileSetup: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [formData, setFormData] = useState<LearnerProfileData>(INITIAL_DATA);
 
-    // File States
     const [idDoc, setIdDoc] = useState<File | null>(null);
     const [qualDoc, setQualDoc] = useState<File | null>(null);
     const [cvDoc, setCvDoc] = useState<File | null>(null);
@@ -79,12 +78,12 @@ export const LearnerProfileSetup: React.FC = () => {
 
         setLoading(true);
         try {
-            // 1. Upload Documents
+            // Upload Documents
             const idUrl = await handleFileUpload(idDoc, `learners/${user.uid}/documents/ID_Document.pdf`);
             const qualUrl = await handleFileUpload(qualDoc, `learners/${user.uid}/documents/Qualification.pdf`);
             const cvUrl = cvDoc ? await handleFileUpload(cvDoc, `learners/${user.uid}/documents/CV.pdf`) : null;
 
-            // 2. Save Profile Data
+            // Save Profile Data
             const profilePayload = {
                 ...formData,
                 documents: {
@@ -99,7 +98,7 @@ export const LearnerProfileSetup: React.FC = () => {
 
             await updateDoc(doc(db, 'users', user.uid), profilePayload);
 
-            // 3. Update Local Store & Redirect
+            // Update Local Store & Redirect
             await refreshUser(); // You might need to implement this in useStore to re-fetch user data
             alert("Profile setup complete! Welcome to your dashboard.");
             navigate('/learner/dashboard');
@@ -129,7 +128,7 @@ export const LearnerProfileSetup: React.FC = () => {
                     </div>
                 </div>
 
-                {/* ── STEP 1: PERSONAL DETAILS ── */}
+                {/* ── PERSONAL DETAILS ── */}
                 {step === 1 && (
                     <div className="lp-form-body">
                         <h3 className="lp-section-title"><User size={18} /> Personal Information</h3>
@@ -186,7 +185,7 @@ export const LearnerProfileSetup: React.FC = () => {
                     </div>
                 )}
 
-                {/* ── STEP 2: ADDRESS & NEXT OF KIN ── */}
+                {/* ── ADDRESS & NEXT OF KIN ── */}
                 {step === 2 && (
                     <div className="lp-form-body">
                         <h3 className="lp-section-title"><MapPin size={18} /> Contact Details</h3>
@@ -225,7 +224,7 @@ export const LearnerProfileSetup: React.FC = () => {
                     </div>
                 )}
 
-                {/* ── STEP 3: DOCUMENTS ── */}
+                {/* ── DOCUMENTS ── */}
                 {step === 3 && (
                     <div className="lp-form-body">
                         <h3 className="lp-section-title"><FileText size={18} /> Required Documents</h3>

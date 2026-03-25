@@ -1,22 +1,10 @@
 /* ─────────────────────────────────────────────────────────────────────────────
    AdminDashboard.css
-   mLab Corporate Identity Brand Guide 2019
-   Consistent with LearnersView.css · QualificationsView.css
-
-   Colours:
-     --mlab-blue:   #073f4e  (Midnight Blue)
-     --mlab-green:  #94c73d  (Green – primary accent)
-     --mlab-grey:   #6b6b6b  (Grey – secondary text)
-     --mlab-white:  #ffffff
-
-   Typefaces:
-     Oswald       – headings, labels (uppercase)
-     Trebuchet MS – body, sub-labels
+   mLab Corporate Identity Brand Guide
 ───────────────────────────────────────────────────────────────────────────── */
 
 @import url("https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&display=swap");
 
-/* ── CSS Variables ─────────────────────────────────────────────────────────── */
 :root {
   --mlab-blue: #073f4e;
   --mlab-blue-dark: #052e3a;
@@ -34,37 +22,89 @@
   --font-heading: "Oswald", "Trebuchet MS", sans-serif;
   --font-body:
     "Trebuchet MS", "Lucida Grande", "Lucida Sans Unicode", Arial, sans-serif;
-
-  --sidebar-width: 240px;
-  --topbar-height: 0px; /* no fixed topbar — sidebar handles nav */
-  --transition: 0.18s ease;
 }
 
 /* ══════════════════════════════════════════════════════════════════════════════
    FULL-SCREEN LAYOUT SHELL
-   Sidebar fixed left · Main content fills remaining width
 ══════════════════════════════════════════════════════════════════════════════ */
 .admin-layout {
   display: flex;
-  min-height: 100vh;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
   background: var(--mlab-bg);
   font-family: var(--font-body);
   color: var(--mlab-blue);
+  position: relative;
+}
+
+/* --- MOBILE HEADER (Hidden on Desktop) --- */
+.admin-mobile-header {
+  display: none;
+  align-items: center;
+  padding: 1rem 1.5rem;
+  background: var(--mlab-white);
+  border-bottom: 1px solid var(--mlab-border);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  z-index: 40;
+}
+
+.admin-hamburger-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--mlab-blue);
+  margin-right: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem;
+}
+
+.admin-mobile-title {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  color: var(--mlab-blue);
+  font-size: 1.2rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* --- SIDEBAR WRAPPER --- */
+.admin-sidebar-wrapper {
+  z-index: 50;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.admin-close-btn {
+  display: none;
+}
+
+/* --- OVERLAY --- */
+.admin-sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 45;
+  backdrop-filter: blur(2px);
 }
 
 /* ── Main content pane ─────────────────────────────────────────────────────── */
 .main-wrapper {
   flex: 1;
-  min-width: 0; /* prevents flex overflow */
+  min-width: 0;
   display: flex;
   flex-direction: column;
   overflow-y: auto;
   background: var(--mlab-bg);
+  position: relative;
 }
 
 /* ══════════════════════════════════════════════════════════════════════════════
    DASHBOARD HEADER
-   Shown on all tabs except Workplaces (which handles its own header)
 ══════════════════════════════════════════════════════════════════════════════ */
 .dashboard-header {
   display: flex;
@@ -98,8 +138,6 @@
 
 /* ══════════════════════════════════════════════════════════════════════════════
    CONTENT PANE
-   Wraps all view components (LearnersView, StaffView, etc.)
-   Not rendered on the Workplaces tab — that fills its own full width
 ══════════════════════════════════════════════════════════════════════════════ */
 .admin-content {
   background: var(--mlab-white);
@@ -109,9 +147,6 @@
   flex: 1;
 }
 
-/* ══════════════════════════════════════════════════════════════════════════════
-   STAT CARD GRID  (Dashboard Overview)
-══════════════════════════════════════════════════════════════════════════════ */
 .edit-grid {
   display: flex;
   flex-wrap: wrap;
@@ -119,8 +154,51 @@
 }
 
 /* ══════════════════════════════════════════════════════════════════════════════
-   RESPONSIVE
+   RESPONSIVE (MOBILE DRAWER)
 ══════════════════════════════════════════════════════════════════════════════ */
+@media (max-width: 1024px) {
+  .admin-layout {
+    flex-direction: column;
+  }
+
+  .admin-mobile-header {
+    display: flex;
+  }
+
+  /* Slide Sidebar off-screen */
+  .admin-sidebar-wrapper {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100%;
+    background: white;
+    transform: translateX(-100%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 4px 0 15px rgba(0, 0, 0, 0.1);
+  }
+
+  .admin-sidebar-wrapper.open {
+    transform: translateX(0);
+  }
+
+  .admin-sidebar-wrapper.open ~ .admin-sidebar-overlay,
+  .admin-sidebar-overlay {
+    display: block;
+  }
+
+  .admin-close-btn {
+    display: block;
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    background: transparent;
+    border: none;
+    color: var(--mlab-grey);
+    cursor: pointer;
+    z-index: 60;
+  }
+}
+
 @media (max-width: 900px) {
   .admin-content {
     padding: 1.25rem 1rem;
@@ -135,12 +213,6 @@
 }
 
 @media (max-width: 640px) {
-  .admin-layout {
-    flex-direction: column;
-  }
-  .main-wrapper {
-    overflow-y: visible;
-  }
   .admin-content {
     padding: 1rem;
     border-top: none;

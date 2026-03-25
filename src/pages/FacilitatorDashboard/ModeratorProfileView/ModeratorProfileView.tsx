@@ -9,12 +9,11 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../../../lib/firebase';
 import { SignatureSetupModal } from '../../../components/auth/SignatureSetupModal';
 
-// Reusing Assessor styling as the layout structure is identical
 import '../AssessorProfileView/AssessorProfileView.css';
 
 interface ProfileProps {
-    profile?: any; // The user object from Firestore (Optional now)
-    user: any;    // The current auth user
+    profile?: any;
+    user: any;
     onUpdate: (id: string, updates: any) => Promise<void>;
 }
 
@@ -24,18 +23,16 @@ export const ModeratorProfileView: React.FC<ProfileProps> = ({ user, onUpdate })
     const [saving, setSaving] = useState(false);
     const [isSigModalOpen, setIsSigModalOpen] = useState(false);
 
-    // ─── Data State ──────────────────────────────────────────────
     const [profileData, setProfileData] = useState<any>(null);
     const [formData, setFormData] = useState<any>({});
 
-    // Photo Upload States
     const [profilePhoto, setProfilePhoto] = useState<File | null>(null);
     const [photoPreview, setPhotoPreview] = useState<string | null>(null);
 
-    // 🚀 STRICT COMPLIANCE: Moderator Pen is always GREEN
+    // STRICT COMPLIANCE: Moderator Pen is always GREEN
     const inkColor = 'green';
 
-    // 🚀 CRITICAL: Fetch raw data directly from Firestore on mount
+    // CRITICAL: Fetch raw data directly from Firestore on mount
     useEffect(() => {
         const fetchProfile = async () => {
             if (!user?.uid) return;
@@ -92,15 +89,12 @@ export const ModeratorProfileView: React.FC<ProfileProps> = ({ user, onUpdate })
             const updatedData = { ...formData, profilePhotoUrl: finalPhotoUrl };
             await onUpdate(targetId, updatedData);
 
-            // Update local view state immediately
             setProfileData(updatedData);
 
             setIsEditing(false);
             setProfilePhoto(null);
-            // toast.success("Profile updated successfully."); // Ensure you have a ToastContainer rendered somewhere high up
         } catch (error) {
             console.error('Update failed', error);
-            // toast.error("Failed to update profile.");
         } finally {
             setSaving(false);
         }
@@ -122,7 +116,7 @@ export const ModeratorProfileView: React.FC<ProfileProps> = ({ user, onUpdate })
     return (
         <div className="lpv-wrapper animate-fade-in">
 
-            {/* 🚀 SIGNATURE MODAL 🚀 */}
+            {/* SIGNATURE MODAL */}
             {isSigModalOpen && (
                 <SignatureSetupModal
                     userUid={user.uid}
@@ -209,7 +203,7 @@ export const ModeratorProfileView: React.FC<ProfileProps> = ({ user, onUpdate })
                         </div>
                     </section>
 
-                    {/* 🚀 SIGNATURE SECTION 🚀 */}
+                    {/* SIGNATURE SECTION */}
                     <section className="lpv-panel">
                         <div className="lpv-panel__header">
                             <h3 className="lpv-panel__title">

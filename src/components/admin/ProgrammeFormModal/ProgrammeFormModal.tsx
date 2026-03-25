@@ -107,7 +107,7 @@ export const ProgrammeFormModal: React.FC<ProgrammeFormModalProps> = ({
         setIsDownloading(false);
     };
 
-    // ── 🚀 CORE PARSER: FIXED TOPIC TITLE EXTRACTION 🚀 ──
+    // ── CORE PARSER TOPIC TITLE EXTRACTION ──
     const processRawTextData = (textToParse: string) => {
         if (!textToParse.trim()) return;
         let sanitized = textToParse
@@ -461,7 +461,6 @@ export const ProgrammeFormModal: React.FC<ProgrammeFormModalProps> = ({
 
     const currentModules = formData[`${activeTab}Modules`] as any[];
 
-    // 🚀 FIXED: WRAPPED IN A REACT FRAGMENT (<>) 🚀
     return (
         <>
             <div className="pfm-overlay" onClick={onClose}>
@@ -660,7 +659,7 @@ export const ProgrammeFormModal: React.FC<ProgrammeFormModalProps> = ({
                 </div>
             </div>
 
-            {/* 🚀 FIXED: StatusModal rendered OUTSIDE of the pfm-overlay 🚀 */}
+            {/* StatusModal rendered OUTSIDE of the pfm-overlay */}
             {statusModal && (
                 <StatusModal
                     type={statusModal.type}

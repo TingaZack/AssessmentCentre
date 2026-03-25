@@ -1,27 +1,29 @@
 // src/components/views/DashboardOverview/DashboardOverview.tsx
-// mLab CI v2.1 — all inline styles replaced with DashboardOverview.css classes
 
-import React, { useMemo } from 'react';
-import { Users, ShieldCheck, MapPin, GraduationCap, BookOpen, Layers, AlertTriangle, CheckCircle } from 'lucide-react';
+import React, { useMemo, useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Users, ShieldCheck, MapPin, GraduationCap, BookOpen, Layers, AlertTriangle, Scale } from 'lucide-react';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
     PieChart, Pie, Cell, Legend
 } from 'recharts';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from '../../../lib/firebase';
 import { useStore } from '../../../store/useStore';
 import { StatCard } from '../../common/StatCard';
 import './DashboardOverview.css';
 
 export const DashboardOverview: React.FC = () => {
-    // const { learners, stagingLearners, cohorts, programmes, settings } = useStore();
-    const { learners, cohorts, programmes, settings } = useStore();
+    const { learners, cohorts, programmes, settings, user } = useStore();
+    const navigate = useNavigate();
 
-    // ─── 1. CORE ACADEMIC KPIs ───
+    // ─── CORE ACADEMIC KPIs ───
     const activeLearners = learners.filter(l => !l.isArchived);
     const totalEnrollments = activeLearners.length;
     const securedCertificates = activeLearners.filter(l => l.isBlockchainVerified).length;
     const eisaReadyCount = activeLearners.filter(l => l.eisaAdmission).length;
 
-    // ─── 2. SYSTEM THROUGHPUT ───
+    // ─── SYSTEM THROUGHPUT ───
     const activeProgrammesCount = programmes.filter(p => !p.isArchived).length;
 
     const today = new Date();
@@ -42,7 +44,7 @@ export const DashboardOverview: React.FC = () => {
     const activeCampusIds = new Set(cohorts.filter(c => !c.isArchived).map(c => c.campusId).filter(Boolean));
     const activeCampusesCount = activeCampusIds.size;
 
-    // ─── 3. AT-RISK INTELLIGENCE ───
+    // ─── AT-RISK & QA INTELLIGENCE ───
     const atRiskLearnersCount = useMemo(() => {
         let count = 0;
         activeLearners.forEach(l => {
@@ -72,7 +74,24 @@ export const DashboardOverview: React.FC = () => {
         return count;
     }, [activeLearners, today]);
 
-    // ─── 4. CHART DATA ───
+    // Fetch global active appeals count
+    const [pendingAppealsCount, setPendingAppealsCount] = useState(0);
+    useEffect(() => {
+        const fetchAppealsCount = async () => {
+            try {
+                const snap = await getDocs(query(
+                    collection(db, 'learner_submissions'),
+                    where('status', '==', 'appealed')
+                ));
+                setPendingAppealsCount(snap.size);
+            } catch (err) {
+                console.error("Failed to fetch pending appeals count:", err);
+            }
+        };
+        fetchAppealsCount();
+    }, []);
+
+    // ─── CHART DATA ───
     const campusData = useMemo(() => {
         if (!settings?.campuses || settings.campuses.length === 0) return [];
         const counts: Record<string, number> = {};
@@ -148,9 +167,36 @@ export const DashboardOverview: React.FC = () => {
                     <StatCard icon={<MapPin size={24} />} title="Active Delivery Sites" value={activeCampusesCount} color="orange" />
                 </div>
                 <div className="edit-grid">
-                    <StatCard icon={<CheckCircle size={24} />} title="Concluded Cohorts" value={concludedCohorts} color="green" />
                     <StatCard icon={<GraduationCap size={24} />} title="EISA Admitted (Ready)" value={eisaReadyCount} color="green" />
                     <StatCard icon={<AlertTriangle size={24} />} title="At-Risk Learners" value={atRiskLearnersCount} color="red" />
+
+                    {/* Interactive Pending Appeals Card with conditional routing */}
+                    <div
+                        onClick={() => {
+                            if (user?.role === 'admin' || user?.role === 'moderator') {
+                                navigate('/moderation');
+                            }
+                        }}
+                        style={{
+                            cursor: (user?.role === 'admin' || user?.role === 'moderator') ? 'pointer' : 'default',
+                            transition: 'transform 0.15s ease'
+                        }}
+                        onMouseEnter={e => {
+                            if (user?.role === 'admin' || user?.role === 'moderator') {
+                                e.currentTarget.style.transform = 'translateY(-2px)'
+                            }
+                        }}
+                        onMouseLeave={e => e.currentTarget.style.transform = 'none'}
+                        title={(user?.role === 'admin' || user?.role === 'moderator') ? "Click to view QA Moderation Queue" : undefined}
+                    >
+                        <StatCard
+                            icon={<Scale size={24} />}
+                            title="Active Appeals"
+                            value={pendingAppealsCount}
+                            color={pendingAppealsCount > 0 ? "red" : "blue"}
+                        />
+                    </div>
+
                     <StatCard icon={<ShieldCheck size={24} />} title="Web3 Certificates Issued" value={securedCertificates} color="purple" />
                 </div>
             </div>

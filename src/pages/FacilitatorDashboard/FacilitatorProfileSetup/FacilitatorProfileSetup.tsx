@@ -157,7 +157,7 @@ export const FacilitatorProfileSetup: React.FC = () => {
                     </div>
                 </div>
 
-                {/* STEP 1: PERSONAL & IDENTITY */}
+                {/* PERSONAL & IDENTITY */}
                 {step === 1 && (
                     <div className="lp-form-body animate-fade-in">
                         <h3 className="lp-section-title"><User size={16} /> Identity Verification</h3>
@@ -236,7 +236,7 @@ export const FacilitatorProfileSetup: React.FC = () => {
                     </div>
                 )}
 
-                {/* STEP 2: EXPERIENCE & QUALIFICATIONS */}
+                {/* EXPERIENCE & QUALIFICATIONS */}
                 {step === 2 && (
                     <div className="lp-form-body animate-fade-in">
                         <h3 className="lp-section-title"><BookOpen size={16} /> Experience & Qualifications</h3>
@@ -262,7 +262,7 @@ export const FacilitatorProfileSetup: React.FC = () => {
                     </div>
                 )}
 
-                {/* STEP 3: DOCUMENT VAULT */}
+                {/* DOCUMENT VAULT */}
                 {step === 3 && (
                     <div className="lp-form-body animate-fade-in">
                         <h3 className="lp-section-title"><ShieldCheck size={16} /> Compliance Document Vault</h3>

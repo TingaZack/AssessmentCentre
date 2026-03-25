@@ -76,7 +76,7 @@ const emptyLearner = {
     phone: "",
     mobile: "",
     cohortId: "Unassigned",
-    campusId: "", // 🚀 Added campusId for direct learner assignment
+    campusId: "",
     trainingStartDate: "",
     trainingEndDate: "",
     isArchived: false,
@@ -105,7 +105,7 @@ const TAB_META: Record<
     workExperience: { label: "Work Experience", icon: <Briefcase size={13} /> },
 };
 
-// 🚀 SAFELY PARSE ANY DATE TO DD-MM-YYYY WITHOUT UTC SHIFTING
+// PARSE ANY DATE TO DD-MM-YYYY WITHOUT UTC SHIFTING
 const parseLocalToSA = (dStr: string | null | undefined): string => {
     if (!dStr) return "";
     const str = String(dStr).trim();
@@ -124,7 +124,7 @@ const parseLocalToSA = (dStr: string | null | undefined): string => {
     return `${day}-${month}-${year}`;
 };
 
-// 🚀 CONVERT DD-MM-YYYY TO HTML YYYY-MM-DD FOR DATE PICKERS
+// CONVERT DD-MM-YYYY TO HTML YYYY-MM-DD FOR DATE PICKERS
 const dateToHtml = (saDate: string | undefined): string => {
     if (!saDate) return "";
     const parts = saDate.split("-");
@@ -134,7 +134,7 @@ const dateToHtml = (saDate: string | undefined): string => {
     return saDate;
 };
 
-// 🚀 CONVERT HTML YYYY-MM-DD TO DD-MM-YYYY FOR DATABASE
+// CONVERT HTML YYYY-MM-DD TO DD-MM-YYYY FOR DATABASE
 const htmlToDate = (isoDate: string): string => {
     if (!isoDate) return "";
     const parts = isoDate.split("-");
@@ -153,7 +153,6 @@ export const LearnerFormModal: React.FC<LearnerFormModalProps> = ({
     cohorts,
     currentCohortId,
 }) => {
-    // 🚀 Pulling settings to get access to campuses
     const { fetchCohorts, enrollLearnerInCohort, settings } = useStore();
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -166,7 +165,7 @@ export const LearnerFormModal: React.FC<LearnerFormModalProps> = ({
                 trainingEndDate: parseLocalToSA(learner.trainingEndDate || (learner.demographics as any)?.expectedTrainingCompletionDate),
                 nextEisaDate: parseLocalToSA(learner.nextEisaDate),
                 issueDate: parseLocalToSA(learner.issueDate),
-                campusId: learner.campusId || "", // Load existing campus if any
+                campusId: learner.campusId || "",
                 qualification: {
                     ...(learner.qualification || emptyQualification),
                     dateAssessed: parseLocalToSA(learner.qualification?.dateAssessed),
@@ -195,7 +194,7 @@ export const LearnerFormModal: React.FC<LearnerFormModalProps> = ({
     const [statusModal, setStatusModal] = useState<StatusModalProps | null>(null);
     const [showCohortModal, setShowCohortModal] = useState(false);
 
-    // 🚀 Auto-set default campus for new Offline learners if not set
+    // Auto-set default campus for new Offline learners if not set
     useEffect(() => {
         if (!learner && !formData.campusId && settings?.campuses) {
             const defaultCampus = settings.campuses.find(c => c.isDefault) || settings.campuses[0];
@@ -349,7 +348,7 @@ export const LearnerFormModal: React.FC<LearnerFormModalProps> = ({
 
             const matchedCohort = importedCohortName ? cohorts.find(c => c.name.toLowerCase().trim() === importedCohortName.toLowerCase().trim()) : null;
 
-            // 🚀 AUTOMATICALLY MATCH CAMPUS BY SDP CODE & TRACK IF WE USED A FALLBACK
+            // AUTOMATICALLY MATCH CAMPUS BY SDP CODE & TRACK IF WE USED A FALLBACK
             let matchedCampusId = "";
             let usedFallbackCampus = false;
 
@@ -361,7 +360,7 @@ export const LearnerFormModal: React.FC<LearnerFormModalProps> = ({
                     const defCampus = settings.campuses.find(c => c.isDefault);
                     if (defCampus) {
                         matchedCampusId = defCampus.id;
-                        usedFallbackCampus = true; // Mark that we had to use the fallback
+                        usedFallbackCampus = true;
                     }
                 }
             }
@@ -377,7 +376,7 @@ export const LearnerFormModal: React.FC<LearnerFormModalProps> = ({
                 trainingStartDate: startDateStr || prev.trainingStartDate,
                 trainingEndDate: completionDateStr || prev.trainingEndDate,
                 cohortId: matchedCohort ? matchedCohort.id : prev.cohortId,
-                campusId: matchedCampusId || prev.campusId, // 🚀 Bind imported Campus
+                campusId: matchedCampusId || prev.campusId,
                 isOffline: true,
                 qualification: {
                     ...prev.qualification,
@@ -400,7 +399,7 @@ export const LearnerFormModal: React.FC<LearnerFormModalProps> = ({
                 issueDate: issueDateStr,
             }));
 
-            // 🚀 CREATE THE NOTIFICATION MESSAGE WITH THE FALLBACK WARNING IF NEEDED
+            // CREATE THE NOTIFICATION MESSAGE WITH THE FALLBACK WARNING IF NEEDED
             let successMessage = `Successfully populated details for ${fullName || "Learner"}. Review the fields below and click "Save Learner".`;
 
             if (usedFallbackCampus) {
@@ -730,7 +729,7 @@ export const LearnerFormModal: React.FC<LearnerFormModalProps> = ({
                                         <input className="lfm-input" type="text" value={formData.mobile || ""} onChange={(e) => updateField("mobile", e.target.value)} />
                                     </div>
 
-                                    {/* 🚀 DATE INPUTS USE dateToHtml() VISUALLY, BUT SAVE AS DD-MM-YYYY */}
+                                    {/* DATE INPUTS USE dateToHtml() VISUALLY, BUT SAVE AS DD-MM-YYYY */}
                                     <div className="lfm-fg">
                                         <label>Date of Birth</label>
                                         <input className="lfm-input" type="date" value={dateToHtml(formData.dateOfBirth)} onChange={(e) => updateField("dateOfBirth", htmlToDate(e.target.value))} />
@@ -815,7 +814,7 @@ export const LearnerFormModal: React.FC<LearnerFormModalProps> = ({
                                         <label>Total Credits *</label>
                                         <input className="lfm-input" type="number" required value={formData.qualification.credits} onChange={(e) => updateQualification("credits", parseInt(e.target.value) || 0)} />
                                     </div>
-                                    {/* 🚀 VISIBLE DATE ASSESSED (With SA Date Formatting) */}
+                                    {/* VISIBLE DATE ASSESSED (With SA Date Formatting) */}
                                     <div className="lfm-fg">
                                         <label>Date Assessed</label>
                                         <input className="lfm-input" type="date" value={dateToHtml(formData.qualification.dateAssessed)} onChange={(e) => updateQualification("dateAssessed", htmlToDate(e.target.value))} />

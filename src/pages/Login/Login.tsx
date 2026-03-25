@@ -6,6 +6,9 @@ import { useNavigate } from 'react-router-dom';
 import { Lock, AlertCircle, Loader } from 'lucide-react';
 import './Login.css';
 
+import mLabLogo from '../../assets/logo/mlab_logo.png';
+
+
 const Login: React.FC = () => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -94,7 +97,8 @@ const Login: React.FC = () => {
                 {/* Brand Header */}
                 <div style={{ marginBottom: '2rem' }}>
                     <div className="logo-text" style={{ fontSize: '2.5rem', fontWeight: '300', marginBottom: '0.5rem', fontFamily: 'Oswald, sans-serif' }}>
-                        <span style={{ color: '#94c73d' }}>m</span><span style={{ color: '#073f4e' }}>lab</span>
+                        {/* <span style={{ color: '#94c73d' }}>m</span><span style={{ color: '#073f4e' }}>lab</span> */}
+                        <img src={mLabLogo} height={70} alt="" />
                     </div>
                     <h2 style={{ fontSize: '1.2rem', fontWeight: 600, color: '#64748b' }}>Assessment Platform</h2>
                 </div>

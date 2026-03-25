@@ -14,17 +14,25 @@ export const RoleProtectedRoute: React.FC<Props> = ({ children, allowedRoles }) 
     const location = useLocation();
 
     // 1. WHILE LOADING: Prevent UI flicker
-    if (loading) {
-        return (
-            <div style={{
-                height: '100vh', display: 'flex', justifyContent: 'center',
-                alignItems: 'center', flexDirection: 'column', gap: '1rem', color: '#073f4e'
-            }}>
-                <Loader className="spin" size={32} />
-                <p>Verifying Access...</p>
+    // if (loading) {
+    //     return (
+    //         <div style={{
+    //             height: '100vh', display: 'flex', justifyContent: 'center',
+    //             alignItems: 'center', flexDirection: 'column', gap: '1rem', color: '#073f4e'
+    //         }}>
+    //             <Loader className="spin" size={32} />
+    //             <p>Verifying Access...</p>
+    //         </div>
+    //     );
+    // }
+    if (loading) return (
+        <div className="ap-fullscreen" style={{ position: 'absolute', left: 0, right: 0, bottom: 0, top: 0 }}>
+            <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
+                <div className="ap-spinner" />
+                <span style={{ fontFamily: 'var(--font-heading)', fontSize: '0.8rem', letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--mlab-grey)' }}>Verifying Access...</span>
             </div>
-        );
-    }
+        </div>
+    );
 
     // 2. NO USER: Redirect to login
     if (!user) {
@@ -104,7 +112,8 @@ export const RoleProtectedRoute: React.FC<Props> = ({ children, allowedRoles }) 
         return (
             <div style={{
                 height: '100vh', display: 'flex', justifyContent: 'center',
-                alignItems: 'center', flexDirection: 'column', gap: '1rem', color: '#073f4e'
+                alignItems: 'center', flexDirection: 'column', gap: '1rem', color: '#073f4e',
+                position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
             }}>
                 <AlertTriangle size={48} color="#ef4444" />
                 <h2>Access Denied</h2>

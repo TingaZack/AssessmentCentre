@@ -10,7 +10,6 @@ interface PastAttemptsArchiveProps {
     assessment: any;
 }
 
-// ─── READ-ONLY SNAPSHOT VIEWER MODAL ───
 const ArchivedSnapshotViewer: React.FC<{ snapshot: any; assessment: any; onClose: () => void }> = ({ snapshot, assessment, onClose }) => {
 
     const [lProfile, setLProfile] = useState<any>(null);
@@ -70,7 +69,7 @@ const ArchivedSnapshotViewer: React.FC<{ snapshot: any; assessment: any; onClose
     const aBreakdown = sData.grading?.assessorBreakdown || {};
     const mBreakdown = sData.moderation?.breakdown || {};
 
-    // 🚀 DYNAMIC COMPLIANCE LOGIC
+    // DYNAMIC COMPLIANCE LOGIC
     const preIntervention = sData.latestCoachingLog; // Exists on Attempt 2/3 (Proves they were coached BEFORE starting)
     const postIntervention = sData.coachingLog; // Exists when Facilitator logs coaching AFTER failing, to unlock the NEXT attempt
 
@@ -181,7 +180,7 @@ const ArchivedSnapshotViewer: React.FC<{ snapshot: any; assessment: any; onClose
                         );
                     })}
 
-                    {/* 🚀 OVERALL REMARKS & FEEDBACK 🚀 */}
+                    {/* OVERALL REMARKS & FEEDBACK */}
                     {(sData.grading?.facilitatorOverallFeedback || sData.grading?.assessorOverallFeedback || sData.grading?.overallFeedback || sData.moderation?.feedback) && (
                         <div style={{ background: 'white', padding: '1.5rem', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '2rem' }}>
                             <h3 style={{ margin: '0 0 1rem', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.1rem' }}>
@@ -226,7 +225,7 @@ const ArchivedSnapshotViewer: React.FC<{ snapshot: any; assessment: any; onClose
                         </div>
                     )}
 
-                    {/* 🚀 RECORD OF INTERVENTION (Prior to THIS Attempt) 🚀 */}
+                    {/* RECORD OF INTERVENTION (Prior to THIS Attempt) */}
                     {preIntervention && sData.attemptNumber > 1 && (
                         <div style={{ background: 'white', padding: '1.5rem', borderRadius: '8px', border: '1px solid #bbf7d0', borderTop: '4px solid #22c55e', marginBottom: '2rem' }}>
                             <h3 style={{ margin: '0 0 1rem', color: '#15803d', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -278,7 +277,7 @@ const ArchivedSnapshotViewer: React.FC<{ snapshot: any; assessment: any; onClose
                         </div>
                     )}
 
-                    {/* 🚀 RECORD OF INTERVENTION (Unlocking NEXT Attempt) 🚀 */}
+                    {/* RECORD OF INTERVENTION (Unlocking NEXT Attempt) */}
                     {postIntervention && (
                         <div style={{ background: 'white', padding: '1.5rem', borderRadius: '8px', border: '1px solid #fcd34d', borderTop: '4px solid #f59e0b', marginBottom: '2rem' }}>
                             <h3 style={{ margin: '0 0 1rem', color: '#b45309', display: 'flex', alignItems: 'center', gap: '8px' }}>

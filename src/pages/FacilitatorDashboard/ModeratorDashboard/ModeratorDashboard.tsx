@@ -1,3 +1,5 @@
+// src/pages/FacilitatorDashboard/ModeratorDashboard/ModeratorDashboard.tsx
+
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
@@ -5,7 +7,8 @@ import { collection, query, where, getDocs } from 'firebase/firestore';
 import {
     Calendar, ArrowRight, ShieldCheck,
     CheckCircle, FileText,
-    Layers, Info, Award, Clock, Activity
+    Layers, Info, Award, Clock, Activity,
+    Scale, AlertTriangle, ShieldAlert
 } from 'lucide-react';
 import { Sidebar } from '../../../components/dashboard/Sidebar/Sidebar';
 import { useStore } from '../../../store/useStore';
@@ -26,6 +29,7 @@ interface PendingQATask {
     assessorName: string;
     assessorTimeSpent?: number;
     assessorStartedAt?: string;
+    appeal?: { status?: string, reason?: string, date?: string };
 }
 
 export const ModeratorDashboard: React.FC = () => {
@@ -40,6 +44,8 @@ export const ModeratorDashboard: React.FC = () => {
     const [pendingTasks, setPendingTasks] = useState<PendingQATask[]>([]);
     const [loadingTasks, setLoadingTasks] = useState(true);
 
+    const [filterAppealsOnly, setFilterAppealsOnly] = useState(false);
+
     // ── 1. Initial data sync ─────────────────────────────────────────────────
     useEffect(() => {
         store.fetchCohorts();
@@ -47,7 +53,9 @@ export const ModeratorDashboard: React.FC = () => {
         store.fetchLearners();
     }, []);
 
-    // ── 2. ID bridge logic ───────────────────────────────────────────────────
+    // ── 2. ID bridge & Role logic ────────────────────────────────────────────
+    const isAdmin = store.user?.role === 'admin';
+
     const myStaffProfile = store.staff.find(s =>
         s.authUid === store.user?.uid ||
         s.email === store.user?.email ||
@@ -61,9 +69,8 @@ export const ModeratorDashboard: React.FC = () => {
     );
 
     const myCohortIds = myCohorts.map(c => c.id);
-    const isAdmin = store.user?.role === 'admin';
 
-    // ── 3. QA Queue (Only fetches 'graded' scripts) ──────────────────────────
+    // ── 3. QA Queue (Fetches 'graded' and 'appealed' scripts) ────────────────
     useEffect(() => {
         const fetchTasks = async () => {
             if (!store.user?.uid) return;
@@ -76,10 +83,9 @@ export const ModeratorDashboard: React.FC = () => {
             }
 
             try {
-                // Moderators ONLY review scripts that have been officially 'graded' by an Assessor
                 const snap = await getDocs(query(
                     collection(db, 'learner_submissions'),
-                    where('status', '==', 'graded')
+                    where('status', 'in', ['graded', 'appealed'])
                 ));
 
                 const tasks: PendingQATask[] = [];
@@ -101,7 +107,8 @@ export const ModeratorDashboard: React.FC = () => {
                             gradedAt: data.grading?.gradedAt || new Date().toISOString(),
                             assessorName: data.grading?.assessorName || 'Unknown Assessor',
                             assessorTimeSpent: data.grading?.assessorTimeSpent,
-                            assessorStartedAt: data.grading?.assessorStartedAt
+                            assessorStartedAt: data.grading?.assessorStartedAt,
+                            appeal: data.appeal
                         });
                     }
                 });
@@ -154,12 +161,19 @@ export const ModeratorDashboard: React.FC = () => {
     };
 
     // Calculate Average Assessor Processing Time
-    const avgAssessorTime = pendingTasks.length > 0
-        ? pendingTasks.reduce((sum, task) => sum + (task.assessorTimeSpent || 0), 0) / pendingTasks.length
+    const stdTasks = pendingTasks.filter(t => t.status === 'graded');
+    const avgAssessorTime = stdTasks.length > 0
+        ? stdTasks.reduce((sum, task) => sum + (task.assessorTimeSpent || 0), 0) / stdTasks.length
         : 0;
 
+    // Derived Appeal Metrics
+    const appealedTasksCount = pendingTasks.filter(t => t.status === 'appealed' || t.appeal?.status === 'pending').length;
+    const displayedTasks = filterAppealsOnly
+        ? pendingTasks.filter(t => t.status === 'appealed' || t.appeal?.status === 'pending')
+        : pendingTasks;
+
     const pageTitle: Record<string, string> = {
-        dashboard: 'Internal QA Moderation Centre',
+        dashboard: isAdmin ? 'Global QA & Appeals Centre' : 'Internal QA Moderation Centre',
         cohorts: 'My Assigned QA Classes',
         profile: 'Moderator Compliance Profile',
     };
@@ -175,10 +189,11 @@ export const ModeratorDashboard: React.FC = () => {
 
             <main className="main-wrapper" style={{ width: '100%', display: 'flex', flexDirection: 'column', height: '100vh' }}>
 
+                {/* DYNAMIC HEADER: Adapts to Admin vs Moderator */}
                 <PageHeader
                     title={pageTitle[currentNav]}
-                    eyebrow="Moderator Portal"
-                    description={`Practitioner: ${store.user?.fullName || 'Unknown User'}${isAdmin ? ' (Admin Bypass Active)' : ''}`}
+                    eyebrow={isAdmin ? 'Administrator Portal' : 'Moderator Portal'}
+                    description={isAdmin ? 'Manage global appeals and moderation escalations across all cohorts.' : `Practitioner: ${store.user?.fullName || 'Unknown User'}`}
                 />
 
                 <div className="admin-content" style={{ flex: 1, overflowY: 'auto', padding: '2rem' }}>
@@ -214,56 +229,107 @@ export const ModeratorDashboard: React.FC = () => {
                     {currentNav === 'dashboard' && (
                         <div className="md-animate">
 
-                            {/* Metrics */}
+                            {/* CONDITIONAL METRICS: Admins see a streamlined global view, Moderators see their personal stats */}
                             <div className="md-metrics-row">
-                                <div className="md-metric-card">
-                                    <div className="md-metric-icon md-metric-icon--blue">
-                                        <Layers size={24} />
+                                {!isAdmin && (
+                                    <div className="md-metric-card">
+                                        <div className="md-metric-icon md-metric-icon--blue">
+                                            <Layers size={24} />
+                                        </div>
+                                        <div className="md-metric-data">
+                                            <span className="md-metric-val">{myCohorts.length}</span>
+                                            <span className="md-metric-lbl">My QA Cohorts</span>
+                                        </div>
                                     </div>
-                                    <div className="md-metric-data">
-                                        <span className="md-metric-val">{isAdmin ? 'ALL' : myCohorts.length}</span>
-                                        <span className="md-metric-lbl">QA Cohorts</span>
-                                    </div>
-                                </div>
+                                )}
+
                                 <div className="md-metric-card">
                                     <div className="md-metric-icon md-metric-icon--amber">
                                         <ShieldCheck size={24} />
                                     </div>
                                     <div className="md-metric-data">
-                                        <span className="md-metric-val">{pendingTasks.length}</span>
-                                        <span className="md-metric-lbl">Pending Moderation</span>
+                                        <span className="md-metric-val">{stdTasks.length}</span>
+                                        <span className="md-metric-lbl">{isAdmin ? 'Global Pending QA' : 'Pending Moderation'}</span>
                                     </div>
                                 </div>
-                                <div className="md-metric-card" style={{ borderLeftColor: '#073f4e' }}>
-                                    <div className="md-metric-icon" style={{ background: '#e2e8f0', color: '#073f4e' }}>
-                                        <Activity size={24} />
+
+                                {/* Appeals Metric Card */}
+                                <div
+                                    className="md-metric-card"
+                                    style={{ cursor: 'pointer', borderLeftColor: appealedTasksCount > 0 ? '#ef4444' : '#e2e8f0', transition: 'all 0.2s', flex: isAdmin ? 1 : undefined }}
+                                    onClick={() => setFilterAppealsOnly(!filterAppealsOnly)}
+                                    title="Click to filter by appeals"
+                                >
+                                    <div className="md-metric-icon" style={{ background: appealedTasksCount > 0 ? '#fef2f2' : '#f8fafc', color: appealedTasksCount > 0 ? '#ef4444' : '#94a3b8' }}>
+                                        <Scale size={24} />
                                     </div>
                                     <div className="md-metric-data">
-                                        <span className="md-metric-val" style={{ fontSize: '1.5rem', marginTop: '5px' }}>{formatTimeSpent(avgAssessorTime)}</span>
-                                        <span className="md-metric-lbl">Avg Assessor Marking Time</span>
+                                        <span className="md-metric-val" style={{ color: appealedTasksCount > 0 ? '#ef4444' : '#64748b' }}>{appealedTasksCount}</span>
+                                        <span className="md-metric-lbl">Active Appeals</span>
                                     </div>
                                 </div>
+
+                                {!isAdmin && (
+                                    <div className="md-metric-card" style={{ borderLeftColor: '#073f4e' }}>
+                                        <div className="md-metric-icon" style={{ background: '#e2e8f0', color: '#073f4e' }}>
+                                            <Activity size={24} />
+                                        </div>
+                                        <div className="md-metric-data">
+                                            <span className="md-metric-val" style={{ fontSize: '1.5rem', marginTop: '5px' }}>{formatTimeSpent(avgAssessorTime)}</span>
+                                            <span className="md-metric-lbl">Avg Marking Time</span>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Queue panel */}
                             <div className="md-panel" style={{ maxWidth: '1000px' }}>
-                                <div className="md-panel-header">
-                                    <h2 className="md-panel-title">
-                                        <ShieldCheck size={16} /> Moderation Queue
-                                    </h2>
-                                    <span className="md-panel-badge">{pendingTasks.length} items</span>
+                                <div className="md-panel-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                        <h2 className="md-panel-title" style={{ margin: 0 }}>
+                                            {isAdmin ? <ShieldAlert size={16} /> : <ShieldCheck size={16} />}
+                                            {isAdmin ? 'Global Escelations & QA Queue' : 'Moderation Queue'}
+                                        </h2>
+                                        <span className="md-panel-badge">{displayedTasks.length} items</span>
+                                    </div>
+
+                                    {/* Appeals Filter Toggle */}
+                                    <button
+                                        onClick={() => setFilterAppealsOnly(!filterAppealsOnly)}
+                                        style={{
+                                            background: filterAppealsOnly ? '#fef2f2' : 'white',
+                                            border: filterAppealsOnly ? '1px solid #fca5a5' : '1px solid #cbd5e1',
+                                            color: filterAppealsOnly ? '#dc2626' : '#64748b',
+                                            padding: '6px 12px',
+                                            borderRadius: '6px',
+                                            fontSize: '0.8rem',
+                                            fontWeight: 'bold',
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '6px',
+                                            transition: 'all 0.2s'
+                                        }}
+                                    >
+                                        <Scale size={14} />
+                                        {filterAppealsOnly ? 'Show All Pending Tasks' : 'Filter Active Appeals'}
+                                    </button>
                                 </div>
 
                                 {loadingTasks ? (
                                     <div className="md-state-box">
                                         <div className="md-spinner" />
-                                        Loading QA tasks…
+                                        Loading queue…
                                     </div>
-                                ) : pendingTasks.length === 0 ? (
+                                ) : displayedTasks.length === 0 ? (
                                     <div className="md-state-box">
                                         <CheckCircle size={44} color="var(--mlab-green)" />
-                                        <span className="md-state-box__title">QA Caught Up</span>
-                                        <p className="md-state-box__sub">No graded submissions are waiting for your verification.</p>
+                                        <span className="md-state-box__title">{filterAppealsOnly ? 'No Active Appeals' : 'Queue Empty'}</span>
+                                        <p className="md-state-box__sub">
+                                            {filterAppealsOnly
+                                                ? "There are currently no formal appeals awaiting resolution."
+                                                : "No submissions are currently waiting for verification."}
+                                        </p>
                                         {!isAdmin && myCohortIds.length === 0 && (
                                             <p className="md-state-box__warn">
                                                 You are not assigned to any cohorts as a Moderator. Contact an administrator.
@@ -272,41 +338,60 @@ export const ModeratorDashboard: React.FC = () => {
                                     </div>
                                 ) : (
                                     <div className="md-task-list">
-                                        {pendingTasks.map(task => (
-                                            <div key={task.id} className="md-task-card">
-                                                <div className="md-task-info">
-                                                    <div className="md-task-header">
-                                                        <h4 className="md-task-learner">{task.learnerName}</h4>
-                                                    </div>
-                                                    <p className="md-task-title" style={{ marginBottom: '8px' }}>
-                                                        <FileText size={13} /> {task.title}
-                                                    </p>
-                                                    <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                                                        <p className="md-task-date">
-                                                            <Award size={12} color="var(--mlab-red)" />
-                                                            Graded by <strong>{task.assessorName}</strong>
+                                        {displayedTasks.map(task => {
+                                            const isAppeal = task.status === 'appealed';
+
+                                            return (
+                                                <div key={task.id} className="md-task-card" style={isAppeal ? { borderLeft: '4px solid #ef4444', background: '#fef2f2' } : {}}>
+                                                    <div className="md-task-info">
+                                                        <div className="md-task-header">
+                                                            <h4 className="md-task-learner">
+                                                                {task.learnerName}
+                                                                {isAppeal && (
+                                                                    <span style={{ fontSize: '0.65rem', background: '#fee2e2', color: '#b91c1c', padding: '2px 8px', borderRadius: '4px', border: '1px solid #fca5a5', marginLeft: '10px', verticalAlign: 'middle', display: 'inline-flex', alignItems: 'center', gap: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                                                        <AlertTriangle size={10} /> Appeal Pending
+                                                                    </span>
+                                                                )}
+                                                            </h4>
+                                                        </div>
+                                                        <p className="md-task-title" style={{ marginBottom: '8px', color: isAppeal ? '#991b1b' : 'inherit' }}>
+                                                            <FileText size={13} /> {task.title}
                                                         </p>
-                                                        <p className="md-task-date">
-                                                            <Clock size={12} color="#64748b" />
-                                                            {new Date(task.gradedAt).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' })}
-                                                        </p>
-                                                        {task.assessorTimeSpent !== undefined && (
-                                                            <p className="md-task-date" style={{ color: '#073f4e', background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px' }}>
-                                                                <Activity size={11} />
-                                                                <strong>{formatTimeSpent(task.assessorTimeSpent)}</strong> active
-                                                                {task.assessorStartedAt && ` (${formatCalendarSpread(task.assessorStartedAt, task.gradedAt)} spread)`}
+                                                        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                                                            <p className="md-task-date">
+                                                                <Award size={12} color="var(--mlab-red)" />
+                                                                Graded by <strong>{task.assessorName}</strong>
                                                             </p>
-                                                        )}
+                                                            <p className="md-task-date">
+                                                                <Clock size={12} color="#64748b" />
+                                                                {new Date(task.gradedAt).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                                            </p>
+                                                            {task.assessorTimeSpent !== undefined && !isAppeal && (
+                                                                <p className="md-task-date" style={{ color: '#073f4e', background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px' }}>
+                                                                    <Activity size={11} />
+                                                                    <strong>{formatTimeSpent(task.assessorTimeSpent)}</strong> active
+                                                                    {task.assessorStartedAt && ` (${formatCalendarSpread(task.assessorStartedAt, task.gradedAt)} spread)`}
+                                                                </p>
+                                                            )}
+                                                            {isAppeal && task.appeal?.date && (
+                                                                <p className="md-task-date" style={{ color: '#b91c1c', background: '#fee2e2', padding: '2px 6px', borderRadius: '4px' }}>
+                                                                    <Scale size={11} />
+                                                                    <strong>Lodged:</strong> {new Date(task.appeal.date).toLocaleDateString()}
+                                                                </p>
+                                                            )}
+                                                        </div>
                                                     </div>
+
+                                                    <button
+                                                        className="md-grade-btn"
+                                                        style={isAppeal ? { background: '#ef4444', color: 'white', borderColor: '#dc2626' } : {}}
+                                                        onClick={() => navigate(`/portfolio/submission/${task.id}`)}
+                                                    >
+                                                        {isAppeal ? <><Scale size={13} /> Resolve Appeal</> : <><ShieldCheck size={13} /> Perform QA</>}
+                                                    </button>
                                                 </div>
-                                                <button
-                                                    className="md-grade-btn"
-                                                    onClick={() => navigate(`/portfolio/submission/${task.id}`)}
-                                                >
-                                                    <ShieldCheck size={13} /> Perform QA
-                                                </button>
-                                            </div>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
                                 )}
                             </div>
@@ -314,9 +399,9 @@ export const ModeratorDashboard: React.FC = () => {
                     )}
 
                     {/* ════════════════════════════════════════
-                        TAB 2 — MY COHORTS
+                        TAB 2 — MY COHORTS (Moderators Only)
                     ════════════════════════════════════════ */}
-                    {currentNav === 'cohorts' && (
+                    {currentNav === 'cohorts' && !isAdmin && (
                         <div className="md-animate">
                             <h2 className="md-section-title">
                                 <Layers size={16} /> Assigned QA Cohorts
@@ -386,4 +471,3 @@ export const ModeratorDashboard: React.FC = () => {
         </div>
     );
 };
-

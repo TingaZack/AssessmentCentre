@@ -1,5 +1,5 @@
 import React from 'react';
-import { BookOpen, Users, ClipboardCheck, UserCircle, LogOut, LayoutDashboard } from 'lucide-react';
+import { BookOpen, ClipboardCheck, UserCircle, LogOut, LayoutDashboard } from 'lucide-react';
 
 interface Props {
     currentNav: string;

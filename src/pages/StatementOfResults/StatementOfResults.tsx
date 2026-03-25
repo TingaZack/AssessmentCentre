@@ -18,11 +18,10 @@ import mLabLogo from '../../assets/logo/mlab_logo.png';
 import zackSignature from '../../assets/Signatue_Zack_.png';
 import Loader from '../../components/common/Loader/Loader';
 
-// --- INTERFACES ---
 interface LearnerData {
     id: string;
     learnerId?: string;
-    cohortId?: string; // 🚀 Added to lookup dynamic campus
+    cohortId?: string;
     fullName: string;
     idNumber: string;
     dateOfBirth?: string;
@@ -171,7 +170,7 @@ const StatementOfResults: React.FC = () => {
                     setLearnerData({
                         id: docId,
                         learnerId: data.learnerId || docId,
-                        cohortId: data.cohortId, // 🚀 Bind cohortId for dynamic campus lookup
+                        cohortId: data.cohortId,
                         fullName: finalFullName,
                         idNumber: data.idNumber || "N/A",
                         dateOfBirth: data.dateOfBirth || "N/A",
@@ -467,7 +466,7 @@ const StatementOfResults: React.FC = () => {
     return (
         <div className="sor-layout">
             <div className="sor-wrapper">
-                {/* 🚀 THE VERIFICATION CARD */}
+                {/* THE VERIFICATION CARD */}
                 <div className="no-print status-banner-container">
                     {verificationStatus === 'verifying' && (
                         <div className="status-banner banner-info">
@@ -504,11 +503,11 @@ const StatementOfResults: React.FC = () => {
                     )}
                 </div>
 
-                {/* 🚀 A4 DOCUMENT CONTAINER */}
+                {/* A4 DOCUMENT CONTAINER */}
                 <div className="container" ref={documentRef}>
                     <div className="accent-bar"></div>
 
-                    {/* 🚀 DYNAMIC LETTERHEAD WITH BRAND ASSET FALLBACKS */}
+                    {/* DYNAMIC LETTERHEAD WITH BRAND ASSET FALLBACKS */}
                     <div className="letterhead">
                         <div className="letterhead-content">
                             <div className="provider-info">
@@ -623,7 +622,7 @@ const StatementOfResults: React.FC = () => {
                             <div className="signature-area">
                                 <div className="signature-block">
                                     <div className="signature-image-container">
-                                        {/* 🚀 SIGNATURE FALLBACK APPLIED HERE */}
+                                        {/* SIGNATURE FALLBACK APPLIED HERE */}
                                         <img src={(settings as any)?.signatureUrl || zackSignature} height={200} alt="Authorized Signature" />
                                     </div>
                                     <div className="signature-line"></div>
@@ -643,7 +642,7 @@ const StatementOfResults: React.FC = () => {
                 </div>
             </div>
 
-            {/* 🚀 FLOATING PRINT & MINT CONTROLS */}
+            {/* FLOATING PRINT & MINT CONTROLS */}
             <div className="print-controls no-print">
                 <button onClick={() => navigate(-1)} className="control-btn control-btn-back">
                     Back

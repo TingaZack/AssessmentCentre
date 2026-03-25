@@ -1,9 +1,6 @@
 // src/pages/FacilitatorDashboard/SubmissionReview/SubmissionReview.tsx
 
-
-// src/pages/FacilitatorDashboard/SubmissionReview/SubmissionReview.tsx
-
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { doc, getDoc, updateDoc, collection, setDoc, deleteField, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
@@ -13,7 +10,7 @@ import {
     User, GraduationCap, Clock, Award, RotateCcw, MessageSquare,
     ShieldCheck, Eye, Check, X, Edit3, Printer, Info, Lock, Loader2,
     AlertTriangle, Activity, Calendar, BarChart, FileText, UploadCloud, Mic, Code, Link as LinkIcon, CalendarRange, Timer, Play, Square, ShieldAlert,
-    Layers, Undo2
+    Layers, Undo2, FileArchive, Scale
 } from 'lucide-react';
 import { ToastContainer, useToast } from '../../../components/common/Toast/Toast';
 import './SubmissionReview.css';
@@ -52,7 +49,7 @@ interface GradeData {
 }
 
 // ─── FILE PREVIEW ─────────────────────────────────────────────────────────────
-const FilePreview = ({ url }: { url: string }) => {
+const FilePreview = ({ url }: { url?: string }) => {
     if (!url) return null;
 
     const getExtension = (urlStr: string) => {
@@ -108,7 +105,7 @@ const FilePreview = ({ url }: { url: string }) => {
 };
 
 // ─── URL PREVIEW ──────────────────────────────────────────────────────────────
-const UrlPreview = ({ url }: { url: string }) => {
+const UrlPreview = ({ url }: { url?: string }) => {
     if (!url) return null;
 
     let embedUrl = url;
@@ -175,7 +172,7 @@ const RemediationModal: React.FC<{
 
     const isFinalAttempt = attemptNumber === 2;
 
-    const modalContent = (
+    return createPortal(
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(5,46,58,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 99999, backdropFilter: 'blur(4px)', padding: '1rem' }}>
             <div className="animate-fade-in" style={{ background: 'white', maxWidth: '500px', width: '100%', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', borderTop: isFinalAttempt ? '6px solid #ef4444' : '6px solid #f59e0b' }}>
                 <div style={{ padding: '1.5rem', borderBottom: '1px solid #e2e8f0', background: isFinalAttempt ? '#fef2f2' : '#fffbeb' }}>
@@ -226,9 +223,9 @@ const RemediationModal: React.FC<{
                     </div>
                 </form>
             </div>
-        </div>
+        </div>,
+        document.body
     );
-    return createPortal(modalContent, document.body);
 };
 
 // ─── RETURN TO LEARNER MODAL ─────────────────────────────────────────────────
@@ -252,7 +249,7 @@ const ReturnToLearnerModal: React.FC<{
         onSubmit(reason);
     };
 
-    const modalContent = (
+    return createPortal(
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(5,46,58,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 99999, backdropFilter: 'blur(4px)', padding: '1rem' }}>
             <div className="animate-fade-in" style={{ background: 'white', maxWidth: '480px', width: '100%', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', borderTop: '6px solid #f59e0b' }}>
                 <div style={{ padding: '1.5rem', borderBottom: '1px solid #e2e8f0', background: '#fffbeb' }}>
@@ -302,9 +299,79 @@ const ReturnToLearnerModal: React.FC<{
                     </div>
                 </form>
             </div>
-        </div>
+        </div>,
+        document.body
     );
-    return createPortal(modalContent, document.body);
+};
+
+// ─── RESOLVE APPEAL MODAL ───────────────────────────────────────────────────
+const ResolveAppealModal: React.FC<{
+    appealReason: string;
+    onClose: () => void;
+    onSubmit: (decision: 'overturn' | 'new_attempt' | 'reject', notes: string) => void;
+}> = ({ appealReason, onClose, onSubmit }) => {
+    const [notes, setNotes] = useState('');
+    const [decision, setDecision] = useState<'overturn' | 'new_attempt' | 'reject' | null>(null);
+
+    useEffect(() => {
+        const style = document.createElement('style');
+        style.innerHTML = `body, html { overflow: hidden !important; }`;
+        document.head.appendChild(style);
+        return () => { document.head.removeChild(style); };
+    }, []);
+
+    return createPortal(
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(5,46,58,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 99999, backdropFilter: 'blur(4px)', padding: '1rem' }}>
+            <div className="animate-fade-in" style={{ background: 'white', maxWidth: '600px', width: '100%', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', borderTop: '6px solid #8b5cf6' }}>
+                <div style={{ padding: '1.5rem', borderBottom: '1px solid #e2e8f0', background: '#f5f3ff' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div style={{ background: '#8b5cf6', padding: '10px', borderRadius: '50%', color: 'white' }}><Scale size={24} /></div>
+                        <div>
+                            <h2 style={{ margin: 0, fontSize: '1.25rem', color: '#6d28d9', fontFamily: 'var(--font-heading)', textTransform: 'uppercase' }}>Academic Appeal Resolution</h2>
+                            <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: '#5b21b6' }}>National Training Manager / Board Review</p>
+                        </div>
+                    </div>
+                </div>
+                <div style={{ padding: '1.5rem' }}>
+                    <div style={{ background: '#f8fafc', padding: '1rem', border: '1px solid #cbd5e1', borderRadius: '6px', marginBottom: '1.5rem' }}>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#475569', textTransform: 'uppercase' }}>Learner's Reason for Appeal:</span>
+                        <p style={{ fontSize: '0.9rem', color: '#0f172a', margin: '8px 0 0 0', fontStyle: 'italic' }}>"{appealReason}"</p>
+                    </div>
+
+                    <div style={{ marginBottom: '1.5rem' }}>
+                        <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', color: '#334155', marginBottom: '8px' }}>Select Resolution Action *</label>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '10px', border: decision === 'overturn' ? '2px solid #22c55e' : '1px solid #cbd5e1', background: decision === 'overturn' ? '#f0fdf4' : 'white', borderRadius: '6px', cursor: 'pointer' }}>
+                                <input type="radio" name="decision" checked={decision === 'overturn'} onChange={() => setDecision('overturn')} style={{ marginTop: '2px', accentColor: '#22c55e' }} />
+                                <div><strong style={{ display: 'block', color: '#166534', fontSize: '0.9rem' }}>Overturn Decision (Change to Competent)</strong><span style={{ fontSize: '0.75rem', color: '#475569' }}>The learner's appeal is valid. The NYC grade is overturned to Competent.</span></div>
+                            </label>
+                            <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '10px', border: decision === 'new_attempt' ? '2px solid #f59e0b' : '1px solid #cbd5e1', background: decision === 'new_attempt' ? '#fffbeb' : 'white', borderRadius: '6px', cursor: 'pointer' }}>
+                                <input type="radio" name="decision" checked={decision === 'new_attempt'} onChange={() => setDecision('new_attempt')} style={{ marginTop: '2px', accentColor: '#f59e0b' }} />
+                                <div><strong style={{ display: 'block', color: '#b45309', fontSize: '0.9rem' }}>Grant Additional Attempt</strong><span style={{ fontSize: '0.75rem', color: '#475569' }}>The NYC grade stands, but the learner is granted a fresh attempt (even if max attempts were reached).</span></div>
+                            </label>
+                            <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '10px', border: decision === 'reject' ? '2px solid #ef4444' : '1px solid #cbd5e1', background: decision === 'reject' ? '#fef2f2' : 'white', borderRadius: '6px', cursor: 'pointer' }}>
+                                <input type="radio" name="decision" checked={decision === 'reject'} onChange={() => setDecision('reject')} style={{ marginTop: '2px', accentColor: '#ef4444' }} />
+                                <div><strong style={{ display: 'block', color: '#b91c1c', fontSize: '0.9rem' }}>Uphold Original Grade (Reject Appeal)</strong><span style={{ fontSize: '0.75rem', color: '#475569' }}>The appeal is dismissed. The NYC grade remains locked.</span></div>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div style={{ marginBottom: '1.5rem' }}>
+                        <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', color: '#334155', marginBottom: '6px' }}>Official Resolution Notes *</label>
+                        <textarea required rows={3} placeholder="Provide justification for the Academic Board's decision..." value={notes} onChange={e => setNotes(e.target.value)} style={{ width: '100%', padding: '10px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '0.9rem', outline: 'none', resize: 'vertical' }} />
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '1rem' }}>
+                        <button type="button" onClick={onClose} style={{ flex: 1, padding: '0.75rem', background: '#f1f5f9', color: '#475569', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>Cancel</button>
+                        <button type="button" onClick={() => onSubmit(decision!, notes)} disabled={!decision || !notes.trim()} style={{ flex: 2, padding: '0.75rem', background: '#8b5cf6', color: 'white', border: 'none', borderRadius: '6px', cursor: (!decision || !notes.trim()) ? 'not-allowed' : 'pointer', fontWeight: 'bold', opacity: (!decision || !notes.trim()) ? 0.5 : 1 }}>
+                            Finalise Resolution
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>,
+        document.body
+    );
 };
 
 // ─── LOGBOOK HOURS TALLY ──────────────────────────────────────────────────────
@@ -397,6 +464,7 @@ export const SubmissionReview: React.FC = () => {
     const [modalConfig, setModalConfig] = useState<{ isOpen: boolean; type: StatusType; title: string; message: string; onConfirm: () => void; onCancel?: () => void; confirmText?: string; } | null>(null);
     const [showRemediationModal, setShowRemediationModal] = useState(false);
     const [showReturnToLearnerModal, setShowReturnToLearnerModal] = useState(false);
+    const [showResolveAppealModal, setShowResolveAppealModal] = useState(false);
 
     const [activeTabs, setActiveTabs] = useState<Record<string, string>>({});
 
@@ -416,10 +484,14 @@ export const SubmissionReview: React.FC = () => {
     const hasKnowledgeBlocks = assessment?.blocks?.some((b: any) => ['mcq', 'text', 'task'].includes(b.type));
     const isWorkplaceModule = (hasWorkplace || hasLogbook) && !hasKnowledgeBlocks;
 
-    const isSubmitted = ['submitted', 'awaiting_learner_signoff', 'facilitator_reviewed', 'returned', 'graded', 'moderated'].includes(currentStatus);
-    const isFacDone = ['awaiting_learner_signoff', 'facilitator_reviewed', 'returned', 'graded', 'moderated'].includes(currentStatus);
-    const isAssDone = ['graded', 'moderated', 'returned'].includes(currentStatus);
-    const isModDone = ['moderated'].includes(currentStatus);
+    const isAppealed = currentStatus === 'appealed' || submission?.appeal?.status === 'pending';
+    const isAppealUpheld = submission?.appeal?.status === 'upheld';
+    const isAppealRejected = submission?.appeal?.status === 'rejected';
+
+    const isSubmitted = ['submitted', 'awaiting_learner_signoff', 'facilitator_reviewed', 'returned', 'graded', 'moderated', 'appealed'].includes(currentStatus);
+    const isFacDone = ['awaiting_learner_signoff', 'facilitator_reviewed', 'returned', 'graded', 'moderated', 'appealed'].includes(currentStatus);
+    const isAssDone = ['graded', 'moderated', 'returned', 'appealed'].includes(currentStatus);
+    const isModDone = ['moderated', 'appealed'].includes(currentStatus);
     const isAwaitingSignoff = currentStatus === 'awaiting_learner_signoff';
 
     // ── ROLE FLAGS ───────────────────────────────────────────────────────────
@@ -436,7 +508,6 @@ export const SubmissionReview: React.FC = () => {
     const facSubmitLabel = isMentor ? 'Verify & Send to Assessor' : 'Send to Assessor';
     const savedFacRole = submission?.grading?.facilitatorRole;
     const facReadOnlyLabel = savedFacRole === 'mentor' ? 'Workplace Mentor Verification' : 'Facilitator Pre-Mark';
-    const reviewerRoleName = isWorkplaceModule ? 'Mentor' : 'Facilitator';
 
     const canFacilitatorMark = isFacilitatorOrMentor && ['not_started', 'in_progress', 'submitted'].includes(currentStatus);
     const canGrade = isAssessor && (currentStatus === 'facilitator_reviewed' || currentStatus === 'returned');
@@ -447,6 +518,11 @@ export const SubmissionReview: React.FC = () => {
     const showFacilitatorPanel = canFacilitatorMark || isFacDone;
     const showAssessorPanel = canGrade || isAssDone;
     const showModeratorPanel = canModerate || isModDone;
+
+    // Is the active user currently responsible for grading right now?
+    const isActiveRole = canFacilitatorMark || canGrade || canModerate;
+    // We treat the active user as printing if they hit the print button
+    const [isPrintMode, setIsPrintMode] = useState(false);
 
     useEffect(() => {
         const loadReviewData = async () => {
@@ -540,7 +616,7 @@ export const SubmissionReview: React.FC = () => {
                 setFacBreakdown(fBreakdown);
 
                 if (!aBreakdown || Object.keys(aBreakdown).length === 0) {
-                    if (['facilitator_reviewed', 'returned', 'graded', 'moderated'].includes(dbStatus)) {
+                    if (['facilitator_reviewed', 'returned', 'graded', 'moderated', 'appealed'].includes(dbStatus)) {
                         aBreakdown = generateFreshBreakdown(false);
                         assData.blocks?.forEach((b: any) => {
                             if ((b.type === 'checklist' || b.type === 'qcto_workplace') && fBreakdown[b.id]) {
@@ -554,7 +630,7 @@ export const SubmissionReview: React.FC = () => {
                 setAssBreakdown(aBreakdown);
 
                 if (!mBreakdown || Object.keys(mBreakdown).length === 0) {
-                    if (['graded', 'moderated', 'returned'].includes(dbStatus)) {
+                    if (['graded', 'moderated', 'returned', 'appealed'].includes(dbStatus)) {
                         mBreakdown = generateFreshBreakdown(false);
                         assData.blocks?.forEach((b: any) => {
                             if ((b.type === 'checklist' || b.type === 'qcto_workplace') && aBreakdown[b.id]) {
@@ -580,6 +656,16 @@ export const SubmissionReview: React.FC = () => {
             }
         };
         loadReviewData();
+
+        // Bind print events to hide active controls if needed
+        const handleBeforePrint = () => setIsPrintMode(true);
+        const handleAfterPrint = () => setIsPrintMode(false);
+        window.addEventListener('beforeprint', handleBeforePrint);
+        window.addEventListener('afterprint', handleAfterPrint);
+        return () => {
+            window.removeEventListener('beforeprint', handleBeforePrint);
+            window.removeEventListener('afterprint', handleAfterPrint);
+        };
     }, [submissionId]);
 
     const getFacTime = () => initialFacTimeRef.current + (canFacilitatorMark ? Math.floor((performance.now() - sessionStartRef.current) / 1000) : 0);
@@ -764,6 +850,7 @@ export const SubmissionReview: React.FC = () => {
     };
 
     // ── REMEDIATION ──────────────────────────────────────────────────────────
+    // ── REMEDIATION ──────────────────────────────────────────────────────────
     const executeRemediation = async (coachingDate: string, coachingNotes: string) => {
         setShowRemediationModal(false);
         setSaving(true);
@@ -774,14 +861,67 @@ export const SubmissionReview: React.FC = () => {
                 coachingLog: { date: coachingDate, notes: coachingNotes, facilitatorId: user?.uid, facilitatorName: user?.fullName }
             });
             await updateDoc(doc(db, 'learner_submissions', submission.id), {
-                status: 'in_progress', competency: deleteField(), grading: deleteField(), moderation: deleteField(),
-                submittedAt: deleteField(), learnerDeclaration: deleteField(),
-                attemptNumber: (submission.attemptNumber || 1) + 1, lastStaffEditAt: new Date().toISOString(),
+                status: 'not_started', //Reset to the Gate screen
+                startedAt: deleteField(), //Wipe the old timer!
+                competency: deleteField(),
+                grading: deleteField(),
+                moderation: deleteField(),
+                submittedAt: deleteField(),
+                learnerDeclaration: deleteField(),
+                attemptNumber: (submission.attemptNumber || 1) + 1,
+                lastStaffEditAt: new Date().toISOString(),
                 latestCoachingLog: { date: coachingDate, notes: coachingNotes, facilitatorId: user?.uid, facilitatorName: user?.fullName, acknowledged: false }
             });
             toast.success("Workbook grading cleared and unlocked for learner!");
             setTimeout(() => navigate(-1), 1500);
         } catch (err) { toast.error("Failed to unlock for remediation."); } finally { setSaving(false); }
+    };
+
+    // ── RESOLVE APPEAL ────────────────────────────────────────────────────────
+    const executeAppealResolution = async (decision: 'overturn' | 'new_attempt' | 'reject', notes: string) => {
+        setShowResolveAppealModal(false);
+        setSaving(true);
+        try {
+            const historyRef = doc(collection(db, 'learner_submissions', submission.id, 'history'));
+            await setDoc(historyRef, {
+                ...submission, archivedAt: new Date().toISOString(), snapshotReason: `Appeal Resolution: ${decision}`
+            });
+
+            const updatePayload: any = {
+                'appeal.status': decision === 'overturn' || decision === 'new_attempt' ? 'upheld' : 'rejected',
+                'appeal.resolutionNotes': notes,
+                'appeal.resolvedBy': user?.uid,
+                'appeal.resolvedByName': user?.fullName,
+                'appeal.resolvedAt': new Date().toISOString(),
+                lastStaffEditAt: new Date().toISOString()
+            };
+
+            if (decision === 'overturn') {
+                updatePayload.status = 'moderated';
+                updatePayload.competency = 'C';
+                updatePayload['moderation.outcome'] = 'Endorsed';
+                updatePayload['moderation.feedback'] = `APPEAL UPHELD: ${notes}`;
+            } else if (decision === 'new_attempt') {
+                updatePayload.status = 'not_started'; // 🚀 FIX: Reset to the Gate screen
+                updatePayload.startedAt = deleteField(); // 🚀 FIX: Wipe the old timer!
+                updatePayload.competency = deleteField();
+                updatePayload.grading = deleteField();
+                updatePayload.moderation = deleteField();
+                updatePayload.submittedAt = deleteField();
+                updatePayload.learnerDeclaration = deleteField();
+                updatePayload.attemptNumber = (submission.attemptNumber || 1) + 1;
+            } else if (decision === 'reject') {
+                updatePayload.status = 'moderated'; // Remains locked
+            }
+
+            await updateDoc(doc(db, 'learner_submissions', submission.id), updatePayload);
+            toast.success("Appeal resolved successfully!");
+            setTimeout(() => window.location.reload(), 1500);
+        } catch (err) {
+            toast.error("Failed to resolve appeal.");
+        } finally {
+            setSaving(false);
+        }
     };
 
     const getTotals = (breakdown: Record<string, GradeData>) => {
@@ -1049,7 +1189,16 @@ export const SubmissionReview: React.FC = () => {
         });
     };
 
-    if (loading) return <div className="sr-loading"><div className="sr-spinner" /> Loading Record…</div>;
+    // if (loading) return <div className="sr-loading"><div className="sr-spinner" /> Loading Record…</div>;
+    if (loading) return (
+        <div className="ap-fullscreen" style={{ position: 'absolute', left: 0, right: 0, bottom: 0, top: 0 }}>
+            <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
+                <div className="ap-spinner" />
+                <span style={{ fontFamily: 'var(--font-heading)', fontSize: '0.8rem', letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--mlab-grey)' }}> Loading Record...</span>
+            </div>
+        </div>
+    );
+
     if (!submission || !assessment) return <div className="sr-loading">Data unavailable.</div>;
 
     const printOutcomeColor = submission.competency === 'C' ? 'green' : (submission.competency === 'NYC' ? 'red' : 'black');
@@ -1105,9 +1254,10 @@ export const SubmissionReview: React.FC = () => {
                     else { activeInkColor = 'blue'; activeData = fData; }
                 }
 
-                const renderFacReadOnly = isFacDone && !canFacilitatorMark && (fData.score > 0 || fData.feedback || fData.isCorrect !== null || block.type === 'checklist' || block.type === 'qcto_workplace');
-                const renderAssReadOnly = isAssDone && !canGrade && (aData.score > 0 || aData.feedback || aData.isCorrect !== null || block.type === 'checklist' || block.type === 'qcto_workplace');
-                const renderModReadOnly = isModDone && !canModerate && (mData.score > 0 || mData.feedback || mData.isCorrect !== null || block.type === 'checklist' || block.type === 'qcto_workplace');
+                // Allow read-only layers to show if they have data AND we are not the one actively producing that data right now. 
+                const renderFacReadOnly = (isFacDone || fData?.feedback || fData?.score > 0) && (!canFacilitatorMark || isPrintMode);
+                const renderAssReadOnly = (isAssDone || aData?.feedback || aData?.score > 0) && (!canGrade || isPrintMode);
+                const renderModReadOnly = (isModDone || mData?.feedback) && (!canModerate || isPrintMode);
 
                 const mentorActiveOnScorableBlock = isMentor && canFacilitatorMark && ['mcq', 'text', 'task'].includes(block.type);
 
@@ -1124,7 +1274,7 @@ export const SubmissionReview: React.FC = () => {
 
                 // ── GRADE BOX HELPER ──────────────────────────────────────────────
                 const renderReadOnlyLayers = () => (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: (!isPrintMode && isActiveRole) ? '1rem' : '0' }}>
                         {renderFacReadOnly && (
                             <div style={{ background: '#eff6ff', padding: '0.75rem', borderRadius: '4px' }}>
                                 <div style={{ color: '#0284c7', fontSize: '0.7rem', textTransform: 'uppercase', fontWeight: 'bold', marginBottom: '4px' }}>
@@ -1237,13 +1387,14 @@ export const SubmissionReview: React.FC = () => {
                                 <div className="sr-answer-box">
                                     <div className="sr-answer-label" style={{ color: 'black' }}>Learner's Response:</div>
                                     <div className={`sr-mcq-ans ${learnerAns === block.correctOption ? 'correct' : 'wrong'}`}>
-                                        <span style={{ color: 'black', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{learnerAns !== undefined ? `${String.fromCharCode(65 + learnerAns)}. ${block.options[learnerAns]}` : 'No answer provided.'}</span>
+                                        <span style={{ color: 'black', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{learnerAns !== undefined ? `${String.fromCharCode(65 + learnerAns)}. ${block.options?.[learnerAns]}` : 'No answer provided.'}</span>
                                         {learnerAns === block.correctOption && <CheckCircle size={14} color="black" />}
                                     </div>
-                                    <div className="sr-mcq-correct-hint" style={{ color: 'black' }}>Correct Answer: <strong>{String.fromCharCode(65 + block.correctOption)}. {block.options[block.correctOption]}</strong></div>
+                                    <div className="sr-mcq-correct-hint" style={{ color: 'black' }}>Correct Answer: <strong>{String.fromCharCode(65 + block.correctOption)}. {block.options?.[block.correctOption]}</strong></div>
                                 </div>
                                 <div className="sr-grade-box" style={{ borderLeft: `4px solid ${activeInkColor}`, marginTop: '1rem', padding: '1rem', background: 'white', borderRadius: '6px' }}>
-                                    {(!isPrintMode && isActiveRole) ? renderActiveGradeControls(block.id) : renderReadOnlyLayers()}
+                                    {renderReadOnlyLayers()}
+                                    {(!isPrintMode && isActiveRole) && renderActiveGradeControls(block.id)}
                                 </div>
                             </div>
                         </div>
@@ -1274,7 +1425,8 @@ export const SubmissionReview: React.FC = () => {
                                     </div>
                                 </div>
                                 <div className="sr-grade-box" style={{ borderLeft: `4px solid ${activeInkColor}`, marginTop: '1rem', padding: '1rem', background: 'white', borderRadius: '6px' }}>
-                                    {(!isPrintMode && isActiveRole) ? renderActiveGradeControls(block.id) : renderReadOnlyLayers()}
+                                    {renderReadOnlyLayers()}
+                                    {(!isPrintMode && isActiveRole) && renderActiveGradeControls(block.id)}
                                 </div>
                             </div>
                         </div>
@@ -1283,12 +1435,15 @@ export const SubmissionReview: React.FC = () => {
 
                 // ── TASK ─────────────────────────────────────────────────────────
                 if (block.type === 'task') {
+                    // 🚀 SAFE FALLBACK FOR LEARNER ANSWERS TO PREVENT CRASHES
+                    const safeLearnerAns = learnerAns || {};
+
                     const taskTabs = [
-                        { id: 'text', icon: <FileText size={14} />, label: 'Rich Text', val: learnerAns?.text },
-                        { id: 'audio', icon: <Mic size={14} />, label: 'Audio', val: learnerAns?.audioUrl },
-                        { id: 'url', icon: <LinkIcon size={14} />, label: 'Link', val: learnerAns?.url },
-                        { id: 'upload', icon: <UploadCloud size={14} />, label: 'File Upload', val: learnerAns?.uploadUrl },
-                        { id: 'code', icon: <Code size={14} />, label: 'Code', val: learnerAns?.code }
+                        { id: 'text', icon: <FileText size={14} />, label: 'Rich Text', val: safeLearnerAns.text },
+                        { id: 'audio', icon: <Mic size={14} />, label: 'Audio', val: safeLearnerAns.audioUrl },
+                        { id: 'url', icon: <LinkIcon size={14} />, label: 'Link', val: safeLearnerAns.url },
+                        { id: 'upload', icon: <UploadCloud size={14} />, label: 'File Upload', val: safeLearnerAns.uploadUrl },
+                        { id: 'code', icon: <Code size={14} />, label: 'Code', val: safeLearnerAns.code }
                     ].filter(t => !!t.val);
 
                     const activeTabId = activeTabs[block.id] || taskTabs[0]?.id;
@@ -1314,11 +1469,11 @@ export const SubmissionReview: React.FC = () => {
                                         <span style={{ color: '#64748b', fontStyle: 'italic', display: 'block', padding: '10px' }}>No evidence uploaded by learner.</span>
                                     ) : isPrintMode ? (
                                         <div style={{ border: '1px solid #cbd5e1', borderRadius: '6px', padding: '10px', background: 'white' }}>
-                                            {learnerAns?.text && <div style={{ marginBottom: '10px' }}><strong style={{ fontSize: '0.75rem', color: '#475569' }}>Rich Text Response:</strong><div className="quill-read-only-content" dangerouslySetInnerHTML={{ __html: learnerAns.text }} /></div>}
-                                            {learnerAns?.audioUrl && <div style={{ marginBottom: '10px' }}><strong style={{ fontSize: '0.75rem', color: '#475569' }}>Audio Recording:</strong><div>URL: {learnerAns.audioUrl}</div></div>}
-                                            {learnerAns?.url && <div style={{ marginBottom: '10px' }}><strong style={{ fontSize: '0.75rem', color: '#475569' }}>Link:</strong><div><a href={learnerAns.url} target="_blank" rel="noreferrer">{learnerAns.url}</a></div></div>}
-                                            {learnerAns?.uploadUrl && <div style={{ marginBottom: '10px' }}><strong style={{ fontSize: '0.75rem', color: '#475569' }}>Uploaded File:</strong><FilePreview url={learnerAns.uploadUrl} /></div>}
-                                            {learnerAns?.code && <div><strong style={{ fontSize: '0.75rem', color: '#475569' }}>Code:</strong><pre style={{ background: '#f1f5f9', padding: '8px', borderRadius: '4px', overflowX: 'auto', fontSize: '0.8rem', fontFamily: 'monospace' }}>{learnerAns.code}</pre></div>}
+                                            {safeLearnerAns.text && <div style={{ marginBottom: '10px' }}><strong style={{ fontSize: '0.75rem', color: '#475569' }}>Rich Text Response:</strong><div className="quill-read-only-content" dangerouslySetInnerHTML={{ __html: safeLearnerAns.text }} /></div>}
+                                            {safeLearnerAns.audioUrl && <div style={{ marginBottom: '10px' }}><strong style={{ fontSize: '0.75rem', color: '#475569' }}>Audio Recording:</strong><div>URL: {safeLearnerAns.audioUrl}</div></div>}
+                                            {safeLearnerAns.url && <div style={{ marginBottom: '10px' }}><strong style={{ fontSize: '0.75rem', color: '#475569' }}>Link:</strong><div><a href={safeLearnerAns.url} target="_blank" rel="noreferrer">{safeLearnerAns.url}</a></div></div>}
+                                            {safeLearnerAns.uploadUrl && <div style={{ marginBottom: '10px' }}><strong style={{ fontSize: '0.75rem', color: '#475569' }}>Uploaded File:</strong><FilePreview url={safeLearnerAns.uploadUrl} /></div>}
+                                            {safeLearnerAns.code && <div><strong style={{ fontSize: '0.75rem', color: '#475569' }}>Code:</strong><pre style={{ background: '#f1f5f9', padding: '8px', borderRadius: '4px', overflowX: 'auto', fontSize: '0.8rem', fontFamily: 'monospace' }}>{safeLearnerAns.code}</pre></div>}
                                         </div>
                                     ) : taskTabs.length === 0 ? (
                                         <span style={{ color: '#64748b', fontStyle: 'italic' }}>No evidence provided.</span>
@@ -1332,17 +1487,18 @@ export const SubmissionReview: React.FC = () => {
                                                 ))}
                                             </div>
                                             <div style={{ padding: '15px' }}>
-                                                {activeTabId === 'text' && <div className="quill-read-only-content" style={{ wordBreak: 'break-word' }} dangerouslySetInnerHTML={{ __html: learnerAns.text }} />}
-                                                {activeTabId === 'audio' && <audio controls src={learnerAns.audioUrl} style={{ width: '100%', height: '40px' }} />}
-                                                {activeTabId === 'url' && <UrlPreview url={learnerAns.url} />}
-                                                {activeTabId === 'upload' && <FilePreview url={learnerAns.uploadUrl} />}
-                                                {activeTabId === 'code' && <pre style={{ margin: 0, overflowX: 'auto', fontSize: '0.85rem', fontFamily: 'monospace', background: '#1e293b', color: '#f8fafc', padding: '15px', borderRadius: '4px' }}><code>{learnerAns.code}</code></pre>}
+                                                {activeTabId === 'text' && <div className="quill-read-only-content" style={{ wordBreak: 'break-word' }} dangerouslySetInnerHTML={{ __html: safeLearnerAns.text || '' }} />}
+                                                {activeTabId === 'audio' && <audio controls src={safeLearnerAns.audioUrl} style={{ width: '100%', height: '40px' }} />}
+                                                {activeTabId === 'url' && <UrlPreview url={safeLearnerAns.url} />}
+                                                {activeTabId === 'upload' && <FilePreview url={safeLearnerAns.uploadUrl} />}
+                                                {activeTabId === 'code' && <pre style={{ margin: 0, overflowX: 'auto', fontSize: '0.85rem', fontFamily: 'monospace', background: '#1e293b', color: '#f8fafc', padding: '15px', borderRadius: '4px' }}><code>{safeLearnerAns.code}</code></pre>}
                                             </div>
                                         </div>
                                     )}
                                 </div>
                                 <div className="sr-grade-box" style={{ borderLeft: `4px solid ${activeInkColor}`, marginTop: '1rem', padding: '1rem', background: 'white', borderRadius: '6px' }}>
-                                    {(!isPrintMode && isActiveRole) ? renderActiveGradeControls(block.id) : renderReadOnlyLayers()}
+                                    {renderReadOnlyLayers()}
+                                    {(!isPrintMode && isActiveRole) && renderActiveGradeControls(block.id)}
                                 </div>
                             </div>
                         </div>
@@ -1447,6 +1603,7 @@ export const SubmissionReview: React.FC = () => {
                                     {block.criteria?.map((crit: string, i: number) => {
                                         const mentorResult = fData.criteriaResults?.[i] || { status: null, comment: '' };
                                         const assessorResult = aData.criteriaResults?.[i] || { status: null, comment: '' };
+                                        const modResult = mData.criteriaResults?.[i] || { status: null, comment: '' };
                                         const myResult = activeData.criteriaResults?.[i] || { status: null, comment: '', startTime: '', endTime: '' };
 
                                         const displayResult = isModerator ? assessorResult : myResult;
@@ -1480,93 +1637,100 @@ export const SubmissionReview: React.FC = () => {
                                                     );
                                                 })()}
 
-                                                {block.requirePerCriterionTiming !== false && !isModerator && (
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '15px', background: '#f1f5f9', padding: '8px 12px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-                                                        <Timer size={16} color="#64748b" />
-                                                        <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#475569', minWidth: '80px' }}>Task Timer:</span>
-                                                        {isActiveRole && !isPrintMode ? (
-                                                            !myResult.startTime ? (
-                                                                <button onClick={() => handleCriterionChange(block.id, i, 'startTime', new Date().toISOString())} className="ab-btn sm" style={{ background: '#10b981', color: 'white', border: 'none', padding: '4px 12px', borderRadius: '4px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px' }}><Play size={12} /> Start</button>
-                                                            ) : !myResult.endTime ? (
-                                                                <>
-                                                                    <span style={{ fontSize: '0.75rem', color: '#0ea5e9', fontWeight: 'bold', fontStyle: 'italic' }}>In progress since {new Date(myResult.startTime).toLocaleTimeString()}...</span>
-                                                                    <button onClick={() => handleCriterionChange(block.id, i, 'endTime', new Date().toISOString())} className="ab-btn sm" style={{ background: '#ef4444', color: 'white', border: 'none', padding: '4px 12px', borderRadius: '4px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px', marginLeft: 'auto' }}><Square size={12} /> Stop</button>
-                                                                </>
-                                                            ) : (
-                                                                <div style={{ display: 'flex', gap: '15px', fontSize: '0.75rem', color: '#334155' }}>
-                                                                    <span><strong>Start:</strong> {new Date(myResult.startTime).toLocaleTimeString()}</span>
-                                                                    <span><strong>End:</strong> {new Date(myResult.endTime).toLocaleTimeString()}</span>
-                                                                    <span style={{ color: '#0ea5e9', fontWeight: 'bold', background: '#e0f2fe', padding: '2px 6px', borderRadius: '4px' }}>Duration: {durationStr}</span>
-                                                                </div>
-                                                            )
-                                                        ) : (
-                                                            <div style={{ display: 'flex', gap: '15px', fontSize: '0.75rem', color: '#334155' }}>
-                                                                <span><strong>Start:</strong> {myResult.startTime ? new Date(myResult.startTime).toLocaleTimeString() : '—'}</span>
-                                                                <span><strong>End:</strong> {myResult.endTime ? new Date(myResult.endTime).toLocaleTimeString() : '—'}</span>
-                                                                <span style={{ color: '#0ea5e9', fontWeight: 'bold', background: '#e0f2fe', padding: '2px 6px', borderRadius: '4px' }}>Duration: {durationStr || '—'}</span>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                )}
-
-                                                {/* When assessor/moderator is viewing a mentor's checklist, show the mentor's verification read-only above */}
-                                                {(canGrade || canModerate || isModDone || isAssDone) && isFacDone && savedFacRole === 'mentor' && (
-                                                    <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '6px', padding: '10px 12px', marginBottom: '10px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                                        <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#1d4ed8', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                                            <ShieldCheck size={12} /> Workplace Mentor Observation
+                                                {/* 🚀 READ ONLY LAYERS (Stacked perfectly) */}
+                                                {(isFacDone || mentorResult.status) && (!canFacilitatorMark || isPrintMode) && (
+                                                    <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '6px', padding: '10px', marginBottom: '10px' }}>
+                                                        <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#1d4ed8', textTransform: 'uppercase', display: 'flex', gap: '5px' }}>
+                                                            <ShieldCheck size={12} /> {savedFacRole === 'mentor' ? 'Workplace Mentor Observation' : 'Facilitator Pre-Mark'}
                                                         </span>
                                                         <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: mentorResult.status === 'C' ? '#166534' : mentorResult.status === 'NYC' ? '#991b1b' : '#64748b' }}>
-                                                            {mentorResult.status === 'C' ? 'Observed ✓' : mentorResult.status === 'NYC' ? 'Not Observed ✗' : 'Not Reviewed'}
+                                                            {mentorResult.status === 'C' ? (savedFacRole === 'mentor' ? 'Observed ✓' : 'Competent (C)') : mentorResult.status === 'NYC' ? (savedFacRole === 'mentor' ? 'Not Observed ✗' : 'NYC') : 'Not Reviewed'}
                                                         </span>
-                                                        {mentorResult.comment && (
-                                                            <span style={{ fontSize: '0.82rem', color: '#1e40af', fontStyle: 'italic' }}>{mentorResult.comment}</span>
-                                                        )}
+                                                        {mentorResult.comment && <div style={{ fontSize: '0.82rem', color: '#1e40af', fontStyle: 'italic', marginTop: '4px' }}>{mentorResult.comment}</div>}
                                                     </div>
                                                 )}
 
-                                                <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-                                                    {isPrintMode ? (
-                                                        <div style={{ fontSize: '0.85rem' }}>
-                                                            <span style={{ fontWeight: 'bold', color: displayResult.status === 'C' ? '#166534' : displayResult.status === 'NYC' ? '#991b1b' : '#64748b' }}>
-                                                                {isMentor ? (displayResult.status === 'C' ? 'Observed ✓' : displayResult.status === 'NYC' ? 'Not Observed ✗' : 'Not Verified') : (displayResult.status === 'C' ? 'Competent (C)' : displayResult.status === 'NYC' ? 'Not Yet Competent (NYC)' : 'Not Graded')}
+                                                {(isAssDone || assessorResult.status) && (!canGrade || isPrintMode) && (
+                                                    <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: '6px', padding: '10px', marginBottom: '10px' }}>
+                                                        <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#b91c1c', textTransform: 'uppercase', display: 'flex', gap: '5px' }}>
+                                                            <Award size={12} /> Assessor Grade
+                                                        </span>
+                                                        <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: assessorResult.status === 'C' ? '#166534' : assessorResult.status === 'NYC' ? '#991b1b' : '#64748b' }}>
+                                                            {assessorResult.status === 'C' ? 'Competent (C)' : assessorResult.status === 'NYC' ? 'NYC' : 'Not Graded'}
+                                                        </span>
+                                                        {assessorResult.comment && <div style={{ fontSize: '0.82rem', color: '#991b1b', fontStyle: 'italic', marginTop: '4px' }}>{assessorResult.comment}</div>}
+                                                    </div>
+                                                )}
+
+                                                {(isModDone || modResult.status || modResult.comment) && (!canModerate || isPrintMode) && (
+                                                    <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '6px', padding: '10px', marginBottom: '10px' }}>
+                                                        <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#15803d', textTransform: 'uppercase', display: 'flex', gap: '5px' }}>
+                                                            <ShieldCheck size={12} /> Moderator QA
+                                                        </span>
+                                                        {modResult.status && (
+                                                            <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: modResult.status === 'C' ? '#166534' : modResult.status === 'NYC' ? '#991b1b' : '#64748b' }}>
+                                                                {modResult.status === 'C' ? 'Competent (C)' : modResult.status === 'NYC' ? 'NYC' : 'Not Graded'}
                                                             </span>
-                                                        </div>
-                                                    ) : (
+                                                        )}
+                                                        {modResult.comment && <div style={{ fontSize: '0.82rem', color: '#15803d', fontStyle: 'italic', marginTop: '4px' }}>{modResult.comment}</div>}
+                                                    </div>
+                                                )}
+
+                                                {/* 🚀 ACTIVE EVALUATION CONTROLS */}
+                                                {(!isPrintMode && isActiveRole) && (
+                                                    <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', flexWrap: 'wrap', borderTop: '1px dashed #cbd5e1', paddingTop: '15px', marginTop: '5px' }}>
+                                                        {block.requirePerCriterionTiming !== false && !isModerator && (
+                                                            <div style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px', background: '#f1f5f9', padding: '8px 12px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                                                                <Timer size={16} color="#64748b" />
+                                                                <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#475569', minWidth: '80px' }}>Task Timer:</span>
+                                                                {!myResult.startTime ? (
+                                                                    <button onClick={() => handleCriterionChange(block.id, i, 'startTime', new Date().toISOString())} className="ab-btn sm" style={{ background: '#10b981', color: 'white', border: 'none', padding: '4px 12px', borderRadius: '4px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px' }}><Play size={12} /> Start</button>
+                                                                ) : !myResult.endTime ? (
+                                                                    <>
+                                                                        <span style={{ fontSize: '0.75rem', color: '#0ea5e9', fontWeight: 'bold', fontStyle: 'italic' }}>In progress since {new Date(myResult.startTime).toLocaleTimeString()}...</span>
+                                                                        <button onClick={() => handleCriterionChange(block.id, i, 'endTime', new Date().toISOString())} className="ab-btn sm" style={{ background: '#ef4444', color: 'white', border: 'none', padding: '4px 12px', borderRadius: '4px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px', marginLeft: 'auto' }}><Square size={12} /> Stop</button>
+                                                                    </>
+                                                                ) : (
+                                                                    <div style={{ display: 'flex', gap: '15px', fontSize: '0.75rem', color: '#334155' }}>
+                                                                        <span><strong>Start:</strong> {new Date(myResult.startTime).toLocaleTimeString()}</span>
+                                                                        <span><strong>End:</strong> {new Date(myResult.endTime).toLocaleTimeString()}</span>
+                                                                        <span style={{ color: '#0ea5e9', fontWeight: 'bold', background: '#e0f2fe', padding: '2px 6px', borderRadius: '4px' }}>Duration: {durationStr}</span>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        )}
                                                         <div style={{ display: 'flex', gap: '10px' }}>
-                                                            <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.85rem', background: displayResult.status === 'C' ? '#dcfce7' : '#f8fafc', padding: '8px 12px', borderRadius: '4px', border: displayResult.status === 'C' ? '2px solid #22c55e' : '1px solid #cbd5e1', color: displayResult.status === 'C' ? '#166534' : '#64748b', fontWeight: 'bold', cursor: isActiveRole && !isModerator ? 'pointer' : 'not-allowed' }}>
-                                                                <input type="radio" disabled={!isActiveRole || isModerator} checked={displayResult.status === 'C'} onChange={() => handleCriterionChange(block.id, i, 'status', 'C')} style={{ accentColor: '#22c55e' }} />
+                                                            <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.85rem', background: myResult.status === 'C' ? '#dcfce7' : '#f8fafc', padding: '8px 12px', borderRadius: '4px', border: myResult.status === 'C' ? '2px solid #22c55e' : '1px solid #cbd5e1', color: myResult.status === 'C' ? '#166534' : '#64748b', fontWeight: 'bold', cursor: isModerator ? 'not-allowed' : 'pointer' }}>
+                                                                <input type="radio" disabled={isModerator} checked={myResult.status === 'C'} onChange={() => handleCriterionChange(block.id, i, 'status', 'C')} style={{ accentColor: '#22c55e' }} />
                                                                 {isMentor ? 'Observed ✓' : 'Competent (C)'}
                                                             </label>
-                                                            <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.85rem', background: displayResult.status === 'NYC' ? '#fee2e2' : '#f8fafc', padding: '8px 12px', borderRadius: '4px', border: displayResult.status === 'NYC' ? '2px solid #ef4444' : '1px solid #cbd5e1', color: displayResult.status === 'NYC' ? '#991b1b' : '#64748b', fontWeight: 'bold', cursor: isActiveRole && !isModerator ? 'pointer' : 'not-allowed' }}>
-                                                                <input type="radio" disabled={!isActiveRole || isModerator} checked={displayResult.status === 'NYC'} onChange={() => handleCriterionChange(block.id, i, 'status', 'NYC')} style={{ accentColor: '#ef4444' }} />
+                                                            <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.85rem', background: myResult.status === 'NYC' ? '#fee2e2' : '#f8fafc', padding: '8px 12px', borderRadius: '4px', border: myResult.status === 'NYC' ? '2px solid #ef4444' : '1px solid #cbd5e1', color: myResult.status === 'NYC' ? '#991b1b' : '#64748b', fontWeight: 'bold', cursor: isModerator ? 'not-allowed' : 'pointer' }}>
+                                                                <input type="radio" disabled={isModerator} checked={myResult.status === 'NYC'} onChange={() => handleCriterionChange(block.id, i, 'status', 'NYC')} style={{ accentColor: '#ef4444' }} />
                                                                 {isMentor ? 'Not Observed ✗' : 'NYC'}
                                                             </label>
                                                         </div>
-                                                    )}
-
-                                                    <div style={{ flex: 1, minWidth: '250px' }}>
-                                                        {isPrintMode ? (
-                                                            <div style={{ fontSize: '0.85rem', whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: '#334155', padding: '8px', background: '#f1f5f9', borderRadius: '4px', border: '1px solid #e2e8f0' }}>
-                                                                {displayResult.comment || <em style={{ opacity: 0.5 }}>No comments provided.</em>}
-                                                            </div>
-                                                        ) : (
+                                                        <div style={{ flex: 1, minWidth: '250px' }}>
                                                             <textarea
                                                                 className="ab-input"
-                                                                disabled={!isActiveRole || isModerator}
+                                                                disabled={isModerator && !isWorkplaceModule && !myResult.comment} // allow mod to type if applicable, but mostly they use global
                                                                 rows={2}
                                                                 placeholder={isMentor ? "Supervisor observation notes..." : isModerator ? "Assessor's comments" : "Assessor comments / reasoning..."}
-                                                                value={displayResult.comment}
+                                                                value={myResult.comment}
                                                                 onChange={e => handleCriterionChange(block.id, i, 'comment', e.target.value)}
-                                                                style={{ fontSize: '0.85rem', width: '100%', border: '1px solid #e2e8f0', resize: 'vertical', background: isModerator ? '#f8fafc' : 'white', color: isModerator ? '#94a3b8' : 'inherit' }}
+                                                                style={{ fontSize: '0.85rem', width: '100%', border: '1px solid #e2e8f0', resize: 'vertical', background: 'white' }}
                                                             />
-                                                        )}
+                                                        </div>
                                                     </div>
-                                                </div>
+                                                )}
                                             </div>
                                         );
                                     })}
 
-                                    {/* 🚀 FIXED: Global sign-off completely removed from Moderator 🚀 */}
+                                    <div className="sr-grade-box" style={{ borderTop: `1px dashed #cbd5e1`, marginTop: '1rem', paddingTop: '1rem' }}>
+                                        {renderReadOnlyLayers()}
+                                        {(!isPrintMode && isActiveRole) && renderActiveGradeControls(block.id)}
+                                    </div>
+
                                     {block.requireObservationDeclaration !== false && !isModerator && (
                                         <div style={{ marginTop: '2rem', padding: '1.5rem', background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '8px', borderLeft: `4px solid ${activeInkColor}` }}>
                                             <h4 style={{ fontSize: '0.9rem', color: '#0f172a', margin: '0 0 15px 0', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -1635,6 +1799,7 @@ export const SubmissionReview: React.FC = () => {
 
                                     const mentorResult = fData.activityResults?.[actIdx] || { status: null, comment: '' };
                                     const assessorResult = aData.activityResults?.[actIdx] || { status: null, comment: '' };
+                                    const modResult = mData.activityResults?.[actIdx] || { status: null, comment: '' };
                                     const myResult = activeData.activityResults?.[actIdx] || { status: null, comment: '' };
 
                                     // If Moderator, show Assessor's result on the radios. Otherwise, show active role's result.
@@ -1671,62 +1836,71 @@ export const SubmissionReview: React.FC = () => {
                                                 </div>
 
                                                 <div style={{ borderTop: '1px dashed #cbd5e1', paddingTop: '1rem' }}>
-
-                                                    {/* When assessor/moderator is grading, show mentor's verification read-only above */}
-                                                    {(canGrade || canModerate || isModDone || isAssDone) && isFacDone && savedFacRole === 'mentor' && (
-                                                        <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '6px', padding: '10px 12px', marginBottom: '10px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                                            <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#1d4ed8', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                                                <ShieldCheck size={12} /> Workplace Mentor Verification
+                                                    {/* 🚀 READ ONLY LAYERS (Stacked perfectly) */}
+                                                    {(isFacDone || mentorResult.status) && (!canFacilitatorMark || isPrintMode) && (
+                                                        <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '6px', padding: '10px', marginBottom: '10px' }}>
+                                                            <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#1d4ed8', textTransform: 'uppercase', display: 'flex', gap: '5px' }}>
+                                                                <ShieldCheck size={12} /> {savedFacRole === 'mentor' ? 'Workplace Mentor Verification' : 'Facilitator Pre-Mark'}
                                                             </span>
                                                             <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: mentorResult.status === 'C' ? '#166534' : mentorResult.status === 'NYC' ? '#991b1b' : '#64748b' }}>
                                                                 {mentorResult.status === 'C' ? 'Verified ✓' : mentorResult.status === 'NYC' ? 'Not Verified ✗' : 'Not Reviewed'}
                                                             </span>
-                                                            {mentorResult.comment && (
-                                                                <span style={{ fontSize: '0.82rem', color: '#1e40af', fontStyle: 'italic' }}>{mentorResult.comment}</span>
-                                                            )}
+                                                            {mentorResult.comment && <div style={{ fontSize: '0.82rem', color: '#1e40af', fontStyle: 'italic', marginTop: '4px' }}>{mentorResult.comment}</div>}
                                                         </div>
                                                     )}
 
-                                                    <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-                                                        {isPrintMode ? (
-                                                            <div style={{ fontSize: '0.85rem' }}>
-                                                                <span style={{ fontWeight: 'bold', color: displayResult.status === 'C' ? '#166534' : displayResult.status === 'NYC' ? '#991b1b' : '#64748b' }}>
-                                                                    {isMentor
-                                                                        ? (displayResult.status === 'C' ? 'Verified ✓' : displayResult.status === 'NYC' ? 'Not Verified ✗' : 'Not Reviewed')
-                                                                        : (displayResult.status === 'C' ? 'Competent' : displayResult.status === 'NYC' ? 'Not Yet Competent' : 'Not Graded')}
+                                                    {(isAssDone || assessorResult.status) && (!canGrade || isPrintMode) && (
+                                                        <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: '6px', padding: '10px', marginBottom: '10px' }}>
+                                                            <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#b91c1c', textTransform: 'uppercase', display: 'flex', gap: '5px' }}>
+                                                                <Award size={12} /> Assessor Grade
+                                                            </span>
+                                                            <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: assessorResult.status === 'C' ? '#166534' : assessorResult.status === 'NYC' ? '#991b1b' : '#64748b' }}>
+                                                                {assessorResult.status === 'C' ? 'Competent (C)' : assessorResult.status === 'NYC' ? 'NYC' : 'Not Graded'}
+                                                            </span>
+                                                            {assessorResult.comment && <div style={{ fontSize: '0.82rem', color: '#991b1b', fontStyle: 'italic', marginTop: '4px' }}>{assessorResult.comment}</div>}
+                                                        </div>
+                                                    )}
+
+                                                    {(isModDone || modResult.status || modResult.comment) && (!canModerate || isPrintMode) && (
+                                                        <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '6px', padding: '10px', marginBottom: '10px' }}>
+                                                            <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#15803d', textTransform: 'uppercase', display: 'flex', gap: '5px' }}>
+                                                                <ShieldCheck size={12} /> Moderator QA
+                                                            </span>
+                                                            {modResult.status && (
+                                                                <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: modResult.status === 'C' ? '#166534' : modResult.status === 'NYC' ? '#991b1b' : '#64748b' }}>
+                                                                    {modResult.status === 'C' ? 'Competent (C)' : modResult.status === 'NYC' ? 'NYC' : 'Not Graded'}
                                                                 </span>
-                                                            </div>
-                                                        ) : (
+                                                            )}
+                                                            {modResult.comment && <div style={{ fontSize: '0.82rem', color: '#15803d', fontStyle: 'italic', marginTop: '4px' }}>{modResult.comment}</div>}
+                                                        </div>
+                                                    )}
+
+                                                    {/* 🚀 ACTIVE EVALUATION CONTROLS */}
+                                                    {(!isPrintMode && isActiveRole) && (
+                                                        <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', flexWrap: 'wrap', borderTop: '1px dashed #cbd5e1', paddingTop: '10px', marginTop: '10px' }}>
                                                             <div style={{ display: 'flex', gap: '10px' }}>
-                                                                <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.85rem', background: displayResult.status === 'C' ? '#dcfce7' : '#f8fafc', padding: '8px 12px', borderRadius: '4px', border: displayResult.status === 'C' ? '2px solid #22c55e' : '1px solid #cbd5e1', color: displayResult.status === 'C' ? '#166534' : '#64748b', fontWeight: 'bold', cursor: isActiveRole && !isModerator ? 'pointer' : 'not-allowed' }}>
-                                                                    <input type="radio" disabled={!isActiveRole || isModerator} checked={displayResult.status === 'C'} onChange={() => handleActivityStatusChange(block.id, actIdx, 'C')} style={{ accentColor: '#22c55e' }} />
+                                                                <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.85rem', background: myResult.status === 'C' ? '#dcfce7' : '#f8fafc', padding: '8px 12px', borderRadius: '4px', border: myResult.status === 'C' ? '2px solid #22c55e' : '1px solid #cbd5e1', color: myResult.status === 'C' ? '#166534' : '#64748b', fontWeight: 'bold', cursor: isModerator ? 'not-allowed' : 'pointer' }}>
+                                                                    <input type="radio" disabled={isModerator} checked={myResult.status === 'C'} onChange={() => handleActivityStatusChange(block.id, actIdx, 'C')} style={{ accentColor: '#22c55e' }} />
                                                                     {isMentor ? 'Verified ✓' : 'Competent (C)'}
                                                                 </label>
-                                                                <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.85rem', background: displayResult.status === 'NYC' ? '#fee2e2' : '#f8fafc', padding: '8px 12px', borderRadius: '4px', border: displayResult.status === 'NYC' ? '2px solid #ef4444' : '1px solid #cbd5e1', color: displayResult.status === 'NYC' ? '#991b1b' : '#64748b', fontWeight: 'bold', cursor: isActiveRole && !isModerator ? 'pointer' : 'not-allowed' }}>
-                                                                    <input type="radio" disabled={!isActiveRole || isModerator} checked={displayResult.status === 'NYC'} onChange={() => handleActivityStatusChange(block.id, actIdx, 'NYC')} style={{ accentColor: '#ef4444' }} />
+                                                                <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.85rem', background: myResult.status === 'NYC' ? '#fee2e2' : '#f8fafc', padding: '8px 12px', borderRadius: '4px', border: myResult.status === 'NYC' ? '2px solid #ef4444' : '1px solid #cbd5e1', color: myResult.status === 'NYC' ? '#991b1b' : '#64748b', fontWeight: 'bold', cursor: isModerator ? 'not-allowed' : 'pointer' }}>
+                                                                    <input type="radio" disabled={isModerator} checked={myResult.status === 'NYC'} onChange={() => handleActivityStatusChange(block.id, actIdx, 'NYC')} style={{ accentColor: '#ef4444' }} />
                                                                     {isMentor ? 'Not Verified ✗' : 'NYC'}
                                                                 </label>
                                                             </div>
-                                                        )}
-
-                                                        <div style={{ flex: 1, minWidth: '250px' }}>
-                                                            {isPrintMode ? (
-                                                                <div style={{ fontSize: '0.85rem', whiteSpace: 'pre-wrap', color: '#334155', padding: '8px', background: '#f1f5f9', borderRadius: '4px' }}>
-                                                                    {displayResult.comment || <em>No comments.</em>}
-                                                                </div>
-                                                            ) : (
+                                                            <div style={{ flex: 1, minWidth: '250px' }}>
                                                                 <textarea
                                                                     className="ab-input"
-                                                                    disabled={!isActiveRole || isModerator}
+                                                                    disabled={isModerator && !myResult.comment}
                                                                     rows={2}
                                                                     placeholder={isMentor ? "Supervisor verification notes..." : isModerator ? "Assessor's comments" : "Assessor comments / reasoning..."}
-                                                                    value={displayResult.comment}
+                                                                    value={myResult.comment}
                                                                     onChange={e => handleActivityCommentChange(block.id, actIdx, e.target.value)}
-                                                                    style={{ fontSize: '0.85rem', width: '100%', border: '1px solid #e2e8f0', resize: 'vertical', background: isModerator ? '#f8fafc' : 'white', color: isModerator ? '#94a3b8' : 'inherit' }}
+                                                                    style={{ fontSize: '0.85rem', width: '100%', border: '1px solid #e2e8f0', resize: 'vertical', background: 'white' }}
                                                                 />
-                                                            )}
+                                                            </div>
                                                         </div>
-                                                    </div>
+                                                    )}
                                                 </div>
                                             </div>
                                         </div>
@@ -1746,12 +1920,16 @@ export const SubmissionReview: React.FC = () => {
                                     </div>
                                 )}
 
-                                {/* 🚀 FIXED: Global sign-off hidden entirely from Moderator 🚀 */}
+                                <div className="sr-grade-box" style={{ borderTop: `1px dashed #cbd5e1`, marginTop: '1rem', paddingTop: '1rem' }}>
+                                    {renderReadOnlyLayers()}
+                                    {(!isPrintMode && isActiveRole) && renderActiveGradeControls(block.id)}
+                                </div>
+
                                 {block.requireObservationDeclaration !== false && !isModerator && (
                                     <div style={{ marginTop: '2rem', padding: '1.5rem', background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '8px', borderLeft: `4px solid ${activeInkColor}` }}>
                                         <h4 style={{ fontSize: '0.9rem', color: '#0f172a', margin: '0 0 15px 0', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                             <ShieldCheck size={16} color={activeInkColor} />
-                                            {isMentor ? 'Mentor Workplace Verification Sign-off' : 'Global Assessor Sign-off'}
+                                            {isWorkplaceModule ? 'Mentor Verification Declaration' : 'Observation Declaration'}
                                         </h4>
 
                                         {block.requireTimeTracking !== false && (
@@ -1778,7 +1956,7 @@ export const SubmissionReview: React.FC = () => {
 
                                         <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.85rem', color: '#0f172a', fontWeight: 'bold', background: decData.obsDeclaration ? '#eff6ff' : 'white', padding: '10px', borderRadius: '6px', border: '1px solid #bfdbfe', cursor: isDeclarationInteractive && !isPrintMode ? 'pointer' : 'default' }}>
                                             <input type="checkbox" disabled={!isDeclarationInteractive || isPrintMode} checked={decData.obsDeclaration || false} onChange={e => handleGlobalChecklistChange(block.id, 'obsDeclaration', e.target.checked)} style={{ width: '18px', height: '18px', accentColor: isDeclarationInteractive ? activeInkColor : '#64748b' }} />
-                                            {isMentor
+                                            {isWorkplaceModule
                                                 ? 'I confirm that I have directly observed this learner performing the above workplace activities in a real work environment, and that the evidence submitted is authentic.'
                                                 : 'I officially declare that I have observed the learner performing these tasks and that the evidence was submitted by the learner.'}
                                         </label>
@@ -1822,6 +2000,12 @@ export const SubmissionReview: React.FC = () => {
                                 Attempt {submission.attemptNumber}
                             </span>
                         )}
+                        {/* 🚀 NEW: APPEAL GRANTED GLOBAL BADGE */}
+                        {isAppealUpheld && (
+                            <span style={{ marginLeft: '8px', fontSize: '0.72rem', background: '#22c55e', color: 'white', padding: '2px 8px', borderRadius: '12px', verticalAlign: 'middle', display: 'inline-flex', alignItems: 'center', gap: '4px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                <Scale size={12} /> Appeal Granted
+                            </span>
+                        )}
                         {isMentor && (
                             <span style={{ marginLeft: '8px', fontSize: '0.72rem', background: '#0284c7', color: 'white', padding: '2px 8px', borderRadius: '12px', verticalAlign: 'middle', fontFamily: 'var(--font-heading)' }}>
                                 MENTOR VIEW
@@ -1830,6 +2014,13 @@ export const SubmissionReview: React.FC = () => {
                     </h1>
                 </div>
                 <div className="ap-player-topbar__right">
+                    {/* 🚀 NEW: OPEN BOOK PDF BUTTON IN GRADER TOPBAR */}
+                    {assessment?.isOpenBook && assessment?.referenceManualUrl && (
+                        <button className="ap-topbar-print-btn sr-print-btn" onClick={() => window.open(assessment.referenceManualUrl, '_blank', 'noopener,noreferrer')} title="Open Reference Manual">
+                            <FileArchive size={13} /> View Manual
+                        </button>
+                    )}
+
                     {canPrint && (
                         <button className="ap-topbar-print-btn sr-print-btn" onClick={() => window.print()}>
                             <Printer size={13} /> Print Audit
@@ -2064,7 +2255,7 @@ export const SubmissionReview: React.FC = () => {
                         {isModDone && submission.moderation?.moderatedAt ? (
                             <>
                                 {moderatorProfile?.signatureUrl ? <TintedSignature imageUrl={moderatorProfile.signatureUrl} color={'green'} /> : <div className="sr-sig-no-image" style={{ color: 'green' }}>No Canvas Signature</div>}
-                                <strong style={{ color: 'green' }}>{submission.moderation?.moderatorName || 'N/A'}</strong>
+                                <strong style={{ color: 'green' }}>{moderatorProfile?.fullName || submission.moderation?.moderatorName || '—'}</strong>
                                 <em style={{ color: 'green' }}>Outcome: {submission.moderation?.outcome}</em>
                                 <em style={{ color: 'green' }}>Signed: {new Date(submission.moderation.moderatedAt).toLocaleDateString()}</em>
                                 <div className="sr-sig-line" style={{ borderTopColor: 'green' }}>QA Sign-off Confirmed</div>
@@ -2082,6 +2273,102 @@ export const SubmissionReview: React.FC = () => {
             {/* SCREEN LAYOUT */}
             <div className="sr-layout no-print">
                 <div className="sr-content-pane">
+
+                    {/* 🚀 NEW: ATTEMPT CONTEXT BANNER */}
+                    {currentStatus === 'in_progress' && currentAttempt > 1 && (
+                        <div style={{ background: isAppealUpheld ? '#f5f3ff' : '#f0f9ff', border: '1px solid', borderColor: isAppealUpheld ? '#ddd6fe' : '#bae6fd', borderLeft: '4px solid', borderLeftColor: isAppealUpheld ? '#8b5cf6' : '#0ea5e9', padding: '1rem', borderRadius: '8px', marginBottom: '1.5rem', display: 'flex', gap: '12px' }}>
+                            {isAppealUpheld ? <Scale size={20} color="#6d28d9" /> : <Info size={20} color="#0284c7" />}
+                            <div>
+                                <strong style={{ display: 'block', color: isAppealUpheld ? '#5b21b6' : '#0369a1' }}>Attempt {currentAttempt} in Progress {isAppealUpheld ? '(Via Appeal)' : ''}</strong>
+                                <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: isAppealUpheld ? '#4c1d95' : '#075985' }}>
+                                    {isAppealUpheld
+                                        ? `A fresh attempt has been granted by the Academic Board following a successful appeal. Prior work is archived in the sidebar.`
+                                        : `A fresh attempt has been granted. Previous work is archived in the sidebar.`}
+                                </p>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 🚀 NEW: ACTIVE APPEAL BANNER */}
+                    {isAppealed && (
+                        <div style={{ background: '#f5f3ff', border: '1px solid #ddd6fe', borderLeft: '5px solid #8b5cf6', padding: '1.5rem', borderRadius: '8px', marginBottom: '1.5rem', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '15px' }}>
+                                <div>
+                                    <h2 style={{ margin: '0 0 8px 0', display: 'flex', alignItems: 'center', gap: '8px', color: '#6d28d9', fontSize: '1.2rem', fontFamily: 'var(--font-heading)', textTransform: 'uppercase' }}>
+                                        <Scale size={20} /> Formal Appeal Pending
+                                    </h2>
+                                    <p style={{ margin: '0 0 10px 0', fontSize: '0.9rem', color: '#5b21b6' }}>
+                                        This learner has formally appealed their "Not Yet Competent" outcome.
+                                    </p>
+                                    <div style={{ background: 'white', padding: '1rem', borderRadius: '6px', border: '1px solid #ddd6fe' }}>
+                                        <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#475569', textTransform: 'uppercase' }}>Learner's Reason for Appeal:</span>
+                                        <p style={{ fontSize: '0.95rem', color: '#0f172a', margin: '8px 0 0 0', fontStyle: 'italic' }}>"{submission.appeal?.reason}"</p>
+                                        <span style={{ display: 'block', marginTop: '8px', fontSize: '0.75rem', color: '#64748b' }}>Lodged: {new Date(submission.appeal?.date).toLocaleString()}</span>
+                                    </div>
+                                </div>
+                                {(isAdmin || isModerator) && (
+                                    <button
+                                        onClick={() => setShowResolveAppealModal(true)}
+                                        style={{ background: '#8b5cf6', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
+                                    >
+                                        <Scale size={16} /> Resolve Appeal
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 🚀 NEW: GRANTED APPEAL BANNER */}
+                    {isAppealUpheld && !isAppealed && (
+                        <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderLeft: '5px solid #22c55e', padding: '1.5rem', borderRadius: '8px', marginBottom: '1.5rem', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '15px' }}>
+                                <div>
+                                    <h2 style={{ margin: '0 0 8px 0', display: 'flex', alignItems: 'center', gap: '8px', color: '#15803d', fontSize: '1.2rem', fontFamily: 'var(--font-heading)', textTransform: 'uppercase' }}>
+                                        <Scale size={20} /> Formal Appeal Granted
+                                    </h2>
+                                    <p style={{ margin: '0 0 10px 0', fontSize: '0.9rem', color: '#166534' }}>
+                                        The Academic Board has upheld the learner's appeal.
+                                        {submission.competency === 'C' ? ' The assessment outcome has been overturned to Competent.' : ' A new attempt has been granted.'}
+                                    </p>
+                                    <div style={{ background: 'white', padding: '1rem', borderRadius: '6px', border: '1px solid #bbf7d0' }}>
+                                        <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#166534', textTransform: 'uppercase' }}>Board Resolution Notes:</span>
+                                        <p style={{ fontSize: '0.95rem', color: '#0f172a', margin: '8px 0 0 0', fontStyle: 'italic' }}>"{submission.appeal?.resolutionNotes}"</p>
+                                        <span style={{ display: 'block', marginTop: '8px', fontSize: '0.75rem', color: '#15803d' }}>Resolved by {submission.appeal?.resolvedByName || 'Academic Board'} on {new Date(submission.appeal?.resolvedAt).toLocaleDateString()}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 🚀 NEW: REJECTED APPEAL BANNER */}
+                    {isAppealRejected && !isAppealed && (
+                        <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderLeft: '5px solid #ef4444', padding: '1.5rem', borderRadius: '8px', marginBottom: '1.5rem', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '15px' }}>
+                                <div>
+                                    <h2 style={{ margin: '0 0 8px 0', display: 'flex', alignItems: 'center', gap: '8px', color: '#b91c1c', fontSize: '1.2rem', fontFamily: 'var(--font-heading)', textTransform: 'uppercase' }}>
+                                        <Scale size={20} /> Formal Appeal Rejected
+                                    </h2>
+                                    <p style={{ margin: '0 0 10px 0', fontSize: '0.9rem', color: '#991b1b' }}>
+                                        The Academic Board has reviewed and rejected the learner's appeal. The original grade has been upheld.
+                                    </p>
+                                    <div style={{ background: 'white', padding: '1rem', borderRadius: '6px', border: '1px solid #fca5a5' }}>
+                                        <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#991b1b', textTransform: 'uppercase' }}>Board Resolution Notes:</span>
+                                        <p style={{ fontSize: '0.95rem', color: '#0f172a', margin: '8px 0 0 0', fontStyle: 'italic' }}>"{submission.appeal?.resolutionNotes}"</p>
+                                        <span style={{ display: 'block', marginTop: '8px', fontSize: '0.75rem', color: '#b91c1c' }}>Resolved by {submission.appeal?.resolvedByName || 'Academic Board'} on {new Date(submission.appeal?.resolvedAt).toLocaleDateString()}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {showResolveAppealModal && (
+                        <ResolveAppealModal
+                            appealReason={submission.appeal?.reason || ''}
+                            onClose={() => setShowResolveAppealModal(false)}
+                            onSubmit={executeAppealResolution}
+                        />
+                    )}
+
                     {/* Mentor return reason banner — shown to everyone when logbook was returned */}
                     {submission.mentorReturnReason && (
                         <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderLeft: '4px solid #f59e0b', padding: '1rem', borderRadius: '8px', marginBottom: '1.5rem' }}>
@@ -2433,6 +2720,22 @@ export const SubmissionReview: React.FC = () => {
 
                         {currentStatus === 'not_started' && <div className="ap-audit-card__no-outcome" style={{ color: '#94a3b8' }}>No outcome recorded yet</div>}
 
+                        {/* 🚀 NEW: AUDIT TRAIL APPEAL RESOLUTION CARD */}
+                        {submission?.appeal?.status && submission?.appeal?.status !== 'pending' && (
+                            <div style={{ background: 'white', padding: '1.25rem', borderRadius: '8px', border: '1px solid #ddd6fe', borderLeft: `4px solid ${submission.appeal.status === 'upheld' ? '#22c55e' : '#ef4444'}`, boxShadow: '0 2px 4px rgba(0,0,0,0.02)', marginBottom: '1rem' }}>
+                                <p style={{ fontFamily: 'var(--font-heading)', fontSize: '0.75rem', textTransform: 'uppercase', color: submission.appeal.status === 'upheld' ? '#166534' : '#991b1b', margin: '0 0 8px 0', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <Scale size={14} /> Appeal Resolution
+                                </p>
+                                <p style={{ margin: '0 0 4px 0', fontSize: '0.95rem', fontWeight: 'bold', color: submission.appeal.status === 'upheld' ? '#22c55e' : '#ef4444' }}>
+                                    {submission.appeal.status === 'upheld' ? 'Appeal Granted' : 'Appeal Rejected'}
+                                </p>
+                                <p style={{ margin: '0 0 6px 0', fontSize: '0.8rem', color: '#64748b' }}>Resolved by: {submission.appeal?.resolvedByName || 'Academic Board'}</p>
+                                <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748b', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
+                                    <Clock size={11} /> {submission.appeal?.resolvedAt ? moment(submission.appeal.resolvedAt).format('DD/MM/YYYY HH:mm') : 'Completed'}
+                                </p>
+                            </div>
+                        )}
+
                         {currentAttempt > 1 && submission.latestCoachingLog && (
                             <div style={{ background: 'white', padding: '1.25rem', borderRadius: '8px', border: '1px solid #fcd34d', borderLeft: '4px solid #f59e0b', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', marginBottom: '1rem' }}>
                                 <p style={{ fontFamily: 'var(--font-heading)', fontSize: '0.75rem', textTransform: 'uppercase', color: '#b45309', margin: '0 0 8px 0', fontWeight: 'bold' }}>Developmental Intervention</p>
@@ -2549,6 +2852,8 @@ export const SubmissionReview: React.FC = () => {
 };
 
 export default SubmissionReview;
+
+
 
 
 // import React, { useState, useEffect, useRef } from 'react';

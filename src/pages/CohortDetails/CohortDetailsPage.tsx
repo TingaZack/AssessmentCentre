@@ -6,7 +6,7 @@ import {
     Users, Calendar,
     Clock, XCircle, AlertTriangle, CheckCircle,
     Eye, Loader2, PenTool,
-    RefreshCcw, Info, Building2, Edit // 🚀 Added Edit icon
+    RefreshCcw, Info, Building2, Edit
 } from 'lucide-react';
 import { writeBatch, doc, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
@@ -38,7 +38,6 @@ export const CohortDetailsPage: React.FC = () => {
         message: string;
     }>({ isOpen: false, type: 'info', title: '', message: '' });
 
-    // 🚀 NEW: Placement Modal State
     const [learnerToPlace, setLearnerToPlace] = useState<DashboardLearner | null>(null);
 
     const isAdmin = user?.role === 'admin';
@@ -63,7 +62,7 @@ export const CohortDetailsPage: React.FC = () => {
         if (cohorts.length === 0) fetchCohorts();
         if (learners.length === 0) fetchLearners();
         if (staff.length === 0) fetchStaff();
-        if (employers.length === 0) fetchEmployers(); // 🚀 Needed for mapping employer names
+        if (employers.length === 0) fetchEmployers();
     }, [cohorts, learners, staff, employers, fetchCohorts, fetchLearners, fetchStaff, fetchEmployers]);
 
     const fetchSubmissions = async () => {
@@ -199,7 +198,6 @@ export const CohortDetailsPage: React.FC = () => {
 
     const getStaffName = (id: string) => staff.find(s => s.id === id)?.fullName || 'Unassigned';
 
-    // 🚀 NEW: Get Employer Name safely
     const getEmployerName = (id?: string) => {
         if (!id) return null;
         return employers.find(e => e.id === id)?.name || 'Unknown Workplace';
@@ -247,7 +245,7 @@ export const CohortDetailsPage: React.FC = () => {
                 />
             )}
 
-            {/* 🚀 WORKPLACE PLACEMENT MODAL */}
+            {/* WORKPLACE PLACEMENT MODAL */}
             {learnerToPlace && (
                 <WorkplacePlacementModal
                     learner={learnerToPlace}

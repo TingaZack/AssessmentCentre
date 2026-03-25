@@ -6,8 +6,6 @@ interface Props {
 }
 
 export const VerificationQRCode: React.FC<Props> = ({ certId }) => {
-    // This creates the absolute URL for the verification page
-    // In production, change 'localhost:5173' to your real domain (e.g., mlab-verify.co.za)
     const verificationUrl = `${window.location.origin}/sor/${certId}`;
 
     return (
@@ -15,10 +13,10 @@ export const VerificationQRCode: React.FC<Props> = ({ certId }) => {
             <QRCodeSVG
                 value={verificationUrl}
                 size={120}
-                level={"H"} // High error correction
+                level={"H"}
                 includeMargin={true}
                 imageSettings={{
-                    src: "/mlab-logo-icon.png", // Optional: put a tiny mLab logo in the middle
+                    src: "src/assets/mlab_logo.png",
                     x: undefined,
                     y: undefined,
                     height: 24,

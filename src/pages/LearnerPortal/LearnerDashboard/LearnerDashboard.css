@@ -1,273 +1,112 @@
-/* ─────────────────────────────────────────────────────────────────────────────
-   LearnerDashboard.css
-   Styled to align with mLab Corporate Identity Brand Guide 2019
+/* =========================================
+   📱 MOBILE LAYOUT & SIDEBAR DRAWER
+========================================= */
 
-   Colours:
-     --mlab-blue:        #073f4e  (Midnight Blue)
-     --mlab-green:       #94c73d  (Green – primary accent)
-     --mlab-grey:        #6b6b6b  (Grey – secondary text)
-     --mlab-white:       #ffffff
-
-   Typefaces:
-     Oswald       – headings, labels, buttons (uppercase)
-     Trebuchet MS – body, data text
-───────────────────────────────────────────────────────────────────────────── */
-
-@import url("https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&display=swap");
-
-/* ── CSS Variables ─────────────────────────────────────────────────────────── */
-:root {
-  --mlab-blue: #073f4e;
-  --mlab-blue-dark: #052e3a;
-  --mlab-green: #94c73d;
-  --mlab-green-dark: #7aaa2e;
-  --mlab-grey: #6b6b6b;
-  --mlab-white: #ffffff;
-  --mlab-light-blue: #e8f0f3;
-  --mlab-light-green: #f0f7e1;
-  --mlab-red: #ef4444;
-
-  --font-heading: "Oswald", "Trebuchet MS", sans-serif;
-  --font-body:
-    "Trebuchet MS", "Lucida Grande", "Lucida Sans Unicode", Arial, sans-serif;
-}
-
-/* ── Animations ────────────────────────────────────────────────────────────── */
-@keyframes ld-fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.ld-animate {
-  animation: ld-fadeIn 0.3s ease both;
-}
-
-/* ── Page Header ───────────────────────────────────────────────────────────── */
-.ld-page-title {
-  font-family: var(--font-heading);
-  font-size: 1.5rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--mlab-blue);
-  margin: 0 0 0.2rem;
-}
-
-.ld-page-sub {
-  font-family: var(--font-body);
-  font-size: 0.88rem;
-  color: var(--mlab-grey);
-  margin: 0;
-}
-
-/* ── Section Title ─────────────────────────────────────────────────────────── */
-.ld-section-title {
-  font-family: var(--font-heading);
-  font-size: 0.95rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--mlab-blue);
-  margin: 0 0 1.5rem;
+.learner-layout {
   display: flex;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  position: relative;
+  background: var(--mlab-bg);
+}
+
+/* Mobile Header (Hidden on Desktop) */
+.ld-mobile-header {
+  display: none;
   align-items: center;
-  gap: 0.6rem;
-}
-
-.ld-section-title::after {
-  content: "";
-  flex: 1;
-  height: 2px;
-  background: var(--mlab-light-blue);
-  margin-left: 0.5rem;
-}
-
-/* ── Cohort Card Grid ──────────────────────────────────────────────────────── */
-.ld-cohort-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 1.5rem;
-}
-
-/* ── Cohort Card ───────────────────────────────────────────────────────────── */
-.ld-cohort-card {
+  padding: 1rem 1.5rem;
   background: var(--mlab-white);
-  border: 2px solid var(--mlab-blue);
-  display: flex;
-  flex-direction: column;
-  transition:
-    box-shadow 0.2s,
-    transform 0.2s;
+  border-bottom: 1px solid var(--mlab-border);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  z-index: 40;
 }
 
-.ld-cohort-card:hover {
-  box-shadow: 0 6px 20px rgba(7, 63, 78, 0.12);
-  transform: translateY(-2px);
-}
-
-/* Card accent bar at top */
-.ld-cohort-card::before {
-  content: "";
-  display: block;
-  height: 4px;
-  background: var(--mlab-green);
-  flex-shrink: 0;
-}
-
-/* ── Card Header ───────────────────────────────────────────────────────────── */
-.ld-cohort-card__header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  padding: 1.25rem 1.25rem 0.75rem;
-  gap: 0.75rem;
-}
-
-.ld-cohort-card__name {
-  font-family: var(--font-heading);
-  font-size: 1rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+.ld-hamburger-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
   color: var(--mlab-blue);
-  margin: 0;
-  flex: 1;
-}
-
-/* ── Active Badge ──────────────────────────────────────────────────────────── */
-.ld-badge-active {
-  display: inline-block;
-  padding: 3px 10px;
-  font-family: var(--font-heading);
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  background: var(--mlab-green);
-  color: var(--mlab-white);
-  flex-shrink: 0;
-}
-
-/* ── Date Range ────────────────────────────────────────────────────────────── */
-.ld-cohort-card__dates {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-family: var(--font-body);
-  font-size: 0.82rem;
-  color: var(--mlab-grey);
-  margin: 0 1.25rem 1rem;
-  padding: 0.4rem 0.65rem;
-  background: var(--mlab-light-blue);
-  border-left: 3px solid var(--mlab-green);
-}
-
-/* ── Staff Role Rows ───────────────────────────────────────────────────────── */
-.ld-cohort-card__roles {
-  display: flex;
-  flex-direction: column;
-  gap: 0.45rem;
-  padding: 0 1.25rem;
-  font-size: 0.85rem;
-  flex: 1;
-}
-
-.ld-role-row {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  color: var(--mlab-grey);
-}
-
-.ld-role-dot {
-  width: 8px;
-  height: 8px;
-  flex-shrink: 0;
-}
-
-.ld-role-dot--blue {
-  background: var(--mlab-blue);
-}
-.ld-role-dot--red {
-  background: var(--mlab-red);
-}
-
-.ld-role-label {
-  color: var(--mlab-grey);
-  min-width: 75px;
-  font-size: 0.82rem;
-}
-
-.ld-role-name {
-  font-weight: 700;
-  color: var(--mlab-blue);
-  font-size: 0.85rem;
-}
-
-/* ── Card Footer ───────────────────────────────────────────────────────────── */
-.ld-cohort-card__footer {
-  margin-top: 1.25rem;
-  padding: 1rem 1.25rem;
-  border-top: 2px solid var(--mlab-light-blue);
-}
-
-/* ── Portfolio Button ──────────────────────────────────────────────────────── */
-.ld-portfolio-btn {
+  margin-right: 1rem;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.4rem;
-  width: 100%;
-  padding: 0.7rem 1rem;
-  background: var(--mlab-blue);
-  color: var(--mlab-white);
-  border: 2px solid var(--mlab-blue);
-  cursor: pointer;
+  padding: 0.25rem;
+}
+
+.ld-mobile-title {
   font-family: var(--font-heading);
-  font-weight: 700;
-  font-size: 0.8rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  transition:
-    background 0.18s,
-    border-color 0.18s;
-  outline: none;
-}
-
-.ld-portfolio-btn:hover {
-  background: var(--mlab-blue-dark);
-  border-color: var(--mlab-blue-dark);
-}
-
-/* ── Empty State ───────────────────────────────────────────────────────────── */
-.ld-empty {
-  grid-column: 1 / -1;
-  text-align: center;
-  padding: 4rem 2rem;
-  background: var(--mlab-light-blue);
-  border-top: 4px solid var(--mlab-green);
-  color: var(--mlab-grey);
-}
-
-.ld-empty__title {
-  font-family: var(--font-heading);
-  font-size: 1rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-weight: 600;
   color: var(--mlab-blue);
-  margin: 0.75rem 0 0.4rem;
-  display: block;
+  font-size: 1.2rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
-.ld-empty__desc {
-  font-size: 0.85rem;
-  color: var(--mlab-grey);
-  margin: 0;
+/* Sidebar Wrapper */
+.ld-sidebar-wrapper {
+  z-index: 50;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.ld-close-btn {
+  display: none;
+}
+
+/* Overlay */
+.ld-sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 45;
+  backdrop-filter: blur(2px);
+}
+
+/* Responsive Rules */
+@media (max-width: 1024px) {
+  .learner-layout {
+    flex-direction: column;
+  }
+
+  .ld-mobile-header {
+    display: flex;
+  }
+
+  /* Convert Sidebar to sliding drawer */
+  .ld-sidebar-wrapper {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100%;
+    background: white;
+    transform: translateX(-100%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 4px 0 15px rgba(0, 0, 0, 0.1);
+  }
+
+  .ld-sidebar-wrapper.open {
+    transform: translateX(0);
+  }
+
+  /* Show overlay when open */
+  .ld-sidebar-wrapper.open ~ .ld-sidebar-overlay,
+  .ld-sidebar-overlay {
+    display: block;
+  }
+
+  /* Show close button */
+  .ld-close-btn {
+    display: block;
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    background: transparent;
+    border: none;
+    color: var(--mlab-grey);
+    cursor: pointer;
+    z-index: 60;
+  }
 }

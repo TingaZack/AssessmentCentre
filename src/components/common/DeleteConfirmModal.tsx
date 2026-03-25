@@ -1,10 +1,10 @@
 import React from 'react';
 import { AlertTriangle } from 'lucide-react';
 
-// 1. UPDATE THIS INTERFACE 👇
+// 1. UPDATE THIS INTERFACE 
 interface DeleteConfirmModalProps {
     itemName: string;
-    actionType: 'Delete' | 'Archive' | 'Discard'; // ✅ Added 'Discard'
+    actionType: 'Delete' | 'Archive' | 'Discard';
     onConfirm: () => void;
     onCancel: () => void;
 }
@@ -23,14 +23,14 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
                     title: 'Confirm Archive',
                     desc: 'This item will be moved to the archive. You can restore it later.'
                 };
-            case 'Discard': // ✅ Handle new case
+            case 'Discard':
                 return {
                     btnClass: 'btn-danger',
                     btnColor: '#dc2626',
                     title: 'Discard Draft',
                     desc: 'This draft will be permanently removed. This cannot be undone.'
                 };
-            default: // Delete
+            default:
                 return {
                     btnClass: 'btn-danger',
                     btnColor: '#dc2626',
@@ -73,53 +73,3 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
     );
 };
 
-
-// import React from 'react';
-// import { AlertCircle, Trash2, Archive } from 'lucide-react'; // Added Archive icon
-
-// interface DeleteConfirmModalProps {
-//     itemName: string;
-//     actionType?: 'Delete' | 'Archive'; // We support both
-//     onConfirm: () => void;
-//     onCancel: () => void;
-// }
-
-// export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
-//     itemName,
-//     actionType = 'Delete',
-//     onConfirm,
-//     onCancel,
-// }) => (
-//     <div className="modal-overlay" onClick={onCancel}>
-//         <div className="modal-content" style={{ maxWidth: '400px', textAlign: 'center', padding: '2rem' }} onClick={(e) => e.stopPropagation()}>
-//             <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1rem' }}>
-//                 <AlertCircle size={48} color="#ef4444" />
-//             </div>
-
-//             <h2 style={{ marginTop: 0, fontSize: '1.5rem' }}>Confirm {actionType}</h2>
-
-//             <p style={{ color: '#64748b', lineHeight: '1.5' }}>
-//                 Are you sure you want to {actionType.toLowerCase()} <strong>{itemName}</strong>?<br />
-//                 {actionType === 'Delete' ? 'This cannot be undone.' : 'It will be moved to history.'}
-//             </p>
-
-//             <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginTop: '2rem' }}>
-//                 <button className="btn btn-outline" onClick={onCancel}>
-//                     Cancel
-//                 </button>
-//                 <button
-//                     className="btn btn-primary"
-//                     style={{
-//                         background: actionType === 'Delete' ? '#ef4444' : '#d97706', // Red for delete, Orange for archive
-//                         borderColor: actionType === 'Delete' ? '#ef4444' : '#d97706',
-//                         display: 'flex', alignItems: 'center', gap: '8px'
-//                     }}
-//                     onClick={onConfirm}
-//                 >
-//                     {actionType === 'Delete' ? <Trash2 size={18} /> : <Archive size={18} />}
-//                     {actionType}
-//                 </button>
-//             </div>
-//         </div>
-//     </div>
-// );

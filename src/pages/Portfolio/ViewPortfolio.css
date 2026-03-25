@@ -274,6 +274,8 @@
   border: 1px solid var(--mlab-border);
   border-radius: var(--radius-md);
   padding: 1.25rem;
+  min-width: 0; /* 🚀 CRITICAL: Allows grid item to shrink */
+  overflow: hidden; /* 🚀 CRITICAL: Prevents content from spilling out */
 }
 .vp-overview-card__title {
   display: flex;
@@ -377,6 +379,7 @@
   border: 1px solid var(--mlab-border);
   background: var(--mlab-white);
   font-size: 0.82rem;
+  min-width: 0; /* 🚀 CRITICAL: Allows flex children to truncate */
 }
 .vp-curr-item--done {
   border-color: #86efac;
@@ -425,6 +428,8 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  display: block; /* 🚀 Added block display to enforce ellipsis */
+  width: 100%; /* 🚀 Forces it to respect the parent width */
 }
 .vp-curr-item__badge {
   flex-shrink: 0;
@@ -707,7 +712,7 @@
 }
 
 /* ══════════════════════════════════════════════════════════════════════════════
-   LEGACY mlab-* CLASSES  (outputs version — kept for backward compat)
+   LEGACY mlab-* CLASSES
 ══════════════════════════════════════════════════════════════════════════════ */
 .mlab-back-btn {
   display: inline-flex;
@@ -1089,5 +1094,119 @@
   .vp-th,
   .vp-td {
     padding: 0.65rem 0.75rem;
+  }
+}
+
+/* =========================================
+   📱 MOBILE LAYOUT & SIDEBAR DRAWER
+========================================= */
+
+/* Overriding the full-screen utility to behave like our layout wrapper */
+.vp-layout {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  position: relative;
+  background: var(--mlab-bg);
+}
+
+/* Mobile Header (Hidden on Desktop) */
+.vp-mobile-header {
+  display: none;
+  align-items: center;
+  padding: 1rem 1.5rem;
+  background: var(--mlab-white);
+  border-bottom: 1px solid var(--mlab-border);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  z-index: 40;
+}
+
+.vp-hamburger-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--mlab-blue);
+  margin-right: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem;
+}
+
+.vp-mobile-title {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  color: var(--mlab-blue);
+  font-size: 1.2rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Sidebar Wrapper */
+.vp-sidebar-wrapper {
+  z-index: 50;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.vp-close-btn {
+  display: none;
+}
+
+/* Overlay */
+.vp-sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 45;
+  backdrop-filter: blur(2px);
+}
+
+/* Responsive Rules */
+@media (max-width: 1024px) {
+  .vp-layout {
+    flex-direction: column;
+  }
+
+  .vp-mobile-header {
+    display: flex;
+  }
+
+  /* Convert Sidebar to sliding drawer */
+  .vp-sidebar-wrapper {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100%;
+    background: white;
+    transform: translateX(-100%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 4px 0 15px rgba(0, 0, 0, 0.1);
+  }
+
+  .vp-sidebar-wrapper.open {
+    transform: translateX(0);
+  }
+
+  /* Show overlay when open */
+  .vp-sidebar-wrapper.open ~ .vp-sidebar-overlay,
+  .vp-sidebar-overlay {
+    display: block;
+  }
+
+  /* Show close button */
+  .vp-close-btn {
+    display: block;
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    background: transparent;
+    border: none;
+    color: var(--mlab-grey);
+    cursor: pointer;
+    z-index: 60;
   }
 }

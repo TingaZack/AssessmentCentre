@@ -1,24 +1,3 @@
-// export type UserRole =
-//   | "admin"
-//   | "learner"
-//   | "facilitator"
-//   | "assessor"
-//   | "moderator"
-//   | "mentor";
-
-// export interface UserProfile {
-//   uid: string;
-//   email: string;
-//   fullName: string;
-//   role: UserRole;
-//   signatureUrl?: string; // If missing, the user is blocked
-//   cohortId?: string; // Links learners/facilitators to a class
-//   createdAt?: string;
-//   authUid?: string;
-//   profileCompleted?: boolean;
-//   profilePhotoUrl: string;
-// }
-
 export type UserRole =
   | "admin"
   | "learner"
@@ -33,13 +12,14 @@ export interface UserProfile {
   fullName: string;
   role: UserRole;
   signatureUrl?: string;
-  profilePhotoUrl: string; // Ensure this is present in DB or default it
+  profilePhotoUrl: string;
   cohortId?: string;
   createdAt?: string;
   authUid?: string;
   profileCompleted?: boolean;
 
-  companyName?: string; // Used by Mentors
+  companyName?: string;
+  employerId: string;
 
   // these Practitioner-specific fields:
   assessorRegNumber?: string;

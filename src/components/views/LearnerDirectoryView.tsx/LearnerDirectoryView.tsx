@@ -1,7 +1,4 @@
 // src/components/views/LearnerDirectoryView/LearnerDirectoryView.tsx
-// Styled to align with mLab Corporate Identity Brand Guide 2019
-// Inherits shared mlab-* classes from LearnersView.css
-// Component-specific classes live in LearnerDirectoryView.css
 
 import React, { useState, useMemo } from 'react';
 import { Search, Mail, Phone, Eye, UserCheck, Users, ShieldAlert, GraduationCap } from 'lucide-react';

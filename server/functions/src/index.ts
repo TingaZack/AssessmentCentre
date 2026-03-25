@@ -683,18 +683,18 @@ interface Submission {
   [key: string]: any;
 }
 
-const safelyFormatDate = (dateVal: any) => {
-  if (!dateVal) return "N/A";
-  try {
-    if (dateVal && typeof dateVal.toDate === "function")
-      return dateVal.toDate().toLocaleString();
-    const d = new Date(dateVal);
-    if (isNaN(d.getTime())) return "N/A";
-    return d.toLocaleString();
-  } catch (e) {
-    return "N/A";
-  }
-};
+// const safelyFormatDate = (dateVal: any) => {
+//   if (!dateVal) return "N/A";
+//   try {
+//     if (dateVal && typeof dateVal.toDate === "function")
+//       return dateVal.toDate().toLocaleString();
+//     const d = new Date(dateVal);
+//     if (isNaN(d.getTime())) return "N/A";
+//     return d.toLocaleString();
+//   } catch (e) {
+//     return "N/A";
+//   }
+// };
 
 const fetchFileBuffer = async (url: string) => {
   try {
@@ -706,6 +706,776 @@ const fetchFileBuffer = async (url: string) => {
     return null;
   }
 };
+
+// exports.generateMasterPoE = onDocumentCreated(
+//   {
+//     document: "poe_export_requests/{requestId}",
+//     timeoutSeconds: 540,
+//     memory: "2GiB",
+//     region: "us-central1",
+//   },
+//   async (event) => {
+//     const snap = event.data;
+//     if (!snap) return;
+
+//     const requestData = snap.data();
+//     const requestId = event.params.requestId;
+//     const learnerId = requestData.learnerId;
+//     const requestedByUid = requestData.requestedBy;
+//     let requesterEmail = null;
+
+//     const updateProgress = async (percent: number, message: string) => {
+//       await snap.ref.update({ progress: percent, progressMessage: message });
+//     };
+
+//     try {
+//       await updateProgress(5, "Initializing compliance engine...");
+
+//       if (requestedByUid) {
+//         try {
+//           const user = await admin.auth().getUser(requestedByUid);
+//           requesterEmail = user.email;
+//         } catch (e) {
+//           console.error("Auth fetch failed", e);
+//         }
+//       }
+
+//       const learnerSnap = await admin
+//         .firestore()
+//         .collection("learners")
+//         .doc(learnerId)
+//         .get();
+//       const learner = learnerSnap.data() || {};
+
+//       await updateProgress(15, "Fetching all evidence modules...");
+//       const subsSnap = await admin
+//         .firestore()
+//         .collection("learner_submissions")
+//         .where("learnerId", "==", learnerId)
+//         .get();
+
+//       const submissions: Submission[] = subsSnap.docs.map((d) => {
+//         const data = d.data() as any;
+//         return {
+//           id: d.id,
+//           assessmentId: data.assessmentId || "",
+//           title: data.title || "",
+//           moduleType: data.moduleType || "",
+//           competency: data.competency || "",
+//           submittedAt: data.submittedAt || "",
+//           moduleNumber: data.moduleNumber || "",
+//           marks: data.marks,
+//           totalMarks: data.totalMarks,
+//           answers: data.answers || {},
+//           facilitatorId:
+//             data.grading?.facilitatorId ||
+//             data.facilitatorId ||
+//             data.latestCoachingLog?.facilitatorId ||
+//             "",
+//           gradedBy: data.grading?.gradedBy || data.gradedBy || "",
+//           facilitatorName: data.facilitatorName || "",
+//           facilitatorOverallFeedback: data.facilitatorOverallFeedback || "",
+//           facilitatorReviewedAt: data.facilitatorReviewedAt || "",
+//           gradedAt: data.gradedAt || "",
+//           grading: data.grading || {},
+//           moderation: data.moderation || {},
+//           assignedAt: data.assignedAt || "",
+//           learnerDeclaration: data.learnerDeclaration || {},
+//           ...data,
+//         } as Submission;
+//       });
+
+//       submissions.sort(
+//         (a, b) =>
+//           new Date(a.assignedAt || 0).getTime() -
+//           new Date(b.assignedAt || 0).getTime(),
+//       );
+
+//       await updateProgress(25, "Retrieving digital signatures & user docs...");
+//       const userIdsToFetch = new Set<string>();
+//       if (learner.authUid) userIdsToFetch.add(learner.authUid);
+
+//       submissions.forEach((sub) => {
+//         if (sub.facilitatorId) userIdsToFetch.add(sub.facilitatorId);
+//         if (sub.gradedBy) userIdsToFetch.add(sub.gradedBy);
+//         if (sub.moderation?.moderatedBy)
+//           userIdsToFetch.add(sub.moderation.moderatedBy);
+//       });
+
+//       const signaturesMap: Record<string, string> = {};
+//       let learnerUserDoc: any = null;
+
+//       if (userIdsToFetch.size > 0) {
+//         const promises = Array.from(userIdsToFetch).map((uid) =>
+//           admin.firestore().collection("users").doc(uid).get(),
+//         );
+//         const userSnaps = await Promise.all(promises);
+//         userSnaps.forEach((userSnap) => {
+//           if (userSnap.exists) {
+//             const data = userSnap.data();
+//             if (data?.signatureUrl) {
+//               signaturesMap[userSnap.id] = data.signatureUrl;
+//             }
+//             if (userSnap.id === learner.authUid) {
+//               learnerUserDoc = data;
+//             }
+//           }
+//         });
+//       }
+
+//       const learnerSignatureUrl = learner.authUid
+//         ? signaturesMap[learner.authUid]
+//         : null;
+
+//       await updateProgress(30, "Generating document structure...");
+//       const companyLogoUrl =
+//         "https://firebasestorage.googleapis.com/v0/b/testpro-8f08c.appspot.com/o/Mlab-Grey-variation-1.png?alt=media&token=e85e0473-97cc-431d-8c08-7a3445806983";
+
+//       const offlineEvidenceFiles: {
+//         index: number;
+//         url: string;
+//         label: string;
+//       }[] = [];
+
+//       let htmlContent = `
+//         <!DOCTYPE html>
+//         <html>
+//         <head>
+//             <meta charset="UTF-8">
+//             <style>
+//                 @page { size: A4; margin: 15mm; }
+//                 body { font-family: 'Helvetica', Arial, sans-serif; color: #1e293b; line-height: 1.4; }
+//                 .page-break { page-break-after: always; }
+
+//                 .cover { height: 95vh; display: flex; flex-direction: column; justify-content: center; text-align: center; border: 10px solid #073f4e; padding: 40px; box-sizing: border-box; }
+//                 .cover-logo { max-width: 250px; margin: 0 auto 40px auto; display: block; }
+//                 .cover h1 { font-size: 32px; color: #073f4e; text-transform: uppercase; margin-bottom: 10px; }
+//                 .cover h2 { font-size: 20px; color: #0284c7; margin-bottom: 50px; }
+//                 .cover-details { font-size: 16px; margin: 0 auto; text-align: left; display: inline-block; background: #f8fafc; padding: 30px; border-radius: 8px; border: 1px solid #e2e8f0; width: 80%; }
+//                 .cover-details p { margin: 10px 0; border-bottom: 1px solid #cbd5e1; padding-bottom: 5px; }
+
+//                 .section-title { background: #073f4e; color: white; padding: 10px; font-weight: bold; text-transform: uppercase; margin-top: 30px; }
+//                 table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+//                 th, td { border: 1px solid #e2e8f0; padding: 10px; text-align: left; font-size: 12px; }
+//                 th { background: #f8fafc; }
+
+//                 .divider-page { height: 95vh; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; box-sizing: border-box; padding: 40px; border: 10px solid; }
+//                 .divider-page h1 { font-size: 36px; text-transform: uppercase; margin: 0; }
+//                 .divider-page p { font-size: 16px; margin-top: 15px; opacity: 0.9; }
+
+//                 .module-header { border-bottom: 2px solid #0284c7; padding-bottom: 5px; margin-bottom: 15px; }
+
+//                 .eval-box { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 15px; margin-bottom: 25px; font-size: 12px; page-break-inside: avoid; }
+//                 .eval-row { display: flex; margin-bottom: 8px; }
+//                 .eval-label { font-weight: bold; width: 140px; color: #0f172a; flex-shrink: 0; }
+//                 .eval-value { flex: 1; color: #475569; }
+
+//                 .text-blue { color: #0284c7 !important; }
+//                 .text-red { color: #dc2626 !important; }
+//                 .text-green { color: #16a34a !important; }
+
+//                 .outcome-C { color: #16a34a; font-weight: bold; font-size: 14px; }
+//                 .outcome-NYC { color: #dc2626; font-weight: bold; font-size: 14px; }
+//                 .outcome-Pending { color: #b45309; font-weight: bold; font-size: 14px; }
+
+//                 .question-box { margin-bottom: 20px; border-bottom: 1px solid #f1f5f9; padding-bottom: 15px; page-break-inside: avoid; }
+//                 .q-text { font-weight: bold; font-size: 13px; margin-bottom: 5px; color: #0f172a; }
+//                 .a-text { background: #ffffff; padding: 10px; border: 1px solid #e2e8f0; border-left: 4px solid #94a3b8; font-size: 12px; white-space: pre-wrap; border-radius: 4px; overflow-wrap: break-word; }
+//                 .a-text div { margin-bottom: 8px; }
+//                 .a-link { color: #0284c7; text-decoration: underline; font-weight: bold; }
+
+//                 .f-text { margin-top: 8px; font-size: 11px; background: #f8fafc; padding: 8px; border-radius: 4px; border: 1px solid #e2e8f0; }
+//                 .f-item { margin-bottom: 4px; padding-bottom: 4px; border-bottom: 1px dashed #cbd5e1; }
+//                 .f-item:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+
+//                 .sig-wrapper { margin-top: 30px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; page-break-inside: avoid; }
+//                 .sig-box { border: 1px solid #cbd5e1; padding: 10px; text-align: center; font-size: 11px; background: #f8fafc; border-top: 3px solid #cbd5e1; border-radius: 4px; }
+//                 .sig-box h4 { margin: 0 0 5px 0; color: #0f172a; font-size: 11px; }
+//                 .sig-img { max-height: 40px; max-width: 100%; object-fit: contain; margin: 4px auto; display: block; mix-blend-mode: multiply; }
+//                 .sig-placeholder { height: 40px; display: flex; align-items: center; justify-content: center; font-style: italic; color: #cbd5e1; font-size: 10px; margin: 4px 0; }
+//                 .sig-name { font-weight: bold; font-size: 12px; margin: 8px 0; border-bottom: 1px dashed #cbd5e1; padding-bottom: 5px; }
+//                 .sig-date { color: #64748b; }
+
+//                 .sig-box-fac { border-top-color: #0284c7; }
+//                 .sig-box-fac h4, .sig-box-fac .sig-name, .sig-box-fac .sig-date, .sig-box-fac .sig-reg { color: #0284c7; border-bottom-color: #0284c7; }
+//                 .sig-img-fac { filter: invert(36%) sepia(85%) saturate(1637%) hue-rotate(174deg) brightness(96%) contrast(101%); }
+
+//                 .sig-box-ass { border-top-color: #dc2626; }
+//                 .sig-box-ass h4, .sig-box-ass .sig-name, .sig-box-ass .sig-date, .sig-box-ass .sig-reg { color: #dc2626; border-bottom-color: #dc2626; }
+//                 .sig-img-ass { filter: invert(26%) sepia(89%) saturate(5436%) hue-rotate(352deg) brightness(90%) contrast(100%); }
+
+//                 .sig-box-mod { border-top-color: #16a34a; }
+//                 .sig-box-mod h4, .sig-box-mod .sig-name, .sig-box-mod .sig-date, .sig-box-mod .sig-reg { color: #16a34a; border-bottom-color: #16a34a; }
+//                 .sig-img-mod { filter: invert(45%) sepia(74%) saturate(464%) hue-rotate(85deg) brightness(93%) contrast(89%); }
+//             </style>
+//         </head>
+//         <body>
+//             <div class="cover">
+//                 <img src="${companyLogoUrl}" alt="Logo" class="cover-logo" />
+//                 <h1>Master Portfolio of Evidence</h1>
+//                 <h2>QCTO QUALIFICATION COMPLIANCE RECORD</h2>
+//                 <div class="cover-details">
+//                     <p><strong>Learner Name:</strong> ${learner.fullName || "N/A"}</p>
+//                     <p><strong>Identity Number:</strong> ${learner.idNumber || "N/A"}</p>
+//                     <p><strong>Email Address:</strong> ${learner.email || "N/A"}</p>
+//                     <p><strong>Date Generated:</strong> ${safelyFormatDate(new Date())}</p>
+//                     <p><strong>System Reference:</strong> ${requestId}</p>
+//                 </div>
+//             </div>
+//             <div class="page-break"></div>
+
+//             <div class="section-title">Statement of Results</div>
+//             <table>
+//                 <thead>
+//                     <tr>
+//                         <th>Code</th>
+//                         <th>Module Title</th>
+//                         <th>Type</th>
+//                         <th>Score</th>
+//                         <th>Outcome</th>
+//                     </tr>
+//                 </thead>
+//                 <tbody>
+//                     ${submissions
+//                       .map((s) => {
+//                         const compClass =
+//                           s.competency === "C"
+//                             ? "outcome-C"
+//                             : s.competency === "NYC"
+//                               ? "outcome-NYC"
+//                               : "outcome-Pending";
+//                         return `
+//                         <tr>
+//                             <td>${s.moduleNumber || "N/A"}</td>
+//                             <td>${s.title || "Untitled"}</td>
+//                             <td>${(s.moduleType || "N/A").toUpperCase()}</td>
+//                             <td>${s.marks !== undefined ? s.marks : "-"}/${s.totalMarks || "-"}</td>
+//                             <td class="${compClass}">${s.competency || "Pending"}</td>
+//                         </tr>
+//                         `;
+//                       })
+//                       .join("")}
+//                 </tbody>
+//             </table>
+//             <div class="page-break"></div>
+//         `;
+
+//       let index = 0;
+//       for (const sub of submissions) {
+//         index++;
+//         await updateProgress(
+//           30 + Math.floor((index / submissions.length) * 40),
+//           `Compiling: ${sub.title || "Module"}...`,
+//         );
+
+//         const assessmentSnap = await admin
+//           .firestore()
+//           .collection("assessments")
+//           .doc(sub.assessmentId)
+//           .get();
+//         const assessmentData = assessmentSnap.data() || {};
+//         const blocks = assessmentData.blocks || [];
+
+//         const grading = sub.grading || {};
+//         const moderation = sub.moderation || {};
+//         const answers = sub.answers || {};
+
+//         const facFeedback =
+//           sub.facilitatorOverallFeedback ||
+//           grading.facilitatorOverallFeedback ||
+//           "<i>No facilitator comments.</i>";
+//         const assFeedback =
+//           grading.assessorOverallFeedback || "<i>No assessor feedback.</i>";
+//         const modFeedback =
+//           moderation.feedback || "<i>No moderation comments.</i>";
+
+//         const compClass =
+//           sub.competency === "C"
+//             ? "outcome-C"
+//             : sub.competency === "NYC"
+//               ? "outcome-NYC"
+//               : "outcome-Pending";
+//         const compText =
+//           sub.competency === "C"
+//             ? "COMPETENT (C)"
+//             : sub.competency === "NYC"
+//               ? "NOT YET COMPETENT (NYC)"
+//               : "PENDING";
+
+//         const moduleBreadcrumb = sub.moduleNumber || sub.title || "Module";
+
+//         htmlContent += `
+//                 <div class="module-header">
+//                     <h2 style="margin:0; color:#073f4e;">${sub.moduleNumber ? sub.moduleNumber + ": " : ""}${sub.title || "Untitled"}</h2>
+//                 </div>
+
+//                 <div class="eval-box">
+//                     <div class="eval-row">
+//                         <div class="eval-label">Final Outcome:</div>
+//                         <div class="eval-value"><span class="${compClass}">${compText}</span></div>
+//                     </div>
+//                     <div class="eval-row">
+//                         <div class="eval-label">Assessment Score:</div>
+//                         <div class="eval-value"><strong>${sub.marks !== undefined ? sub.marks : "-"} / ${sub.totalMarks || "-"}</strong></div>
+//                     </div>
+//                     <hr style="border:0; border-top:1px solid #e2e8f0; margin:10px 0;" />
+//                     <div class="eval-row text-blue">
+//                         <div class="eval-label">Facilitator Note:</div>
+//                         <div class="eval-value">${facFeedback}</div>
+//                     </div>
+//                     <div class="eval-row text-red">
+//                         <div class="eval-label">Assessor Feedback:</div>
+//                         <div class="eval-value">${assFeedback}</div>
+//                     </div>
+//                     <div class="eval-row text-green">
+//                         <div class="eval-label">Moderator Review:</div>
+//                         <div class="eval-value">${modFeedback}</div>
+//                     </div>
+//                 </div>
+
+//                 <div class="evidence-list">
+//             `;
+
+//         if (blocks.length > 0) {
+//           let qNum = 1;
+//           blocks.forEach((block: any) => {
+//             if (block.type === "section") {
+//               htmlContent += `<h3 style="margin-top: 25px; padding-bottom: 5px; border-bottom: 2px solid #cbd5e1;">${block.title}</h3>`;
+//               return;
+//             }
+//             if (block.type === "info") return;
+
+//             const blockBreadcrumb =
+//               block.weCode || block.code || block.title || `Q${qNum}`;
+
+//             const ans =
+//               answers[block.id] !== undefined
+//                 ? answers[block.id]
+//                 : sub[block.id];
+//             let formattedAnswer = "";
+
+//             if (ans !== undefined && ans !== null) {
+//               if (typeof ans === "string" || typeof ans === "number") {
+//                 if (
+//                   block.type === "mcq" &&
+//                   typeof ans === "number" &&
+//                   block.options
+//                 ) {
+//                   formattedAnswer = block.options[ans] || String(ans);
+//                 } else {
+//                   formattedAnswer = String(ans);
+//                 }
+//               } else if (typeof ans === "object") {
+//                 if (ans.text && ans.text !== "<p></p>")
+//                   formattedAnswer += `<div>${ans.text}</div>`;
+//                 if (ans.url)
+//                   formattedAnswer += `<div>🔗 <a class="a-link" href="${ans.url}">External Link</a></div>`;
+//                 if (ans.code)
+//                   formattedAnswer += `<pre style="background:#f8fafc; padding:10px; border:1px solid #e2e8f0;">${ans.code}</pre>`;
+
+//                 if (ans.uploadUrl) {
+//                   const annIndex = offlineEvidenceFiles.length + 1;
+//                   const detailedLabel = `${moduleBreadcrumb} | ${blockBreadcrumb}`;
+
+//                   offlineEvidenceFiles.push({
+//                     index: annIndex,
+//                     url: ans.uploadUrl,
+//                     label: detailedLabel,
+//                   });
+//                   formattedAnswer += `<div style="margin-top:5px; padding:8px; background:#fffbeb; border:1px solid #fde68a; border-radius:4px; font-size:11px;">
+//                         📎 <a class="a-link" href="${ans.uploadUrl}"><strong>Appended as Annexure ${annIndex}</strong> (${detailedLabel})</a>
+//                     </div>`;
+//                 }
+
+//                 Object.keys(ans).forEach((k) => {
+//                   const subAns = ans[k];
+//                   if (subAns && typeof subAns === "object") {
+//                     let subHtml = "";
+//                     if (subAns.text && subAns.text !== "<p></p>")
+//                       subHtml += `<div>${subAns.text}</div>`;
+//                     if (subAns.url)
+//                       subHtml += `<div>🔗 <a class="a-link" href="${subAns.url}">External Link</a></div>`;
+//                     if (subAns.code)
+//                       subHtml += `<pre style="background:#f8fafc; padding:10px;">${subAns.code}</pre>`;
+
+//                     if (subAns.uploadUrl) {
+//                       const annIndex = offlineEvidenceFiles.length + 1;
+//                       const nestedLabel = `${moduleBreadcrumb} | ${blockBreadcrumb} | ${k.replace(/_/g, " ").toUpperCase()}`;
+
+//                       offlineEvidenceFiles.push({
+//                         index: annIndex,
+//                         url: subAns.uploadUrl,
+//                         label: nestedLabel,
+//                       });
+//                       subHtml += `<div style="margin-top:5px; padding:8px; background:#fffbeb; border:1px solid #fde68a; border-radius:4px; font-size:11px;">
+//                             📎 <a class="a-link" href="${subAns.uploadUrl}"><strong>Appended as Annexure ${annIndex}</strong> (${nestedLabel})</a>
+//                         </div>`;
+//                     }
+
+//                     if (subHtml) {
+//                       formattedAnswer += `<div style="margin-top:10px; padding:10px; border-left:3px solid #cbd5e1; background:#f8fafc;"><strong>Item: ${k.replace(/_/g, " ")}</strong>${subHtml}</div>`;
+//                     }
+//                   } else if (
+//                     typeof subAns === "string" &&
+//                     subAns.trim() !== "" &&
+//                     !["text", "url", "uploadUrl", "code"].includes(k)
+//                   ) {
+//                     formattedAnswer += `<div><strong>${k.replace(/_/g, " ")}:</strong> ${subAns}</div>`;
+//                   }
+//                 });
+//               }
+//             }
+//             if (formattedAnswer === "")
+//               formattedAnswer = "<i>No evidence provided.</i>";
+
+//             let specificFeedback = "";
+//             const seenComments = new Set<string>();
+
+//             const addFeedback = (
+//               role: string,
+//               text: string,
+//               colorClass: string,
+//             ) => {
+//               if (!text || text.trim() === "") return;
+//               const cleanText = text.trim();
+//               const key = `${role}:${cleanText}`;
+//               if (!seenComments.has(key)) {
+//                 seenComments.add(key);
+//                 specificFeedback += `<div class="f-item ${colorClass}"><strong>${role} Note:</strong> ${cleanText}</div>`;
+//               }
+//             };
+
+//             const fLayer = grading.facilitatorBreakdown?.[block.id] || {};
+//             const aLayer = grading.assessorBreakdown?.[block.id] || {};
+//             const mLayer = moderation.breakdown?.[block.id] || {};
+
+//             addFeedback("Facilitator", fLayer.feedback, "text-blue");
+//             addFeedback("Assessor", aLayer.feedback, "text-red");
+//             addFeedback("Moderator", mLayer.feedback, "text-green");
+
+//             if (Array.isArray(fLayer.criteriaResults)) {
+//               fLayer.criteriaResults.forEach((crit: any) =>
+//                 addFeedback("Facilitator", crit.comment, "text-blue"),
+//               );
+//             }
+//             if (Array.isArray(aLayer.criteriaResults)) {
+//               aLayer.criteriaResults.forEach((crit: any) =>
+//                 addFeedback("Assessor", crit.comment, "text-red"),
+//               );
+//             }
+//             if (Array.isArray(mLayer.criteriaResults)) {
+//               mLayer.criteriaResults.forEach((crit: any) =>
+//                 addFeedback("Moderator", crit.comment, "text-green"),
+//               );
+//             }
+
+//             htmlContent += `
+//                         <div class="question-box">
+//                             <div class="q-text">Q${qNum++}. ${block.question || block.title || "Checkpoint"}</div>
+//                             <div class="a-text">${formattedAnswer}</div>
+//                             ${specificFeedback ? `<div class="f-text">${specificFeedback}</div>` : ""}
+//                         </div>
+//                     `;
+//           });
+//         } else {
+//           htmlContent += `<p style="color:#94a3b8; font-style:italic; padding: 20px; text-align: center; border: 1px dashed #cbd5e1;">Cannot map evidence: Assessment Template is empty.</p>`;
+//         }
+
+//         htmlContent += `</div>`;
+
+//         const facSigUrl = sub.facilitatorId
+//           ? signaturesMap[sub.facilitatorId]
+//           : null;
+//         const assSigUrl = sub.gradedBy ? signaturesMap[sub.gradedBy] : null;
+//         const modSigUrl = sub.moderation?.moderatedBy
+//           ? signaturesMap[sub.moderation.moderatedBy]
+//           : null;
+
+//         const learnerDate = safelyFormatDate(
+//           sub.submittedAt || sub.learnerDeclaration?.timestamp,
+//         );
+//         const facName =
+//           sub.facilitatorName || grading.facilitatorName || "Pending";
+//         const facDate = safelyFormatDate(
+//           sub.facilitatorReviewedAt || grading.facilitatorReviewedAt,
+//         );
+//         const assessorName = grading.assessorName || "Pending";
+//         const assessorReg = grading.assessorRegNumber
+//           ? `Reg: ${grading.assessorRegNumber}`
+//           : "";
+//         const assessorDate = safelyFormatDate(sub.gradedAt || grading.gradedAt);
+//         const modName = moderation.moderatorName || "Pending";
+//         const modReg = moderation.moderatorRegNumber
+//           ? `Reg: ${moderation.moderatorRegNumber}`
+//           : "";
+//         const modDate = safelyFormatDate(moderation.moderatedAt);
+
+//         htmlContent += `
+//                 <div class="sig-wrapper">
+//                     <div class="sig-box">
+//                         <h4>Learner Declaration</h4>
+//                         ${learnerSignatureUrl ? `<img src="${learnerSignatureUrl}" class="sig-img" />` : `<div class="sig-placeholder">No signature on file</div>`}
+//                         <div class="sig-name">${learner.fullName || "Unknown Learner"}</div>
+//                         <span class="sig-date">Signed: ${learnerDate}</span>
+//                     </div>
+//                     <div class="sig-box sig-box-fac">
+//                         <h4>Facilitator Review</h4>
+//                         ${facSigUrl ? `<img src="${facSigUrl}" class="sig-img sig-img-fac" />` : `<div class="sig-placeholder">No signature on file</div>`}
+//                         <div class="sig-name">${facName}</div>
+//                         <span class="sig-date">Signed: ${facDate}</span>
+//                     </div>
+//                     <div class="sig-box sig-box-ass">
+//                         <h4>Assessor Endorsement</h4>
+//                         ${assSigUrl ? `<img src="${assSigUrl}" class="sig-img sig-img-ass" />` : `<div class="sig-placeholder">No signature on file</div>`}
+//                         <div class="sig-name">${assessorName}</div>
+//                         ${assessorReg ? `<div class="sig-reg">${assessorReg}</div>` : ""}
+//                         <span class="sig-date">Signed: ${assessorDate}</span>
+//                     </div>
+//                     <div class="sig-box sig-box-mod">
+//                         <h4>Moderator Verification</h4>
+//                         ${modSigUrl ? `<img src="${modSigUrl}" class="sig-img sig-img-mod" />` : `<div class="sig-placeholder">No signature on file</div>`}
+//                         <div class="sig-name">${modName}</div>
+//                         ${modReg ? `<div class="sig-reg">${modReg}</div>` : ""}
+//                         <span class="sig-date">Signed: ${modDate}</span>
+//                     </div>
+//                 </div>
+//                 <div class="page-break"></div>
+//             `;
+//       }
+
+//       if (offlineEvidenceFiles.length > 0) {
+//         htmlContent += `
+//              <div class="divider-page" style="border-color: #94a3b8; color: #475569; background-color: #f8fafc;">
+//                  <h1>Annexures</h1>
+//                  <h2>Offline Evidence Documents</h2>
+//                  <p>The following pages contain the exact files uploaded by the learner, mapped directly to their respective assessment items.</p>
+//              </div>
+//           `;
+//       }
+
+//       htmlContent += `</body></html>`;
+
+//       await updateProgress(70, "Finalizing Assessment Layout...");
+//       const browser = await puppeteer.launch({
+//         args: chromium.args,
+//         defaultViewport: chromium.defaultViewport,
+//         executablePath: await chromium.executablePath(),
+//         headless: chromium.headless,
+//       });
+
+//       const page = await browser.newPage();
+//       page.setDefaultNavigationTimeout(120000);
+//       page.setDefaultTimeout(120000);
+
+//       await page.setContent(htmlContent, {
+//         waitUntil: ["load", "networkidle2"],
+//         timeout: 120000,
+//       });
+
+//       const puppeteerPdfBuffer = await page.pdf({
+//         format: "A4",
+//         printBackground: true,
+//         displayHeaderFooter: true,
+//         headerTemplate: "<span></span>",
+//         footerTemplate: `
+//           <div style="font-size: 9px; font-family: Helvetica, Arial, sans-serif; color: #64748b; padding: 0 15mm; width: 100%; display: flex; justify-content: space-between; box-sizing: border-box;">
+//             <span>CodeTribe Academy</span>
+//             <span>Page <span class="pageNumber"></span> of <span class="totalPages"></span></span>
+//           </div>
+//         `,
+//         margin: { top: "15mm", right: "15mm", bottom: "25mm", left: "15mm" },
+//         timeout: 120000,
+//       });
+
+//       await browser.close();
+
+//       await updateProgress(
+//         85,
+//         "Merging Compliance Documents inside Cover Page...",
+//       );
+
+//       const masterPdf = await PDFDocument.create();
+//       // const font = await masterPdf.embedFont(StandardFonts.Helvetica);
+//       const fontBold = await masterPdf.embedFont(StandardFonts.HelveticaBold);
+
+//       const assessmentPdfDoc = await PDFDocument.load(puppeteerPdfBuffer);
+//       const totalAssessmentPages = assessmentPdfDoc.getPageCount();
+
+//       // 1. EXTRACT & APPEND PAGE 1 (THE COVER PAGE)
+//       if (totalAssessmentPages > 0) {
+//         const [coverPage] = await masterPdf.copyPages(assessmentPdfDoc, [0]);
+//         masterPdf.addPage(coverPage);
+//       }
+
+//       // 2. FETCH & APPEND COMPLIANCE DOCS
+//       const docsSource = learnerUserDoc?.documents || learner?.documents || {};
+//       const frontMatterUrls = [
+//         docsSource.idUrl,
+//         docsSource.cvUrl,
+//         docsSource.qualUrl,
+//       ].filter((url) => url && typeof url === "string");
+
+//       for (const url of frontMatterUrls) {
+//         try {
+//           const fileBuffer = await fetchFileBuffer(url);
+//           if (fileBuffer) {
+//             const externalPdf = await PDFDocument.load(fileBuffer);
+//             const copiedPages = await masterPdf.copyPages(
+//               externalPdf,
+//               externalPdf.getPageIndices(),
+//             );
+//             copiedPages.forEach((p: any) => masterPdf.addPage(p));
+//           }
+//         } catch (err) {
+//           console.warn(
+//             `Could not merge front-matter document from URL: ${url}. Skipping it.`,
+//             err,
+//           );
+//         }
+//       }
+
+//       // 3. EXTRACT & APPEND PAGES 2 TO END (THE ASSESSMENTS)
+//       if (totalAssessmentPages > 1) {
+//         const remainingIndices = Array.from(
+//           { length: totalAssessmentPages - 1 },
+//           (_, i) => i + 1,
+//         );
+//         const remainingPages = await masterPdf.copyPages(
+//           assessmentPdfDoc,
+//           remainingIndices,
+//         );
+//         remainingPages.forEach((p: any) => masterPdf.addPage(p));
+//       }
+
+//       // 4. FETCH & APPEND OFFLINE EVIDENCE (ANNEXURES) WITH DETAILED STAMPS
+//       if (offlineEvidenceFiles.length > 0) {
+//         await updateProgress(90, "Merging Offline Evidence (Annexures)...");
+//         for (const evidence of offlineEvidenceFiles) {
+//           try {
+//             const buffer = await fetchFileBuffer(evidence.url);
+//             if (!buffer) continue;
+
+//             const stampText = `Annexure ${evidence.index}: ${evidence.label}`;
+
+//             try {
+//               const extPdf = await PDFDocument.load(buffer);
+//               const copiedPages = await masterPdf.copyPages(
+//                 extPdf,
+//                 extPdf.getPageIndices(),
+//               );
+
+//               if (copiedPages.length > 0) {
+//                 const firstPage = copiedPages[0];
+//                 const { height } = firstPage.getSize();
+//                 firstPage.drawText(stampText, {
+//                   x: 20,
+//                   y: height - 20,
+//                   size: 10,
+//                   color: rgb(0.86, 0.15, 0.15),
+//                   font: fontBold,
+//                 });
+//               }
+//               copiedPages.forEach((p: any) => masterPdf.addPage(p));
+//             } catch (pdfErr) {
+//               let image;
+//               try {
+//                 image = await masterPdf.embedPng(buffer);
+//               } catch {
+//                 try {
+//                   image = await masterPdf.embedJpg(buffer);
+//                 } catch (e) {}
+//               }
+
+//               if (image) {
+//                 const page = masterPdf.addPage();
+//                 const { width, height } = page.getSize();
+
+//                 page.drawText(stampText, {
+//                   x: 20,
+//                   y: height - 30,
+//                   size: 10,
+//                   color: rgb(0.86, 0.15, 0.15),
+//                   font: fontBold,
+//                 });
+
+//                 const dims = image.scaleToFit(width - 40, height - 80);
+//                 page.drawImage(image, {
+//                   x: width / 2 - dims.width / 2,
+//                   y: height / 2 - dims.height / 2 - 20,
+//                   width: dims.width,
+//                   height: dims.height,
+//                 });
+//               } else {
+//                 console.warn(
+//                   `Format not supported for offline merging: ${evidence.url}`,
+//                 );
+//               }
+//             }
+//           } catch (err) {
+//             console.warn(
+//               `Failed to process evidence annexure: ${evidence.url}`,
+//               err,
+//             );
+//           }
+//         }
+//       }
+
+//       const finalPdfBytes = await masterPdf.save();
+//       const finalPdfBuffer = Buffer.from(finalPdfBytes);
+
+//       // 🚀 STORAGE HOUSEKEEPING: DELETE OLD FILES BEFORE SAVING NEW ONE 🚀
+//       await updateProgress(
+//         95,
+//         "Cleaning up old records and saving to vault...",
+//       );
+//       const bucket = admin.storage().bucket();
+//       const dirPrefix = `poe_exports/${learnerId}/`;
+
+//       try {
+//         await bucket.deleteFiles({ prefix: dirPrefix });
+//         console.log(`Successfully deleted old PoEs for learner ${learnerId}`);
+//       } catch (cleanupErr) {
+//         console.log("No previous PoE to delete, continuing...");
+//       }
+
+//       const filePath = `${dirPrefix}Master_PoE_${requestId}.pdf`;
+//       const file = bucket.file(filePath);
+
+//       await file.save(finalPdfBuffer, {
+//         metadata: { contentType: "application/pdf" },
+//       });
+
+//       const [downloadUrl] = await file.getSignedUrl({
+//         action: "read",
+//         expires: "01-01-2100",
+//       });
+
+//       await snap.ref.update({
+//         status: "completed",
+//         progress: 100,
+//         progressMessage: "Done!",
+//         downloadUrl,
+//       });
+
+//       if (requesterEmail) {
+//         await transporter.sendMail({
+//           from: '"mLab Compliance" <noreply@mlab.co.za>',
+//           to: requesterEmail,
+//           subject: `✅ Master PoE Ready: ${learner.fullName}`,
+//           html: `<p>The full Master Portfolio for <b>${learner.fullName}</b> has been successfully generated.</p>
+//                        <p><a href="${downloadUrl}" style="padding:10px 20px; background:#16a34a; color:white; text-decoration:none; border-radius:5px;">Download Master PoE PDF</a></p>`,
+//         });
+//       }
+//     } catch (error: any) {
+//       console.error("Master PoE Generation Failed:", error);
+//       await snap.ref.update({
+//         status: "error",
+//         progressMessage: "Generation failed",
+//         errorMessage: error.message,
+//       });
+//     }
+//   },
+// );
 
 exports.generateMasterPoE = onDocumentCreated(
   {
@@ -722,10 +1492,22 @@ exports.generateMasterPoE = onDocumentCreated(
     const requestId = event.params.requestId;
     const learnerId = requestData.learnerId;
     const requestedByUid = requestData.requestedBy;
-    let requesterEmail = null;
+    let requesterEmail: string | null = null;
 
+    // 🚀 FIXED: Added types to parameters
     const updateProgress = async (percent: number, message: string) => {
       await snap.ref.update({ progress: percent, progressMessage: message });
+    };
+
+    // 🚀 FIXED: Added types to dateString
+    const safelyFormatDate = (dateString: string | Date | undefined | null) => {
+      if (!dateString) return "N/A";
+      try {
+        const d = new Date(dateString);
+        return isNaN(d.getTime()) ? "N/A" : d.toLocaleDateString("en-ZA");
+      } catch {
+        return "N/A";
+      }
     };
 
     try {
@@ -734,7 +1516,7 @@ exports.generateMasterPoE = onDocumentCreated(
       if (requestedByUid) {
         try {
           const user = await admin.auth().getUser(requestedByUid);
-          requesterEmail = user.email;
+          requesterEmail = user.email || null;
         } catch (e) {
           console.error("Auth fetch failed", e);
         }
@@ -747,6 +1529,16 @@ exports.generateMasterPoE = onDocumentCreated(
         .get();
       const learner = learnerSnap.data() || {};
 
+      let enrollment: any = {};
+      if (learner.enrollmentId) {
+        const enrolSnap = await admin
+          .firestore()
+          .collection("enrollments")
+          .doc(learner.enrollmentId)
+          .get();
+        if (enrolSnap.exists) enrollment = enrolSnap.data() || {};
+      }
+
       await updateProgress(15, "Fetching all evidence modules...");
       const subsSnap = await admin
         .firestore()
@@ -755,7 +1547,7 @@ exports.generateMasterPoE = onDocumentCreated(
         .get();
 
       const submissions: Submission[] = subsSnap.docs.map((d) => {
-        const data = d.data() as any;
+        const data = d.data();
         return {
           id: d.id,
           assessmentId: data.assessmentId || "",
@@ -775,13 +1567,16 @@ exports.generateMasterPoE = onDocumentCreated(
           gradedBy: data.grading?.gradedBy || data.gradedBy || "",
           facilitatorName: data.facilitatorName || "",
           facilitatorOverallFeedback: data.facilitatorOverallFeedback || "",
-          facilitatorReviewedAt: data.facilitatorReviewedAt || "",
-          gradedAt: data.gradedAt || "",
+          facilitatorReviewedAt:
+            data.grading?.facilitatorReviewedAt ||
+            data.facilitatorReviewedAt ||
+            "",
+          gradedAt: data.grading?.gradedAt || data.gradedAt || "",
           grading: data.grading || {},
           moderation: data.moderation || {},
           assignedAt: data.assignedAt || "",
           learnerDeclaration: data.learnerDeclaration || {},
-          ...data,
+          ...data, // Spreads all other fields so sub[block.id] works
         } as Submission;
       });
 
@@ -790,6 +1585,20 @@ exports.generateMasterPoE = onDocumentCreated(
           new Date(a.assignedAt || 0).getTime() -
           new Date(b.assignedAt || 0).getTime(),
       );
+
+      const kmSubs = submissions.filter(
+        (s) => s.moduleNumber?.includes("-KM-") || s.moduleType === "knowledge",
+      );
+      const pmSubs = submissions.filter(
+        (s) => s.moduleNumber?.includes("-PM-") || s.moduleType === "practical",
+      );
+      const wmSubs = submissions.filter(
+        (s) => s.moduleNumber?.includes("-WM-") || s.moduleType === "workplace",
+      );
+
+      const primaryAssessor =
+        submissions.find((s) => s.grading?.assessorName)?.grading
+          ?.assessorName || "Pending Assessor";
 
       await updateProgress(25, "Retrieving digital signatures & user docs...");
       const userIdsToFetch = new Set<string>();
@@ -802,8 +1611,10 @@ exports.generateMasterPoE = onDocumentCreated(
           userIdsToFetch.add(sub.moderation.moderatedBy);
       });
 
+      // 🚀 FIXED: Explicit types for objects and arrays
       const signaturesMap: Record<string, string> = {};
       let learnerUserDoc: any = null;
+      let assessorSigUrl: string | null = null;
 
       if (userIdsToFetch.size > 0) {
         const promises = Array.from(userIdsToFetch).map((uid) =>
@@ -813,11 +1624,15 @@ exports.generateMasterPoE = onDocumentCreated(
         userSnaps.forEach((userSnap) => {
           if (userSnap.exists) {
             const data = userSnap.data();
-            if (data?.signatureUrl) {
+            if (data?.signatureUrl)
               signaturesMap[userSnap.id] = data.signatureUrl;
-            }
-            if (userSnap.id === learner.authUid) {
-              learnerUserDoc = data;
+            if (userSnap.id === learner.authUid) learnerUserDoc = data;
+
+            const gradedSub = submissions.find(
+              (s) => s.gradedBy === userSnap.id,
+            );
+            if (gradedSub && data?.signatureUrl && !assessorSigUrl) {
+              assessorSigUrl = data.signatureUrl;
             }
           }
         });
@@ -827,15 +1642,57 @@ exports.generateMasterPoE = onDocumentCreated(
         ? signaturesMap[learner.authUid]
         : null;
 
-      await updateProgress(30, "Generating document structure...");
+      await updateProgress(30, "Generating QCTO Compliance Structure...");
       const companyLogoUrl =
         "https://firebasestorage.googleapis.com/v0/b/testpro-8f08c.appspot.com/o/Mlab-Grey-variation-1.png?alt=media&token=e85e0473-97cc-431d-8c08-7a3445806983";
 
+      // 🚀 FIXED: Array type definition
       const offlineEvidenceFiles: {
         index: number;
         url: string;
         label: string;
       }[] = [];
+
+      // 🚀 FIXED: Typing for rendering helpers
+      const renderProgressRows = (subs: Submission[]) => {
+        if (subs.length === 0)
+          return `<tr><td colspan="3" style="text-align:center; font-style:italic;">No modules mapped</td></tr>`;
+        return subs
+          .map(
+            (s) => `
+              <tr>
+                  <td>${s.moduleNumber || "N/A"}</td>
+                  <td>${s.title || "Untitled"}</td>
+                  <td style="text-align:center; font-weight:bold;" class="${s.competency === "C" ? "outcome-C" : s.competency === "NYC" ? "outcome-NYC" : ""}">${s.competency || "-"}</td>
+              </tr>
+          `,
+          )
+          .join("");
+      };
+
+      const renderLearningPlanRows = (subs: Submission[]) => {
+        if (subs.length === 0)
+          return `<tr><td colspan="8" style="text-align:center; font-style:italic;">No modules mapped</td></tr>`;
+        return subs
+          .map((s) => {
+            const facName =
+              s.grading?.facilitatorName || s.facilitatorName || "Pending";
+            const dateAssessed = safelyFormatDate(s.gradedAt);
+            return `
+              <tr>
+                  <td style="font-size:10px;">${s.moduleNumber || "N/A"}</td>
+                  <td style="font-size:10px;">${facName}</td>
+                  <td style="font-size:10px;">${safelyFormatDate(s.assignedAt)} to ${dateAssessed}</td>
+                  <td style="text-align:center; font-weight:bold;">${s.moduleType === "knowledge" ? "X" : ""}</td>
+                  <td style="text-align:center; font-weight:bold;">${s.moduleType === "practical" ? "X" : ""}</td>
+                  <td style="text-align:center; font-weight:bold;">${s.moduleType === "workplace" ? "X" : ""}</td>
+                  <td style="text-align:center; font-weight:bold;" class="${s.competency === "C" ? "outcome-C" : ""}">${s.competency === "C" ? "C" : ""}</td>
+                  <td style="text-align:center; font-weight:bold;" class="${s.competency === "NYC" ? "outcome-NYC" : ""}">${s.competency === "NYC" ? "NYC" : ""}</td>
+              </tr>
+          `;
+          })
+          .join("");
+      };
 
       let htmlContent = `
         <!DOCTYPE html>
@@ -854,17 +1711,20 @@ exports.generateMasterPoE = onDocumentCreated(
                 .cover-details { font-size: 16px; margin: 0 auto; text-align: left; display: inline-block; background: #f8fafc; padding: 30px; border-radius: 8px; border: 1px solid #e2e8f0; width: 80%; }
                 .cover-details p { margin: 10px 0; border-bottom: 1px solid #cbd5e1; padding-bottom: 5px; }
                 
-                .section-title { background: #073f4e; color: white; padding: 10px; font-weight: bold; text-transform: uppercase; margin-top: 30px; }
-                table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-                th, td { border: 1px solid #e2e8f0; padding: 10px; text-align: left; font-size: 12px; }
-                th { background: #f8fafc; }
+                .section-title { background: #073f4e; color: white; padding: 10px; font-weight: bold; text-transform: uppercase; margin-top: 30px; margin-bottom: 15px; font-size: 14px; }
+                .sub-title { font-size: 12px; font-weight: bold; color: #073f4e; text-transform: uppercase; margin-top: 15px; border-bottom: 1px solid #073f4e; padding-bottom: 3px; }
+                
+                table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+                th, td { border: 1px solid #cbd5e1; padding: 8px; text-align: left; font-size: 11px; }
+                th { background: #f1f5f9; font-weight: bold; color: #0f172a; }
+
+                .grid-info { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px; font-size: 12px; }
+                .grid-info div { background: #f8fafc; padding: 10px; border: 1px solid #e2e8f0; border-radius: 4px; }
+                .grid-info span { font-weight: bold; display: block; margin-bottom: 4px; color: #475569; font-size: 10px; text-transform: uppercase; }
 
                 .divider-page { height: 95vh; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; box-sizing: border-box; padding: 40px; border: 10px solid; }
                 .divider-page h1 { font-size: 36px; text-transform: uppercase; margin: 0; }
-                .divider-page p { font-size: 16px; margin-top: 15px; opacity: 0.9; }
 
-                .module-header { border-bottom: 2px solid #0284c7; padding-bottom: 5px; margin-bottom: 15px; }
-                
                 .eval-box { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 15px; margin-bottom: 25px; font-size: 12px; page-break-inside: avoid; }
                 .eval-row { display: flex; margin-bottom: 8px; }
                 .eval-label { font-weight: bold; width: 140px; color: #0f172a; flex-shrink: 0; }
@@ -874,19 +1734,20 @@ exports.generateMasterPoE = onDocumentCreated(
                 .text-red { color: #dc2626 !important; }
                 .text-green { color: #16a34a !important; }
 
-                .outcome-C { color: #16a34a; font-weight: bold; font-size: 14px; }
-                .outcome-NYC { color: #dc2626; font-weight: bold; font-size: 14px; }
-                .outcome-Pending { color: #b45309; font-weight: bold; font-size: 14px; }
+                .outcome-C { color: #16a34a; font-weight: bold; font-size: 12px; }
+                .outcome-NYC { color: #dc2626; font-weight: bold; font-size: 12px; }
 
                 .question-box { margin-bottom: 20px; border-bottom: 1px solid #f1f5f9; padding-bottom: 15px; page-break-inside: avoid; }
                 .q-text { font-weight: bold; font-size: 13px; margin-bottom: 5px; color: #0f172a; }
                 .a-text { background: #ffffff; padding: 10px; border: 1px solid #e2e8f0; border-left: 4px solid #94a3b8; font-size: 12px; white-space: pre-wrap; border-radius: 4px; overflow-wrap: break-word; }
-                .a-text div { margin-bottom: 8px; }
                 .a-link { color: #0284c7; text-decoration: underline; font-weight: bold; }
                 
                 .f-text { margin-top: 8px; font-size: 11px; background: #f8fafc; padding: 8px; border-radius: 4px; border: 1px solid #e2e8f0; }
                 .f-item { margin-bottom: 4px; padding-bottom: 4px; border-bottom: 1px dashed #cbd5e1; }
                 .f-item:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+                
+                .sig-inline { margin-top: 20px; border: 1px solid #cbd5e1; padding: 15px; background: #f8fafc; page-break-inside: avoid; display: flex; align-items: center; justify-content: space-between; }
+                .sig-inline img { max-height: 40px; mix-blend-mode: multiply; }
                 
                 .sig-wrapper { margin-top: 30px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; page-break-inside: avoid; }
                 .sig-box { border: 1px solid #cbd5e1; padding: 10px; text-align: center; font-size: 11px; background: #f8fafc; border-top: 3px solid #cbd5e1; border-radius: 4px; }
@@ -895,18 +1756,6 @@ exports.generateMasterPoE = onDocumentCreated(
                 .sig-placeholder { height: 40px; display: flex; align-items: center; justify-content: center; font-style: italic; color: #cbd5e1; font-size: 10px; margin: 4px 0; }
                 .sig-name { font-weight: bold; font-size: 12px; margin: 8px 0; border-bottom: 1px dashed #cbd5e1; padding-bottom: 5px; }
                 .sig-date { color: #64748b; }
-                
-                .sig-box-fac { border-top-color: #0284c7; }
-                .sig-box-fac h4, .sig-box-fac .sig-name, .sig-box-fac .sig-date, .sig-box-fac .sig-reg { color: #0284c7; border-bottom-color: #0284c7; }
-                .sig-img-fac { filter: invert(36%) sepia(85%) saturate(1637%) hue-rotate(174deg) brightness(96%) contrast(101%); }
-
-                .sig-box-ass { border-top-color: #dc2626; }
-                .sig-box-ass h4, .sig-box-ass .sig-name, .sig-box-ass .sig-date, .sig-box-ass .sig-reg { color: #dc2626; border-bottom-color: #dc2626; }
-                .sig-img-ass { filter: invert(26%) sepia(89%) saturate(5436%) hue-rotate(352deg) brightness(90%) contrast(100%); }
-
-                .sig-box-mod { border-top-color: #16a34a; }
-                .sig-box-mod h4, .sig-box-mod .sig-name, .sig-box-mod .sig-date, .sig-box-mod .sig-reg { color: #16a34a; border-bottom-color: #16a34a; }
-                .sig-img-mod { filter: invert(45%) sepia(74%) saturate(464%) hue-rotate(85deg) brightness(93%) contrast(89%); }
             </style>
         </head>
         <body>
@@ -924,39 +1773,121 @@ exports.generateMasterPoE = onDocumentCreated(
             </div>
             <div class="page-break"></div>
 
-            <div class="section-title">Statement of Results</div>
+            <div class="section-title">Assessor PoE Checklist</div>
+            <table>
+                <thead>
+                    <tr><th>#</th><th>Contents</th><th>Status</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td>1</td><td>Progress Report</td><td><strong>Yes</strong></td></tr>
+                    <tr><td>2</td><td>Competence Record and Final Assessment Report</td><td><strong>Yes</strong></td></tr>
+                    <tr><td>3</td><td>Learner Registration Form</td><td><strong>Yes</strong></td></tr>
+                    <tr><td>4</td><td>Letter of Commitment from Learner</td><td><strong>Yes</strong></td></tr>
+                    <tr><td>5</td><td>Programme Induction</td><td><strong>Yes</strong></td></tr>
+                    <tr><td>6</td><td>Appeals / Complaint Forms</td><td><strong>Available on request</strong></td></tr>
+                    <tr><td>7</td><td>Actual Learning Plan and Evidence Control Sheet</td><td><strong>Yes</strong></td></tr>
+                    <tr><td>8</td><td>Learner Coaching Record (Remediation)</td><td><strong>Yes</strong> (If applicable)</td></tr>
+                    <tr><td>9</td><td>Certified ID Document & CV</td><td><strong>Yes</strong> (See Annexures)</td></tr>
+                </tbody>
+            </table>
+            <div class="page-break"></div>
+
+            <div class="section-title">Progress Report</div>
+            <div class="grid-info">
+                <div><span>Learner Name</span>${learner.fullName || "N/A"}</div>
+                <div><span>Learner ID Number</span>${learner.idNumber || "N/A"}</div>
+                <div><span>Programme Title</span>${learner.qualification?.name || submissions[0]?.qualificationName || "Software Developer"}</div>
+                <div><span>Assessor Name</span>${primaryAssessor}</div>
+                <div><span>Start Date</span>${safelyFormatDate(enrollment.trainingStartDate || learner.trainingStartDate)}</div>
+                <div><span>End Date</span>${safelyFormatDate(enrollment.trainingEndDate || learner.trainingEndDate)}</div>
+                <div style="grid-column: span 2;"><span>Workplace / Practical Site</span>${enrollment.employerName || "mLab Default Training Campus"}</div>
+            </div>
+
+            <div class="sub-title">Knowledge Modules</div>
+            <table>
+                <thead><tr><th>Module Number</th><th>Title</th><th>C/NYC</th></tr></thead>
+                <tbody>${renderProgressRows(kmSubs)}</tbody>
+            </table>
+
+            <div class="sub-title">Practical Skills Modules</div>
+            <table>
+                <thead><tr><th>Module Number</th><th>Title</th><th>C/NYC</th></tr></thead>
+                <tbody>${renderProgressRows(pmSubs)}</tbody>
+            </table>
+
+            <div class="sub-title">Work Experience Modules</div>
+            <table>
+                <thead><tr><th>Module Number</th><th>Title</th><th>C/NYC</th></tr></thead>
+                <tbody>${renderProgressRows(wmSubs)}</tbody>
+            </table>
+            
+            <div class="sig-inline">
+                <div>
+                    <strong>Assessor Sign-Off:</strong><br/>
+                    <span style="font-size:10px; color:#64748b;">I declare this progress report accurate.</span>
+                </div>
+                ${assessorSigUrl ? `<img src="${assessorSigUrl}" />` : `<i>Pending Digital Signature</i>`}
+                <div><strong>Date:</strong> ${safelyFormatDate(new Date())}</div>
+            </div>
+            <div class="page-break"></div>
+
+            <div class="section-title">Actual Learning Plan & Evidence Control Sheet</div>
             <table>
                 <thead>
                     <tr>
-                        <th>Code</th>
-                        <th>Module Title</th>
-                        <th>Type</th>
-                        <th>Score</th>
-                        <th>Outcome</th>
+                        <th rowspan="2">Module Code</th>
+                        <th rowspan="2">Facilitator</th>
+                        <th rowspan="2">Dates Active</th>
+                        <th colspan="3" style="text-align:center;">Evidence Type</th>
+                        <th colspan="2" style="text-align:center;">Outcome</th>
+                    </tr>
+                    <tr>
+                        <th style="font-size:9px; text-align:center;">Knowledge</th>
+                        <th style="font-size:9px; text-align:center;">Practical</th>
+                        <th style="font-size:9px; text-align:center;">Workplace</th>
+                        <th style="font-size:9px; text-align:center;">C</th>
+                        <th style="font-size:9px; text-align:center;">NYC</th>
                     </tr>
                 </thead>
                 <tbody>
-                    ${submissions
-                      .map((s) => {
-                        const compClass =
-                          s.competency === "C"
-                            ? "outcome-C"
-                            : s.competency === "NYC"
-                              ? "outcome-NYC"
-                              : "outcome-Pending";
-                        return `
-                        <tr>
-                            <td>${s.moduleNumber || "N/A"}</td>
-                            <td>${s.title || "Untitled"}</td>
-                            <td>${(s.moduleType || "N/A").toUpperCase()}</td>
-                            <td>${s.marks !== undefined ? s.marks : "-"}/${s.totalMarks || "-"}</td>
-                            <td class="${compClass}">${s.competency || "Pending"}</td>
-                        </tr>
-                        `;
-                      })
-                      .join("")}
+                    ${renderLearningPlanRows(submissions)}
                 </tbody>
             </table>
+            <div class="page-break"></div>
+
+            <div class="section-title">Judging Evidence Principles</div>
+            <p style="font-size:12px; margin-bottom: 10px;">The Assessor confirms the following principles were met during the evaluation of the learner's evidence:</p>
+            <table>
+                <thead><tr><th>Assessment Principles</th><th>Knowledge</th><th>Practical / Workplace</th></tr></thead>
+                <tbody>
+                    <tr><td><strong>Relevant:</strong> Relates to specific programme components.</td><td>Yes</td><td>Yes</td></tr>
+                    <tr><td><strong>Valid:</strong> Shows the candidate can perform the function.</td><td>Yes</td><td>Yes</td></tr>
+                    <tr><td><strong>Authentic:</strong> Evidence is the candidate's own work.</td><td>Yes</td><td>Yes</td></tr>
+                    <tr><td><strong>Consistent:</strong> Shows repeatable performance to standard.</td><td>Yes</td><td>Yes</td></tr>
+                    <tr><td><strong>Current:</strong> Evidence relates to current competence.</td><td>Yes</td><td>Yes</td></tr>
+                    <tr><td><strong>Sufficient:</strong> Enough evidence collected to make judgement.</td><td>Yes</td><td>Yes</td></tr>
+                </tbody>
+            </table>
+
+            <div class="section-title" style="margin-top:40px;">Letter of Commitment</div>
+            <div style="background:#f8fafc; padding:15px; border:1px solid #cbd5e1; font-size:12px; border-radius:6px; margin-bottom:20px;">
+                <p>I undertake to fulfil all the requirements of the assessment and training practices as specified by the assessor and service provider.</p>
+                <p>I also declare that all the work handed in including assignments and case studies is authentic (my own work) and current.</p>
+                <p>I am aware that in order to graduate from this programme I need to meet all compulsory requirements including being declared competent on all components that form the basis of this programme.</p>
+            </div>
+            
+            <div class="sig-inline" style="margin-top:0;">
+                <div>
+                    <strong>Learner Sign-Off:</strong>
+                </div>
+                ${learnerSignatureUrl ? `<img src="${learnerSignatureUrl}" />` : `<i>Pending Digital Signature</i>`}
+                <div><strong>Date:</strong> ${safelyFormatDate(submissions[0]?.assignedAt || new Date())}</div>
+            </div>
+            
+            <div class="divider-page" style="margin-top: 40px; height: auto; padding: 20px; border-color: #073f4e;">
+                <h1 style="font-size:24px;">Assessment Evidence Records</h1>
+                <p>The following pages contain the official system transcripts, grading feedback, and evidence links for every module assessed.</p>
+            </div>
             <div class="page-break"></div>
         `;
 
@@ -1004,10 +1935,24 @@ exports.generateMasterPoE = onDocumentCreated(
 
         const moduleBreadcrumb = sub.moduleNumber || sub.title || "Module";
 
+        // 🚀 INJECT OPEN BOOK DECLARATION IF APPLICABLE
+        let openBookHtml = "";
+        if (assessmentData.isOpenBook && assessmentData.referenceManualUrl) {
+          openBookHtml = `
+            <div style="background: #f0f9ff; border: 1px solid #bae6fd; border-left: 4px solid #0ea5e9; padding: 12px; margin-bottom: 20px; border-radius: 4px; font-size: 11px;">
+                <strong style="color: #0369a1; display: block; margin-bottom: 6px; font-size: 12px; text-transform: uppercase;">📖 Open Book Assessment Conditions</strong>
+                <span style="color: #0c4a6e; display: block; margin-bottom: 6px;">The learner was provided with an official reference manual during this assessment. The reference manual used is archived and verifiable via the link below:</span>
+                <a href="${assessmentData.referenceManualUrl}" style="color: #0284c7; text-decoration: underline; font-weight: bold; word-break: break-all;">${assessmentData.referenceManualUrl}</a>
+            </div>
+            `;
+        }
+
         htmlContent += `
                 <div class="module-header">
                     <h2 style="margin:0; color:#073f4e;">${sub.moduleNumber ? sub.moduleNumber + ": " : ""}${sub.title || "Untitled"}</h2>
                 </div>
+                
+                ${openBookHtml}
                 
                 <div class="eval-box">
                     <div class="eval-row">
@@ -1047,11 +1992,10 @@ exports.generateMasterPoE = onDocumentCreated(
 
             const blockBreadcrumb =
               block.weCode || block.code || block.title || `Q${qNum}`;
-
             const ans =
               answers[block.id] !== undefined
                 ? answers[block.id]
-                : sub[block.id];
+                : sub[block.id]; // 🚀 TS NO LONGER ERRORS HERE
             let formattedAnswer = "";
 
             if (ans !== undefined && ans !== null) {
@@ -1279,7 +2223,7 @@ exports.generateMasterPoE = onDocumentCreated(
         headerTemplate: "<span></span>",
         footerTemplate: `
           <div style="font-size: 9px; font-family: Helvetica, Arial, sans-serif; color: #64748b; padding: 0 15mm; width: 100%; display: flex; justify-content: space-between; box-sizing: border-box;">
-            <span>CodeTribe Academy</span>
+            <span>CodeTribe Academy Compliance</span>
             <span>Page <span class="pageNumber"></span> of <span class="totalPages"></span></span>
           </div>
         `,
@@ -1295,7 +2239,6 @@ exports.generateMasterPoE = onDocumentCreated(
       );
 
       const masterPdf = await PDFDocument.create();
-      // const font = await masterPdf.embedFont(StandardFonts.Helvetica);
       const fontBold = await masterPdf.embedFont(StandardFonts.HelveticaBold);
 
       const assessmentPdfDoc = await PDFDocument.load(puppeteerPdfBuffer);
@@ -1334,7 +2277,7 @@ exports.generateMasterPoE = onDocumentCreated(
         }
       }
 
-      // 3. EXTRACT & APPEND PAGES 2 TO END (THE ASSESSMENTS)
+      // 3. EXTRACT & APPEND PAGES 2 TO END (THE ASSESSMENTS + QCTO FORMS)
       if (totalAssessmentPages > 1) {
         const remainingIndices = Array.from(
           { length: totalAssessmentPages - 1 },
@@ -1405,10 +2348,6 @@ exports.generateMasterPoE = onDocumentCreated(
                   width: dims.width,
                   height: dims.height,
                 });
-              } else {
-                console.warn(
-                  `Format not supported for offline merging: ${evidence.url}`,
-                );
               }
             }
           } catch (err) {
@@ -1423,7 +2362,7 @@ exports.generateMasterPoE = onDocumentCreated(
       const finalPdfBytes = await masterPdf.save();
       const finalPdfBuffer = Buffer.from(finalPdfBytes);
 
-      // 🚀 STORAGE HOUSEKEEPING: DELETE OLD FILES BEFORE SAVING NEW ONE 🚀
+      // 🚀 STORAGE HOUSEKEEPING 🚀
       await updateProgress(
         95,
         "Cleaning up old records and saving to vault...",
@@ -1433,10 +2372,7 @@ exports.generateMasterPoE = onDocumentCreated(
 
       try {
         await bucket.deleteFiles({ prefix: dirPrefix });
-        console.log(`Successfully deleted old PoEs for learner ${learnerId}`);
-      } catch (cleanupErr) {
-        console.log("No previous PoE to delete, continuing...");
-      }
+      } catch (cleanupErr) {}
 
       const filePath = `${dirPrefix}Master_PoE_${requestId}.pdf`;
       const file = bucket.file(filePath);
@@ -1463,7 +2399,7 @@ exports.generateMasterPoE = onDocumentCreated(
           to: requesterEmail,
           subject: `✅ Master PoE Ready: ${learner.fullName}`,
           html: `<p>The full Master Portfolio for <b>${learner.fullName}</b> has been successfully generated.</p>
-                       <p><a href="${downloadUrl}" style="padding:10px 20px; background:#16a34a; color:white; text-decoration:none; border-radius:5px;">Download Master PoE PDF</a></p>`,
+                 <p><a href="${downloadUrl}" style="padding:10px 20px; background:#16a34a; color:white; text-decoration:none; border-radius:5px;">Download Master PoE PDF</a></p>`,
         });
       }
     } catch (error: any) {

@@ -1,7 +1,5 @@
 @import url("https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&display=swap");
 
-/* ── TOKENS (shared with ProgrammeFormModal) ─────────────────────────────
-   If both sheets are loaded, these are idempotent. */
 :root {
   --mlab-blue: #073f4e;
   --mlab-blue-dark: #052e3a;

@@ -20,17 +20,15 @@ export const AssessorProfileView: React.FC<ProfileProps> = ({ profile, user, onU
     const [saving, setSaving] = useState(false);
     const [isSigModalOpen, setIsSigModalOpen] = useState(false);
 
-    // ─── Data Initialization ──────────────────────────────────────────────
     const [formData, setFormData] = useState({ ...profile });
 
-    // ✅ Photo Upload States
     const [profilePhoto, setProfilePhoto] = useState<File | null>(null);
     const [photoPreview, setPhotoPreview] = useState<string | null>(profile?.profilePhotoUrl || null);
 
-    // 🚀 STRICT COMPLIANCE: Assessor Pen is always RED
+    // STRICT COMPLIANCE: Assessor Pen is always RED
     const inkColor = 'red';
 
-    // 🚀 CRITICAL: Sync data when 'profile' prop arrives from Firestore
+    // Sync data when 'profile' prop arrives from Firestore
     useEffect(() => {
         if (profile) {
             if (!isEditing) {
@@ -90,7 +88,7 @@ export const AssessorProfileView: React.FC<ProfileProps> = ({ profile, user, onU
     return (
         <div className="lpv-wrapper animate-fade-in">
 
-            {/* 🚀 SIGNATURE MODAL 🚀 */}
+            {/* SIGNATURE MODAL */}
             {isSigModalOpen && (
                 <SignatureSetupModal
                     userUid={user.uid}
@@ -177,7 +175,7 @@ export const AssessorProfileView: React.FC<ProfileProps> = ({ profile, user, onU
                         </div>
                     </section>
 
-                    {/* 🚀 SIGNATURE SECTION 🚀 */}
+                    {/* SIGNATURE SECTION */}
                     <section className="lpv-panel">
                         <div className="lpv-panel__header">
                             <h3 className="lpv-panel__title">

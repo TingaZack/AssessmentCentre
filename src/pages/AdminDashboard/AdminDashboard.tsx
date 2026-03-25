@@ -1,30 +1,19 @@
 // src/pages/AdminDashboard/AdminDashboard.tsx
 
 import React, { useEffect, useState } from 'react';
-import { Users, AlertCircle, Layers, UserCheck } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
 import { auth, db } from '../../lib/firebase';
 import { doc, writeBatch } from 'firebase/firestore';
-
-// Store
+import { Menu, X } from 'lucide-react';
 import { useStore, type StaffMember } from '../../store/useStore';
 import type { DashboardLearner, ProgrammeTemplate, Cohort } from '../../types';
-
-// Components
-import { StatCard } from '../../components/common/StatCard';
 import { Sidebar } from '../../components/dashboard/Sidebar/Sidebar';
-
-// Views
 import { StaffView } from '../../components/views/StaffView/StaffView';
 import { CohortsView } from '../../components/views/CohortsView/CohortsView';
 import { QualificationsView } from '../../components/views/QualificationsView/QualificationsView';
 import { LearnersView } from '../../components/views/LearnersView/LearnersView';
 import { LearnerDirectoryView } from '../../components/views/LearnerDirectoryView.tsx/LearnerDirectoryView';
-
-// WORKPLACES MANAGER IMPORT
-
-// Modals
 import { LearnerFormModal } from '../../components/admin/LearnerFormModal/LearnerFormModal';
 import { ProgrammeFormModal } from '../../components/admin/ProgrammeFormModal/ProgrammeFormModal';
 import { StaffFormModal } from '../../components/admin/StaffFormModal';
@@ -42,10 +31,17 @@ const AdminDashboard: React.FC = () => {
     const store = useStore();
 
     // ----- Navigation State -----
-    // 🚀 ADDED 'workplaces' to the allowed navigation states
     const [currentNav, setCurrentNav] = useState<'directory' | 'learners' | 'staff' | 'qualifications' | 'cohorts' | 'workplaces' | 'dashboard'>(
         (location.state as any)?.activeTab || 'dashboard'
     );
+
+    // Mobile Sidebar State
+    const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+    // Auto-close the sidebar when the user clicks a navigation link on mobile
+    useEffect(() => {
+        setIsMobileMenuOpen(false);
+    }, [currentNav]);
 
     // ----- Modal States -----
     const [showAddLearnerModal, setShowAddLearnerModal] = useState(false);
@@ -67,7 +63,6 @@ const AdminDashboard: React.FC = () => {
 
     // ----- Load Data -----
     useEffect(() => {
-        // Dashboard Overview
         if (currentNav === 'dashboard') {
             store.fetchLearners();
             store.fetchStagingLearners();
@@ -75,25 +70,22 @@ const AdminDashboard: React.FC = () => {
             store.fetchStaff();
         }
 
-        // Directory Tab
         if (currentNav === 'directory') {
             store.fetchLearners();
         }
 
-        // Learners Tab (Enrollments)
         if (currentNav === 'learners') {
             store.fetchLearners(true);
             store.fetchStagingLearners();
             store.fetchCohorts();
         }
 
-        // Other Tabs
         if (currentNav === 'qualifications') store.fetchProgrammes();
         if (currentNav === 'staff') {
             store.fetchStaff();
-            store.fetchEmployers(); // Fetch employers so the mentor assignment dropdown works
+            store.fetchEmployers();
         }
-        if (currentNav === 'workplaces') store.fetchEmployers(); // 🚀 Fetch for Workplaces tab
+        if (currentNav === 'workplaces') store.fetchEmployers();
         if (currentNav === 'cohorts') {
             store.fetchCohorts();
             store.fetchProgrammes();
@@ -196,13 +188,40 @@ const AdminDashboard: React.FC = () => {
     // RENDER
     // ─────────────────────────────────────────────────────────────
 
-    // Note: Since WorkplacesManager is now rendered without the dashboard header for maximum screen space, 
-    // we conditionally hide the default header if currentNav === 'workplaces'
     return (
-        <div className="admin-layout" style={{ width: '100%', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
-            <Sidebar currentNav={currentNav} setCurrentNav={setCurrentNav} onLogout={handleLogout} />
+        <div className="admin-layout">
 
-            <main className="main-wrapper" style={{ width: '100%', padding: 16, paddingBottom: '5%' }}>
+            {/* MOBILE HEADER */}
+            <div className="admin-mobile-header">
+                <button
+                    className="admin-hamburger-btn"
+                    onClick={() => setIsMobileMenuOpen(true)}
+                >
+                    <Menu size={24} />
+                </button>
+                <div className="admin-mobile-title">Admin Portal</div>
+            </div>
+
+            {/* MOBILE OVERLAY */}
+            {isMobileMenuOpen && (
+                <div
+                    className="admin-sidebar-overlay"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                />
+            )}
+
+            {/* SIDEBAR WRAPPER */}
+            <div className={`admin-sidebar-wrapper ${isMobileMenuOpen ? 'open' : ''}`}>
+                <button
+                    className="admin-close-btn"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                >
+                    <X size={24} />
+                </button>
+                <Sidebar currentNav={currentNav} setCurrentNav={setCurrentNav} onLogout={handleLogout} />
+            </div>
+
+            <main className="main-wrapper" style={{ padding: 16, paddingBottom: '5%' }}>
 
                 {currentNav !== 'workplaces' && (
                     <header className="dashboard-header">
@@ -225,76 +244,40 @@ const AdminDashboard: React.FC = () => {
                 )}
 
                 <div className={currentNav === 'workplaces' ? '' : 'admin-content'}>
-                    {/* DASHBOARD OVERVIEW */}
-                    {currentNav === 'dashboard' && (
-                        // <div className="edit-grid" style={{ gap: '1rem', display: 'flex', flexWrap: 'wrap' }}>
-                        //     <StatCard icon={<Users size={24} />} title="Total Enrollments" value={store.learners.length} color="blue" />
-                        //     <StatCard icon={<Layers size={24} />} title="Active Cohorts" value={store.cohorts.length} color="green" />
-                        //     <StatCard icon={<UserCheck size={24} />} title="Active Staff" value={store.staff.length} color="purple" />
-                        //     <StatCard icon={<AlertCircle size={24} />} title="Staging / Drafts" value={store.stagingLearners.length} color="orange" />
-                        // </div>
-                        <DashboardOverview />
-                    )}
-
-                    {/* LEARNER DIRECTORY VIEW (HUMANS) */}
-                    {currentNav === 'directory' && (
-                        <LearnerDirectoryView learners={store.learners} />
-                    )}
-
-                    {/* LEARNERS VIEW (ENROLLMENTS) */}
+                    {/* VIEWS */}
+                    {currentNav === 'dashboard' && <DashboardOverview />}
+                    {currentNav === 'directory' && <LearnerDirectoryView learners={store.learners} />}
                     {currentNav === 'learners' && (
                         <LearnersView
                             learners={store.learners}
                             stagingLearners={store.stagingLearners}
                             cohorts={store.cohorts}
-
                             onAdd={() => setShowAddLearnerModal(true)}
                             onUpload={() => setShowImportLearnerModal(true)}
                             onEdit={(l) => { setSelectedLearner(l); setShowAddLearnerModal(true); }}
-
                             onArchive={handleArchiveLearner}
                             onRestore={handleRestoreLearner}
                             onDiscard={handleDiscardDraft}
-
                             onInvite={handleInviteLearner}
-
                             onBulkApprove={handleBulkApprove}
                             onBulkArchive={handleBulkArchive}
                             onBulkDiscard={handleBulkDiscard}
                             onBulkRestore={async (list) => {
-                                for (const l of list) {
-                                    await store.restoreLearner(l.id);
-                                }
+                                for (const l of list) await store.restoreLearner(l.id);
                                 store.fetchLearners(true);
                             }}
-
                             onArchiveCohort={handleLearnerCohortArchive}
-
                             onDeletePermanent={async (learner, audit) => {
                                 if (store.deleteLearnerPermanent) {
                                     await store.deleteLearnerPermanent(learner.id, audit);
                                 } else {
-                                    alert("Delete function not found in store. Please ensure useStore is fully updated.");
+                                    alert("Delete function not found.");
                                 }
                             }}
                         />
                     )}
-
-                    {/* STAFF VIEW */}
-                    {currentNav === 'staff' && (
-                        <StaffView
-                            staff={store.staff}
-                            onAdd={() => setShowStaffModal(true)}
-                            onDelete={(s) => setStaffToDelete(s)}
-                        />
-                    )}
-
-                    {/* 🚀 WORKPLACES MANAGER VIEW 🚀 */}
-                    {currentNav === 'workplaces' && (
-                        <WorkplacesManager />
-                    )}
-
-                    {/* COHORTS VIEW */}
+                    {currentNav === 'staff' && <StaffView staff={store.staff} onAdd={() => setShowStaffModal(true)} onDelete={(s) => setStaffToDelete(s)} />}
+                    {currentNav === 'workplaces' && <WorkplacesManager />}
                     {currentNav === 'cohorts' && (
                         <CohortsView
                             cohorts={store.cohorts}
@@ -304,8 +287,6 @@ const AdminDashboard: React.FC = () => {
                             onArchive={(c) => setCohortToDelete(c)}
                         />
                     )}
-
-                    {/* QUALIFICATIONS VIEW */}
                     {currentNav === 'qualifications' && (
                         <QualificationsView
                             programmes={store.programmes}
@@ -322,7 +303,7 @@ const AdminDashboard: React.FC = () => {
                 MODALS
                ───────────────────────────────────────────────────────────── */}
 
-            {/* 1. LEARNER MODALS */}
+            {/* LEARNER MODALS */}
             {showAddLearnerModal && (
                 <LearnerFormModal
                     learner={selectedLearner || undefined}
@@ -338,7 +319,6 @@ const AdminDashboard: React.FC = () => {
                 />
             )}
 
-            {/* IMPORT MODAL */}
             {showImportLearnerModal && (
                 <LearnerImportModal
                     cohortId=""
@@ -351,7 +331,6 @@ const AdminDashboard: React.FC = () => {
                 />
             )}
 
-            {/* SAFE CONFIRM MODAL FOR ARCHIVE/DISCARD */}
             {learnerToProcess && (
                 <DeleteConfirmModal
                     itemName={learnerToProcess.learner.fullName}
@@ -361,7 +340,7 @@ const AdminDashboard: React.FC = () => {
                 />
             )}
 
-            {/* 2. STAFF MODALS */}
+            {/* STAFF MODALS */}
             {showStaffModal && (
                 <StaffFormModal
                     onClose={() => setShowStaffModal(false)}
@@ -377,7 +356,7 @@ const AdminDashboard: React.FC = () => {
                 />
             )}
 
-            {/* 3. COHORT MODALS */}
+            {/* COHORT MODALS */}
             {showCohortModal && (
                 <CohortFormModal
                     cohort={selectedCohort || undefined}
@@ -386,11 +365,7 @@ const AdminDashboard: React.FC = () => {
                         if (selectedCohort) {
                             await store.updateCohort(selectedCohort.id, c, reasons);
                         } else {
-                            await store.addCohort({
-                                ...c,
-                                isArchived: false,
-                                staffHistory: []
-                            });
+                            await store.addCohort({ ...c, isArchived: false, staffHistory: [] });
                         }
                         setShowCohortModal(false);
                     }}
@@ -405,7 +380,7 @@ const AdminDashboard: React.FC = () => {
                 />
             )}
 
-            {/* 4. PROGRAMME MODALS */}
+            {/* PROGRAMME MODALS */}
             {showProgModal && (
                 <ProgrammeFormModal
                     programme={selectedProg}
@@ -434,4 +409,3 @@ const AdminDashboard: React.FC = () => {
 };
 
 export default AdminDashboard;
-

@@ -1,6 +1,4 @@
 // src/components/views/QualificationsView.tsx
-// Styled to align with mLab Corporate Identity Brand Guide 2019
-// All visual styling lives in QualificationsView.css
 
 import React from 'react';
 import { Plus, Upload, Edit, Trash2, GraduationCap } from 'lucide-react';

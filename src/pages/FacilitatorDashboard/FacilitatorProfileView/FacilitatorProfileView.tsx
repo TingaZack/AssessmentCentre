@@ -20,10 +20,8 @@ export const FacilitatorProfileView: React.FC<ProfileProps> = ({ profile, user, 
     const [saving, setSaving] = useState(false);
     const [formData, setFormData] = useState({ ...profile });
 
-    // Signature States
     const [isSigModalOpen, setIsSigModalOpen] = useState(false);
 
-    // Photo Upload States
     const [profilePhoto, setProfilePhoto] = useState<File | null>(null);
     const [photoPreview, setPhotoPreview] = useState<string | null>(profile?.profilePhotoUrl || null);
 
@@ -93,7 +91,7 @@ export const FacilitatorProfileView: React.FC<ProfileProps> = ({ profile, user, 
 
     return (
         <div className="lpv-wrapper animate-fade-in">
-            {/* 🚀 SIGNATURE EDIT MODAL 🚀 */}
+            {/* SIGNATURE EDIT MODAL */}
             {isSigModalOpen && (
                 <SignatureSetupModal
                     userUid={user.uid}
@@ -180,7 +178,7 @@ export const FacilitatorProfileView: React.FC<ProfileProps> = ({ profile, user, 
                         </div>
                     </section>
 
-                    {/* 🚀 SIGNATURE SECTION 🚀 */}
+                    {/* SIGNATURE SECTION */}
                     <section className="lpv-panel">
                         <div className="lpv-panel__header">
                             <h3 className="lpv-panel__title">

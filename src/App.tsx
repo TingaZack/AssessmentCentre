@@ -16,14 +16,14 @@ import { auth, db } from './lib/firebase';
 
 // Admin
 import AdminDashboard from './pages/AdminDashboard/AdminDashboard';
-import { SettingsPage } from './pages/SettingsPage/SettingsPage'; // 🚀 IMPORTED SETTINGS PAGE
+import { SettingsPage } from './pages/SettingsPage/SettingsPage';
 
 // Staff (Facilitator, Assessor, Moderator)
-import { FacilitatorLayout } from './pages/FacilitatorDashboard/FacilitatorLayout';
+import { FacilitatorLayout } from './pages/FacilitatorDashboard/FacilitatorLayout/FacilitatorLayout';
 import { FacilitatorDashboard } from './pages/FacilitatorDashboard/FacilitatorDashboard';
 import { AttendancePage } from './pages/FacilitatorDashboard/AttendancePage';
 import { AssessmentManager } from './pages/FacilitatorDashboard/AssessmentManager/AssessmentManager';
-import { AssessmentBuilder } from './pages/FacilitatorDashboard/AssessmentBuilder';
+import { AssessmentBuilder } from './pages/FacilitatorDashboard/AssessmentBuilder/AssessmentBuilder';
 import { AssessmentPreview } from './pages/FacilitatorDashboard/AssessmentPreview/AssessmentPreview';
 import { SubmissionReview } from './pages/FacilitatorDashboard/SubmissionReview/SubmissionReview';
 import { AssessorDashboard } from './pages/FacilitatorDashboard/AssessorDashboard/AssessorDashboard';
@@ -42,7 +42,7 @@ import { MentorDashboard } from './pages/mentor/MentorDashboard/MentorDashboard'
 // Learner & Public
 import AssessmentPlayer from './pages/LearnerPortal/AssessmentPlayer/AssessmentPlayer';
 import { ViewPortfolio } from './pages/Portfolio/ViewPortfolio';
-import StatementOfResults from './pages/StatementOfResults/StatementOfResults'; // 🚀 IMPORTED SOR
+import StatementOfResults from './pages/StatementOfResults/StatementOfResults';
 import PublicVerification from './pages/LearnerPortal/PublicVerification';
 import LearnerDashboard from './pages/LearnerPortal/LearnerDashboard/LearnerDashboard';
 import { LearnerProfileView } from './components/views/LearnerProfileView/LearnerProfileView';
@@ -50,37 +50,46 @@ import { WorkplacesManager } from './components/admin/WorkplacesManager/Workplac
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { CohortDetailsPage } from './pages/CohortDetails/CohortDetailsPage';
 
-// --- 🚦 TRAFFIC CONTROLLER ---
+// --- TRAFFIC CONTROLLER ---
 const RootRedirect = () => {
   const user = useStore((state) => state.user);
   const loading = useStore((state) => state.loading);
 
-  if (loading) return <div style={{ padding: '2rem', textAlign: 'center', fontFamily: 'Oswald' }}>SYNCING SESSION...</div>;
+  // if (loading) return <div style={{ padding: '2rem', textAlign: 'center', fontFamily: 'Oswald' }}>SYNCING SESSION...</div>;
+  if (loading) return (
+    <div className="ap-fullscreen" style={{ position: 'absolute', left: 0, right: 0, bottom: 0, top: 0 }}>
+      <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
+        <div className="ap-spinner" />
+        <span style={{ fontFamily: 'var(--font-heading)', fontSize: '0.8rem', letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--mlab-grey)' }}>Syncing Session...</span>
+      </div>
+    </div>
+  );
+
   if (!user) return <Navigate to="/login" replace />;
 
-  // 🛡️ QCTO GATEKEEPERS
+  // QCTO GATEKEEPERS
 
-  // 1. Learner Gate
+  // Learner Gate
   if (user.role === 'learner' && user.profileCompleted !== true) {
     return <Navigate to="/setup-profile" replace />;
   }
 
-  // 2. Assessor Gate
+  // Assessor Gate
   if (user.role === 'assessor' && user.profileCompleted !== true) {
     return <Navigate to="/setup-assessor" replace />;
   }
 
-  // 3. Moderator Gate
+  // Moderator Gate
   if (user.role === 'moderator' && user.profileCompleted !== true) {
     return <Navigate to="/setup-moderator" replace />;
   }
 
-  // 4. Facilitator Gate
+  // Facilitator Gate
   if (user.role === 'facilitator' && user.profileCompleted !== true) {
     return <Navigate to="/setup-facilitator" replace />;
   }
 
-  // 5. Mentor Gate (Workplace Verifier)
+  // Mentor Gate (Workplace Verifier)
   if (user.role === 'mentor' && user.profileCompleted !== true) {
     return <Navigate to="/setup-mentor" replace />;
   }
@@ -121,7 +130,7 @@ function App() {
               fullName: data.fullName || 'Practitioner',
               role: data.role as UserRole,
               profilePhotoUrl: data.profilePhotoUrl || '',
-              ...data, // Pulls in bio, assessorRegNumber, complianceDocs, companyName, etc.
+              ...data,
               profileCompleted: data.profileCompleted === true,
             } as UserProfile;
 
@@ -149,7 +158,7 @@ function App() {
             <Route path="/login" element={user ? <Navigate to="/" replace /> : <Login />} />
             <Route path="/verify" element={<PublicVerification />} />
 
-            {/* 🚀 MOVED TO PUBLIC ROUTE: Anyone with the link can view the Statement of Results */}
+            {/* MOVED TO PUBLIC ROUTE: Anyone with the link can view the Statement of Results */}
             <Route path="/sor/:id" element={<StatementOfResults />} />
 
             {/* ================= ONBOARDING GATES ================= */}
@@ -190,7 +199,7 @@ function App() {
 
             {/* ================= PROTECTED ROUTES ================= */}
 
-            {/* 1. LEARNER PORTAL */}
+            {/* LEARNER PORTAL */}
             <Route path="/portal" element={
               <RoleProtectedRoute allowedRoles={['learner']}>
                 <LearnerDashboard />
@@ -203,21 +212,21 @@ function App() {
               </RoleProtectedRoute>
             } />
 
-            {/* 2. ADMIN CONSOLE */}
+            {/* ADMIN CONSOLE */}
             <Route path="/admin" element={
               <RoleProtectedRoute allowedRoles={['admin']}>
                 <AdminDashboard />
               </RoleProtectedRoute>
             } />
 
-            {/* 🚀 NEW WORKPLACES MANAGER ROUTE */}
+            {/* WORKPLACES MANAGER ROUTE */}
             <Route path="/admin/workplaces" element={
               <RoleProtectedRoute allowedRoles={['admin']}>
                 <WorkplacesManager />
               </RoleProtectedRoute>
             } />
 
-            {/* 🚀 NEW SETTINGS PAGE ROUTE */}
+            {/* SETTINGS PAGE ROUTE */}
             <Route path="/settings" element={
               <RoleProtectedRoute allowedRoles={['admin']}>
                 <SettingsPage />
@@ -231,7 +240,7 @@ function App() {
               </RoleProtectedRoute>
             } />
 
-            {/* 3. FACILITATOR SUITE */}
+            {/* FACILITATOR SUITE */}
             <Route path="/facilitator" element={
               <RoleProtectedRoute allowedRoles={['facilitator']}>
                 <FacilitatorLayout />
@@ -259,7 +268,7 @@ function App() {
               </RoleProtectedRoute>
             } />
 
-            {/* 🚀 PORTFOLIO OF EVIDENCE ROUTE */}
+            {/* PORTFOLIO OF EVIDENCE ROUTE */}
             <Route path="/portfolio/:id" element={
               <RoleProtectedRoute allowedRoles={['admin', 'assessor', 'moderator', 'facilitator', 'learner', 'mentor']}>
                 <ViewPortfolio />
@@ -273,21 +282,21 @@ function App() {
               </RoleProtectedRoute>
             } />
 
-            {/* 5. ASSESSOR (Marking Centre) */}
+            {/* ASSESSOR (Marking Centre) */}
             <Route path="/marking/*" element={
               <RoleProtectedRoute allowedRoles={['assessor']}>
                 <AssessorDashboard />
               </RoleProtectedRoute>
             } />
 
-            {/* 6. MODERATOR (QA & Endorsement) */}
+            {/* MODERATOR (QA & Endorsement) */}
             <Route path="/moderation/*" element={
               <RoleProtectedRoute allowedRoles={['moderator']}>
                 <ModeratorDashboard />
               </RoleProtectedRoute>
             } />
 
-            {/* 7. MENTOR (Workplace Verification) */}
+            {/* MENTOR (Workplace Verification) */}
             <Route path="/mentor/*" element={
               <RoleProtectedRoute allowedRoles={['mentor']}>
                 <MentorDashboard />

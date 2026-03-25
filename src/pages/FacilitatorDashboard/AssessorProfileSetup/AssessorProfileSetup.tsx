@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-    User, Upload, FileText, CheckCircle,
+    User, Upload, CheckCircle,
     Save, ChevronRight, ShieldCheck, Loader2, Camera, Award, Calendar, Fingerprint, Globe, Briefcase
 } from 'lucide-react';
 import { doc, updateDoc } from 'firebase/firestore';
@@ -155,7 +155,7 @@ export const AssessorProfileSetup: React.FC = () => {
                     </div>
                 </div>
 
-                {/* STEP 1: PERSONAL & IDENTITY */}
+                {/* PERSONAL & IDENTITY */}
                 {step === 1 && (
                     <div className="lp-form-body animate-fade-in">
                         <h3 className="lp-section-title"><User size={16} /> Identity Verification</h3>
@@ -234,7 +234,7 @@ export const AssessorProfileSetup: React.FC = () => {
                     </div>
                 )}
 
-                {/* STEP 2: PROFESSIONAL SCOPE */}
+                {/* PROFESSIONAL SCOPE */}
                 {step === 2 && (
                     <div className="lp-form-body animate-fade-in">
                         <h3 className="lp-section-title"><Award size={16} /> Assessor Registration</h3>

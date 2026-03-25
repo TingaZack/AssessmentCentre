@@ -43,7 +43,7 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
     onDeletePermanent
 }) => {
     const navigate = useNavigate();
-    // 🚀 Pull currentUser AND settings to access dynamic campuses
+    // Pull currentUser AND settings to access dynamic campuses
     const { user: currentUser, settings } = useStore();
 
     // ─── VIEW STATE ───
@@ -479,7 +479,7 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
 
                                             {viewMode !== 'staging' && !learner.isArchived && !showArchived && (
                                                 <>
-                                                    {/* 🚀 FIXED: Pointing back to the Statement of Results (/sor/)! */}
+                                                    {/* Pointing back to the Statement of Results (/sor/)! */}
                                                     <button className="mlab-icon-btn mlab-icon-btn--blue" onClick={() => navigate(`/sor/${learner.id}`)} title="View Statement of Results">
                                                         <Eye size={14} />
                                                     </button>
@@ -537,7 +537,7 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
                 )}
             </div>
 
-            {/* 🚀 PERMANENT DELETE CONFIRMATION MODAL */}
+            {/* PERMANENT DELETE CONFIRMATION MODAL */}
             {deletingLearner && (
                 <div className="mlab-modal-overlay">
                     <div className="mlab-modal mlab-modal--sm">

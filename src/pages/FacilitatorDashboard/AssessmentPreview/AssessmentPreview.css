@@ -1,10 +1,7 @@
 /* ─────────────────────────────────────────────────────────────────────────────
-   AssessmentPreview.css  —  mLab Corporate Identity v2.1
-   Aesthetic: Official QCTO workbook rendered on screen.
-   · Dark blue table/panel headers (mlab-blue fill, white Oswald text)
-   · border-left: 5px solid green accent on cards
-   · mlab-badge system · Oswald headings · Trebuchet MS body
-   · Subtle diagonal texture on header — matches AssessmentPlayer hero panels
+   AssessmentPreview.css
+   mLab Corporate Identity Brand Guide 2019
+   Shares styles with AssessmentPlayer for consistency.
 ───────────────────────────────────────────────────────────────────────────── */
 
 @import url("https://fonts.googleapis.com/css2?family=Oswald:wght@300;400;500;600;700&display=swap");
@@ -12,537 +9,713 @@
 :root {
   --mlab-blue: #073f4e;
   --mlab-blue-dark: #052e3a;
-  --mlab-blue-mid: #0a5266;
   --mlab-green: #94c73d;
   --mlab-green-dark: #7aaa2e;
-  --mlab-green-light: #f0f7e1;
   --mlab-grey: #6b6b6b;
-  --mlab-grey-light: #9b9b9b;
   --mlab-white: #ffffff;
   --mlab-bg: #f0f4f6;
   --mlab-border: #dde4e8;
-  --mlab-light-blue: #e8f0f3;
-  --mlab-red: #ef4444;
-  --mlab-red-light: #fef2f2;
-  --mlab-amber: #d97706;
-
-  --font-heading: "Oswald", "Trebuchet MS", sans-serif;
-  --font-body: "Trebuchet MS", "Lucida Grande", Arial, sans-serif;
-
-  --preview-width: 860px;
+  --topbar-h: 60px;
 }
 
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-}
-
-@keyframes prev-fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(12px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-/* ══════════════════════════════════════════════════════════════════════════
-   PAGE SHELL
-══════════════════════════════════════════════════════════════════════════ */
 .mlab-preview {
   min-height: 100vh;
+  width: 100%;
+  display: flex;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  flex-direction: column;
   background: var(--mlab-bg);
-  background-image: repeating-linear-gradient(
-    90deg,
-    transparent,
-    transparent 60px,
-    rgba(7, 63, 78, 0.018) 60px,
-    rgba(7, 63, 78, 0.018) 61px
-  );
-  padding: 0 0 6rem;
-  font-family: var(--font-body);
+  font-family: "Trebuchet MS", Arial, sans-serif;
 }
 
-/* ── Loading / error state ───────────────────────────────────────────────── */
 .mlab-preview-state {
-  min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: var(--font-heading);
-  font-size: 0.85rem;
-  font-weight: 600;
-  letter-spacing: 0.14em;
+  height: 100vh;
+  font-family: "Oswald", sans-serif;
+  color: var(--mlab-blue);
   text-transform: uppercase;
-  color: var(--mlab-grey);
-  background: var(--mlab-bg);
+  letter-spacing: 0.1em;
 }
 
-/* ══════════════════════════════════════════════════════════════════════════
-   ADMIN WARNING BANNER
-   Full-bleed amber strip — can't be missed
-══════════════════════════════════════════════════════════════════════════ */
+/* ── Admin Banner ── */
 .mlab-preview-banner {
-  background: #78350f;
-  border-bottom: 3px solid var(--mlab-amber);
-  padding: 0.65rem 2rem;
+  background: #fef2f2;
+  border-bottom: 1px solid #fca5a5;
+  padding: 0.65rem 1.25rem;
   display: flex;
   align-items: center;
   gap: 1rem;
-  flex-wrap: wrap;
+  flex-shrink: 0;
 }
-
 .mlab-preview-banner__title {
-  font-family: var(--font-heading);
-  font-size: 0.72rem;
+  font-family: "Oswald", sans-serif;
+  font-size: 0.8rem;
   font-weight: 700;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: #fef3c7;
-  white-space: nowrap;
-  padding: 2px 10px;
-  background: rgba(245, 158, 11, 0.25);
-  border: 1px solid rgba(245, 158, 11, 0.4);
+  color: #dc2626;
+  background: #fee2e2;
+  padding: 2px 8px;
+  border-radius: 4px;
 }
-
 .mlab-preview-banner__body {
-  font-family: var(--font-body);
-  font-size: 0.82rem;
-  color: rgba(254, 243, 199, 0.75);
+  font-size: 0.85rem;
+  color: #991b1b;
 }
 
-/* ══════════════════════════════════════════════════════════════════════════
-   BACK BUTTON + NAV ROW
-══════════════════════════════════════════════════════════════════════════ */
-.mlab-preview-nav {
-  max-width: var(--preview-width);
-  margin: 0 auto;
-  padding: 1.25rem 1.5rem 0;
+/* ── TOP BAR (Matches Player) ── */
+.mlab-preview-topbar {
+  background: var(--mlab-blue);
+  padding: 0 2rem;
+  height: var(--topbar-h);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  border-bottom: 3px solid var(--mlab-green);
+}
+
+.mlab-preview-topbar__left {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  min-width: 0;
 }
 
 .mlab-back-btn {
   display: inline-flex;
   align-items: center;
-  gap: 0.45rem;
-  background: none;
-  border: none;
+  gap: 0.4rem;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.75);
   cursor: pointer;
-  padding: 0;
   font-family: var(--font-body);
-  font-size: 0.85rem;
-  color: var(--mlab-grey);
+  font-size: 0.82rem;
+  padding: 0.4rem 0.8rem;
+  transition:
+    background 0.15s,
+    color 0.15s;
   outline: none;
-  transition: color 0.15s;
+  white-space: nowrap;
+  flex-shrink: 0;
+  border-radius: 3px;
 }
 .mlab-back-btn:hover {
-  color: var(--mlab-blue);
+  background: rgba(255, 255, 255, 0.14);
+  color: var(--mlab-white);
 }
 
-/* ══════════════════════════════════════════════════════════════════════════
-   DOCUMENT WRAPPER
-   Centred, max-width — feels like a real document
-══════════════════════════════════════════════════════════════════════════ */
-.mlab-preview-doc {
-  max-width: var(--preview-width);
-  margin: 1.25rem auto 0;
-  padding: 0 1.5rem;
-  animation: prev-fadeIn 0.35s ease both;
+.mlab-preview-topbar__separator {
+  width: 1px;
+  height: 20px;
+  background: rgba(255, 255, 255, 0.15);
+  flex-shrink: 0;
 }
 
-/* ══════════════════════════════════════════════════════════════════════════
-   ASSESSMENT HEADER
-   Dark blue hero panel — mirrors ViewPortfolio mlab-profile-card treatment
-══════════════════════════════════════════════════════════════════════════ */
-.mlab-preview-header {
-  background: var(--mlab-blue);
-  border-bottom: 3px solid var(--mlab-green);
-  padding: 2rem 2.25rem 1.75rem;
-  margin-bottom: 0;
-  background-image: repeating-linear-gradient(
-    -45deg,
-    transparent,
-    transparent 40px,
-    rgba(255, 255, 255, 0.015) 40px,
-    rgba(255, 255, 255, 0.015) 41px
-  );
-}
-
-.mlab-preview-header__eyebrow {
-  font-family: var(--font-heading);
-  font-size: 0.68rem;
+.mlab-preview-topbar__title {
+  font-family: "Oswald", sans-serif;
+  font-size: 0.95rem;
   font-weight: 600;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  color: var(--mlab-green);
-  display: block;
-  margin-bottom: 0.4rem;
-}
-
-.mlab-preview-header__title {
-  font-family: var(--font-heading);
-  font-size: clamp(1.4rem, 3vw, 2rem);
-  font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--mlab-white);
-  margin: 0 0 1.1rem;
-  line-height: 1.1;
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.mlab-preview-header__meta {
+.mlab-preview-topbar__right {
   display: flex;
   align-items: center;
+  gap: 0.75rem;
+  flex-shrink: 0;
+}
+
+.mlab-timer {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.4rem 0.9rem;
+  font-family: "Oswald", sans-serif;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: var(--mlab-white);
+  border-radius: 3px;
+}
+
+.mlab-status-badge {
+  font-family: "Oswald", sans-serif;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 5px 12px;
+  border-radius: 3px;
+}
+.mlab-status-badge--locked {
+  background: rgba(255, 255, 255, 0.07);
+  color: rgba(255, 255, 255, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.mlab-topbar-manual-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #7dd3fc;
+  padding: 0.38rem 0.85rem;
+  cursor: pointer;
+  font-family: var(--font-heading);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  transition:
+    background 0.15s,
+    color 0.15s;
+  outline: none;
+  border-radius: 3px;
+}
+.mlab-topbar-manual-btn:hover {
+  background: rgba(255, 255, 255, 0.18);
+  color: #bae6fd;
+}
+
+/* ── LAYOUT GRID ── */
+.mlab-preview-body {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  align-items: start;
+  overflow: hidden;
+}
+
+/* ── SIDEBAR ── */
+.mlab-sidebar {
+  background: var(--mlab-blue-dark);
+  height: 100%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  overscroll-behavior: contain;
+}
+
+.mlab-sidebar__meta-block {
+  padding: 1.5rem 1.25rem;
+  background: var(--mlab-blue);
+  border-bottom: 2px solid rgba(255, 255, 255, 0.06);
+}
+.mlab-sidebar__meta-title {
+  font-family: "Oswald", sans-serif;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--mlab-white);
+  letter-spacing: 0.04em;
+  line-height: 1.25;
+  margin: 0 0 0.6rem;
+}
+.mlab-sidebar__detail {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.45);
+  margin-top: 0.3rem;
+}
+.mlab-sidebar__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 0.75rem;
+  padding: 4px 10px;
+  background: var(--mlab-green);
+  color: var(--mlab-white);
+  font-family: "Oswald", sans-serif;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  border-radius: 99px;
+}
+
+.mlab-sidebar__label {
+  font-family: "Oswald", sans-serif;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.28);
+  padding: 1.25rem 1.25rem 0.5rem;
+}
+
+.mlab-sidebar__nav {
+  padding: 0 0.5rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+.mlab-sidebar__nav-item {
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.45);
+  padding: 0.5rem 0.75rem;
+  border-left: 2px solid transparent;
+  cursor: pointer;
+  text-decoration: none;
+  display: block;
+}
+.mlab-sidebar__nav-item:hover {
+  color: var(--mlab-white);
+  border-left-color: var(--mlab-green);
+  background: rgba(255, 255, 255, 0.03);
+}
+.mlab-sidebar__nav-item--section {
+  font-family: "Oswald", sans-serif;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--mlab-green);
+  padding: 0.9rem 0.75rem 0.35rem;
+  cursor: default;
+  border: none;
+  margin-top: 0.25rem;
+}
+.mlab-sidebar__nav-item--section:hover {
+  background: transparent;
+  color: var(--mlab-green);
+  border-left-color: transparent;
+}
+
+/* ── CONTENT DOC ── */
+.mlab-preview-doc {
+  flex: 1;
+  overflow-y: auto;
+  padding: 2.5rem 3rem;
+  background: var(--mlab-bg);
+  min-height: 100%;
+}
+
+.mlab-preview-header {
+  margin-bottom: 2rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 2px solid var(--mlab-border);
+}
+.mlab-preview-header__eyebrow {
+  display: block;
+  font-family: "Oswald", sans-serif;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  color: var(--mlab-green);
+  margin-bottom: 0.5rem;
+  text-transform: uppercase;
+}
+.mlab-preview-header__title {
+  font-family: "Trebuchet MS", sans-serif;
+  font-size: 2rem;
+  color: var(--mlab-blue);
+  margin: 0 0 1rem;
+}
+.mlab-preview-header__meta {
+  display: flex;
   gap: 0.75rem;
   flex-wrap: wrap;
 }
 
-/* Meta chips — mlab-badge style */
 .mlab-meta-chip {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  font-family: var(--font-heading);
-  font-size: 0.65rem;
-  font-weight: 700;
-  letter-spacing: 0.12em;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-family: "Oswald", sans-serif;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
-  padding: 4px 11px;
 }
-
-.mlab-meta-chip--default {
-  background: rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.75);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-}
-
-.mlab-meta-chip--marks {
-  background: rgba(148, 199, 61, 0.2);
-  color: var(--mlab-green);
-  border: 1px solid rgba(148, 199, 61, 0.35);
-}
-
-.mlab-meta-chip--type-summative {
-  background: rgba(239, 68, 68, 0.18);
-  color: #fca5a5;
-  border: 1px solid rgba(239, 68, 68, 0.3);
-}
-
 .mlab-meta-chip--type-formative {
-  background: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.65);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #e0e7ff;
+  color: #4f46e5;
 }
-
+.mlab-meta-chip--type-summative {
+  background: #fef3c7;
+  color: #d97706;
+}
+.mlab-meta-chip--marks {
+  background: #dcfce7;
+  color: #16a34a;
+}
 .mlab-meta-chip--time {
-  background: rgba(245, 158, 11, 0.18);
-  color: #fcd34d;
-  border: 1px solid rgba(245, 158, 11, 0.3);
+  background: #fee2e2;
+  color: #dc2626;
+}
+.mlab-meta-chip--default {
+  background: var(--mlab-white);
+  border: 1px solid var(--mlab-border);
+  color: var(--mlab-grey);
 }
 
-/* ══════════════════════════════════════════════════════════════════════════
-   INSTRUCTIONS BAND
-   Sits flush below the header
-══════════════════════════════════════════════════════════════════════════ */
+/* ── Open Book Banner ── */
+.mlab-openbook-banner {
+  background: #e0f2fe;
+  border: 1px solid #bae6fd;
+  border-left: 5px solid #0ea5e9;
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1.5rem;
+  border-radius: 4px;
+}
+.mlab-openbook-banner__title {
+  font-family: "Oswald", sans-serif;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #0369a1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 0.6rem;
+}
+.mlab-openbook-banner__text {
+  margin: 0;
+  color: #0c4a6e;
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+
 .mlab-preview-instructions {
   background: var(--mlab-white);
-  border: 2px solid var(--mlab-blue);
-  border-top: none;
-  border-left: 5px solid var(--mlab-green);
-  padding: 1.1rem 1.5rem;
-  margin-bottom: 1.75rem;
+  border-left: 4px solid var(--mlab-blue);
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 2rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
-
 .mlab-preview-instructions__label {
-  font-family: var(--font-heading);
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.16em;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: "Oswald", sans-serif;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--mlab-green-dark);
-  display: block;
-  margin-bottom: 0.4rem;
+  color: var(--mlab-blue);
+  margin-bottom: 0.5rem;
 }
-
 .mlab-preview-instructions__text {
-  font-family: var(--font-body);
-  font-size: 0.88rem;
-  color: var(--mlab-grey);
-  line-height: 1.7;
   margin: 0;
+  color: var(--mlab-grey);
+  line-height: 1.6;
   white-space: pre-wrap;
 }
 
-/* ══════════════════════════════════════════════════════════════════════════
-   BLOCKS LIST
-══════════════════════════════════════════════════════════════════════════ */
 .mlab-blocks {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 1.5rem;
 }
 
-/* ── Section header block ─────────────────────────────────────────────────── */
 .mlab-block-section {
   background: var(--mlab-blue);
   color: var(--mlab-white);
-  font-family: var(--font-heading);
-  font-size: 0.88rem;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  padding: 0.8rem 1.25rem;
-  border-left: 5px solid var(--mlab-green);
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
+  padding: 1rem 1.5rem;
+  margin-top: 1rem;
+  border-radius: 4px;
 }
 
-.mlab-block-section::before {
-  content: "§";
-  font-family: var(--font-heading);
-  font-size: 1rem;
-  color: var(--mlab-green);
-  flex-shrink: 0;
-}
-
-/* ── Info / Reading block ──────────────────────────────────────────────────── */
 .mlab-block-info {
-  background: var(--mlab-light-blue);
-  border: 1px solid var(--mlab-border);
-  border-left: 5px solid #0ea5e9;
-  padding: 1.1rem 1.35rem;
+  background: #f0f9ff;
+  border-left: 4px solid #0ea5e9;
+  padding: 1.25rem 1.5rem;
 }
-
 .mlab-block-info__label {
   display: flex;
   align-items: center;
-  gap: 0.45rem;
-  font-family: var(--font-heading);
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.16em;
+  gap: 6px;
+  font-family: "Oswald", sans-serif;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: #0369a1;
-  margin-bottom: 0.65rem;
+  color: #0284c7;
+  margin-bottom: 0.5rem;
 }
-
 .mlab-block-info__content {
-  font-family: var(--font-body);
-  font-size: 0.9rem;
-  color: var(--mlab-blue);
-  line-height: 1.75;
   margin: 0;
+  color: #0c4a6e;
+  line-height: 1.6;
   white-space: pre-wrap;
 }
 
-/* ── Question blocks (text + mcq) ─────────────────────────────────────────── */
 .mlab-block-question {
   background: var(--mlab-white);
-  border: 2px solid var(--mlab-blue);
-  border-left: 5px solid var(--mlab-blue);
-  overflow: hidden;
+  border: 1px solid var(--mlab-border);
+  border-top: 4px solid var(--mlab-blue);
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(7, 63, 78, 0.05);
 }
-
 .mlab-block-question__header {
-  background: var(--mlab-blue);
-  padding: 0.8rem 1.25rem;
   display: flex;
   align-items: flex-start;
-  justify-content: space-between;
   gap: 1rem;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--mlab-border);
 }
-
 .mlab-block-question__num {
-  font-family: var(--font-heading);
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--mlab-green);
+  background: var(--mlab-bg);
+  color: var(--mlab-blue);
+  font-family: "Oswald", sans-serif;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 99px;
   flex-shrink: 0;
-  padding-top: 2px;
 }
-
 .mlab-block-question__text {
-  font-family: var(--font-body);
-  font-size: 0.92rem;
-  color: var(--mlab-white);
-  line-height: 1.6;
   flex: 1;
+  font-weight: 600;
+  color: var(--mlab-blue);
+  line-height: 1.5;
 }
-
 .mlab-block-question__marks {
-  font-family: var(--font-heading);
-  font-size: 0.65rem;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  padding: 3px 10px;
-  background: rgba(148, 199, 61, 0.2);
-  color: var(--mlab-green);
-  border: 1px solid rgba(148, 199, 61, 0.35);
+  font-family: "Oswald", sans-serif;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--mlab-grey);
   white-space: nowrap;
-  flex-shrink: 0;
-  align-self: flex-start;
 }
 
 .mlab-block-question__body {
-  padding: 1.1rem 1.25rem;
+  padding: 1.25rem 1.5rem;
 }
 
-/* ── Text answer ───────────────────────────────────────────────────────────── */
 .mlab-answer-textarea {
   width: 100%;
-  font-family: var(--font-body);
-  font-size: 0.88rem;
-  color: var(--mlab-blue);
-  background: var(--mlab-bg);
+  padding: 1rem;
   border: 1px dashed var(--mlab-border);
-  padding: 0.85rem 1rem;
-  resize: none;
+  background: #f8fafc;
+  color: var(--mlab-grey);
+  font-family: var(--font-body);
+  resize: vertical;
+  border-radius: 4px;
   outline: none;
-  cursor: not-allowed;
-  line-height: 1.6;
-}
-.mlab-answer-textarea::placeholder {
-  color: var(--mlab-grey-light);
-  font-style: italic;
 }
 
-/* ── MCQ options ───────────────────────────────────────────────────────────── */
 .mlab-mcq-options {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
 }
-
 .mlab-mcq-option {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.65rem 1rem;
+  gap: 1rem;
+  padding: 0.8rem 1rem;
   border: 1px solid var(--mlab-border);
-  background: var(--mlab-bg);
-  cursor: default;
-  transition: background 0.12s;
-}
-
-.mlab-mcq-option--correct {
-  background: var(--mlab-green-light);
-  border-color: #c2e08a;
-  border-left: 3px solid var(--mlab-green);
-}
-
-.mlab-mcq-option input[type="radio"] {
-  accent-color: var(--mlab-green);
-  flex-shrink: 0;
-  width: 16px;
-  height: 16px;
-}
-
-.mlab-mcq-option__letter {
-  font-family: var(--font-heading);
-  font-size: 0.78rem;
-  font-weight: 700;
-  color: var(--mlab-blue);
-  width: 1.4rem;
-  flex-shrink: 0;
-}
-
-.mlab-mcq-option__text {
-  font-family: var(--font-body);
-  font-size: 0.88rem;
-  color: var(--mlab-blue);
-  flex: 1;
-  line-height: 1.5;
-}
-
-.mlab-mcq-option__correct-tag {
-  font-family: var(--font-heading);
-  font-size: 0.62rem;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  padding: 2px 8px;
-  background: var(--mlab-green-light);
-  color: var(--mlab-green-dark);
-  border: 1px solid #c2e08a;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-/* ══════════════════════════════════════════════════════════════════════════
-   QUESTION COUNTER STRIP
-   Summary footer bar at bottom of blocks list
-══════════════════════════════════════════════════════════════════════════ */
-.mlab-preview-footer {
-  margin-top: 1.75rem;
+  border-radius: 4px;
   background: var(--mlab-white);
-  border: 2px solid var(--mlab-blue);
-  border-left: 5px solid var(--mlab-green);
-  padding: 0.9rem 1.35rem;
+}
+.mlab-mcq-option--correct {
+  background: #f0fdf4;
+  border-color: #86efac;
+}
+.mlab-mcq-option__letter {
+  font-family: "Oswald", sans-serif;
+  font-weight: 600;
+  color: var(--mlab-grey);
+  width: 20px;
+}
+.mlab-mcq-option__text {
+  flex: 1;
+  color: var(--mlab-blue);
+}
+.mlab-mcq-option__correct-tag {
+  font-family: "Oswald", sans-serif;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #16a34a;
+  background: #dcfce7;
+  padding: 2px 8px;
+  border-radius: 99px;
+  text-transform: uppercase;
+}
+
+.mlab-preview-footer {
+  margin-top: 3rem;
+  padding: 2rem;
+  background: var(--mlab-white);
+  border: 1px solid var(--mlab-border);
+  border-radius: 4px;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 2rem;
-  flex-wrap: wrap;
 }
-
 .mlab-preview-footer__label {
-  font-family: var(--font-heading);
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.16em;
+  font-family: "Oswald", sans-serif;
+  font-size: 1.1rem;
+  font-weight: 600;
   text-transform: uppercase;
-  color: var(--mlab-grey);
+  color: var(--mlab-blue);
 }
-
 .mlab-preview-footer__stat {
   display: flex;
-  align-items: baseline;
-  gap: 0.35rem;
+  flex-direction: column;
+  align-items: center;
 }
-
 .mlab-preview-footer__num {
-  font-family: var(--font-heading);
-  font-size: 1.4rem;
+  font-size: 1.5rem;
   font-weight: 700;
-  color: var(--mlab-blue);
-  line-height: 1;
+  color: var(--mlab-green);
 }
-
 .mlab-preview-footer__unit {
-  font-family: var(--font-body);
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   color: var(--mlab-grey);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
-
 .mlab-preview-footer__divider {
   width: 1px;
-  height: 28px;
+  height: 40px;
   background: var(--mlab-border);
-  flex-shrink: 0;
 }
 
-/* ══════════════════════════════════════════════════════════════════════════
-   RESPONSIVE
-══════════════════════════════════════════════════════════════════════════ */
-@media (max-width: 680px) {
-  .mlab-preview-header {
-    padding: 1.5rem 1.25rem;
+/* =========================================
+   📱 MOBILE LAYOUT & SIDEBAR DRAWER
+========================================= */
+
+/* Mobile Drawer Buttons */
+.mlab-hamburger-btn {
+  display: none;
+  background: none;
+  border: none;
+  color: var(--mlab-white);
+  cursor: pointer;
+  padding: 0;
+  margin-right: 1rem;
+}
+
+.mlab-close-btn {
+  display: none;
+}
+
+.mlab-sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 150;
+  backdrop-filter: blur(2px);
+}
+
+@media (max-width: 900px) {
+  /* Show hamburger in the topbar */
+  .mlab-hamburger-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
-  .mlab-preview-doc {
+
+  .mlab-preview-topbar {
     padding: 0 0.75rem;
+    flex-wrap: nowrap !important;
   }
-  .mlab-preview-nav {
-    padding: 1rem 0.75rem 0;
+
+  .mlab-preview-topbar__left,
+  .mlab-preview-topbar__right {
+    gap: 0.5rem;
   }
-  .mlab-preview-banner {
-    padding: 0.6rem 1rem;
+
+  /* Hide the text inside the buttons so they become square icons */
+  .mlab-hide-mobile,
+  .mlab-preview-topbar__title {
+    display: none !important;
   }
+
+  /* Make the buttons perfectly square on mobile */
+  .mlab-back-btn,
+  .mlab-topbar-manual-btn {
+    padding: 0.5rem;
+    justify-content: center;
+  }
+
+  /* Make sidebar fixed and hidden off-screen */
+  .mlab-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    width: 280px;
+    max-width: 85vw;
+    z-index: 200;
+    transform: translateX(-100%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 4px 0 15px rgba(0, 0, 0, 0.3);
+  }
+
+  /* Slide in when open */
+  .mlab-sidebar.open {
+    transform: translateX(0);
+  }
+
+  /* Show overlay if open */
+  .mlab-sidebar.open ~ .mlab-sidebar-overlay,
+  .mlab-sidebar-overlay {
+    display: block;
+  }
+
+  /* Show the close 'X' button */
+  .mlab-close-btn {
+    display: block;
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.6);
+    cursor: pointer;
+    z-index: 210;
+  }
+
+  .mlab-close-btn:hover {
+    color: var(--mlab-white);
+  }
+
+  /* Grid adjustment (remove right sidebar, make content full width) */
+  .mlab-preview-body {
+    grid-template-columns: 1fr;
+  }
+
+  .mlab-preview-doc {
+    padding: 1.25rem 1rem;
+  }
+
   .mlab-preview-footer {
+    flex-direction: column;
     gap: 1rem;
+    padding: 1.5rem;
+  }
+
+  .mlab-preview-footer__divider {
+    width: 80%;
+    height: 1px;
   }
 }

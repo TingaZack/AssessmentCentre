@@ -73,7 +73,7 @@ export const BlockchainIssueButton: React.FC<Props> = ({ learner, pdfFile }) => 
                 {status === 'idle' && "Issue Digital Certificate"}
                 {status === 'uploading' && "Uploading to IPFS..."}
                 {status === 'blockchain' && "Sign in MetaMask..."}
-                {status === 'success' && "✅ Secured on Blockchain"}
+                {status === 'success' && "Secured on Blockchain"}
                 {status === 'error' && "Retry Issuance"}
             </button>
 

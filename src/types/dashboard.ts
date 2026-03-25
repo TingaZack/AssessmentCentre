@@ -32,26 +32,8 @@ export interface Qualification {
   dateAssessed: string;
 }
 
-// export interface DashboardLearner {
-//   id: number;
-//   fullName: string;
-//   idNumber: string;
-//   dateOfBirth: string;
-//   email: string;
-//   phone: string;
-//   qualification: Qualification;
-//   knowledgeModules: KnowledgeModule[];
-//   practicalModules: PracticalModule[];
-//   workExperienceModules: WorkExperienceModule[];
-//   eisaAdmission: boolean;
-//   verificationCode: string;
-//   issueDate: string | null;
-//   status: "completed" | "in-progress" | "pending";
-
-// }
 export interface DashboardLearner {
-  // Existing Base Fields
-  id: string | number; // 🔥 Updated to support Firebase string IDs
+  id: string | number;
   fullName: string;
   idNumber: string;
   dateOfBirth: string;
