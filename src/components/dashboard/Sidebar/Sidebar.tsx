@@ -5,7 +5,8 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import {
     LayoutDashboard, Users, BookOpen, UserCheck,
     Settings, LogOut, Layers, ShieldCheck,
-    GraduationCap, ClipboardList, CheckSquare, User, UserCircle, Building2
+    GraduationCap, ClipboardList, CheckSquare, User, UserCircle, Building2,
+    Award
 } from 'lucide-react';
 import type { UserRole } from '../../../types/auth.types';
 import { useStore } from '../../../store/useStore';
@@ -40,6 +41,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, currentNav, setCurrentNa
                     { id: 'staff', label: 'Staff Management', icon: UserCheck, path: '/admin' },
                     { id: 'workplaces', label: 'Workplaces', icon: Building2, path: '/admin' },
                     { id: 'cohorts', label: 'Cohorts (Classes)', icon: Layers, path: '/admin' },
+                    // 🚀 NEW: Standalone Certificate Studio
+                    { id: 'studio', label: 'Certificate Studio', icon: Award, path: '/admin/studio' },
                 ];
             case 'assessor':
                 return [
@@ -58,12 +61,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, currentNav, setCurrentNa
                     { id: 'dashboard', label: 'Overview', icon: LayoutDashboard, path: '/facilitator' },
                     { id: 'attendance', label: 'Attendance', icon: Users, path: '/facilitator/attendance' },
                     { id: 'assessments', label: 'Assessments', icon: ClipboardList, path: '/facilitator/assessments' },
+                    // 🚀 NEW: Standalone Certificate Studio
+                    { id: 'studio', label: 'Certificate Studio', icon: Award, path: '/admin/studio' },
                     { id: 'profile', label: 'My Profile', icon: UserCircle, path: '/facilitator/profile' },
                 ];
             case 'learner':
                 return [
                     { id: 'dashboard', label: 'My Classes', icon: LayoutDashboard, path: '/portal' },
                     { id: 'profile', label: 'My Profile', icon: User, path: '/portal' },
+                    // 🚀 Certificates Tab
+                    { id: 'certificates', label: 'My Certificates', icon: Award, path: '/portal' },
                 ];
             default:
                 return [];

@@ -2412,3 +2412,43 @@ exports.generateMasterPoE = onDocumentCreated(
     }
   },
 );
+
+exports.sendAdHocCertificate = onCall(async (request) => {
+  // 1. V2 Security Check
+  if (!request.auth) {
+    throw new HttpsError(
+      "unauthenticated",
+      "The function must be called while authenticated.",
+    );
+  }
+
+  // 2. Destructure from request.data
+  const { email, recipientName, pdfUrl, awardTitle, courseName } = request.data;
+
+  const mailOptions = {
+    // from: '"mLab Southern Africa" <noreply@mlab.co.za>',
+    from: '"mLab Admin" <brndkt@gmail.com>',
+    to: email,
+    subject: `Your Certificate: ${awardTitle} - ${courseName}`,
+    html: `
+            <div style="font-family: sans-serif; max-width: 600px; color: #073f4e;">
+                <h2>Congratulations, ${recipientName}!</h2>
+                <p>We are pleased to share your <strong>${awardTitle}</strong> for completing the <strong>${courseName}</strong>.</p>
+                <div style="margin: 25px 0;">
+                    <a href="${pdfUrl}" style="background: #94c73d; color: #073f4e; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: bold;">
+                        Download Certificate (PDF)
+                    </a>
+                </div>
+                <p>Best Regards,<br/>mLab Academic Management</p>
+            </div>
+        `,
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+    return { success: true, message: "Email sent successfully" };
+  } catch (error) {
+    console.error("Email Error:", error);
+    throw new HttpsError("internal", "Failed to send email.");
+  }
+});

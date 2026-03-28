@@ -1,4 +1,4 @@
-// src/pages/FacilitatorDashboard/AssessmentPreview.tsx
+// src/pages/FacilitatorDashboard/AssessmentPreview/AssessmentPreview.tsx
 
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -8,7 +8,9 @@ import {
     Layers, UploadCloud, Mic, Link as LinkIcon, Code, Timer, ListChecks, CalendarRange, Briefcase, FileArchive, Menu, X, BarChart,
     BookOpen,
     Scale,
-    Award
+    Award,
+    ShieldAlert,
+    Video
 } from 'lucide-react';
 import { db } from '../../../lib/firebase';
 import './AssessmentPreview.css';
@@ -158,7 +160,7 @@ export const AssessmentPreview: React.FC = () => {
                             <span className="mlab-meta-chip mlab-meta-chip--marks">
                                 {totalMarks} Marks
                             </span>
-                            <span className="mlab-meta-chip mlab-meta-chip--default">
+                            <span className="mlab-meta-chip mlab-meta-chip--default" >
                                 <FileText size={11} /> {qCount} Questions/Tasks
                             </span>
                             {timeLimit ? (
@@ -166,12 +168,31 @@ export const AssessmentPreview: React.FC = () => {
                                     <Clock size={11} /> {timeLimit} Min Limit
                                 </span>
                             ) : null}
+
+                            {/* PROCTORING BADGE ON PREVIEW */}
+                            {assessment?.requiresInvigilation && (
+                                <span className="mlab-meta-chip" style={{ background: '#fff1f2', color: '#e11d48', border: '1px solid #fecdd3' }}>
+                                    <Video size={11} /> Live Proctoring Enabled
+                                </span>
+                            )}
                         </div>
                     </header>
 
+                    {/* PROCTORING WARNING BANNER (Only on Knowledge Exams) */}
+                    {assessment?.requiresInvigilation && (
+                        <div className="mlab-openbook-banner" style={{ background: '#fff1f2', borderColor: '#fecdd3', borderLeftColor: '#e11d48', marginTop: '1.5rem' }}>
+                            <strong className="mlab-openbook-banner__title" style={{ color: '#be123c' }}>
+                                <ShieldAlert size={16} /> Secure Proctored Environment
+                            </strong>
+                            <p className="mlab-openbook-banner__text" style={{ color: '#881337' }}>
+                                This is a strictly invigilated assessment. Learners will be required to grant <strong>Camera and Microphone</strong> permissions and complete the test in <strong>Fullscreen Mode</strong>. Exiting fullscreen or switching browser tabs will immediately log a security violation to the Assessor.
+                            </p>
+                        </div>
+                    )}
+
                     {/* ── Open Book Banner ── */}
                     {assessment?.isOpenBook && assessment?.referenceManualUrl && (
-                        <div className="mlab-openbook-banner">
+                        <div className="mlab-openbook-banner" style={{ marginTop: '1.5rem' }}>
                             <strong className="mlab-openbook-banner__title"><FileArchive size={16} /> Open Book Assessment</strong>
                             <p className="mlab-openbook-banner__text">
                                 This is an open-book assessment. An official Reference Manual has been provided by your facilitator.
@@ -195,7 +216,7 @@ export const AssessmentPreview: React.FC = () => {
                             /* Section header */
                             if (block.type === 'section') return (
                                 <div key={block.id} id={`block-${block.id}`} className="mlab-block-section" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                                    <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#073f4e' }}>{block.title}</div>
+                                    <div style={{ fontSize: '1.25rem', fontWeight: 800, }}>{block.title}</div>
                                     {block.content && (
                                         <div className="quill-read-only-content" style={{ fontSize: '0.95rem', color: '#334155' }} dangerouslySetInnerHTML={{ __html: block.content }} />
                                     )}
@@ -208,7 +229,7 @@ export const AssessmentPreview: React.FC = () => {
                                     <div className="mlab-block-info__label">
                                         <Info size={13} /> Reading Material
                                     </div>
-                                    <p className="mlab-block-info__content">{block.content}</p>
+                                    <p className="mlab-block-info__content" style={{ whiteSpace: 'pre-wrap', color: 'whi' }}>{block.content}</p>
                                 </div>
                             );
 
@@ -217,9 +238,9 @@ export const AssessmentPreview: React.FC = () => {
                                 qNum++;
                                 return (
                                     <div key={block.id} id={`block-${block.id}`} className="mlab-block-question">
-                                        <div className="mlab-block-question__header">
+                                        <div className="mlab-block-question__header" style={{ color: 'white' }}>
                                             <span className="mlab-block-question__num">Q{qNum}</span>
-                                            <span className="mlab-block-question__text">{block.question}</span>
+                                            <span className="mlab-block-question__text" >{block.question}</span>
                                             <span className="mlab-block-question__marks">{block.marks} Marks</span>
                                         </div>
                                         <div className="mlab-block-question__body">
@@ -318,9 +339,14 @@ export const AssessmentPreview: React.FC = () => {
                                                     <p style={{ margin: '0 0 10px 0', fontWeight: 'bold', color: '#334155' }}>{i + 1}. {crit}</p>
 
                                                     <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center', opacity: 0.7 }}>
+                                                        {block.requireEvidencePerCriterion !== false && (
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.75rem', background: '#e0e7ff', padding: '4px 8px', borderRadius: '4px', color: '#1d4ed8' }}>
+                                                                <UploadCloud size={14} /> Evidence Req.
+                                                            </div>
+                                                        )}
                                                         {block.requirePerCriterionTiming !== false && (
                                                             <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.75rem', background: '#e2e8f0', padding: '4px 8px', borderRadius: '4px', color: '#475569' }}>
-                                                                <Timer size={14} /> Start Task
+                                                                <Timer size={14} /> Task Timer
                                                             </div>
                                                         )}
                                                         <div style={{ display: 'flex', gap: '5px' }}>
@@ -388,7 +414,7 @@ export const AssessmentPreview: React.FC = () => {
                                 );
                             }
 
-                            /* QCTO Workplace Checkpoint */
+                            /* 🚀 UPDATED: QCTO Workplace Checkpoint (Matches new schema) */
                             if (block.type === 'qcto_workplace') {
                                 qNum++;
                                 return (
@@ -406,27 +432,25 @@ export const AssessmentPreview: React.FC = () => {
                                             {block.weCode && (
                                                 <div style={{ marginBottom: '1rem' }}>
                                                     <strong style={{ color: '#9f1239', display: 'block', marginBottom: '4px', fontSize: '0.85rem' }}>Work Experience Module (WE Code):</strong>
-                                                    <span style={{ color: '#be123c', fontSize: '0.9rem' }}>{block.weCode}</span>
+                                                    <span style={{ color: '#be123c', fontSize: '0.9rem' }}>{block.weCode} — {block.weTitle}</span>
                                                 </div>
                                             )}
 
                                             {block.workActivities && block.workActivities.length > 0 && (
                                                 <div style={{ background: 'white', padding: '1rem', borderRadius: '6px', border: '1px solid #fecdd3', marginBottom: '1rem' }}>
-                                                    <strong style={{ color: '#be123c', display: 'block', marginBottom: '10px', fontSize: '0.85rem' }}>Workplace Activities (WA Codes):</strong>
+                                                    <strong style={{ color: '#be123c', display: 'block', marginBottom: '10px', fontSize: '0.85rem' }}>Workplace Activities (WA) & Evidence Links:</strong>
                                                     <ul style={{ margin: 0, paddingLeft: '1.2rem', color: '#4c0519', fontSize: '0.85rem' }}>
                                                         {block.workActivities.map((wa: any, i: number) => (
-                                                            <li key={i} style={{ marginBottom: '4px' }}><strong>{wa.code}:</strong> {wa.description}</li>
-                                                        ))}
-                                                    </ul>
-                                                </div>
-                                            )}
-
-                                            {block.expectedDocuments && block.expectedDocuments.length > 0 && (
-                                                <div style={{ background: 'white', padding: '1rem', borderRadius: '6px', border: '1px solid #fecdd3', marginBottom: '1rem' }}>
-                                                    <strong style={{ color: '#be123c', display: 'block', marginBottom: '10px', fontSize: '0.85rem' }}>Expected Evidence / Documents:</strong>
-                                                    <ul style={{ margin: 0, paddingLeft: '1.2rem', color: '#4c0519', fontSize: '0.85rem' }}>
-                                                        {block.expectedDocuments.map((docStr: string, i: number) => (
-                                                            <li key={i} style={{ marginBottom: '4px' }}>{docStr}</li>
+                                                            <li key={i} style={{ marginBottom: '10px' }}>
+                                                                <strong>{wa.code}:</strong> {wa.description}
+                                                                {wa.evidenceItems && wa.evidenceItems.length > 0 && (
+                                                                    <ul style={{ margin: '4px 0 0 0', paddingLeft: '1rem', listStyleType: 'circle', color: '#881337', fontSize: '0.8rem' }}>
+                                                                        {wa.evidenceItems.map((se: any, j: number) => (
+                                                                            <li key={j}><em>Evidence: {se.code} - {se.description}</em></li>
+                                                                        ))}
+                                                                    </ul>
+                                                                )}
+                                                            </li>
                                                         ))}
                                                     </ul>
                                                 </div>

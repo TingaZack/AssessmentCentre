@@ -36,8 +36,11 @@ const Toast: React.FC<ToastProps> = ({ toast, onClose }) => {
         <div className={`toast toast-${toast.type}`}>
             <div className="toast-icon">{icons[toast.type]}</div>
             <div className="toast-message">{toast.message}</div>
-            <button className="toast-close" onClick={() => onClose(toast.id)}>
+            {/* <button className="toast-close" onClick={() => onClose(toast.id)}>
                 <X size={16} />
+            </button> */}
+            <button className="toast-close" onClick={() => onClose(toast.id)}>
+                <X size={16} style={{ color: 'white' }} />
             </button>
         </div>
     );

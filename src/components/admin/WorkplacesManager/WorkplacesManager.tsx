@@ -1,3 +1,5 @@
+// src/components/admin/WorkplacesManager/WorkplacesManager.tsx
+
 import React, { useState, useEffect } from 'react';
 import { collection, doc, setDoc, updateDoc, query, where, getDocs } from 'firebase/firestore';
 import Autocomplete from "react-google-autocomplete";
@@ -16,7 +18,8 @@ export const WorkplacesManager: React.FC = () => {
     const { employers, fetchEmployers, addStaff } = useStore();
     const toast = useToast();
 
-    const [loading, setLoading] = useState(false);
+    // 🚀 FIX: Only show loading screen if the global store is empty
+    const [isInitialLoad, setIsInitialLoad] = useState(employers.length === 0);
     const [searchQuery, setSearchQuery] = useState('');
 
     // We fetch and store mentors locally in this component
@@ -46,9 +49,8 @@ export const WorkplacesManager: React.FC = () => {
 
     const [saving, setSaving] = useState(false);
 
-    // Fetch Employers & Mentors
+    // Fetch Employers & Mentors (Silently if data already exists)
     const fetchData = async () => {
-        setLoading(true);
         try {
             await fetchEmployers();
 
@@ -61,7 +63,7 @@ export const WorkplacesManager: React.FC = () => {
             console.error("Error fetching data:", error);
             toast.error("Failed to load workplaces data.");
         } finally {
-            setLoading(false);
+            setIsInitialLoad(false); // Turn off the loader
         }
     };
 
@@ -225,41 +227,19 @@ export const WorkplacesManager: React.FC = () => {
     );
 
     return (
-        <div className="wm-root">
+        <div className="wm-roo">
             <ToastContainer toasts={toast.toasts} onClose={toast.closeToast} />
 
-            <header className="wm-header">
-                <div className="wm-title-wrap">
-                    <div className="wm-icon-box"><Building2 size={28} /></div>
-                    <div>
-                        <h1 className="wm-title">Host Companies & Mentors</h1>
-                        <p className="wm-subtitle">Manage workplaces and assign external mentors for QCTO compliance.</p>
-                    </div>
-                </div>
+            {/* ── Header ─────────────────────────────────────────────────── */}
+            <div className="mlab-cohorts__header">
+                <h1 className="wm-title">Host Companies & Mentors</h1>
+                <button className="wm-btn-primary" onClick={() => openEmployerModal()}>
+                    <Plus size={18} /> Add Workplace
+                </button>
+            </div>
 
-                <div className="wm-controls">
-                    <div style={{ position: 'relative' }}>
-                        <Search size={16} color="#94a3b8" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
-                        <input
-                            type="text"
-                            className="wm-search"
-                            placeholder="Search companies..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            style={{ paddingLeft: '35px' }}
-                        />
-                    </div>
-                    <button className="wm-btn-primary" onClick={() => openEmployerModal()}>
-                        <Plus size={18} /> Add Workplace
-                    </button>
-                </div>
-            </header>
-
-            {loading ? (
-                // <div style={{ textAlign: 'center', padding: '3rem', color: '#64748b' }}>
-                //     <Loader2 className="animate-spin" size={32} style={{ margin: '0 auto 10px' }} />
-                //     <p>Loading Data...</p>
-                // </div>
+            {/* 🚀 FIX: Uses isInitialLoad so it only blocks UI on the very first load */}
+            {isInitialLoad ? (
                 <div className="ap-fullscreen" style={{ position: 'absolute', left: 0, right: 0, bottom: 0, top: 0 }}>
                     <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
                         <div className="ap-spinner" />
@@ -458,4 +438,3 @@ export const WorkplacesManager: React.FC = () => {
         </div>
     );
 };
-

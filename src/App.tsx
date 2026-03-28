@@ -1,6 +1,6 @@
 // src/App.tsx
 
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
@@ -17,8 +17,9 @@ import { auth, db } from './lib/firebase';
 // Admin
 import AdminDashboard from './pages/AdminDashboard/AdminDashboard';
 import { SettingsPage } from './pages/SettingsPage/SettingsPage';
+import { CertificateStudio } from './pages/AdminDashboard/CertificateStudio/CertificateStudio'; // 🚀 Added Certificate Studio
 
-// Staff (Facilitator, Assessor, Moderator)
+// Staff (Facilitator, Assessor, Moderator, Invigilator)
 import { FacilitatorLayout } from './pages/FacilitatorDashboard/FacilitatorLayout/FacilitatorLayout';
 import { FacilitatorDashboard } from './pages/FacilitatorDashboard/FacilitatorDashboard';
 import { AttendancePage } from './pages/FacilitatorDashboard/AttendancePage';
@@ -27,6 +28,7 @@ import { AssessmentBuilder } from './pages/FacilitatorDashboard/AssessmentBuilde
 import { AssessmentPreview } from './pages/FacilitatorDashboard/AssessmentPreview/AssessmentPreview';
 import { SubmissionReview } from './pages/FacilitatorDashboard/SubmissionReview/SubmissionReview';
 import { AssessorDashboard } from './pages/FacilitatorDashboard/AssessorDashboard/AssessorDashboard';
+import InvigilatorDashboard from './components/views/InvigilatorDashboard/InvigilatorDashboard';
 
 // Compliance & Profile Setup Gates
 import { AssessorProfileSetup } from './pages/FacilitatorDashboard/AssessorProfileSetup/AssessorProfileSetup';
@@ -55,7 +57,6 @@ const RootRedirect = () => {
   const user = useStore((state) => state.user);
   const loading = useStore((state) => state.loading);
 
-  // if (loading) return <div style={{ padding: '2rem', textAlign: 'center', fontFamily: 'Oswald' }}>SYNCING SESSION...</div>;
   if (loading) return (
     <div className="ap-fullscreen" style={{ position: 'absolute', left: 0, right: 0, bottom: 0, top: 0 }}>
       <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
@@ -219,6 +220,13 @@ function App() {
               </RoleProtectedRoute>
             } />
 
+            {/* 🚀 STANDALONE CERTIFICATE STUDIO ROUTE */}
+            <Route path="/admin/studio" element={
+              <RoleProtectedRoute allowedRoles={['admin', 'facilitator']}>
+                <CertificateStudio />
+              </RoleProtectedRoute>
+            } />
+
             {/* WORKPLACES MANAGER ROUTE */}
             <Route path="/admin/workplaces" element={
               <RoleProtectedRoute allowedRoles={['admin']}>
@@ -237,6 +245,13 @@ function App() {
             <Route path="/admin/learners/:learnerId" element={
               <RoleProtectedRoute allowedRoles={['admin']}>
                 <LearnerProfileView />
+              </RoleProtectedRoute>
+            } />
+
+            {/* LIVE INVIGILATOR DASHBOARD ROUTE */}
+            <Route path="/admin/invigilate/:assessmentId" element={
+              <RoleProtectedRoute allowedRoles={['admin', 'facilitator']}>
+                <InvigilatorDashboard />
               </RoleProtectedRoute>
             } />
 
@@ -315,4 +330,3 @@ function App() {
 }
 
 export default App;
-

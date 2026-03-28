@@ -25,13 +25,15 @@ import './AdminDashboard.css';
 import { WorkplacesManager } from '../../components/admin/WorkplacesManager/WorkplacesManager';
 import { DashboardOverview } from '../../components/views/DashboardOverview/DashboardOverview';
 
+import { CertificateStudio } from './CertificateStudio/CertificateStudio';
+
 const AdminDashboard: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
     const store = useStore();
 
     // ----- Navigation State -----
-    const [currentNav, setCurrentNav] = useState<'directory' | 'learners' | 'staff' | 'qualifications' | 'cohorts' | 'workplaces' | 'dashboard'>(
+    const [currentNav, setCurrentNav] = useState<'directory' | 'learners' | 'staff' | 'qualifications' | 'cohorts' | 'workplaces' | 'studio' | 'dashboard'>(
         (location.state as any)?.activeTab || 'dashboard'
     );
 
@@ -86,13 +88,19 @@ const AdminDashboard: React.FC = () => {
             store.fetchEmployers();
         }
         if (currentNav === 'workplaces') store.fetchEmployers();
+
+        // 🚀 NEW: Ensure Certificate History is fetched when clicking Studio
+        if (currentNav === 'studio') {
+            if (store.fetchAdHocCertificates) store.fetchAdHocCertificates();
+        }
+
         if (currentNav === 'cohorts') {
             store.fetchCohorts();
             store.fetchProgrammes();
             store.fetchStaff();
             store.fetchLearners();
         }
-    }, [currentNav, store.fetchLearners, store.fetchStagingLearners, store.fetchProgrammes, store.fetchStaff, store.fetchCohorts, store.fetchEmployers]);
+    }, [currentNav, store.fetchLearners, store.fetchStagingLearners, store.fetchProgrammes, store.fetchStaff, store.fetchCohorts, store.fetchEmployers, store.fetchAdHocCertificates]);
 
     const handleLogout = async () => {
         try {
@@ -188,6 +196,11 @@ const AdminDashboard: React.FC = () => {
     // RENDER
     // ─────────────────────────────────────────────────────────────
 
+    // 🚀 If the active tab is 'studio', render the standalone component
+    if (currentNav === 'studio') {
+        return <CertificateStudio />;
+    }
+
     return (
         <div className="admin-layout">
 
@@ -223,27 +236,32 @@ const AdminDashboard: React.FC = () => {
 
             <main className="main-wrapper" style={{ padding: 16, paddingBottom: '5%' }}>
 
-                {currentNav !== 'workplaces' && (
-                    <header className="dashboard-header">
-                        <div className="header-title">
-                            <h1>
-                                {currentNav === 'dashboard' && 'Dashboard Overview'}
-                                {currentNav === 'directory' && 'Master Learner Directory'}
-                                {currentNav === 'learners' && 'Course Enrollments'}
-                                {currentNav === 'qualifications' && 'Qualification Templates'}
-                                {currentNav === 'staff' && 'Staff & Mentors'}
-                                {currentNav === 'cohorts' && 'Cohort Management'}
-                            </h1>
-                            <p>
-                                {currentNav === 'directory'
-                                    ? 'View and manage unique learner profiles across the system'
-                                    : 'Manage Statements of Results and Assessments'}
-                            </p>
-                        </div>
-                    </header>
-                )}
+                {/* 🚀 Consistent Header for ALL tabs */}
+                <header className="dashboard-header">
+                    <div className="header-title">
+                        <h1>
+                            {currentNav === 'dashboard' && 'Dashboard Overview'}
+                            {currentNav === 'directory' && 'Master Learner Directory'}
+                            {currentNav === 'learners' && 'Course Enrollments'}
+                            {currentNav === 'qualifications' && 'Qualification Templates'}
+                            {currentNav === 'staff' && 'Staff & Mentors'}
+                            {currentNav === 'cohorts' && 'Cohort Management'}
+                            {currentNav === 'workplaces' && 'Workplace Management'}
+                        </h1>
+                        <p>
+                            {currentNav === 'dashboard' && 'Welcome to the administration portal'}
+                            {currentNav === 'directory' && 'View and manage unique learner profiles across the system'}
+                            {currentNav === 'learners' && 'Manage learner enrollments, staging, and statements of results'}
+                            {currentNav === 'qualifications' && 'Create and manage curriculum blueprints and unit standards'}
+                            {currentNav === 'staff' && 'Manage facilitators, assessors, moderators, and support staff'}
+                            {currentNav === 'cohorts' && 'Organize learners into training classes and assign educators'}
+                            {currentNav === 'workplaces' && 'Manage employer partners and workplace mentor allocations'}
+                        </p>
+                    </div>
+                </header>
 
-                <div className={currentNav === 'workplaces' ? '' : 'admin-content'}>
+                {/* 🚀 Consistent Content Wrapper for ALL tabs */}
+                <div className="admin-content">
                     {/* VIEWS */}
                     {currentNav === 'dashboard' && <DashboardOverview />}
                     {currentNav === 'directory' && <LearnerDirectoryView learners={store.learners} />}

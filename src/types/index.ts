@@ -215,6 +215,14 @@ export interface EnrollmentRecord {
   exitReason?: string;
 }
 
+export interface CertificateRecord {
+  id: string;
+  type: string;
+  courseName: string;
+  issueDate: string;
+  pdfUrl: string;
+}
+
 // The Combined Table View
 // We merge Profile and Enrollment here so your UI components (like LearnersView)
 // don't break while we migrate the backend.
@@ -240,6 +248,7 @@ export interface DashboardLearner
   updatedBy?: string;
 
   campusId?: string;
+  certificates?: CertificateRecord[];
 
   trainingEndDate?: string;
 

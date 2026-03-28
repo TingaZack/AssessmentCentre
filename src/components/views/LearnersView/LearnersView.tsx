@@ -7,12 +7,13 @@ import {
     Eye, Archive as ArchiveIcon, Mail,
     Share2, GraduationCap, Users, History,
     ShieldCheck, X, AlertCircle,
-    Loader2, MapPin
+    Loader2, MapPin, Award
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import './LearnersView.css';
 import type { DashboardLearner, Cohort } from '../../../types';
 import { useStore } from '../../../store/useStore';
+import { CertificateGenerator } from '../../common/CertificateGenerator/CertificateGenerator';
 
 interface LearnersViewProps {
     learners: DashboardLearner[];
@@ -61,6 +62,9 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
     const [deletingLearner, setDeletingLearner] = useState<DashboardLearner | null>(null);
     const [deleteReason, setDeleteReason] = useState('');
     const [isDeleting, setIsDeleting] = useState(false);
+
+    // 🚀 CERTIFICATE GENERATOR STATE
+    const [certifyingLearner, setCertifyingLearner] = useState<DashboardLearner | null>(null);
 
     useEffect(() => {
         setSelectedIds(new Set());
@@ -479,6 +483,10 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
 
                                             {viewMode !== 'staging' && !learner.isArchived && !showArchived && (
                                                 <>
+                                                    {/* 🚀 NEW: Issue Certificate Button */}
+                                                    <button className="mlab-icon-btn mlab-icon-btn--emerald" onClick={() => setCertifyingLearner(learner)} title="Issue Certificate">
+                                                        <Award size={14} />
+                                                    </button>
                                                     {/* Pointing back to the Statement of Results (/sor/)! */}
                                                     <button className="mlab-icon-btn mlab-icon-btn--blue" onClick={() => navigate(`/sor/${learner.id}`)} title="View Statement of Results">
                                                         <Eye size={14} />
@@ -580,6 +588,14 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* CERTIFICATE GENERATOR MODAL */}
+            {certifyingLearner && (
+                <CertificateGenerator
+                    learner={certifyingLearner}
+                    onClose={() => setCertifyingLearner(null)}
+                />
             )}
         </div>
     );

@@ -30,6 +30,7 @@
   flex-direction: column;
   background: var(--mlab-bg);
   font-family: "Trebuchet MS", Arial, sans-serif;
+  overflow: hidden; /* Prevent the main window from ever scrolling */
 }
 
 .mlab-preview-state {
@@ -78,8 +79,7 @@
   align-items: center;
   justify-content: space-between;
   flex-shrink: 0;
-  position: sticky;
-  top: 0;
+  position: relative; /* Changed from sticky to relative since parent is fixed */
   z-index: 100;
   border-bottom: 3px solid var(--mlab-green);
 }
@@ -202,8 +202,9 @@
   flex: 1;
   display: grid;
   grid-template-columns: 280px 1fr;
-  align-items: start;
+  /* 🚀 FIXED: Removed align-items: start; so the columns stretch to fill the height */
   overflow: hidden;
+  min-height: 0; /* Critical for flex/grid children to scroll properly */
 }
 
 /* ── SIDEBAR ── */
@@ -305,11 +306,10 @@
 
 /* ── CONTENT DOC ── */
 .mlab-preview-doc {
-  flex: 1;
-  overflow-y: auto;
+  height: 100%; /* 🚀 FIXED: Tells the pane to lock to the grid height */
+  overflow-y: auto; /* 🚀 NOW the scrollbar will appear correctly inside the pane! */
   padding: 2.5rem 3rem;
   background: var(--mlab-bg);
-  min-height: 100%;
 }
 
 .mlab-preview-header {
