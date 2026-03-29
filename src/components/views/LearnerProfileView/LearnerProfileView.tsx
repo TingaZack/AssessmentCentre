@@ -1,5 +1,4 @@
 // src/components/admin/LearnerProfileView/LearnerProfileView.tsx
-// mLab CI v2.1 — ViewPortfolio aesthetic
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';

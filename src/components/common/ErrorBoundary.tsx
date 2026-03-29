@@ -1,5 +1,5 @@
 // src/components/common/ErrorBoundary.tsx
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+import React, { Component, type ErrorInfo, type ReactNode, } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 
 interface Props {

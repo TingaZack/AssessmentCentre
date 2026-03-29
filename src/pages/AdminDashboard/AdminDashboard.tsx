@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
 import { auth, db } from '../../lib/firebase';
-import { doc, writeBatch } from 'firebase/firestore';
+import { doc, writeBatch, updateDoc } from 'firebase/firestore';
 import { Menu, X } from 'lucide-react';
 import { useStore, type StaffMember } from '../../store/useStore';
 import type { DashboardLearner, ProgrammeTemplate, Cohort } from '../../types';
@@ -26,14 +26,16 @@ import { WorkplacesManager } from '../../components/admin/WorkplacesManager/Work
 import { DashboardOverview } from '../../components/views/DashboardOverview/DashboardOverview';
 
 import { CertificateStudio } from './CertificateStudio/CertificateStudio';
+import { AdminProfileView } from './AdminProfileView/AdminProfileView';
 
 const AdminDashboard: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
     const store = useStore();
+    const { user, setUser } = store;
 
     // ----- Navigation State -----
-    const [currentNav, setCurrentNav] = useState<'directory' | 'learners' | 'staff' | 'qualifications' | 'cohorts' | 'workplaces' | 'studio' | 'dashboard'>(
+    const [currentNav, setCurrentNav] = useState<'directory' | 'learners' | 'staff' | 'qualifications' | 'cohorts' | 'workplaces' | 'studio' | 'dashboard' | 'profile'>(
         (location.state as any)?.activeTab || 'dashboard'
     );
 
@@ -89,7 +91,6 @@ const AdminDashboard: React.FC = () => {
         }
         if (currentNav === 'workplaces') store.fetchEmployers();
 
-        // 🚀 NEW: Ensure Certificate History is fetched when clicking Studio
         if (currentNav === 'studio') {
             if (store.fetchAdHocCertificates) store.fetchAdHocCertificates();
         }
@@ -108,6 +109,18 @@ const AdminDashboard: React.FC = () => {
             navigate('/login');
         } catch (error) {
             console.error("Logout failed", error);
+        }
+    };
+
+    const handleUpdateAdminProfile = async (id: string, updates: any) => {
+        try {
+            await updateDoc(doc(db, 'users', id), updates);
+            if (user?.uid === id) {
+                setUser({ ...user, ...updates } as any);
+            }
+        } catch (err) {
+            console.error("Profile update failed:", err);
+            throw err;
         }
     };
 
@@ -196,7 +209,6 @@ const AdminDashboard: React.FC = () => {
     // RENDER
     // ─────────────────────────────────────────────────────────────
 
-    // 🚀 If the active tab is 'studio', render the standalone component
     if (currentNav === 'studio') {
         return <CertificateStudio />;
     }
@@ -236,7 +248,6 @@ const AdminDashboard: React.FC = () => {
 
             <main className="main-wrapper" style={{ padding: 16, paddingBottom: '5%' }}>
 
-                {/* 🚀 Consistent Header for ALL tabs */}
                 <header className="dashboard-header">
                     <div className="header-title">
                         <h1>
@@ -247,6 +258,7 @@ const AdminDashboard: React.FC = () => {
                             {currentNav === 'staff' && 'Staff & Mentors'}
                             {currentNav === 'cohorts' && 'Cohort Management'}
                             {currentNav === 'workplaces' && 'Workplace Management'}
+                            {currentNav === 'profile' && 'My Administrator Profile'}
                         </h1>
                         <p>
                             {currentNav === 'dashboard' && 'Welcome to the administration portal'}
@@ -256,11 +268,11 @@ const AdminDashboard: React.FC = () => {
                             {currentNav === 'staff' && 'Manage facilitators, assessors, moderators, and support staff'}
                             {currentNav === 'cohorts' && 'Organize learners into training classes and assign educators'}
                             {currentNav === 'workplaces' && 'Manage employer partners and workplace mentor allocations'}
+                            {currentNav === 'profile' && 'Manage your institutional compiler and contact details'}
                         </p>
                     </div>
                 </header>
 
-                {/* 🚀 Consistent Content Wrapper for ALL tabs */}
                 <div className="admin-content">
                     {/* VIEWS */}
                     {currentNav === 'dashboard' && <DashboardOverview />}
@@ -314,14 +326,19 @@ const AdminDashboard: React.FC = () => {
                             onArchive={(p) => setProgToArchive(p)}
                         />
                     )}
+
+                    {/* Profile Tab Integration */}
+                    {currentNav === 'profile' && (
+                        <AdminProfileView
+                            profile={user}
+                            user={user}
+                            onUpdate={handleUpdateAdminProfile}
+                        />
+                    )}
                 </div>
             </main>
 
-            {/* ─────────────────────────────────────────────────────────────
-                MODALS
-               ───────────────────────────────────────────────────────────── */}
-
-            {/* LEARNER MODALS */}
+            {/* MODALS */}
             {showAddLearnerModal && (
                 <LearnerFormModal
                     learner={selectedLearner || undefined}
@@ -358,7 +375,6 @@ const AdminDashboard: React.FC = () => {
                 />
             )}
 
-            {/* STAFF MODALS */}
             {showStaffModal && (
                 <StaffFormModal
                     onClose={() => setShowStaffModal(false)}
@@ -374,7 +390,6 @@ const AdminDashboard: React.FC = () => {
                 />
             )}
 
-            {/* COHORT MODALS */}
             {showCohortModal && (
                 <CohortFormModal
                     cohort={selectedCohort || undefined}
@@ -398,7 +413,6 @@ const AdminDashboard: React.FC = () => {
                 />
             )}
 
-            {/* PROGRAMME MODALS */}
             {showProgModal && (
                 <ProgrammeFormModal
                     programme={selectedProg}

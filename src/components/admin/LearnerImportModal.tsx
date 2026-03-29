@@ -126,7 +126,6 @@ export const LearnerImportModal: React.FC<LearnerImportModalProps> = ({
                             credits: parseInt(rawData[4]?.[1] || "0"),
                             totalNotionalHours: (parseInt(rawData[4]?.[1] || "0")) * 10,
                             nqfLevel: parseInt(rawData[1]?.[1] || "0"),
-                            // 🚀 SYNC: Qualification Date Assessed = Statement Issue Date
                             dateAssessed: issueDateStr,
                         },
                         knowledgeModules: [],

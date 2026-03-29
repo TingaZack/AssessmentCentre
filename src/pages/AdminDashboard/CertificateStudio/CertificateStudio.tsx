@@ -272,7 +272,7 @@ export const CertificateStudio: React.FC = () => {
 
     // ─── EDITABLE STUDIO STATE ───
     const [certData, setCertData] = useState({
-        template: 'luxury', // 🚀 New Template State
+        template: 'luxury',
         recipientName: '',
         recipientEmail: '',
         certType: 'Achievement',
@@ -1239,7 +1239,7 @@ export const CertificateStudio: React.FC = () => {
 //         fetchCertificateGroups,
 //         createCertificateGroup,
 //         renameCertificateGroup,
-//         fetchSettings // 🚀 Destructured to manually trigger
+//         fetchSettings
 //     } = useStore();
 
 //     const toast = useToast();
@@ -1273,7 +1273,6 @@ export const CertificateStudio: React.FC = () => {
 //     const [zoom, setZoom] = useState(0.65);
 //     const certRef = useRef<HTMLDivElement>(null);
 
-//     // 🚀 Force fetch settings if they are missing
 //     useEffect(() => {
 //         if (!settings && fetchSettings) {
 //             fetchSettings();
@@ -1702,7 +1701,7 @@ export const CertificateStudio: React.FC = () => {
 // //     const [newFolderName, setNewFolderName] = useState('');
 // //     const [editingFolderId, setEditingFolderId] = useState<string | null>(null);
 // //     const [editFolderName, setEditFolderName] = useState('');
-// //     const [isDownloadingAll, setIsDownloadingAll] = useState(false); // 🚀 Bulk Download State
+// //     const [isDownloadingAll, setIsDownloadingAll] = useState(false);
 
 // //     // ─── EDITABLE STUDIO STATE ───
 // //     const [certData, setCertData] = useState({
@@ -1801,7 +1800,7 @@ export const CertificateStudio: React.FC = () => {
 // //         return adHocCertificates.filter(c => c.groupId === activeFolder.id);
 // //     };
 
-// //     // 🚀 BULK DOWNLOAD HANDLER
+// //    
 // //     const handleDownloadAll = async () => {
 // //         const certs = getCertificatesForActiveFolder();
 // //         if (certs.length === 0) return;
@@ -2125,7 +2124,7 @@ export const CertificateStudio: React.FC = () => {
 // //                                     </h2>
 // //                                 </div>
 
-// //                                 {/* 🚀 NEW: Bulk Download Button */}
+// //                                 {/* Bulk Download Button */}
 // //                                 {getCertificatesForActiveFolder().length > 0 && (
 // //                                     <button
 // //                                         className="mlab-btn mlab-btn--outline-blue"

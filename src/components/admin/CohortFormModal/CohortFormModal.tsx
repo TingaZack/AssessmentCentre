@@ -62,7 +62,7 @@ export const CohortFormModal: React.FC<Props> = ({ cohort, onClose, onSave }) =>
             setFormData({
                 name: cohort.name,
                 programmeId: cohort.programmeId,
-                campusId: cohort.campusId || '', // 🚀 Load existing campus
+                campusId: cohort.campusId || '',
                 startDate: cohort.startDate,
                 endDate: cohort.endDate,
                 facilitatorId: cohort.facilitatorId,

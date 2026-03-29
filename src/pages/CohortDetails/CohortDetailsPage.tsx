@@ -1,36 +1,79 @@
 // src/pages/CohortDetailsPage/CohortDetailsPage.tsx
 
+// src/pages/CohortDetailsPage/CohortDetailsPage.tsx
+
 import React, { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
     Users, Calendar,
-    Clock, XCircle, AlertTriangle, CheckCircle,
-    Eye, Loader2, PenTool,
-    RefreshCcw, Info, Building2, Edit
+    Clock, Loader2,
+    RefreshCcw, Edit, DownloadCloud
 } from 'lucide-react';
 import { writeBatch, doc, collection, query, where, getDocs } from 'firebase/firestore';
+import * as XLSX from 'xlsx';
 import { db } from '../../lib/firebase';
 import { useStore } from '../../store/useStore';
 import { Sidebar } from '../../components/dashboard/Sidebar/Sidebar';
 import './CohortDetailsPage.css';
 import PageHeader, { type HeaderTheme } from '../../components/common/PageHeader/PageHeader';
 import { StatusModal, type StatusType } from '../../components/common/StatusModal/StatusModal';
-import { WorkplacePlacementModal } from '../../components/admin/WorkplacePlacementModal/WorkplacePlacementModal'; // 🚀 IMPORT NEW MODAL
+import { WorkplacePlacementModal } from '../../components/admin/WorkplacePlacementModal/WorkplacePlacementModal';
+import { useToast } from '../../components/common/Toast/Toast';
 import type { DashboardLearner } from '../../types';
+
+// ─── QCTO HELPERS ────────────────────────────────────────────────────────
+
+/**
+ * Formats date to YYYYMMDD as required by LEISA naming convention
+ */
+const formatQCTODate = (dateString?: string) => {
+    if (!dateString) return '';
+    const d = new Date(dateString);
+    if (isNaN(d.getTime())) return '';
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}${month}${day}`;
+};
+
+const getDOBFromID = (idNumber: string) => {
+    const cleanId = String(idNumber || '').replace(/\s/g, '');
+    if (cleanId.length !== 13) return '';
+    try {
+        let year = parseInt(cleanId.substring(0, 2), 10);
+        const month = cleanId.substring(2, 4);
+        const day = cleanId.substring(4, 6);
+        const currentYearShort = new Date().getFullYear() % 100;
+        year += year <= currentYearShort ? 2000 : 1900;
+        return `${year}${month}${day}`;
+    } catch (e) {
+        return '';
+    }
+};
+
+/**
+ * The "Nuclear Option" for Excel: Forces every cell to be an explicit String
+ */
+const createTextCell = (val: any) => ({
+    t: 's',
+    v: String(val === null || val === undefined ? '' : val),
+    z: '@'
+});
 
 export const CohortDetailsPage: React.FC = () => {
     const { cohortId } = useParams();
     const navigate = useNavigate();
+    const toast = useToast();
 
     const {
-        user, cohorts, learners, staff, employers,
+        user, cohorts, learners, staff, employers, settings, programmes,
         fetchCohorts, fetchLearners, fetchStaff, fetchEmployers
     } = useStore();
 
     const [isSyncing, setIsSyncing] = useState(false);
+    const [isExporting, setIsExporting] = useState(false);
     const [submissions, setSubmissions] = useState<any[]>([]);
 
-    // State for controlling the Status Modal
     const [modalConfig, setModalConfig] = useState<{
         isOpen: boolean;
         type: StatusType;
@@ -80,6 +123,123 @@ export const CohortDetailsPage: React.FC = () => {
         fetchSubmissions();
     }, [cohortId]);
 
+    // ─── QCTO EXPORT HANDLER ─────────────────────────────────────────────
+    const handleQCTOExport = async () => {
+        if (!cohort || enrolledLearners.length === 0) {
+            toast.error('Cannot export an empty cohort.');
+            return;
+        }
+
+        setIsExporting(true);
+        try {
+            // 1. Resolve Institutional Data
+            const activeCampus = settings?.campuses?.find((c: any) => c.id === cohort.campusId)
+                || settings?.campuses?.find((c: any) => c.isDefault)
+                || settings?.campuses?.[0];
+
+            const mainInstitutionName = settings?.institutionName || 'mLab_Southern_Africa';
+            const rawSdpCode = activeCampus?.siteAccreditationNumber?.trim() || 'SDP_PENDING';
+
+            // 2. Resolve Qualification Logic
+            const targetProgId = (cohort as any).programmeId || (cohort as any).qualificationId;
+            const qualObj = programmes.find(p => p.id === targetProgId || (p as any).saqaId === targetProgId);
+
+            const saqaId = String((qualObj as any)?.saqaId || targetProgId || '000000');
+            const qualNameForHeader = String(qualObj?.name || 'Qualification Name Missing');
+
+            const todayQCTO = formatQCTODate(new Date().toISOString());
+            const expectedCompletion = formatQCTODate(cohort.endDate);
+
+            // 3. Build AOA for Sheet 2
+            const headers = [
+                "SDP Code", "Qualification Id", "National Id", "Learner Alternate ID", "Alternative Id Type",
+                "Equity Code", "Nationality Code", "Home Language Code", "Gender Code", "Citizen Resident Status Code",
+                "Socioeconomic Status Code", "Disability Status Code", "Disability Rating", "Immigrant Status",
+                "Learner Last Name", "Learner First Name", "Learner Middle Name", "Learner Title", "Learner Birth Date",
+                "Learner Home Address 1", "Learner Home Address 2", "Learner Home Address 3",
+                "Learner Postal Address 1", "Learner Postal Address 2", "Learner Postal Address 3",
+                "Learner Home Address Postal Code", "Learner Postal Address Post Code",
+                "Learner Phone Number", "Learner Cell Phone Number", "Learner Fax Number", "Learner Email Address",
+                "Province Code", "STATSSA Area Code", "POPI Act Agree", "POPI Act Date",
+                "Expected Training Completion Date", "Statement of Results Status", "Statement of Results Issue Date",
+                "Assessment Centre Code", "Learner Readiness for EISA Type Id", "FLC", "FLC Statement of result number", "Date Stamp"
+            ];
+
+            const dataRows = [headers.map(createTextCell)];
+
+            enrolledLearners.forEach(learner => {
+                const d = learner.demographics || {};
+                const names = (learner.fullName || '').trim().split(' ');
+                const lastName = names.length > 1 ? names.pop() : '';
+                const firstNames = names.join(' ');
+                const title = d.genderCode === 'F' ? 'Ms' : 'Mr';
+
+                dataRows.push([
+                    rawSdpCode,
+                    saqaId,
+                    learner.idNumber,
+                    "", "533",
+                    d.equityCode, d.citizenResidentStatusCode === 'SA' ? 'SA' : 'O', d.homeLanguageCode, d.genderCode, d.citizenResidentStatusCode || 'SA',
+                    d.socioeconomicStatusCode, d.disabilityStatusCode || 'N', d.disabilityRating, "03",
+                    lastName, firstNames, "", title, getDOBFromID(learner.idNumber),
+                    d.learnerHomeAddress1, d.learnerHomeAddress2, "",
+                    d.learnerPostalAddress1 || d.learnerHomeAddress1, d.learnerPostalAddress2 || d.learnerHomeAddress2, "",
+                    d.learnerHomeAddressPostalCode, d.learnerPostalAddressPostCode || d.learnerHomeAddressPostalCode,
+                    learner.phone, learner.phone, "", learner.email,
+                    d.provinceCode,
+                    (d as any).statsaaAreaCode || '',
+                    d.popiActAgree || 'Y', d.popiActDate || todayQCTO,
+                    expectedCompletion, "02", "", "", "1", "06", "", todayQCTO
+                ].map(createTextCell));
+            });
+
+            const wb = XLSX.utils.book_new();
+
+            // Sheet 1: COMPULSORY COMPILER INSTRUCTIONS
+            const instructions = [
+                ["DETAILS: (COMPULSORY INFORMATION)"],
+                ["Name and Surname of Compiler:", user?.fullName || ''],
+                ["Email address:", user?.email || ''],
+                ["Contact Number of Compiler:", (user as any)?.phone || ''],
+                ["Contact Number of Institution:", settings?.phone || ''],
+                ["Name of Qualification:", qualNameForHeader],
+                ["Start Date:", cohort.startDate],
+                ["Expected Completion Date:", cohort.endDate],
+                ["Name of SDP:", mainInstitutionName],
+                ["Address of SDP:", activeCampus?.address || (settings as any)?.institutionAddress || ''],
+                ["Province:", activeCampus?.province || (settings as any)?.institutionProvince || ''],
+                [],
+                ["-------------------------------------------------"],
+                ["QCTO LEISA Data Load File (Text Encapsulated)"],
+                ["SDP Code:", rawSdpCode],
+                ["SAQA Qualification ID:", saqaId],
+                ["Export Date:", new Date().toLocaleDateString()],
+                ["Naming Convention Used:", `LEISA${todayQCTO}-${mainInstitutionName}`]
+            ].map(row => row.map(createTextCell));
+
+            const wsInstructions = XLSX.utils.aoa_to_sheet(instructions);
+            wsInstructions['!cols'] = [{ wch: 35 }, { wch: 65 }];
+            XLSX.utils.book_append_sheet(wb, wsInstructions, "Instructions");
+
+            const wsData = XLSX.utils.aoa_to_sheet(dataRows);
+            XLSX.utils.book_append_sheet(wb, wsData, "Learner Enrolment and EISA");
+
+            // FILENAME: LEISAyyyymmdd-SDP/AC name
+            // Note: We remove special characters from the institution name for file safety
+            const safeInstitutionName = mainInstitutionName.replace(/[^a-zA-Z0-9]/g, '_');
+            const fileName = `LEISA${todayQCTO}-${safeInstitutionName}.xlsx`;
+
+            XLSX.writeFile(wb, fileName);
+            toast.success(`QCTO Compliant file generated: ${fileName}`);
+
+        } catch (error) {
+            console.error("Export failed:", error);
+            toast.error("Export failed. Ensure institutional settings are configured.");
+        } finally {
+            setIsExporting(false);
+        }
+    };
+
     const syncLearnerWorkbooks = async () => {
         if (!cohortId) return;
         setIsSyncing(true);
@@ -104,7 +264,7 @@ export const CohortDetailsPage: React.FC = () => {
                     isOpen: true,
                     type: 'info',
                     title: 'No Assessments Found',
-                    message: 'There are no active assessments published for this class yet. Nothing to sync.'
+                    message: 'There are no active assessments published for this class yet.'
                 });
                 return;
             }
@@ -153,30 +313,24 @@ export const CohortDetailsPage: React.FC = () => {
             if (newDocsCount > 0) {
                 await batch.commit();
                 await fetchSubmissions();
-
                 setModalConfig({
                     isOpen: true,
                     type: 'success',
                     title: 'Sync Complete',
-                    message: `Successfully generated ${newDocsCount} missing workbook(s) for late-joining learners.`
+                    message: `Generated ${newDocsCount} missing workbook(s).`
                 });
             } else {
                 setModalConfig({
                     isOpen: true,
                     type: 'success',
                     title: 'Already Synced',
-                    message: 'All learners currently enrolled in this class are fully up-to-date with their assessment workbooks.'
+                    message: 'All enrolled learners are up-to-date.'
                 });
             }
 
         } catch (error: any) {
             console.error("Sync Error:", error);
-            setModalConfig({
-                isOpen: true,
-                type: 'error',
-                title: 'Sync Failed',
-                message: `An error occurred while trying to sync workbooks: ${error.message}`
-            });
+            setModalConfig({ isOpen: true, type: 'error', title: 'Sync Failed', message: error.message });
         } finally {
             setIsSyncing(false);
         }
@@ -198,54 +352,35 @@ export const CohortDetailsPage: React.FC = () => {
 
     const getStaffName = (id: string) => staff.find(s => s.id === id)?.fullName || 'Unassigned';
 
-    const getEmployerName = (id?: string) => {
-        if (!id) return null;
-        return employers.find(e => e.id === id)?.name || 'Unknown Workplace';
-    };
+    const getEmployerName = (id?: string) => employers.find(e => e.id === id)?.name || 'Unknown Workplace';
 
     const formatDate = (iso: string | null) => iso ? new Date(iso).toLocaleDateString() : 'Present';
 
     const handleDropLearner = async (learnerId: string, learnerName: string) => {
-        const reason = window.prompt(
-            `QCTO REQUIREMENT:\n\nWhy is ${learnerName} leaving ${cohort.name}?\n(e.g., Found Employment, Medical, Non-attendance)`
-        );
-
+        const reason = window.prompt(`QCTO EXIT REASON: Why is ${learnerName} leaving?`);
         if (reason && reason.trim().length > 0) {
-            if (window.confirm(
-                `Are you sure you want to mark ${learnerName} as DROPPED from THIS CLASS?\n\nReason: "${reason}"\n\nThis will not affect their other enrollments.`
-            )) {
+            if (window.confirm(`Mark ${learnerName} as dropped?`)) {
                 await useStore.getState().dropLearnerFromCohort(learnerId, cohort.id, reason);
             }
-        } else if (reason !== null) {
-            alert('Exit Reason is mandatory for QCTO compliance.');
         }
     };
 
     const handleBackNavigation = () => {
-        if (isAdmin) {
-            navigate('/admin', { state: { activeTab: 'cohorts' } });
-        } else if (isFacilitator) {
-            navigate('/facilitator');
-        } else {
-            navigate(-1);
-        }
+        isAdmin ? navigate('/admin', { state: { activeTab: 'cohorts' } }) : navigate(-1);
     };
 
     return (
         <div className="admin-layout" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
 
-            {/* STATUS MODAL */}
             {modalConfig.isOpen && (
                 <StatusModal
                     type={modalConfig.type}
                     title={modalConfig.title}
                     message={modalConfig.message}
                     onClose={() => setModalConfig(prev => ({ ...prev, isOpen: false }))}
-                    confirmText="Acknowledge"
                 />
             )}
 
-            {/* WORKPLACE PLACEMENT MODAL */}
             {learnerToPlace && (
                 <WorkplacePlacementModal
                     learner={learnerToPlace}
@@ -276,29 +411,26 @@ export const CohortDetailsPage: React.FC = () => {
                     }}
                     actions={
                         (isAdmin || isFacilitator) ? (
-                            <PageHeader.Btn
-                                variant="outline"
-                                onClick={syncLearnerWorkbooks}
-                                disabled={isSyncing}
-                            >
-                                {isSyncing ? <Loader2 size={14} className="spin" /> : <RefreshCcw size={14} />}
-                                Sync Workbooks
-                            </PageHeader.Btn>
+                            <div style={{ display: 'flex', gap: '10px' }}>
+                                <PageHeader.Btn variant="outline" onClick={handleQCTOExport} disabled={isExporting}>
+                                    {isExporting ? <Loader2 size={14} className="spin" /> : <DownloadCloud size={14} />}
+                                    Export LEISA
+                                </PageHeader.Btn>
+                                <PageHeader.Btn variant="outline" onClick={syncLearnerWorkbooks} disabled={isSyncing}>
+                                    {isSyncing ? <Loader2 size={14} className="spin" /> : <RefreshCcw size={14} />}
+                                    Sync Workbooks
+                                </PageHeader.Btn>
+                            </div>
                         ) : undefined
                     }
                 />
 
                 <div className="admin-content" style={{ paddingBottom: '4rem' }}>
 
-                    {/* ── Summary Card ────────────────────────────────────── */}
                     <div className="mlab-summary-card">
                         <div className="mlab-summary-item">
-                            <span className="mlab-summary-item__label">
-                                <Calendar size={13} /> Training Dates
-                            </span>
-                            <span className="mlab-summary-item__value">
-                                {cohort.startDate} — {cohort.endDate}
-                            </span>
+                            <span className="mlab-summary-item__label"><Calendar size={13} /> Training Dates</span>
+                            <span className="mlab-summary-item__value">{cohort.startDate} — {cohort.endDate}</span>
                         </div>
                         <div className="mlab-summary-item">
                             <span className="mlab-summary-item__label">Facilitator</span>
@@ -314,24 +446,11 @@ export const CohortDetailsPage: React.FC = () => {
                         </div>
                     </div>
 
-                    {/* ── Enrolled Learners ────────────────────────────────── */}
                     <div className="mlab-section">
-
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                             <h3 className="mlab-section__title" style={{ margin: 0 }}>
-                                <Users size={16} />
-                                Enrolled Learners ({enrolledLearners.length})
+                                <Users size={16} /> Enrolled Learners ({enrolledLearners.length})
                             </h3>
-                        </div>
-
-                        <div style={{ background: '#e0f2fe', border: '1px solid #bae6fd', padding: '12px 16px', borderRadius: '8px', display: 'flex', gap: '12px', alignItems: 'flex-start', marginBottom: '1rem' }}>
-                            <Info size={18} color="#0284c7" style={{ marginTop: '2px' }} />
-                            <div>
-                                <h4 style={{ margin: '0 0 4px 0', fontSize: '0.9rem', color: '#0369a1' }}>Adding learners late?</h4>
-                                <p style={{ margin: 0, fontSize: '0.8rem', color: '#0c4a6e', lineHeight: 1.4 }}>
-                                    If a learner joined this class <strong>after</strong> assessments were published, click <strong>"Sync Workbooks"</strong> at the top of the page. This will generate their missing portfolios without affecting existing students' progress.
-                                </p>
-                            </div>
                         </div>
 
                         <div className="mlab-table-wrap">
@@ -339,8 +458,8 @@ export const CohortDetailsPage: React.FC = () => {
                                 <thead>
                                     <tr>
                                         <th>Learner</th>
-                                        <th>Workplace Placement</th> {/* 🚀 NEW COLUMN */}
-                                        <th>Progress (Modules)</th>
+                                        <th>Workplace</th>
+                                        <th>Progress</th>
                                         <th>Status</th>
                                         <th>Actions</th>
                                     </tr>
@@ -349,140 +468,37 @@ export const CohortDetailsPage: React.FC = () => {
                                     {enrolledLearners.map(learner => {
                                         const isDropped = learner.status === 'dropped';
                                         const routingId = learner.enrollmentId || learner.id;
-
                                         const learnerSubs = submissions.filter(s => s.enrollmentId === routingId || s.learnerId === learner.id);
                                         const pendingMarking = learnerSubs.filter(s => s.status === 'submitted');
-
-                                        const normalizeType = (type?: string) => (type || 'knowledge').toLowerCase();
-                                        const isLearnerDone = (status?: string) => status && !['not_started', 'in_progress'].includes(status);
-
-                                        const knowSubs = learnerSubs.filter(s => normalizeType(s.moduleType) === 'knowledge');
-                                        const pracSubs = learnerSubs.filter(s => normalizeType(s.moduleType) === 'practical');
-
-                                        const completedK = knowSubs.filter(s => isLearnerDone(s.status)).length;
-                                        const totalK = knowSubs.length;
-
-                                        const completedP = pracSubs.filter(s => isLearnerDone(s.status)).length;
-                                        const totalP = pracSubs.length;
-
                                         const employerName = getEmployerName(learner.employerId);
 
                                         return (
                                             <tr key={learner.id} className={isDropped ? 'mlab-tr--dropped' : ''}>
                                                 <td>
-                                                    <div className={`mlab-cell-name${isDropped ? ' mlab-cell-name--dropped' : ''}`}>
-                                                        {learner.fullName}
-                                                    </div>
-                                                    <div className={`mlab-cell-sub${isDropped ? ' mlab-cell-sub--dropped' : ''}`}>
-                                                        {learner.idNumber}
-                                                    </div>
+                                                    <div className="mlab-cell-name">{learner.fullName}</div>
+                                                    <div className="mlab-cell-sub">{learner.idNumber}</div>
                                                     {!isDropped && pendingMarking.length > 0 && (
-                                                        <div style={{ marginTop: '6px', fontSize: '0.75rem', color: '#3b82f6', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                            <Clock size={12} /> {pendingMarking.length} Script{pendingMarking.length > 1 ? 's' : ''} Awaiting Marking
+                                                        <div style={{ color: '#3b82f6', fontSize: '0.75rem', marginTop: '4px' }}>
+                                                            <Clock size={12} /> {pendingMarking.length} marking pending
                                                         </div>
                                                     )}
                                                 </td>
-
-                                                {/* 🚀 NEW WORKPLACE PLACEMENT COLUMN */}
-                                                <td>
-                                                    {employerName ? (
-                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                                            <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                                <Building2 size={13} color="#0ea5e9" /> {employerName}
-                                                            </span>
-                                                            <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Mentor: {getStaffName(learner.mentorId as string)}</span>
-                                                        </div>
-                                                    ) : (
-                                                        <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontStyle: 'italic' }}>Pending Placement</span>
-                                                    )}
-                                                </td>
-
+                                                <td>{employerName}</td>
                                                 <td>
                                                     <div className="mlab-module-chips">
-                                                        <span className="mlab-chip mlab-chip--k" title={`${completedK} out of ${totalK} Knowledge Modules submitted`}>
-                                                            K: {completedK}/{totalK}
-                                                        </span>
-                                                        <span className="mlab-chip mlab-chip--p" title={`${completedP} out of ${totalP} Practical Modules submitted`}>
-                                                            P: {completedP}/{totalP}
-                                                        </span>
+                                                        <span className="mlab-chip mlab-chip--k">K: {learnerSubs.filter(s => s.moduleType === 'knowledge' && s.status !== 'not_started').length}</span>
+                                                        <span className="mlab-chip mlab-chip--p">P: {learnerSubs.filter(s => s.moduleType === 'practical' && s.status !== 'not_started').length}</span>
                                                     </div>
                                                 </td>
                                                 <td>
-                                                    {isDropped ? (
-                                                        <div className="mlab-dropped-status">
-                                                            <div className="mlab-dropped-status__label">
-                                                                <XCircle size={13} /> Dropped
-                                                            </div>
-                                                            <div className="mlab-dropped-status__detail">
-                                                                Reason: {learner.exitReason || 'Unknown'}
-                                                            </div>
-                                                            <div className="mlab-dropped-status__detail">
-                                                                Date: {formatDate(learner.exitDate || null)}
-                                                            </div>
-                                                        </div>
-                                                    ) : (
-                                                        <span className="mlab-badge mlab-badge--active">
-                                                            <CheckCircle size={13} /> Active
-                                                        </span>
-                                                    )}
+                                                    {isDropped ? <span className="text-red-500">Dropped</span> : <span className="text-green-500">Active</span>}
                                                 </td>
                                                 <td>
-                                                    {!isDropped && (
-                                                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-
-                                                            {/* 🚀 DYNAMIC ASSIGN/UPDATE WORKPLACE BUTTON */}
-                                                            {isAdmin && (
-                                                                <button
-                                                                    className="mlab-btn"
-                                                                    style={{
-                                                                        background: 'transparent',
-                                                                        color: employerName ? '#475569' : '#0284c7',
-                                                                        border: `1px solid ${employerName ? '#cbd5e1' : '#0284c7'}`,
-                                                                        display: 'flex',
-                                                                        gap: '4px',
-                                                                        alignItems: 'center'
-                                                                    }}
-                                                                    onClick={() => setLearnerToPlace(learner)}
-                                                                >
-                                                                    {employerName ? (
-                                                                        <>
-                                                                            <Edit size={13} /> Update Placement
-                                                                        </>
-                                                                    ) : (
-                                                                        <>
-                                                                            <Building2 size={13} /> Assign Workplace
-                                                                        </>
-                                                                    )}
-                                                                </button>
-                                                            )}
-
-                                                            <button
-                                                                className="mlab-btn mlab-btn--outline-blue"
-                                                                onClick={() => navigate(`/portfolio/${routingId}`, { state: { cohortId: cohort.id } })}
-                                                            >
-                                                                <Eye size={13} /> View Portfolio
-                                                            </button>
-
-                                                            {pendingMarking.length > 0 && (isAdmin || isFacilitator) && (
-                                                                <button
-                                                                    className="mlab-btn"
-                                                                    style={{ background: '#3b82f6', color: 'white', borderColor: '#3b82f6', display: 'flex', gap: '4px', alignItems: 'center' }}
-                                                                    onClick={() => navigate(`/portfolio/submission/${pendingMarking[0].id}`)}
-                                                                >
-                                                                    <PenTool size={13} /> Mark Script
-                                                                </button>
-                                                            )}
-
-                                                            {isAdmin && (
-                                                                <button
-                                                                    className="mlab-btn mlab-btn--outline-red"
-                                                                    onClick={() => handleDropLearner(learner.id, learner.fullName)}
-                                                                >
-                                                                    <AlertTriangle size={13} /> Record Exit
-                                                                </button>
-                                                            )}
-                                                        </div>
-                                                    )}
+                                                    <div style={{ display: 'flex', gap: '8px' }}>
+                                                        {isAdmin && <button className="mlab-btn" onClick={() => setLearnerToPlace(learner)}><Edit size={13} /></button>}
+                                                        <button className="mlab-btn mlab-btn--outline-blue" onClick={() => navigate(`/portfolio/${routingId}`, { state: { cohortId: cohort.id } })}>View</button>
+                                                        {isAdmin && <button className="mlab-btn mlab-btn--outline-red" onClick={() => handleDropLearner(learner.id, learner.fullName)}>Drop</button>}
+                                                    </div>
                                                 </td>
                                             </tr>
                                         );
@@ -496,3 +512,4 @@ export const CohortDetailsPage: React.FC = () => {
         </div>
     );
 };
+

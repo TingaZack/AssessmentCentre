@@ -1,6 +1,8 @@
+// src/auth/RoleProtectedRoute.tsx
+
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import { Loader, AlertTriangle } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { SignatureSetupModal } from '../components/auth/SignatureSetupModal';
 
@@ -13,18 +15,7 @@ export const RoleProtectedRoute: React.FC<Props> = ({ children, allowedRoles }) 
     const { user, loading } = useStore();
     const location = useLocation();
 
-    // 1. WHILE LOADING: Prevent UI flicker
-    // if (loading) {
-    //     return (
-    //         <div style={{
-    //             height: '100vh', display: 'flex', justifyContent: 'center',
-    //             alignItems: 'center', flexDirection: 'column', gap: '1rem', color: '#073f4e'
-    //         }}>
-    //             <Loader className="spin" size={32} />
-    //             <p>Verifying Access...</p>
-    //         </div>
-    //     );
-    // }
+    // WHILE LOADING: Prevent UI flicker
     if (loading) return (
         <div className="ap-fullscreen" style={{ position: 'absolute', left: 0, right: 0, bottom: 0, top: 0 }}>
             <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
@@ -34,13 +25,12 @@ export const RoleProtectedRoute: React.FC<Props> = ({ children, allowedRoles }) 
         </div>
     );
 
-    // 2. NO USER: Redirect to login
+    // NO USER: Redirect to login
     if (!user) {
         return <Navigate to="/login" state={{ from: location }} replace />;
     }
 
-    // 🚀 3. SIGNATURE CHECK (Staff AND Learners)
-    // Digital signatures are a legal requirement for QCTO/SETA compliance.
+    // SIGNATURE CHECK (Staff AND Learners)
     const requiresSignature = ['facilitator', 'assessor', 'moderator', 'mentor', 'learner'].includes(user.role);
 
     if (requiresSignature && !user.signatureUrl) {
@@ -52,60 +42,79 @@ export const RoleProtectedRoute: React.FC<Props> = ({ children, allowedRoles }) 
         );
     }
 
-    // 🚀 4. THE LEARNER GATEKEEPER (Learners KYC)
+    // DEEP KYC CHECKS
+    // 1. Learner Check (Nested in demographics)
+    const hasLearnerEquity = !!(user as any).demographics?.equityCode;
+    const hasLearnerProvince = !!(user as any).demographics?.provinceCode;
+    const isLearnerFullyCompliant = user.profileCompleted === true && hasLearnerEquity && hasLearnerProvince;
+
+    // 2. Staff/Admin Check (Root level province added in the new updates)
+    const hasStaffProvince = !!(user as any).province;
+    const isStaffFullyCompliant = user.profileCompleted === true && hasStaffProvince;
+
+
+    // THE LEARNER GATEKEEPER
     if (
         user.role === 'learner' &&
-        user.profileCompleted !== true &&
+        !isLearnerFullyCompliant &&
         location.pathname !== '/setup-profile'
     ) {
+        console.warn("Learner QCTO compliance check failed. Redirecting to setup.");
         return <Navigate to="/setup-profile" replace />;
     }
 
-    // 🚀 5. THE ASSESSOR GATEKEEPER
-    // Prevents assessors from marking scripts until professional docs are uploaded.
+    // THE ASSESSOR GATEKEEPER
     if (
         user.role === 'assessor' &&
-        user.profileCompleted !== true &&
+        !isStaffFullyCompliant &&
         location.pathname !== '/setup-assessor'
     ) {
         console.warn("Assessor compliance check failed. Redirecting to professional setup.");
         return <Navigate to="/setup-assessor" replace />;
     }
 
-    // 🚀 6. THE MODERATOR GATEKEEPER
-    // Prevents moderators from endorsing scripts until professional docs are uploaded.
+    // THE MODERATOR GATEKEEPER
     if (
         user.role === 'moderator' &&
-        user.profileCompleted !== true &&
+        !isStaffFullyCompliant &&
         location.pathname !== '/setup-moderator'
     ) {
         console.warn("Moderator compliance check failed. Redirecting to professional setup.");
         return <Navigate to="/setup-moderator" replace />;
     }
 
-    // 🚀 7. THE FACILITATOR GATEKEEPER (Facilitator Compliance)
-    // Prevents facilitators from accessing classes until ID and CV are uploaded.
+    // THE FACILITATOR GATEKEEPER
     if (
         user.role === 'facilitator' &&
-        user.profileCompleted !== true &&
+        !isStaffFullyCompliant &&
         location.pathname !== '/setup-facilitator'
     ) {
         console.warn("Facilitator compliance check failed. Redirecting to professional setup.");
         return <Navigate to="/setup-facilitator" replace />;
     }
 
-    // 🚀 8. THE MENTOR GATEKEEPER (Workplace Verification)
-    // Prevents mentors from viewing logbooks until their company details are confirmed.
+    // THE MENTOR GATEKEEPER
     if (
         user.role === 'mentor' &&
-        user.profileCompleted !== true &&
+        !isStaffFullyCompliant &&
         location.pathname !== '/setup-mentor'
     ) {
         console.warn("Mentor compliance check failed. Redirecting to professional setup.");
         return <Navigate to="/setup-mentor" replace />;
     }
 
-    // 9. ROLE CHECK
+    // THE ADMIN GATEKEEPER
+    if (
+        user.role === 'admin' &&
+        !isStaffFullyCompliant &&
+        location.pathname !== '/setup-admin' &&
+        location.pathname !== '/admin/profile'
+    ) {
+        console.warn("Admin compliance check failed. Redirecting to professional setup.");
+        return <Navigate to="/setup-admin" replace />;
+    }
+
+    // ROLE CHECK
     const hasAccess = allowedRoles.includes(user.role) || user.role === 'admin';
 
     if (!hasAccess) {
@@ -135,7 +144,6 @@ export const RoleProtectedRoute: React.FC<Props> = ({ children, allowedRoles }) 
         );
     }
 
-    // 10. ALL CHECKS PASSED: Render the requested page
+    // ALL CHECKS PASSED: Render the requested page
     return <>{children}</>;
 };
-

@@ -2,9 +2,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Menu, X } from 'lucide-react'; // 🚀 Added Icons
+import { Menu, X } from 'lucide-react';
 import { signOut } from 'firebase/auth';
-import './FacilitatorLayout.css'; // 🚀 Import the new CSS
+import './FacilitatorLayout.css';
 import { useStore } from '../../../store/useStore';
 import { auth } from '../../../lib/firebase';
 import { Sidebar } from '../../../components/dashboard/Sidebar/Sidebar';

@@ -202,7 +202,6 @@
   flex: 1;
   display: grid;
   grid-template-columns: 280px 1fr;
-  /* 🚀 FIXED: Removed align-items: start; so the columns stretch to fill the height */
   overflow: hidden;
   min-height: 0; /* Critical for flex/grid children to scroll properly */
 }
@@ -306,8 +305,8 @@
 
 /* ── CONTENT DOC ── */
 .mlab-preview-doc {
-  height: 100%; /* 🚀 FIXED: Tells the pane to lock to the grid height */
-  overflow-y: auto; /* 🚀 NOW the scrollbar will appear correctly inside the pane! */
+  height: 100%;
+  overflow-y: auto;
   padding: 2.5rem 3rem;
   background: var(--mlab-bg);
 }

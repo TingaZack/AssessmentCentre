@@ -108,7 +108,7 @@ export const createCohortSlice: StateCreator<
 
     batch.set(cohortRef, cohortData);
 
-    // 2. 🚀 THE HANDSHAKE: Sync Learners to this new Cohort
+    // 2. THE HANDSHAKE: Sync Learners to this new Cohort
     if (newCohort.learnerIds && newCohort.learnerIds.length > 0) {
       newCohort.learnerIds.forEach((learnerId: string) => {
         const learnerRef = doc(db, "learners", learnerId);
@@ -208,7 +208,7 @@ export const createCohortSlice: StateCreator<
         reasons?.moderator,
       );
 
-    // --- 2. 🚀 LEARNER SYNC LOGIC (The "Handshake") ---
+    // --- 2. LEARNER SYNC LOGIC (The "Handshake") ---
     if (updates.learnerIds) {
       const newIds = updates.learnerIds;
 

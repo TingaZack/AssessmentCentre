@@ -414,7 +414,7 @@ export const AssessmentPreview: React.FC = () => {
                                 );
                             }
 
-                            /* 🚀 UPDATED: QCTO Workplace Checkpoint (Matches new schema) */
+                            /* QCTO Workplace Checkpoint (Matches new schema) */
                             if (block.type === 'qcto_workplace') {
                                 qNum++;
                                 return (

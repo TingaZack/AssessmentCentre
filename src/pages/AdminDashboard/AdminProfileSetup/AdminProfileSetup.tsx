@@ -1,76 +1,58 @@
-// src/pages/FacilitatorDashboard/ModeratorProfileSetup/ModeratorProfileSetup.tsx
+// src/pages/AdminDashboard/AdminProfileSetup/AdminProfileSetup.tsx
+
 
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Autocomplete from "react-google-autocomplete";
 import {
     User, Upload, CheckCircle,
-    Save, ChevronRight, ShieldCheck, Loader2, Camera, Calendar, Fingerprint, Globe, Scale, MapPin, Phone
+    Save, ChevronRight, ShieldCheck, Loader2, Camera, Calendar, Fingerprint, Globe, Briefcase, Phone, MapPin
 } from 'lucide-react';
 import { doc, updateDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useStore } from '../../../store/useStore';
 import { db, storage } from '../../../lib/firebase';
+
 import mLabLogo from '../../../assets/logo/mlab_logo.png';
-import '../AssessorProfileSetup/AssessorProfileSetup.css';
+// import './AdminProfileSetup.css';
+import '../../FacilitatorDashboard/AssessorProfileSetup/AssessorProfileSetup.css';
 
-// ─── DICTIONARIES ─────────────────────────────────────────────────────────
-const QCTO_PROVINCES = [
-    "Western Cape", "Eastern Cape", "Northern Cape", "Free State",
-    "KwaZulu-Natal", "North West", "Gauteng", "Mpumalanga", "Limpopo"
-];
-
-interface ModeratorData {
+interface AdminData {
     fullName: string;
     nationalityType: 'South African' | 'Foreign National';
     idNumber?: string;
     passportNumber?: string;
-    workPermitNumber?: string;
     dateOfBirth: string;
 
-    // Contact & Address
-    phone?: string;
-    streetAddress?: string;
-    city?: string;
-    province?: string;
+    // Admin / Compiler Specific
+    jobTitle: string;
+    phone: string;
+    email: string;
+    streetAddress: string;
+    city: string;
+    province: string;
     postalCode?: string;
-    sameAsResidential?: boolean;
-    postalAddress?: string;
-    customPostalCode?: string;
 
-    moderatorRegNumber: string;    // Specific to Moderators
-    assessorRegNumber: string;     // Often required for Moderators
-    primarySeta: string;
-    specializationScope: string;
-    registrationExpiry: string;
-    yearsExperience: number;
-    highestQualification: string;
-    bio: string;
     popiaConsent: boolean;
     profilePhotoUrl?: string;
 }
 
-export const ModeratorProfileSetup: React.FC = () => {
+export const AdminProfileSetup: React.FC = () => {
     const navigate = useNavigate();
     const { user, refreshUser, setUser, settings } = useStore();
 
     const [step, setStep] = useState(1);
     const [loading, setLoading] = useState(false);
-    const [formData, setFormData] = useState<Partial<ModeratorData>>({
+    const [formData, setFormData] = useState<Partial<AdminData>>({
         fullName: user?.fullName || '',
+        email: user?.email || '',
         phone: (user as any)?.phone || '',
         nationalityType: 'South African',
         popiaConsent: false,
-        yearsExperience: 0,
-        primarySeta: 'MICT SETA',
-        sameAsResidential: true,
     });
 
     const [idDoc, setIdDoc] = useState<File | null>(null);
-    const [permitDoc, setPermitDoc] = useState<File | null>(null);
-    const [moderatorCert, setModeratorCert] = useState<File | null>(null);
-    const [regLetter, setRegLetter] = useState<File | null>(null);
-    const [cvDoc, setCvDoc] = useState<File | null>(null);
+    const [appointmentDoc, setAppointmentDoc] = useState<File | null>(null);
 
     const [profilePhoto, setProfilePhoto] = useState<File | null>(null);
     const [photoPreview, setPhotoPreview] = useState<string | null>(null);
@@ -99,7 +81,7 @@ export const ModeratorProfileSetup: React.FC = () => {
     };
 
     const canMoveToStep3 = () => {
-        return !!(formData.moderatorRegNumber && formData.primarySeta && formData.highestQualification && formData.city);
+        return !!(formData.jobTitle && formData.phone && formData.city && formData.province);
     };
 
     // ─── HANDLERS ─────────────────────────────────────────────────────────
@@ -122,13 +104,13 @@ export const ModeratorProfileSetup: React.FC = () => {
         }
     };
 
-    // Handle Google Address Autocomplete
     const handlePlaceSelected = (place: any) => {
         const addressComponents = place.address_components;
         const getComp = (type: string) => addressComponents?.find((c: any) => c.types.includes(type))?.long_name || "";
 
         let provString = getComp("administrative_area_level_1");
-        const matchedProv = QCTO_PROVINCES.find(p => provString.includes(p)) || '';
+        const provinceOptions = ["Western Cape", "Eastern Cape", "Northern Cape", "Free State", "KwaZulu-Natal", "North West", "Gauteng", "Mpumalanga", "Limpopo"];
+        const matchedProv = provinceOptions.find(p => provString.includes(p)) || '';
 
         setFormData(prev => ({
             ...prev,
@@ -152,22 +134,16 @@ export const ModeratorProfileSetup: React.FC = () => {
             const getExt = (f: File) => f.name.split('.').pop();
 
             let photoUrl = user?.profilePhotoUrl || "";
-            if (profilePhoto) photoUrl = await handleFileUpload(profilePhoto, `staff/${user.uid}/profile_${Date.now()}.${getExt(profilePhoto)}`);
+            if (profilePhoto) {
+                photoUrl = await handleFileUpload(profilePhoto, `staff/${user.uid}/profile_${Date.now()}.${getExt(profilePhoto)}`);
+            }
 
             const docs: any = {};
             if (idDoc) docs.identificationUrl = await handleFileUpload(idDoc, `staff/${user.uid}/identity_doc_${Date.now()}.${getExt(idDoc)}`);
-            if (moderatorCert) docs.moderatorCertUrl = await handleFileUpload(moderatorCert, `staff/${user.uid}/moderator_cert_${Date.now()}.${getExt(moderatorCert)}`);
-            if (regLetter) docs.regLetterUrl = await handleFileUpload(regLetter, `staff/${user.uid}/reg_letter_${Date.now()}.${getExt(regLetter)}`);
-            if (cvDoc) docs.cvUrl = await handleFileUpload(cvDoc, `staff/${user.uid}/cv_${Date.now()}.${getExt(cvDoc)}`);
-            if (permitDoc) docs.workPermitUrl = await handleFileUpload(permitDoc, `staff/${user.uid}/work_permit_${Date.now()}.${getExt(permitDoc)}`);
-
-            const postalLine1 = formData.sameAsResidential ? formData.streetAddress : formData.postalAddress;
-            const postalCodeFinal = formData.sameAsResidential ? formData.postalCode : formData.customPostalCode;
+            if (appointmentDoc) docs.appointmentLetterUrl = await handleFileUpload(appointmentDoc, `staff/${user.uid}/appointment_letter_${Date.now()}.${getExt(appointmentDoc)}`);
 
             const finalData = {
                 ...formData,
-                postalAddress: postalLine1,
-                customPostalCode: postalCodeFinal,
                 profilePhotoUrl: photoUrl,
                 complianceDocs: { ...(user as any).complianceDocs, ...docs, updatedAt: new Date().toISOString() },
                 profileCompleted: true,
@@ -181,7 +157,7 @@ export const ModeratorProfileSetup: React.FC = () => {
             }
 
             await refreshUser();
-            navigate('/moderation', { replace: true }); // Moderators go to moderation dashboard
+            navigate('/admin', { replace: true });
         } catch (error) {
             console.error(error);
             alert('Compliance sync failed. Please check your connection.');
@@ -192,16 +168,16 @@ export const ModeratorProfileSetup: React.FC = () => {
 
     return (
         <div className="lp-container animate-fade-in">
-            <div className="lp-card practitioner-gate" style={{ borderTopColor: 'var(--mlab-green)' }}>
+            <div className="lp-card practitioner-gate">
                 <div className="lp-header">
                     <img height={50} src={(settings as any)?.logoUrl || mLabLogo} alt="Institution Logo" />
-                    <h1 className="lp-header__title" style={{ color: 'var(--mlab-green)' }}>QA Moderator Compliance</h1>
-                    <p className="lp-header__sub">Step {step} of 3: {step === 1 ? 'Identity' : step === 2 ? 'Registration & Contact' : 'Vault'}</p>
+                    <h1 className="lp-header__title">Administrator Setup</h1>
+                    <p className="lp-header__sub">Step {step} of 3: {step === 1 ? 'Identity' : step === 2 ? 'Professional Profile' : 'Vault'}</p>
 
                     <div className="lp-stepper">
                         {[1, 2, 3].map(s => (
                             <React.Fragment key={s}>
-                                <div className={`lp-step ${step >= s ? 'active' : ''}`} style={step >= s ? { background: 'var(--mlab-green)' } : {}}>{s}</div>
+                                <div className={`lp-step ${step >= s ? 'active' : ''}`} style={step >= s ? { background: '#0f172a', borderColor: '#0f172a' } : {}}>{s}</div>
                                 {s < 3 && <div className="lp-step-line" />}
                             </React.Fragment>
                         ))}
@@ -215,20 +191,20 @@ export const ModeratorProfileSetup: React.FC = () => {
 
                         <div className="setup-photo-upload">
                             <div className="setup-avatar-circle">
-                                {photoPreview ? <img src={photoPreview} alt="Preview" style={{ objectFit: 'cover', width: '100%', height: '100%' }} /> : <User size={40} color="#94a3b8" />}
+                                {photoPreview ? <img src={photoPreview} alt="Preview" style={{ objectFit: 'cover' }} /> : <User size={40} color="#94a3b8" />}
                             </div>
-                            <label className="setup-camera-btn">
+                            <label className="setup-camera-btn" style={{ background: '#0f172a' }}>
                                 <Camera size={16} />
                                 <input type="file" accept="image/*" onChange={handlePhotoSelect} style={{ display: 'none' }} />
                             </label>
                             <div className="setup-photo-text">
                                 <h4>Official Headshot</h4>
-                                <p>Mandatory for your QCTO practitioner profile.</p>
+                                <p>Used for internal system tracking and audits.</p>
                             </div>
                         </div>
 
                         <div className="lp-grid">
-                            <FG label="Full Legal Names (For Certificates)">
+                            <FG label="Full Legal Names">
                                 <input className="lp-input" value={formData.fullName || ''} onChange={e => setFormData({ ...formData, fullName: e.target.value })} />
                             </FG>
                             <FG label="Nationality">
@@ -280,56 +256,37 @@ export const ModeratorProfileSetup: React.FC = () => {
 
                         <div className="lp-actions">
                             <div />
-                            <button className="lp-btn-primary" style={{ background: 'var(--mlab-green)' }} disabled={!canMoveToStep2()} onClick={() => setStep(2)}>
+                            <button className="lp-btn-primary" style={{ background: '#0f172a' }} disabled={!canMoveToStep2()} onClick={() => setStep(2)}>
                                 Next Step <ChevronRight size={15} />
                             </button>
                         </div>
                     </div>
                 )}
 
-                {/* PROFESSIONAL SCOPE & CONTACT */}
+                {/* PROFESSIONAL & CONTACT */}
                 {step === 2 && (
                     <div className="lp-form-body animate-fade-in">
-                        <h3 className="lp-section-title"><Scale size={16} /> QA Moderator Registration</h3>
+                        <h3 className="lp-section-title"><Briefcase size={16} /> Contact & Professional Profile</h3>
+
+                        <div style={{ background: '#e0e7ff', padding: '1rem', borderRadius: '8px', marginBottom: '1.5rem', fontSize: '0.85rem', color: '#3730a3' }}>
+                            <strong>Note:</strong> As an Administrator, these contact details will be automatically attached to QCTO LEISA exports identifying you as the primary Compiler.
+                        </div>
+
                         <div className="lp-grid">
-                            <FG label="Primary SETA Quality Partner">
-                                <select className="lp-input" value={formData.primarySeta || ''} onChange={e => setFormData({ ...formData, primarySeta: e.target.value })}>
-                                    <option value="MICT SETA">MICT SETA</option>
-                                    <option value="SERVICES SETA">SERVICES SETA</option>
-                                    <option value="ETDP SETA">ETDP SETA</option>
-                                    <option value="QCTO DIRECT">QCTO DIRECT</option>
-                                </select>
+                            <FG label="Job Title / Role in Company">
+                                <input className="lp-input" placeholder="e.g. Data Administrator, Principal" value={formData.jobTitle || ''} onChange={e => setFormData({ ...formData, jobTitle: e.target.value })} />
                             </FG>
-                            <FG label="Moderator Registration Number">
-                                <input className="lp-input" placeholder="e.g. MOD/123/2024" value={formData.moderatorRegNumber || ''} onChange={e => setFormData({ ...formData, moderatorRegNumber: e.target.value })} />
-                            </FG>
-                            <FG label="Assessor Registration Number (Optional)">
-                                <input className="lp-input" placeholder="e.g. ASS/456/2022" value={formData.assessorRegNumber || ''} onChange={e => setFormData({ ...formData, assessorRegNumber: e.target.value })} />
-                            </FG>
-                            <FG label="QA Registration Expiry Date">
-                                <input type="date" className="lp-input" value={formData.registrationExpiry || ''} onChange={e => setFormData({ ...formData, registrationExpiry: e.target.value })} />
-                            </FG>
-                            <FG label="Highest Academic Qualification">
-                                <input className="lp-input" placeholder="e.g. BSc Computer Science" value={formData.highestQualification || ''} onChange={e => setFormData({ ...formData, highestQualification: e.target.value })} />
-                            </FG>
-                            <FG label="Years in ICT / QA Industry">
-                                <input type="number" min="0" className="lp-input" value={formData.yearsExperience || ''} onChange={e => setFormData({ ...formData, yearsExperience: parseInt(e.target.value) || 0 })} />
-                            </FG>
-                            <FG label="Contact Number">
+                            <FG label="Contact Number (Direct)">
                                 <div className="input-with-icon">
                                     <Phone size={16} />
                                     <input className="lp-input" type="tel" value={formData.phone || ''} onChange={e => setFormData({ ...formData, phone: e.target.value })} />
                                 </div>
                             </FG>
-                        </div>
-
-                        <div style={{ marginBottom: '2rem' }}>
-                            <FG label="Moderation Scope & Bio">
-                                <textarea className="lp-input" rows={3} placeholder="Summarize your experience as a quality assurance moderator..." value={formData.bio || ''} onChange={e => setFormData({ ...formData, bio: e.target.value })} />
+                            <FG label="Email Address">
+                                <input className="lp-input" type="email" value={formData.email || ''} onChange={e => setFormData({ ...formData, email: e.target.value })} />
                             </FG>
                         </div>
 
-                        {/* Address Section */}
                         <h3 className="lp-section-title mt-8"><MapPin size={16} /> Residential Address</h3>
                         <div style={{ marginBottom: '1rem' }}>
                             <FG label="Address Search (Google Verified)">
@@ -351,50 +308,22 @@ export const ModeratorProfileSetup: React.FC = () => {
                             <FG label="Province">
                                 <select className="lp-input" value={formData.province || ''} onChange={e => setFormData({ ...formData, province: e.target.value })}>
                                     <option value="">Select...</option>
-                                    {QCTO_PROVINCES.map(prov => <option key={prov} value={prov}>{prov}</option>)}
+                                    <option value="Western Cape">Western Cape</option>
+                                    <option value="Eastern Cape">Eastern Cape</option>
+                                    <option value="Northern Cape">Northern Cape</option>
+                                    <option value="Free State">Free State</option>
+                                    <option value="KwaZulu-Natal">KwaZulu-Natal</option>
+                                    <option value="North West">North West</option>
+                                    <option value="Gauteng">Gauteng</option>
+                                    <option value="Mpumalanga">Mpumalanga</option>
+                                    <option value="Limpopo">Limpopo</option>
                                 </select>
                             </FG>
                         </div>
 
-                        <div style={{ marginTop: '1.5rem', background: '#f8fafc', padding: '1.25rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontWeight: 500, color: '#0f172a' }}>
-                                <input
-                                    type="checkbox"
-                                    checked={formData.sameAsResidential}
-                                    onChange={e => setFormData({ ...formData, sameAsResidential: e.target.checked })}
-                                />
-                                My Postal Address is the same as my Residential Address
-                            </label>
-
-                            {!formData.sameAsResidential && (
-                                <div className="animate-fade-in" style={{ marginTop: '1rem', display: 'flex', gap: '1rem' }}>
-                                    <div style={{ flex: 2 }}>
-                                        <FG label="Alternate Postal Address (e.g. P.O. Box)">
-                                            <input
-                                                className="lp-input"
-                                                placeholder="P.O. Box 1234..."
-                                                value={formData.postalAddress || ''}
-                                                onChange={e => setFormData({ ...formData, postalAddress: e.target.value })}
-                                            />
-                                        </FG>
-                                    </div>
-                                    <div style={{ flex: 1 }}>
-                                        <FG label="Postal Code">
-                                            <input
-                                                className="lp-input"
-                                                placeholder="0000"
-                                                value={formData.customPostalCode || ''}
-                                                onChange={e => setFormData({ ...formData, customPostalCode: e.target.value })}
-                                            />
-                                        </FG>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-
                         <div className="lp-actions">
                             <button className="lp-btn-ghost" onClick={() => setStep(1)}>Back</button>
-                            <button className="lp-btn-primary" style={{ background: 'var(--mlab-green)' }} disabled={!canMoveToStep3()} onClick={() => setStep(3)}>Next Documents <ChevronRight size={15} /></button>
+                            <button className="lp-btn-primary" style={{ background: '#0f172a' }} disabled={!canMoveToStep3()} onClick={() => setStep(3)}>Next Documents <ChevronRight size={15} /></button>
                         </div>
                     </div>
                 )}
@@ -402,38 +331,30 @@ export const ModeratorProfileSetup: React.FC = () => {
                 {/* DOCUMENT VAULT */}
                 {step === 3 && (
                     <div className="lp-form-body animate-fade-in">
-                        <h3 className="lp-section-title"><ShieldCheck size={16} /> Compliance Document Vault</h3>
-                        <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '1.5rem', marginTop: '-0.5rem' }}>
-                            Please upload your verified compliance documents. <strong>ID, Certificate and Registration are mandatory.</strong>
-                        </p>
-
+                        <h3 className="lp-section-title"><ShieldCheck size={16} /> Official Documents</h3>
                         <div className="lp-upload-grid">
-                            <DocUpload label={formData.nationalityType === 'South African' ? 'Certified ID Copy *' : 'Passport Copy *'} file={idDoc} onUpload={setIdDoc} />
-                            {formData.nationalityType === 'Foreign National' && <DocUpload label="Work Permit / Visa *" file={permitDoc} onUpload={setPermitDoc} />}
-                            <DocUpload label="Moderator Certificate *" file={moderatorCert} onUpload={setModeratorCert} />
-                            <DocUpload label="SETA Reg. Letter *" file={regLetter} onUpload={setRegLetter} />
-                            <DocUpload label="Detailed QA CV (Optional)" file={cvDoc} onUpload={setCvDoc} isOptional={true} />
+                            <DocUpload label={formData.nationalityType === 'South African' ? 'Certified ID Copy' : 'Passport Copy'} file={idDoc} onUpload={setIdDoc} />
+                            <DocUpload label="Appointment Letter / Proof of Role" file={appointmentDoc} onUpload={setAppointmentDoc} />
                         </div>
 
-                        {/* POPIA Consent Box */}
-                        <div className="lp-popia-box" style={{ background: '#f8fafc', padding: '1.25rem', borderRadius: '8px', border: '1px solid #cbd5e1', marginTop: '2rem' }}>
+                        <div className="lp-popia-box" style={{ color: 'grey' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
                                 <ShieldCheck size={20} color="var(--mlab-blue)" />
                                 <h4 style={{ margin: 0, color: '#0f172a' }}>Declarations & POPIA Consent</h4>
                             </div>
-                            <p style={{ margin: '0 0 1rem 0', fontSize: '0.9rem', color: '#475569' }}>
-                                I formally consent to the processing of my data for QCTO compliance. Furthermore, I declare the above details to be true and agree to the QCTO Code of Conduct for Internal Moderators.
+                            <p style={{ margin: '0 0 1rem 0' }}>
+                                I formally consent to the processing of my data for QCTO compliance. Furthermore, I declare the above to be true and confirm that I am authorized by this institution to act as a Compiler and system Administrator.
                             </p>
-                            <label className="lp-popia-checkbox" style={{ display: 'flex', gap: '0.5rem', cursor: 'pointer', color: '#0f172a' }}>
+                            <label className="lp-popia-checkbox" style={{ color: 'black' }}>
                                 <input type="checkbox" checked={formData.popiaConsent} onChange={e => setFormData({ ...formData, popiaConsent: e.target.checked })} />
-                                <span style={{ fontWeight: 500 }}>I agree to the terms and authorize this profile.</span>
+                                <span>I agree to the terms and authorize this profile.</span>
                             </label>
                         </div>
 
                         <div className="lp-actions">
                             <button className="lp-btn-ghost" onClick={() => setStep(2)}>Back</button>
-                            <button className="lp-btn-primary" style={{ background: 'var(--mlab-green)' }} onClick={handleSubmit} disabled={loading || !formData.popiaConsent || !idDoc || !moderatorCert || !regLetter}>
-                                {loading ? <Loader2 className="spin" size={15} /> : 'Complete Registration'} <Save size={15} />
+                            <button className="lp-btn-primary" style={{ background: '#0f172a' }} onClick={handleSubmit} disabled={loading || !formData.popiaConsent || !idDoc || !appointmentDoc}>
+                                {loading ? <Loader2 className="spin" size={15} /> : 'Complete Setup'} <Save size={15} />
                             </button>
                         </div>
                     </div>
@@ -447,13 +368,10 @@ const FG: React.FC<{ label: string; children: React.ReactNode }> = ({ label, chi
     <div className="lp-fg"><label className="lp-fg-label">{label}</label>{children}</div>
 );
 
-const DocUpload: React.FC<{ label: string; file: File | null; onUpload: (f: File) => void; isOptional?: boolean }> = ({ label, file, onUpload, isOptional }) => (
+const DocUpload: React.FC<{ label: string; file: File | null; onUpload: (f: File) => void }> = ({ label, file, onUpload }) => (
     <div className={`lp-doc-card${file ? ' uploaded' : ''}`}>
-        <div className="lp-doc-icon">{file ? <CheckCircle size={22} color="var(--mlab-green)" /> : <Upload size={22} />}</div>
-        <div className="lp-doc-info">
-            <h4>{label}</h4>
-            <span>{file ? file.name : (isOptional ? 'Optional PDF upload' : 'Required PDF upload')}</span>
-        </div>
+        <div className="lp-doc-icon">{file ? <CheckCircle size={22} color="#0f172a" /> : <Upload size={22} />}</div>
+        <div className="lp-doc-info"><h4>{label}</h4><span>{file ? file.name : 'Select PDF or Image'}</span></div>
         <input type="file" accept=".pdf,image/*" className="lp-file-input" onChange={e => e.target.files && onUpload(e.target.files[0])} />
     </div>
 );
@@ -463,53 +381,53 @@ const DocUpload: React.FC<{ label: string; file: File | null; onUpload: (f: File
 // import { useNavigate } from 'react-router-dom';
 // import {
 //     User, Upload, CheckCircle,
-//     Save, ChevronRight, ShieldCheck, Loader2, Camera, Calendar, Fingerprint, Globe, Scale
+//     Save, ChevronRight, ShieldCheck, Loader2, Camera, Calendar, Fingerprint, Globe, Briefcase, Phone, MapPin
 // } from 'lucide-react';
 // import { doc, updateDoc } from 'firebase/firestore';
 // import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 // import { useStore } from '../../../store/useStore';
 // import { db, storage } from '../../../lib/firebase';
 
-// import '../AssessorProfileSetup/AssessorProfileSetup.css';
+// import mLabLogo from '../../../assets/logo/mlab_logo.png';
 
-// interface ModeratorData {
+// import '../../FacilitatorDashboard/AssessorProfileSetup/AssessorProfileSetup.css';
+// import './AdminProfileSetup.css';
+
+// interface AdminData {
 //     fullName: string;
 //     nationalityType: 'South African' | 'Foreign National';
 //     idNumber?: string;
 //     passportNumber?: string;
-//     workPermitNumber?: string;
 //     dateOfBirth: string;
-//     moderatorRegNumber: string;    // Specific to Moderators
-//     assessorRegNumber: string;     // Often required for Moderators
-//     primarySeta: string;
-//     specializationScope: string;
-//     registrationExpiry: string;
-//     yearsExperience: number;
-//     highestQualification: string;
-//     bio: string;
+
+//     // Admin / Compiler Specific
+//     jobTitle: string;
+//     phone: string;
+//     email: string;
+//     streetAddress: string;
+//     city: string;
+//     province: string;
+
 //     popiaConsent: boolean;
 //     profilePhotoUrl?: string;
 // }
 
-// export const ModeratorProfileSetup: React.FC = () => {
+// export const AdminProfileSetup: React.FC = () => {
 //     const navigate = useNavigate();
-//     const { user, refreshUser } = useStore();
+//     const { user, refreshUser, setUser, settings } = useStore();
 
 //     const [step, setStep] = useState(1);
 //     const [loading, setLoading] = useState(false);
-//     const [formData, setFormData] = useState<Partial<ModeratorData>>({
+//     const [formData, setFormData] = useState<Partial<AdminData>>({
 //         fullName: user?.fullName || '',
+//         email: user?.email || '',
+//         phone: (user as any)?.phone || '',
 //         nationalityType: 'South African',
 //         popiaConsent: false,
-//         yearsExperience: 0,
-//         primarySeta: 'MICT SETA'
 //     });
 
 //     const [idDoc, setIdDoc] = useState<File | null>(null);
-//     const [permitDoc, setPermitDoc] = useState<File | null>(null);
-//     const [moderatorCert, setModeratorCert] = useState<File | null>(null);
-//     const [regLetter, setRegLetter] = useState<File | null>(null);
-//     const [cvDoc, setCvDoc] = useState<File | null>(null);
+//     const [appointmentDoc, setAppointmentDoc] = useState<File | null>(null);
 
 //     const [profilePhoto, setProfilePhoto] = useState<File | null>(null);
 //     const [photoPreview, setPhotoPreview] = useState<string | null>(null);
@@ -538,7 +456,7 @@ const DocUpload: React.FC<{ label: string; file: File | null; onUpload: (f: File
 //     };
 
 //     const canMoveToStep3 = () => {
-//         return !!(formData.moderatorRegNumber && formData.primarySeta && formData.highestQualification);
+//         return !!(formData.jobTitle && formData.phone && formData.city && formData.province);
 //     };
 
 //     // ─── HANDLERS ─────────────────────────────────────────────────────────
@@ -571,29 +489,33 @@ const DocUpload: React.FC<{ label: string; file: File | null; onUpload: (f: File
 //         if (!user?.uid) return;
 //         setLoading(true);
 //         try {
+//             const getExt = (f: File) => f.name.split('.').pop();
+
 //             let photoUrl = user?.profilePhotoUrl || "";
-//             if (profilePhoto) photoUrl = await handleFileUpload(profilePhoto, `staff/${user.uid}/profile.jpg`);
+//             if (profilePhoto) {
+//                 photoUrl = await handleFileUpload(profilePhoto, `staff/${user.uid}/profile_${Date.now()}.${getExt(profilePhoto)}`);
+//             }
 
-//             const docs: any = {
-//                 identificationUrl: await handleFileUpload(idDoc!, `staff/${user.uid}/identity_doc.pdf`),
-//                 moderatorCertUrl: await handleFileUpload(moderatorCert!, `staff/${user.uid}/moderator_cert.pdf`),
-//                 regLetterUrl: await handleFileUpload(regLetter!, `staff/${user.uid}/reg_letter.pdf`),
-//                 cvUrl: cvDoc ? await handleFileUpload(cvDoc, `staff/${user.uid}/cv.pdf`) : null,
-//             };
-
-//             if (permitDoc) docs.workPermitUrl = await handleFileUpload(permitDoc, `staff/${user.uid}/work_permit.pdf`);
+//             const docs: any = {};
+//             if (idDoc) docs.identificationUrl = await handleFileUpload(idDoc, `staff/${user.uid}/identity_doc_${Date.now()}.${getExt(idDoc)}`);
+//             if (appointmentDoc) docs.appointmentLetterUrl = await handleFileUpload(appointmentDoc, `staff/${user.uid}/appointment_letter_${Date.now()}.${getExt(appointmentDoc)}`);
 
 //             const finalData = {
 //                 ...formData,
 //                 profilePhotoUrl: photoUrl,
-//                 complianceDocs: docs,
+//                 complianceDocs: { ...(user as any).complianceDocs, ...docs, updatedAt: new Date().toISOString() },
 //                 profileCompleted: true,
 //                 updatedAt: new Date().toISOString(),
 //             };
 
 //             await updateDoc(doc(db, 'users', user.uid), finalData);
+
+//             if (setUser) {
+//                 setUser({ ...user, ...finalData, profileCompleted: true } as any);
+//             }
+
 //             await refreshUser();
-//             navigate('/');
+//             navigate('/admin', { replace: true });
 //         } catch (error) {
 //             console.error(error);
 //             alert('Compliance sync failed. Please check your connection.');
@@ -604,16 +526,17 @@ const DocUpload: React.FC<{ label: string; file: File | null; onUpload: (f: File
 
 //     return (
 //         <div className="lp-container animate-fade-in">
-//             <div className="lp-card practitioner-gate" style={{ borderTopColor: 'var(--mlab-green)' }}>
+//             <div className="lp-card practitioner-gate" style={{ borderTopColor: '#0f172a' }}>
 //                 <div className="lp-header">
-//                     <span className="lp-logo"><span className="lp-logo__m">m</span>lab</span>
-//                     <h1 className="lp-header__title" style={{ color: 'var(--mlab-green)' }}>QA Moderator Compliance</h1>
-//                     <p className="lp-header__sub">Step {step} of 3: {step === 1 ? 'Identity' : step === 2 ? 'Registration' : 'Vault'}</p>
+//                     {/* <span className="lp-logo"><span className="lp-logo__m">m</span>lab</span> */}
+//                     <img height={50} src={(settings as any)?.logoUrl || mLabLogo} alt="Institution Logo" />
+//                     <h1 className="lp-header__title">Administrator Setup</h1>
+//                     <p className="lp-header__sub">Step {step} of 3: {step === 1 ? 'Identity' : step === 2 ? 'Professional Profile' : 'Vault'}</p>
 
 //                     <div className="lp-stepper">
 //                         {[1, 2, 3].map(s => (
 //                             <React.Fragment key={s}>
-//                                 <div className={`lp-step ${step >= s ? 'active' : ''}`} style={step >= s ? { background: 'var(--mlab-green)' } : {}}>{s}</div>
+//                                 <div className={`lp-step ${step >= s ? 'active' : ''}`} style={step >= s ? { background: '#0f172a', borderColor: '#0f172a' } : {}}>{s}</div>
 //                                 {s < 3 && <div className="lp-step-line" />}
 //                             </React.Fragment>
 //                         ))}
@@ -627,21 +550,21 @@ const DocUpload: React.FC<{ label: string; file: File | null; onUpload: (f: File
 
 //                         <div className="setup-photo-upload">
 //                             <div className="setup-avatar-circle">
-//                                 {photoPreview ? <img src={photoPreview} alt="Preview" /> : <User size={40} color="#94a3b8" />}
+//                                 {photoPreview ? <img src={photoPreview} alt="Preview" style={{ objectFit: 'cover' }} /> : <User size={40} color="#94a3b8" />}
 //                             </div>
-//                             <label className="setup-camera-btn">
+//                             <label className="setup-camera-btn" style={{ background: '#0f172a' }}>
 //                                 <Camera size={16} />
 //                                 <input type="file" accept="image/*" onChange={handlePhotoSelect} style={{ display: 'none' }} />
 //                             </label>
 //                             <div className="setup-photo-text">
 //                                 <h4>Official Headshot</h4>
-//                                 <p>Mandatory for your QCTO practitioner profile.</p>
+//                                 <p>Used for internal system tracking and audits.</p>
 //                             </div>
 //                         </div>
 
 //                         <div className="lp-grid">
-//                             <FG label="Full Legal Names (For Certificates)">
-//                                 <input className="lp-input" value={formData.fullName} onChange={e => setFormData({ ...formData, fullName: e.target.value })} />
+//                             <FG label="Full Legal Names">
+//                                 <input className="lp-input" value={formData.fullName || ''} onChange={e => setFormData({ ...formData, fullName: e.target.value })} />
 //                             </FG>
 //                             <FG label="Nationality">
 //                                 <select
@@ -692,48 +615,64 @@ const DocUpload: React.FC<{ label: string; file: File | null; onUpload: (f: File
 
 //                         <div className="lp-actions">
 //                             <div />
-//                             <button className="lp-btn-primary" style={{ background: 'var(--mlab-green)' }} disabled={!canMoveToStep2()} onClick={() => setStep(2)}>
+//                             <button className="lp-btn-primary" style={{ background: '#0f172a' }} disabled={!canMoveToStep2()} onClick={() => setStep(2)}>
 //                                 Next Step <ChevronRight size={15} />
 //                             </button>
 //                         </div>
 //                     </div>
 //                 )}
 
-//                 {/* PROFESSIONAL SCOPE */}
+//                 {/* PROFESSIONAL & CONTACT */}
 //                 {step === 2 && (
 //                     <div className="lp-form-body animate-fade-in">
-//                         <h3 className="lp-section-title"><Scale size={16} /> QA Moderator Registration</h3>
+//                         <h3 className="lp-section-title"><Briefcase size={16} /> Contact & Professional Profile</h3>
+
+//                         <div style={{ background: '#e0e7ff', padding: '1rem', borderRadius: '8px', marginBottom: '1.5rem', fontSize: '0.85rem', color: '#3730a3' }}>
+//                             <strong>Note:</strong> As an Administrator, these contact details will be automatically attached to QCTO LEISA exports identifying you as the primary Compiler.
+//                         </div>
+
 //                         <div className="lp-grid">
-//                             <FG label="Primary SETA Quality Partner">
-//                                 <select className="lp-input" value={formData.primarySeta} onChange={e => setFormData({ ...formData, primarySeta: e.target.value })}>
-//                                     <option value="MICT SETA">MICT SETA</option>
-//                                     <option value="SERVICES SETA">SERVICES SETA</option>
-//                                     <option value="ETDP SETA">ETDP SETA</option>
-//                                     <option value="QCTO DIRECT">QCTO DIRECT</option>
-//                                 </select>
+//                             <FG label="Job Title / Role in Company">
+//                                 <input className="lp-input" placeholder="e.g. Data Administrator, Principal" value={formData.jobTitle || ''} onChange={e => setFormData({ ...formData, jobTitle: e.target.value })} />
 //                             </FG>
-//                             <FG label="Moderator Registration Number">
-//                                 <input className="lp-input" placeholder="e.g. MOD/123/2024" value={formData.moderatorRegNumber || ''} onChange={e => setFormData({ ...formData, moderatorRegNumber: e.target.value })} />
+//                             <FG label="Contact Number (Direct)">
+//                                 <div className="input-with-icon">
+//                                     <Phone size={16} />
+//                                     <input className="lp-input" type="tel" value={formData.phone || ''} onChange={e => setFormData({ ...formData, phone: e.target.value })} />
+//                                 </div>
 //                             </FG>
-//                             <FG label="Assessor Registration Number (Optional)">
-//                                 <input className="lp-input" placeholder="e.g. ASS/456/2022" value={formData.assessorRegNumber || ''} onChange={e => setFormData({ ...formData, assessorRegNumber: e.target.value })} />
-//                             </FG>
-//                             <FG label="QA Registration Expiry Date">
-//                                 <input type="date" className="lp-input" value={formData.registrationExpiry || ''} onChange={e => setFormData({ ...formData, registrationExpiry: e.target.value })} />
-//                             </FG>
-//                             <FG label="Highest Academic Qualification">
-//                                 <input className="lp-input" placeholder="e.g. BSc Computer Science" value={formData.highestQualification || ''} onChange={e => setFormData({ ...formData, highestQualification: e.target.value })} />
-//                             </FG>
-//                             <FG label="Years in ICT / QA Industry">
-//                                 <input type="number" min="0" className="lp-input" value={formData.yearsExperience || ''} onChange={e => setFormData({ ...formData, yearsExperience: parseInt(e.target.value) || 0 })} />
+//                             <FG label="Email Address">
+//                                 <input className="lp-input" type="email" value={formData.email || ''} onChange={e => setFormData({ ...formData, email: e.target.value })} />
 //                             </FG>
 //                         </div>
-//                         <FG label="Moderation Scope & Bio">
-//                             <textarea className="lp-input" rows={3} placeholder="Summarize your experience as a quality assurance moderator..." value={formData.bio || ''} onChange={e => setFormData({ ...formData, bio: e.target.value })} />
-//                         </FG>
+
+//                         <h3 className="lp-section-title mt-8"><MapPin size={16} /> Residential Address</h3>
+//                         <div className="lp-grid">
+//                             <FG label="Street Address">
+//                                 <input className="lp-input" value={formData.streetAddress || ''} onChange={e => setFormData({ ...formData, streetAddress: e.target.value })} />
+//                             </FG>
+//                             <FG label="City / Town">
+//                                 <input className="lp-input" value={formData.city || ''} onChange={e => setFormData({ ...formData, city: e.target.value })} />
+//                             </FG>
+//                             <FG label="Province">
+//                                 <select className="lp-input" value={formData.province || ''} onChange={e => setFormData({ ...formData, province: e.target.value })}>
+//                                     <option value="">Select...</option>
+//                                     <option value="Western Cape">Western Cape</option>
+//                                     <option value="Eastern Cape">Eastern Cape</option>
+//                                     <option value="Northern Cape">Northern Cape</option>
+//                                     <option value="Free State">Free State</option>
+//                                     <option value="KwaZulu-Natal">KwaZulu-Natal</option>
+//                                     <option value="North West">North West</option>
+//                                     <option value="Gauteng">Gauteng</option>
+//                                     <option value="Mpumalanga">Mpumalanga</option>
+//                                     <option value="Limpopo">Limpopo</option>
+//                                 </select>
+//                             </FG>
+//                         </div>
+
 //                         <div className="lp-actions">
 //                             <button className="lp-btn-ghost" onClick={() => setStep(1)}>Back</button>
-//                             <button className="lp-btn-primary" style={{ background: 'var(--mlab-green)' }} disabled={!canMoveToStep3()} onClick={() => setStep(3)}>Next Documents <ChevronRight size={15} /></button>
+//                             <button className="lp-btn-primary" style={{ background: '#0f172a' }} disabled={!canMoveToStep3()} onClick={() => setStep(3)}>Next Documents <ChevronRight size={15} /></button>
 //                         </div>
 //                     </div>
 //                 )}
@@ -741,24 +680,25 @@ const DocUpload: React.FC<{ label: string; file: File | null; onUpload: (f: File
 //                 {/* DOCUMENT VAULT */}
 //                 {step === 3 && (
 //                     <div className="lp-form-body animate-fade-in">
-//                         <h3 className="lp-section-title"><ShieldCheck size={16} /> Compliance Document Vault</h3>
+//                         <h3 className="lp-section-title"><ShieldCheck size={16} /> Official Documents</h3>
 //                         <div className="lp-upload-grid">
 //                             <DocUpload label={formData.nationalityType === 'South African' ? 'Certified ID Copy' : 'Passport Copy'} file={idDoc} onUpload={setIdDoc} />
-//                             {formData.nationalityType === 'Foreign National' && <DocUpload label="Work Permit / Visa" file={permitDoc} onUpload={setPermitDoc} />}
-//                             <DocUpload label="Moderator Certificate" file={moderatorCert} onUpload={setModeratorCert} />
-//                             <DocUpload label="SETA Reg. Letter" file={regLetter} onUpload={setRegLetter} />
-//                             <DocUpload label="Detailed QA CV" file={cvDoc} onUpload={setCvDoc} />
+//                             <DocUpload label="Appointment Letter / Proof of Role" file={appointmentDoc} onUpload={setAppointmentDoc} />
 //                         </div>
-//                         <div className="lp-popia-box">
+
+//                         <div className="lp-popia-box" style={{ background: '#f8fafc', borderColor: '#cbd5e1' }}>
 //                             <label className="lp-popia-checkbox">
 //                                 <input type="checkbox" checked={formData.popiaConsent} onChange={e => setFormData({ ...formData, popiaConsent: e.target.checked })} />
-//                                 <span style={{ color: 'black' }}>I declare the above to be true and agree to the QCTO Code of Conduct for Internal Moderators and inline with POPIA act.</span>
+//                                 <span style={{ color: '#0f172a', fontWeight: 500 }}>
+//                                     I declare the above to be true and confirm that I am authorized by this institution to act as a Compiler and system Administrator.
+//                                 </span>
 //                             </label>
 //                         </div>
+
 //                         <div className="lp-actions">
 //                             <button className="lp-btn-ghost" onClick={() => setStep(2)}>Back</button>
-//                             <button className="lp-btn-primary" style={{ background: 'var(--mlab-green)' }} onClick={handleSubmit} disabled={loading || !formData.popiaConsent || !idDoc || !moderatorCert || !regLetter}>
-//                                 {loading ? <Loader2 className="spin" size={15} /> : 'Complete Registration'} <Save size={15} />
+//                             <button className="lp-btn-primary" style={{ background: '#0f172a' }} onClick={handleSubmit} disabled={loading || !formData.popiaConsent || !idDoc || !appointmentDoc}>
+//                                 {loading ? <Loader2 className="spin" size={15} /> : 'Complete Setup'} <Save size={15} />
 //                             </button>
 //                         </div>
 //                     </div>
@@ -774,8 +714,8 @@ const DocUpload: React.FC<{ label: string; file: File | null; onUpload: (f: File
 
 // const DocUpload: React.FC<{ label: string; file: File | null; onUpload: (f: File) => void }> = ({ label, file, onUpload }) => (
 //     <div className={`lp-doc-card${file ? ' uploaded' : ''}`}>
-//         <div className="lp-doc-icon">{file ? <CheckCircle size={22} color="var(--mlab-green)" /> : <Upload size={22} />}</div>
-//         <div className="lp-doc-info"><h4>{label}</h4><span>{file ? file.name : 'Select PDF'}</span></div>
-//         <input type="file" accept=".pdf" className="lp-file-input" onChange={e => e.target.files && onUpload(e.target.files[0])} />
+//         <div className="lp-doc-icon">{file ? <CheckCircle size={22} color="#0f172a" /> : <Upload size={22} />}</div>
+//         <div className="lp-doc-info"><h4>{label}</h4><span>{file ? file.name : 'Select PDF or Image'}</span></div>
+//         <input type="file" accept=".pdf,image/*" className="lp-file-input" onChange={e => e.target.files && onUpload(e.target.files[0])} />
 //     </div>
 // );

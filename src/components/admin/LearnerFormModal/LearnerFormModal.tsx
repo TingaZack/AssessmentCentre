@@ -685,7 +685,7 @@ export const LearnerFormModal: React.FC<LearnerFormModalProps> = ({
                                         <input className="lfm-input" type="text" required value={formData.idNumber} onChange={(e) => updateField("idNumber", e.target.value)} />
                                     </div>
 
-                                    {/* 🚀 CLASS & CAMPUS BINDING ROW */}
+                                    {/* CLASS & CAMPUS BINDING ROW */}
                                     <div className="lfm-fg">
                                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                                             <label style={{ marginBottom: 0 }}>Assigned Cohort *</label>
@@ -703,7 +703,7 @@ export const LearnerFormModal: React.FC<LearnerFormModalProps> = ({
                                         </select>
                                     </div>
 
-                                    {/* 🚀 NEW DYNAMIC CAMPUS SELECTION */}
+                                    {/* NEW DYNAMIC CAMPUS SELECTION */}
                                     <div className="lfm-fg">
                                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                                             <label style={{ marginBottom: 0, display: "flex", alignItems: "center", gap: "4px" }}>

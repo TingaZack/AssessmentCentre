@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { X, Save, Loader2, Building2, Briefcase } from 'lucide-react';
 import { useStore } from '../../../store/useStore';
 import type { DashboardLearner } from '../../../types';
-import { ToastContainer, useToast } from '../../common/Toast/Toast'; // 🚀 Imported Toast
+import { ToastContainer, useToast } from '../../common/Toast/Toast';
 
 interface WorkplacePlacementModalProps {
     learner: DashboardLearner;
@@ -11,7 +11,7 @@ interface WorkplacePlacementModalProps {
 
 export const WorkplacePlacementModal: React.FC<WorkplacePlacementModalProps> = ({ learner, onClose }) => {
     const { employers, staff, updateLearnerPlacement } = useStore();
-    const toast = useToast(); // 🚀 Initialize Toast
+    const toast = useToast();
 
     // Default to existing placement if they already have one
     const [employerId, setEmployerId] = useState(learner.employerId || '');

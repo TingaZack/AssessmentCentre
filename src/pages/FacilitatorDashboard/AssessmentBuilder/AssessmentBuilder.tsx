@@ -151,7 +151,7 @@ export const AssessmentBuilder: React.FC = () => {
     const [type, setType] = useState<"formative" | "summative" | "Practical Observation" | "Workplace Logbook">("formative");
     const [moduleType, setModuleType] = useState<"knowledge" | "practical" | "workplace">("knowledge");
 
-    // 🚀 NEW: Security Settings
+    // Security Settings
     const [requiresInvigilation, setRequiresInvigilation] = useState(true);
 
     const [isOpenBook, setIsOpenBook] = useState(false);
@@ -198,7 +198,6 @@ export const AssessmentBuilder: React.FC = () => {
                     setModuleType(d.moduleType || "knowledge");
                     setAssessmentStatus(d.status || "draft");
 
-                    // 🚀 Load Proctored State (default to true if knowledge module)
                     if (d.requiresInvigilation !== undefined) {
                         setRequiresInvigilation(d.requiresInvigilation);
                     } else {
@@ -310,7 +309,7 @@ export const AssessmentBuilder: React.FC = () => {
         }
     };
 
-    // 🚀 Intelligent Module Type Switcher
+    // Intelligent Module Type Switcher
     const handleModuleTypeChange = (newType: "knowledge" | "practical" | "workplace") => {
         setModuleType(newType);
         if (newType !== 'knowledge') {
@@ -532,7 +531,6 @@ export const AssessmentBuilder: React.FC = () => {
                 linkedModuleCode: selectedModuleCode,
                 scheduledDate: finalScheduledDate,
                 instructions: instructions || "",
-                // 🚀 Added to Payload
                 requiresInvigilation: moduleType === 'knowledge' ? requiresInvigilation : false,
                 moduleInfo, showModuleHeader, isOpenBook, referenceManualUrl,
                 learnerGuide: {
@@ -760,7 +758,7 @@ export const AssessmentBuilder: React.FC = () => {
                                         <label className="ab-fg-label ab-label-icon">
                                             <BookOpen size={12} /> Module Curriculum Type
                                         </label>
-                                        {/* 🚀 Intelligent Change Handler */}
+                                        {/* Intelligent Change Handler */}
                                         <select className="ab-input ab-input--accent" value={moduleType} onChange={(e) => handleModuleTypeChange(e.target.value as any)}>
                                             <option value="knowledge">Knowledge Module (Standard Questions)</option>
                                             <option value="practical">Practical Skill Module (Checklists/Tasks)</option>
@@ -807,7 +805,7 @@ export const AssessmentBuilder: React.FC = () => {
                                     </FG>
                                 </div>
 
-                                {/* 🚀 NEW: Security Settings / Proctoring */}
+                                {/* Security Settings / Proctoring */}
                                 <div className="ab-openbook-card" style={{ marginTop: '0', marginBottom: '1rem', borderLeftColor: moduleType === 'knowledge' ? '#e11d48' : '#cbd5e1', background: requiresInvigilation ? '#fff1f2' : undefined }}>
                                     <label className={`ab-check-row ${moduleType !== 'knowledge' ? 'ab-disabled' : ''}`}>
                                         <input

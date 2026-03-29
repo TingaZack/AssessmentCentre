@@ -41,8 +41,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, currentNav, setCurrentNa
                     { id: 'staff', label: 'Staff Management', icon: UserCheck, path: '/admin' },
                     { id: 'workplaces', label: 'Workplaces', icon: Building2, path: '/admin' },
                     { id: 'cohorts', label: 'Cohorts (Classes)', icon: Layers, path: '/admin' },
-                    // 🚀 NEW: Standalone Certificate Studio
                     { id: 'studio', label: 'Certificate Studio', icon: Award, path: '/admin/studio' },
+                    { id: 'profile', label: 'My Profile', icon: UserCircle, path: '/admin' },
                 ];
             case 'assessor':
                 return [
@@ -61,15 +61,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, currentNav, setCurrentNa
                     { id: 'dashboard', label: 'Overview', icon: LayoutDashboard, path: '/facilitator' },
                     { id: 'attendance', label: 'Attendance', icon: Users, path: '/facilitator/attendance' },
                     { id: 'assessments', label: 'Assessments', icon: ClipboardList, path: '/facilitator/assessments' },
-                    // 🚀 NEW: Standalone Certificate Studio
                     { id: 'studio', label: 'Certificate Studio', icon: Award, path: '/admin/studio' },
+                    // Facilitators use nested routes (App.tsx sub-routes), so /profile is correct here
                     { id: 'profile', label: 'My Profile', icon: UserCircle, path: '/facilitator/profile' },
                 ];
             case 'learner':
                 return [
                     { id: 'dashboard', label: 'My Classes', icon: LayoutDashboard, path: '/portal' },
                     { id: 'profile', label: 'My Profile', icon: User, path: '/portal' },
-                    // 🚀 Certificates Tab
                     { id: 'certificates', label: 'My Certificates', icon: Award, path: '/portal' },
                 ];
             default:
@@ -82,7 +81,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, currentNav, setCurrentNa
     // ─── SMART NAVIGATION HANDLER ────────────────────────────────────────
     const handleNavigation = (item: any) => {
         if (setCurrentNav) {
+            // Updates the parent state (e.g., AdminDashboard's currentNav)
             setCurrentNav(item.id);
+            // Navigates to the base path and passes the tab ID in state
             navigate(item.path, { state: { activeTab: item.id }, replace: true });
         } else {
             navigate(item.path);
@@ -96,10 +97,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, currentNav, setCurrentNa
                 display: 'flex',
                 flexDirection: 'column',
                 height: '100%',
-                overflow: 'hidden' // Prevents whole sidebar from scrolling
+                overflow: 'hidden'
             }}
         >
-            {/* ─── BRANDING HEADER ─── */}
+            {/* BRANDING HEADER */}
             <div className="sidebar-header" style={{ flexShrink: 0 }}>
                 <img height={50} src={(settings as any)?.logoUrl || mLabLogo} alt="Institution Logo" />
                 {activeRole !== 'learner' && (
@@ -107,18 +108,19 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, currentNav, setCurrentNa
                 )}
             </div>
 
-            {/* ─── NAVIGATION MENU (Scrollable if needed) ─── */}
+            {/* NAVIGATION MENU */}
             <nav
                 className="sidebar-nav"
                 style={{
                     flex: 1,
-                    overflowY: 'auto', // Only this middle part scrolls!
+                    overflowY: 'auto',
                     display: 'flex',
                     flexDirection: 'column'
                 }}
             >
                 {menuItems.map((item) => {
                     const Icon = item.icon;
+                    // Check if current state ID matches OR if we are on a specific sub-route
                     const isActive = currentNav === item.id || (!currentNav && location.pathname === item.path);
 
                     return (
@@ -134,7 +136,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, currentNav, setCurrentNa
                 })}
             </nav>
 
-            {/* ─── FOOTER ACTIONS (Pinned to bottom) ─── */}
+            {/* FOOTER ACTIONS */}
             <div className="sidebar-footer" style={{ flexShrink: 0, marginTop: 'auto' }}>
                 <button
                     className={`nav-item ${currentNav === 'settings' || location.pathname === '/settings' ? 'active' : ''}`}

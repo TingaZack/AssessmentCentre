@@ -18,7 +18,7 @@ import './CertificateGenerator.css';
 import mLabLogo from '../../../assets/logo/mlab_logo.png';
 import zackSignature from '../../../assets/Signatue_Zack_.png';
 
-// 🚀 FIXED: nqfLevel and credits now accept string OR number
+// nqfLevel and credits now accept string OR number
 interface CertificateGeneratorProps {
     learner: {
         id: string;

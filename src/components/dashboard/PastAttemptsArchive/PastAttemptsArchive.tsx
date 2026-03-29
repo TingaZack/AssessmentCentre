@@ -48,7 +48,7 @@ const ArchivedSnapshotViewer: React.FC<{ snapshot: any; assessment: any; onClose
                     if (mSnap.exists()) setMProfile(mSnap.data());
                 }
 
-                // 🚀 Fetch Facilitator for Coaching Signature
+                // Fetch Facilitator for Coaching Signature
                 const facId = snapshot.coachingLog?.facilitatorId || snapshot.latestCoachingLog?.facilitatorId || snapshot.grading?.facilitatorId;
                 if (facId) {
                     const fSnap = await getDoc(doc(db, 'users', facId));

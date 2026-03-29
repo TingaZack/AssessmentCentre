@@ -18,7 +18,6 @@ export const WorkplacesManager: React.FC = () => {
     const { employers, fetchEmployers, addStaff } = useStore();
     const toast = useToast();
 
-    // 🚀 FIX: Only show loading screen if the global store is empty
     const [isInitialLoad, setIsInitialLoad] = useState(employers.length === 0);
     const [searchQuery, setSearchQuery] = useState('');
 
@@ -238,7 +237,7 @@ export const WorkplacesManager: React.FC = () => {
                 </button>
             </div>
 
-            {/* 🚀 FIX: Uses isInitialLoad so it only blocks UI on the very first load */}
+            {/* Uses isInitialLoad so it only blocks UI on the very first load */}
             {isInitialLoad ? (
                 <div className="ap-fullscreen" style={{ position: 'absolute', left: 0, right: 0, bottom: 0, top: 0 }}>
                     <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
@@ -347,7 +346,7 @@ export const WorkplacesManager: React.FC = () => {
                                     <Autocomplete
                                         apiKey={import.meta.env.VITE_GOOGLE_MAPS_API_KEY}
                                         onPlaceSelected={handlePlaceSelected}
-                                        options={{ types: ["address"], componentRestrictions: { country: "za" } }}
+                                        options={{ types: [], componentRestrictions: { country: "za" } }}
                                         style={{
                                             padding: '0.75rem',
                                             border: '1px solid #cbd5e1',

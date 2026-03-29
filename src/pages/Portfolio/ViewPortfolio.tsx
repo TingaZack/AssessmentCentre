@@ -444,7 +444,7 @@ export const ViewPortfolio: React.FC = () => {
                                         <thead><tr><th className="vp-th">Assessment</th><th className="vp-th vp-th--narrow">Status</th><th className="vp-th vp-th--action" /></tr></thead>
                                         <tbody>
                                             {filteredSubmissions.map(sub => {
-                                                // 🚀 Only show Remediate/Appeal buttons if the appeal window is still open or pending
+                                                // Only show Remediate/Appeal buttons if the appeal window is still open or pending
                                                 const isNYC = sub.status === 'moderated' && sub.competency === 'NYC';
                                                 const hasPendingAppeal = sub.status === 'appealed' || sub.appeal?.status === 'pending';
 

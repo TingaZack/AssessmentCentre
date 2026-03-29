@@ -17,7 +17,8 @@ import { auth, db } from './lib/firebase';
 // Admin
 import AdminDashboard from './pages/AdminDashboard/AdminDashboard';
 import { SettingsPage } from './pages/SettingsPage/SettingsPage';
-import { CertificateStudio } from './pages/AdminDashboard/CertificateStudio/CertificateStudio'; // 🚀 Added Certificate Studio
+import { CertificateStudio } from './pages/AdminDashboard/CertificateStudio/CertificateStudio';
+import { AdminProfileSetup } from './pages/AdminDashboard/AdminProfileSetup/AdminProfileSetup';
 
 // Staff (Facilitator, Assessor, Moderator, Invigilator)
 import { FacilitatorLayout } from './pages/FacilitatorDashboard/FacilitatorLayout/FacilitatorLayout';
@@ -68,34 +69,6 @@ const RootRedirect = () => {
 
   if (!user) return <Navigate to="/login" replace />;
 
-  // QCTO GATEKEEPERS
-
-  // Learner Gate
-  if (user.role === 'learner' && user.profileCompleted !== true) {
-    return <Navigate to="/setup-profile" replace />;
-  }
-
-  // Assessor Gate
-  if (user.role === 'assessor' && user.profileCompleted !== true) {
-    return <Navigate to="/setup-assessor" replace />;
-  }
-
-  // Moderator Gate
-  if (user.role === 'moderator' && user.profileCompleted !== true) {
-    return <Navigate to="/setup-moderator" replace />;
-  }
-
-  // Facilitator Gate
-  if (user.role === 'facilitator' && user.profileCompleted !== true) {
-    return <Navigate to="/setup-facilitator" replace />;
-  }
-
-  // Mentor Gate (Workplace Verifier)
-  if (user.role === 'mentor' && user.profileCompleted !== true) {
-    return <Navigate to="/setup-mentor" replace />;
-  }
-
-  // Master Routing Switch
   switch (user.role) {
     case 'admin': return <Navigate to="/admin" replace />;
     case 'facilitator': return <Navigate to="/facilitator" replace />;
@@ -111,20 +84,16 @@ function App() {
   const setUser = useStore((state) => state.setUser);
   const setLoading = useStore((state) => state.setLoading);
   const user = useStore((state) => state.user);
-
   const fetchSettings = useStore((state) => state.fetchSettings);
 
   useEffect(() => {
     fetchSettings();
-
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         try {
           const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
           if (userDoc.exists()) {
             const data = userDoc.data();
-
-            // Explicitly cast as UserProfile to prevent TS errors from dynamic fields like companyName
             const userProfile = {
               uid: firebaseUser.uid,
               email: firebaseUser.email || data.email || '',
@@ -134,7 +103,6 @@ function App() {
               ...data,
               profileCompleted: data.profileCompleted === true,
             } as UserProfile;
-
             setUser(userProfile);
           }
         } catch (e) {
@@ -145,53 +113,45 @@ function App() {
       }
       setLoading(false);
     });
-
     return () => unsubscribe();
   }, [setUser, setLoading]);
 
   return (
     <ErrorBoundary>
-
       <Router>
         <div className="App">
           <Routes>
             {/* ================= PUBLIC ROUTES ================= */}
             <Route path="/login" element={user ? <Navigate to="/" replace /> : <Login />} />
             <Route path="/verify" element={<PublicVerification />} />
-
-            {/* MOVED TO PUBLIC ROUTE: Anyone with the link can view the Statement of Results */}
             <Route path="/sor/:id" element={<StatementOfResults />} />
 
             {/* ================= ONBOARDING GATES ================= */}
-            {/* Mandatory KYC for Learners */}
+            <Route path="/setup-admin" element={
+              <RoleProtectedRoute allowedRoles={['admin']}>
+                <AdminProfileSetup />
+              </RoleProtectedRoute>
+            } />
             <Route path="/setup-profile" element={
               <RoleProtectedRoute allowedRoles={['learner']}>
                 <LearnerProfileSetup />
               </RoleProtectedRoute>
             } />
-
-            {/* Mandatory Compliance for Assessors */}
             <Route path="/setup-assessor" element={
               <RoleProtectedRoute allowedRoles={['assessor']}>
                 <AssessorProfileSetup />
               </RoleProtectedRoute>
             } />
-
-            {/* Mandatory Compliance for Moderators */}
             <Route path="/setup-moderator" element={
               <RoleProtectedRoute allowedRoles={['moderator']}>
                 <ModeratorProfileSetup />
               </RoleProtectedRoute>
             } />
-
-            {/* Mandatory Compliance for Facilitators */}
             <Route path="/setup-facilitator" element={
               <RoleProtectedRoute allowedRoles={['facilitator']}>
                 <FacilitatorProfileSetup />
               </RoleProtectedRoute>
             } />
-
-            {/* Mandatory Compliance for Workplace Mentors */}
             <Route path="/setup-mentor" element={
               <RoleProtectedRoute allowedRoles={['mentor']}>
                 <MentorProfileSetup />
@@ -200,58 +160,49 @@ function App() {
 
             {/* ================= PROTECTED ROUTES ================= */}
 
-            {/* LEARNER PORTAL */}
-            <Route path="/portal" element={
-              <RoleProtectedRoute allowedRoles={['learner']}>
-                <LearnerDashboard />
-              </RoleProtectedRoute>
-            } />
-
-            <Route path="/learner/assessment/:assessmentId" element={
-              <RoleProtectedRoute allowedRoles={['learner']}>
-                <AssessmentPlayer />
-              </RoleProtectedRoute>
-            } />
-
-            {/* ADMIN CONSOLE */}
+            {/* ADMIN CONSOLE (Includes Profile within its own Sidebar logic) */}
             <Route path="/admin" element={
               <RoleProtectedRoute allowedRoles={['admin']}>
                 <AdminDashboard />
               </RoleProtectedRoute>
             } />
 
-            {/* 🚀 STANDALONE CERTIFICATE STUDIO ROUTE */}
+            {/* STANDALONE ADMIN PAGES */}
             <Route path="/admin/studio" element={
               <RoleProtectedRoute allowedRoles={['admin', 'facilitator']}>
                 <CertificateStudio />
               </RoleProtectedRoute>
             } />
-
-            {/* WORKPLACES MANAGER ROUTE */}
             <Route path="/admin/workplaces" element={
               <RoleProtectedRoute allowedRoles={['admin']}>
                 <WorkplacesManager />
               </RoleProtectedRoute>
             } />
-
-            {/* SETTINGS PAGE ROUTE */}
             <Route path="/settings" element={
               <RoleProtectedRoute allowedRoles={['admin']}>
                 <SettingsPage />
               </RoleProtectedRoute>
             } />
-
-            {/* 360° PROFILE ROUTE */}
             <Route path="/admin/learners/:learnerId" element={
               <RoleProtectedRoute allowedRoles={['admin']}>
                 <LearnerProfileView />
               </RoleProtectedRoute>
             } />
-
-            {/* LIVE INVIGILATOR DASHBOARD ROUTE */}
             <Route path="/admin/invigilate/:assessmentId" element={
               <RoleProtectedRoute allowedRoles={['admin', 'facilitator']}>
                 <InvigilatorDashboard />
+              </RoleProtectedRoute>
+            } />
+
+            {/* LEARNER PORTAL */}
+            <Route path="/portal" element={
+              <RoleProtectedRoute allowedRoles={['learner']}>
+                <LearnerDashboard />
+              </RoleProtectedRoute>
+            } />
+            <Route path="/learner/assessment/:assessmentId" element={
+              <RoleProtectedRoute allowedRoles={['learner']}>
+                <AssessmentPlayer />
               </RoleProtectedRoute>
             } />
 
@@ -270,48 +221,39 @@ function App() {
               <Route path="assessments/builder/:assessmentId?" element={<AssessmentBuilder />} />
             </Route>
 
-            {/* 4. SHARED STAFF & AUDIT VIEWS */}
+            {/* SHARED VIEWS */}
             <Route path="/admin/assessment/preview/:assessmentId" element={
               <RoleProtectedRoute allowedRoles={['admin', 'facilitator', 'assessor', 'moderator', 'mentor']}>
                 <AssessmentPreview />
               </RoleProtectedRoute>
             } />
-
             <Route path="/cohorts/:cohortId" element={
               <RoleProtectedRoute allowedRoles={['admin', 'facilitator', 'assessor', 'moderator', 'mentor']}>
                 <CohortDetailsPage />
               </RoleProtectedRoute>
             } />
-
-            {/* PORTFOLIO OF EVIDENCE ROUTE */}
             <Route path="/portfolio/:id" element={
               <RoleProtectedRoute allowedRoles={['admin', 'assessor', 'moderator', 'facilitator', 'learner', 'mentor']}>
                 <ViewPortfolio />
               </RoleProtectedRoute>
             } />
-
-            {/* Audited Grading Interface */}
             <Route path="/portfolio/submission/:submissionId" element={
               <RoleProtectedRoute allowedRoles={['admin', 'facilitator', 'assessor', 'moderator', 'mentor']}>
                 <SubmissionReview />
               </RoleProtectedRoute>
             } />
 
-            {/* ASSESSOR (Marking Centre) */}
+            {/* ASSESSOR / MODERATOR / MENTOR */}
             <Route path="/marking/*" element={
               <RoleProtectedRoute allowedRoles={['assessor']}>
                 <AssessorDashboard />
               </RoleProtectedRoute>
             } />
-
-            {/* MODERATOR (QA & Endorsement) */}
             <Route path="/moderation/*" element={
               <RoleProtectedRoute allowedRoles={['moderator']}>
                 <ModeratorDashboard />
               </RoleProtectedRoute>
             } />
-
-            {/* MENTOR (Workplace Verification) */}
             <Route path="/mentor/*" element={
               <RoleProtectedRoute allowedRoles={['mentor']}>
                 <MentorDashboard />
@@ -321,7 +263,6 @@ function App() {
             {/* ================= FALLBACKS ================= */}
             <Route path="/" element={<RootRedirect />} />
             <Route path="*" element={<RootRedirect />} />
-
           </Routes>
         </div>
       </Router>

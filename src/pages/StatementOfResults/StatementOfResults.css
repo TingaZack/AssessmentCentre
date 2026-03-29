@@ -3,8 +3,8 @@
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Oswald:wght@300;400;500;600;700&display=swap");
 
 :root {
-  --mlab-midnight: #073f4e; /* 🚀 RESTORED ORIGINAL COMPANY COLOR */
-  --mlab-green: #94c73d; /* 🚀 RESTORED ORIGINAL COMPANY COLOR */
+  --mlab-midnight: #073f4e;
+  --mlab-green: #94c73d;
   --mlab-grey: #6b6b6b;
   --mlab-white: #ffffff;
   --soft-bg: #f5f8f7;
@@ -21,7 +21,7 @@ body {
   font-family: "Inter", system-ui, sans-serif;
 }
 
-/* 🚀 A4 DOCUMENT WRAPPER */
+/* A4 DOCUMENT WRAPPER */
 .sor-layout {
   display: flex;
   flex-direction: column;
@@ -43,7 +43,7 @@ body {
   padding: 2rem 1rem;
 }
 
-/* 🚀 VERIFICATION STATUS BANNER (Sits clearly above the document) */
+/* VERIFICATION STATUS BANNER (Sits clearly above the document) */
 .status-banner-container {
   width: 210mm;
   max-width: 100%;
@@ -462,7 +462,7 @@ body {
   font-weight: bold;
 }
 
-/* 🚀 FIX: BULLETPROOF SIGNATURE LAYOUT */
+/* BULLETPROOF SIGNATURE LAYOUT */
 .footer-section {
   margin-top: 2rem;
   padding-top: 1.5rem;
@@ -539,7 +539,7 @@ body {
   margin-top: 0.25rem;
 }
 
-/* 🚀 FLOATING CONTROLS (Restored to Bottom Right) */
+/* FLOATING CONTROLS (Restored to Bottom Right) */
 .print-controls {
   position: fixed;
   bottom: 2rem;
@@ -609,12 +609,11 @@ body {
   align-items: center;
 }
 
-/* 🚀 PRINT STYLES (THE MAGIC SAUCE) */
-/* 🚀 PRINT STYLES (THE MAGIC SAUCE) */
+/* PRINT STYLES (THE MAGIC SAUCE) */
 @media print {
   @page {
     size: A4 portrait;
-    margin: 0 !important; /* 🚀 Kills browser-injected page margins */
+    margin: 0 !important;
   }
 
   html,
@@ -643,7 +642,7 @@ body {
     background: white !important;
   }
 
-  /* 🚀 Strip the container of all web UI styling */
+  /* Strip the container of all web UI styling */
   .a4-document,
   .container {
     width: 100% !important;
@@ -652,8 +651,8 @@ body {
     min-height: auto !important;
     margin: 0 !important;
     padding: 0 !important;
-    border: none !important; /* 🚀 Ensure no borders */
-    box-shadow: none !important; /* 🚀 Ensure no shadows */
+    border: none !important;
+    box-shadow: none !important;
     outline: none !important;
     overflow: visible !important;
   }

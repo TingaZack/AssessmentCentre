@@ -47,6 +47,8 @@ export interface DashboardLearner {
   blockchainFingerprint?: string;
   isBlockchainVerified?: boolean;
 
+  certificates?: string;
+
   // Existing Academic Fields
   qualification: Qualification;
   knowledgeModules: KnowledgeModule[];

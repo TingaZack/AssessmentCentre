@@ -158,7 +158,7 @@
 
 /* ═══════════════════════════════════════════════════════════════════════════
    GATE SCREEN — Not Started / Remediation
-   🚀 FIX: fixed viewport + scrollable body
+   FIX: fixed viewport + scrollable body
 ═══════════════════════════════════════════════════════════════════════════ */
 .ap-gate {
   height: 100vh; /* fixed viewport height */
@@ -207,7 +207,7 @@
   color: var(--mlab-white);
 }
 
-/* 🚀 Parent scrolls, children do NOT scroll */
+/* Parent scrolls, children do NOT scroll */
 .ap-gate-body {
   flex: 1;
   overflow-y: auto; /* only this scrolls */

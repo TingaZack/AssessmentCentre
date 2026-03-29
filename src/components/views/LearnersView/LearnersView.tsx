@@ -53,7 +53,7 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
     const [filterStatus, setFilterStatus] = useState('all');
     const [selectedYear, setSelectedYear] = useState<string>('all');
     const [selectedQualification, setSelectedQualification] = useState<string>('all');
-    const [selectedCampus, setSelectedCampus] = useState<string>('all'); // 🚀 Campus Filter State
+    const [selectedCampus, setSelectedCampus] = useState<string>('all');
     const [showArchived, setShowArchived] = useState(false);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [web3Status, setWeb3Status] = useState<'all' | 'minted' | 'pending'>('all');
@@ -63,7 +63,7 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
     const [deleteReason, setDeleteReason] = useState('');
     const [isDeleting, setIsDeleting] = useState(false);
 
-    // 🚀 CERTIFICATE GENERATOR STATE
+    // CERTIFICATE GENERATOR STATE
     const [certifyingLearner, setCertifyingLearner] = useState<DashboardLearner | null>(null);
 
     useEffect(() => {
@@ -398,7 +398,7 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
                             const cohortObj = cohorts.find(c => c.id === learner.cohortId);
                             const cohortName = cohortObj ? cohortObj.name : (learner.cohortId === 'Unassigned' ? 'Unassigned' : 'Unknown Class');
 
-                            // 🚀 FIXED: Check Learner's direct campus first, then Cohort's campus
+                            // Check Learner's direct campus first, then Cohort's campus
                             const activeCampusId = learner.campusId || cohortObj?.campusId;
                             const campusName = activeCampusId
                                 ? settings?.campuses?.find(c => c.id === activeCampusId)?.name || 'Unknown Location'
@@ -483,7 +483,7 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
 
                                             {viewMode !== 'staging' && !learner.isArchived && !showArchived && (
                                                 <>
-                                                    {/* 🚀 NEW: Issue Certificate Button */}
+                                                    {/* Issue Certificate Button */}
                                                     <button className="mlab-icon-btn mlab-icon-btn--emerald" onClick={() => setCertifyingLearner(learner)} title="Issue Certificate">
                                                         <Award size={14} />
                                                     </button>

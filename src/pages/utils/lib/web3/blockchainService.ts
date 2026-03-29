@@ -7,7 +7,7 @@ import ContractABI from "./QCTOCredentialRegistry.json";
 import { CONTRACT_ADDRESS } from "./config";
 
 /**
- * 🚀 PUBLIC READ-ONLY PROVIDER
+ * PUBLIC READ-ONLY PROVIDER
  * We are hardcoding a highly reliable Sepolia RPC URL here to guarantee
  * that the scanner looks at the exact same network where you just minted the record!
  */
@@ -69,7 +69,7 @@ export const issueBlockchainCertificate = async (
   ipfsHash: string,
 ) => {
   try {
-    // 🚀 NEW: Aggressive Data Check before talking to the blockchain
+    // Aggressive Data Check before talking to the blockchain
     console.log("🚀 MINTING DATA CHECK:", {
       certId,
       learnerName,
@@ -197,7 +197,7 @@ export const verifyBlockchainCertificate = async (
 // import { ALCHEMY_RPC_URL, CONTRACT_ADDRESS } from "./config";
 
 // /**
-//  * 🚀 PUBLIC READ-ONLY PROVIDER
+//  * PUBLIC READ-ONLY PROVIDER
 //  * This allows the app to verify certificates even if the user doesn't have MetaMask.
 //  * Replace the URL with a real Sepolia RPC URL from Alchemy or Infura for production.
 //  */

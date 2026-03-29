@@ -274,8 +274,8 @@
   border: 1px solid var(--mlab-border);
   border-radius: var(--radius-md);
   padding: 1.25rem;
-  min-width: 0; /* 🚀 CRITICAL: Allows grid item to shrink */
-  overflow: hidden; /* 🚀 CRITICAL: Prevents content from spilling out */
+  min-width: 0;
+  overflow: hidden;
 }
 .vp-overview-card__title {
   display: flex;
@@ -379,7 +379,7 @@
   border: 1px solid var(--mlab-border);
   background: var(--mlab-white);
   font-size: 0.82rem;
-  min-width: 0; /* 🚀 CRITICAL: Allows flex children to truncate */
+  min-width: 0;
 }
 .vp-curr-item--done {
   border-color: #86efac;
@@ -428,8 +428,8 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  display: block; /* 🚀 Added block display to enforce ellipsis */
-  width: 100%; /* 🚀 Forces it to respect the parent width */
+  display: block;
+  width: 100%;
 }
 .vp-curr-item__badge {
   flex-shrink: 0;

@@ -2151,7 +2151,7 @@ export const useStore = create<StoreState>()(
 //           deletedBy: audit.adminId,
 //           deletedByName: audit.adminName,
 //           deletedAt: timestamp,
-//           dataSnapshot: existingRow, // 🚀 Saves a snapshot of the learner just in case you ever need to restore them manually!
+//           dataSnapshot: existingRow,
 //         });
 
 //         // DELETE THE ENROLLMENT (The Academic Record)

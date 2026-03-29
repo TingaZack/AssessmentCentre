@@ -12,11 +12,22 @@ export type ModuleStatus =
   | "Not Started"
   | "Pending Grading";
 
+// export interface CampusLocation {
+//   id: string;
+//   name: string;
+//   type: "physical" | "online";
+//   address: string;
+//   siteAccreditationNumber: string;
+//   isDefault: boolean;
+// }
+
 export interface CampusLocation {
   id: string;
   name: string;
   type: "physical" | "online";
   address: string;
+  city: string;
+  province: string;
   siteAccreditationNumber: string;
   isDefault: boolean;
 }
@@ -39,6 +50,16 @@ export interface SystemSettings {
   // Brand Assets stored in Firebase
   logoUrl?: string;
   signatureUrl?: string;
+
+  institutionAddress?: string;
+  institutionCity?: string;
+  institutionProvince?: string;
+  institutionPostalCode?: string;
+  institutionLat?: number;
+  institutionLng?: number;
+
+  contactNumber?: string; // Or 'institutionPhone'
+  institutionEmail?: string;
 
   //Dynamic CSV Column Mappings
   csvMappings: {

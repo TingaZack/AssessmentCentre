@@ -1,15 +1,23 @@
 // src/pages/LearnerPortal/LearnerProfileView/LearnerProfileView.tsx
 
-
 import React, { useState, useEffect } from 'react';
 import {
     User, Mail, Phone, MapPin, ShieldCheck,
     FileText, Edit3, Save, X, Fingerprint,
-    GraduationCap, AlertCircle, Info, Loader2, Camera
+    GraduationCap, AlertCircle, Info, Loader2, Camera, Heart, Briefcase
 } from 'lucide-react';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import './LearnerProfileView.css';
 import { storage } from '../../../../lib/firebase';
+
+/* ── QCTO DICTIONARIES (For Label Mapping) ────────────────────────────────── */
+const QCTO_EQUITY = [{ label: "Black African", value: "BA" }, { label: "Coloured", value: "BC" }, { label: "Indian / Asian", value: "BI" }, { label: "White", value: "Wh" }, { label: "Other", value: "Oth" }];
+const QCTO_GENDER = [{ label: "Male", value: "M" }, { label: "Female", value: "F" }];
+const QCTO_LANGUAGES = [{ label: "English", value: "Eng" }, { label: "Afrikaans", value: "Afr" }, { label: "isiZulu", value: "Zul" }, { label: "isiXhosa", value: "Xho" }, { label: "sePedi", value: "Sep" }, { label: "seSotho", value: "Ses" }, { label: "seTswana", value: "Set" }, { label: "siSwati", value: "Swa" }, { label: "tshiVenda", value: "Tsh" }, { label: "xiTsonga", value: "Xit" }, { label: "isiNdebele", value: "Nde" }, { label: "Sign Language", value: "SASL" }, { label: "Other", value: "Oth" }];
+const QCTO_CITIZEN_STATUS = [{ label: "South African Citizen", value: "SA" }, { label: "Permanent Resident", value: "PR" }, { label: "Dual Citizenship", value: "D" }, { label: "Other", value: "O" }];
+const QCTO_SOCIOECONOMIC = [{ label: "Employed", value: "01" }, { label: "Unemployed, looking for work", value: "02" }, { label: "Not working - not looking", value: "03" }, { label: "Home-maker", value: "04" }, { label: "Scholar / Student", value: "06" }, { label: "Pensioner / Retired", value: "07" }, { label: "Not working - disabled", value: "08" }];
+const QCTO_DISABILITY_STATUS = [{ label: "None", value: "N" }, { label: "Sight", value: "01" }, { label: "Hearing", value: "02" }, { label: "Communication", value: "03" }, { label: "Physical", value: "04" }, { label: "Intellectual", value: "05" }, { label: "Emotional", value: "06" }, { label: "Multiple", value: "07" }];
+const QCTO_PROVINCES = [{ label: "Western Cape", value: "1" }, { label: "Eastern Cape", value: "2" }, { label: "Northern Cape", value: "3" }, { label: "Free State", value: "4" }, { label: "KwaZulu-Natal", value: "5" }, { label: "North West", value: "6" }, { label: "Gauteng", value: "7" }, { label: "Mpumalanga", value: "8" }, { label: "Limpopo", value: "9" }];
 
 interface ProfileProps {
     profile: any;
@@ -20,17 +28,42 @@ interface ProfileProps {
 export const LearnerProfileView: React.FC<ProfileProps> = ({ profile, user, onUpdate }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [saving, setSaving] = useState(false);
-    const [formData, setFormData] = useState({ ...profile });
+
+    // Local form state - flattened for easier input binding
+    const [formData, setFormData] = useState<any>({});
 
     // Photo Upload States
     const [profilePhoto, setProfilePhoto] = useState<File | null>(null);
-    const [photoPreview, setPhotoPreview] = useState<string | null>(profile?.profilePhotoUrl || null);
+    const [photoPreview, setPhotoPreview] = useState<string | null>(null);
 
-    // Sync preview if profile prop updates
+    // Initial Load & Sync
     useEffect(() => {
-        if (profile?.profilePhotoUrl && !profilePhoto) {
-            setPhotoPreview(profile.profilePhotoUrl);
-            setFormData((prev: any) => ({ ...prev, profilePhotoUrl: profile.profilePhotoUrl }));
+        if (profile) {
+            const d = profile.demographics || {};
+            const nok = profile.nextOfKin || {};
+
+            setFormData({
+                fullName: profile.fullName || '',
+                email: profile.email || '',
+                phone: profile.phone || d.learnerPhoneNumber || '',
+                idNumber: profile.idNumber || '',
+                streetAddress: d.learnerHomeAddress1 || '',
+                city: d.learnerHomeAddress2 || '',
+                provinceCode: d.provinceCode || '',
+                postalCode: d.learnerHomeAddressPostalCode || '',
+                equityCode: d.equityCode || '',
+                genderCode: d.genderCode || '',
+                homeLanguageCode: d.homeLanguageCode || '',
+                citizenStatusCode: d.citizenResidentStatusCode || '',
+                socioeconomicCode: d.socioeconomicStatusCode || '',
+                disabilityCode: d.disabilityStatusCode || 'N',
+                disabilityRating: d.disabilityRating || '',
+                nokName: nok.name || '',
+                nokRelationship: nok.relationship || '',
+                nokPhone: nok.phone || '',
+                profilePhotoUrl: profile.profilePhotoUrl || ''
+            });
+            setPhotoPreview(profile.profilePhotoUrl || null);
         }
     }, [profile]);
 
@@ -38,14 +71,8 @@ export const LearnerProfileView: React.FC<ProfileProps> = ({ profile, user, onUp
         if (e.target.files && e.target.files[0]) {
             const file = e.target.files[0];
             setProfilePhoto(file);
-            setPhotoPreview(URL.createObjectURL(file)); // Show local preview instantly
+            setPhotoPreview(URL.createObjectURL(file));
         }
-    };
-
-    const handleFileUpload = async (file: File, path: string) => {
-        const storageRef = ref(storage, path);
-        const snapshot = await uploadBytes(storageRef, file);
-        return await getDownloadURL(snapshot.ref);
     };
 
     const handleSave = async () => {
@@ -54,180 +81,158 @@ export const LearnerProfileView: React.FC<ProfileProps> = ({ profile, user, onUp
         try {
             let finalPhotoUrl = formData.profilePhotoUrl;
 
-            // ✅ Upload new photo if selected
             if (profilePhoto && user?.uid) {
-                const ext = profilePhoto.name.split('.').pop();
-                finalPhotoUrl = await handleFileUpload(profilePhoto, `learners/${user.uid}/profile_${Date.now()}.${ext}`);
+                const storageRef = ref(storage, `learners/${user.uid}/profile_${Date.now()}`);
+                const snapshot = await uploadBytes(storageRef, profilePhoto);
+                finalPhotoUrl = await getDownloadURL(snapshot.ref);
             }
 
-            const updatedData = { ...formData, profilePhotoUrl: finalPhotoUrl };
-            await onUpdate(profile.id, updatedData);
+            // Re-structure the data back into the QCTO nested format
+            const updatedData = {
+                fullName: formData.fullName,
+                email: formData.email,
+                phone: formData.phone,
+                profilePhotoUrl: finalPhotoUrl,
+                demographics: {
+                    ...(profile.demographics || {}),
+                    learnerPhoneNumber: formData.phone,
+                    learnerHomeAddress1: formData.streetAddress,
+                    learnerHomeAddress2: formData.city,
+                    provinceCode: formData.provinceCode,
+                    learnerHomeAddressPostalCode: formData.postalCode,
+                    equityCode: formData.equityCode,
+                    genderCode: formData.genderCode,
+                    homeLanguageCode: formData.homeLanguageCode,
+                    citizenResidentStatusCode: formData.citizenStatusCode,
+                    socioeconomicStatusCode: formData.socioeconomicCode,
+                    disabilityStatusCode: formData.disabilityCode,
+                    disabilityRating: formData.disabilityCode === 'N' ? '' : formData.disabilityRating,
+                },
+                nextOfKin: {
+                    name: formData.nokName,
+                    relationship: formData.nokRelationship,
+                    phone: formData.nokPhone
+                }
+            };
 
+            await onUpdate(profile.id, updatedData);
             setIsEditing(false);
-            setProfilePhoto(null); // Reset file state after successful save
+            setProfilePhoto(null);
         } catch (error) {
             console.error('Update failed', error);
+            alert("Failed to update profile.");
         } finally {
             setSaving(false);
         }
     };
 
-    const update = (field: string, val: string) =>
-        setFormData((prev: any) => ({ ...prev, [field]: val }));
+    const update = (field: string, val: string) => setFormData((prev: any) => ({ ...prev, [field]: val }));
+
+    // Helper to get labels from codes
+    const getLabel = (value: string, list: any[]) => list.find(i => i.value === value)?.label || value || '—';
 
     const isVerified = profile?.profileCompleted;
 
     return (
         <div className="lpv-wrapper animate-fade-in">
-
-            {/* ── Compliance Status Banner ──────────────────────────────── */}
+            {/* Compliance Banner */}
             <div className={`lpv-banner ${isVerified ? 'lpv-banner--verified' : 'lpv-banner--pending'}`}>
-                <ShieldCheck
-                    size={22}
-                    className="lpv-banner__icon"
-                    color={isVerified ? 'var(--mlab-green-dark)' : 'var(--mlab-amber)'}
-                />
-                <div>
-                    <span className="lpv-banner__title">
-                        NLRD Verification: {isVerified ? 'Verified & Compliant' : 'Pending Verification'}
-                    </span>
-                    <p className="lpv-banner__desc">
-                        {isVerified
-                            ? 'Your profile meets all QCTO regulatory requirements.'
-                            : 'Some compliance documents or details are still being verified.'}
-                    </p>
+                <ShieldCheck size={22} className="lpv-banner__icon" />
+                <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span className="lpv-banner__title">Compliance Status: {isVerified ? 'Fully Compliant' : 'Information Required'}</span>
+                        {profile?.updatedAt && (
+                            <span style={{ fontSize: '0.75rem', opacity: 0.8, fontStyle: 'italic' }}>
+                                Last Synced: {new Date(profile.updatedAt).toLocaleDateString()}
+                            </span>
+                        )}
+                    </div>
+                    <p className="lpv-banner__desc">{isVerified ? 'Your profile data is synchronized with QCTO standards and locked for NLRD reporting.' : 'Please update your profile to meet regulatory requirements.'}</p>
                 </div>
             </div>
 
-            {/* ── Two-column layout ─────────────────────────────────────── */}
             <div className="lpv-layout">
-
-                {/* ── Main Stack ────────────────────────────────────────── */}
                 <div className="lpv-main-stack">
 
-                    {/* Identity & Demographics */}
+                    {/* 1. Identity Section */}
                     <section className="lpv-panel">
                         <div className="lpv-panel__header">
-                            <h3 className="lpv-panel__title">
-                                <User size={16} /> Identity &amp; Demographics
-                            </h3>
-                            <button
-                                className={`lpv-edit-btn ${isEditing ? 'lpv-edit-btn--cancel' : ''}`}
-                                onClick={() => {
-                                    setIsEditing(!isEditing);
-                                    if (isEditing) {
-                                        // Reset photo preview if cancelling
-                                        setPhotoPreview(profile?.profilePhotoUrl || null);
-                                        setProfilePhoto(null);
-                                    }
-                                }}
-                            >
-                                {isEditing
-                                    ? <><X size={13} /> Cancel</>
-                                    : <><Edit3 size={13} /> Edit Profile</>}
+                            <h3 className="lpv-panel__title"><User size={16} /> Identity & Demographics</h3>
+                            <button className={`lpv-edit-btn ${isEditing ? 'lpv-edit-btn--cancel' : ''}`} onClick={() => setIsEditing(!isEditing)}>
+                                {isEditing ? <><X size={13} /> Cancel</> : <><Edit3 size={13} /> Edit Profile</>}
                             </button>
                         </div>
 
-                        {/* PROFILE PHOTO AREA */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', marginBottom: '2rem', padding: '1rem', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                            <div style={{ position: 'relative' }}>
-                                <div style={{ width: '70px', height: '70px', borderRadius: '50%', background: '#e2e8f0', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '3px solid white', boxShadow: '0 2px 5px rgba(0,0,0,0.1)' }}>
-                                    {photoPreview ? (
-                                        <img src={photoPreview} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                    ) : (
-                                        <User size={36} color="#94a3b8" />
-                                    )}
+                        <div className="lpv-profile-header">
+                            <div className="lpv-avatar-wrapper">
+                                <div className="lpv-avatar">
+                                    {photoPreview ? <img src={photoPreview} style={{ objectFit: 'cover', width: '100%', height: '100%' }} alt="Profile" /> : <User size={30} color="#94a3b8" />}
                                 </div>
                                 {isEditing && (
-                                    <label style={{ position: 'absolute', bottom: '-4px', right: '-4px', background: 'var(--mlab-blue)', color: 'white', width: '28px', height: '28px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', border: '2px solid white', boxShadow: '0 2px 4px rgba(0,0,0,0.1)', transition: 'background 0.2s' }}>
+                                    <label className="lpv-avatar-upload">
                                         <Camera size={14} />
-                                        <input type="file" accept="image/*" onChange={handlePhotoSelect} style={{ display: 'none' }} />
+                                        <input type="file" accept="image/*" onChange={handlePhotoSelect} hidden />
                                     </label>
                                 )}
                             </div>
                             <div>
-                                <h4 style={{ margin: '0 0 0.25rem 0', color: '#0f172a', fontSize: '1.05rem' }}>{profile?.fullName || 'Learner'}</h4>
-                                <p style={{ margin: 0, color: '#64748b', fontSize: '0.85rem' }}>
-                                    {isEditing ? 'Click the camera icon to update your photo.' : 'Student Profile'}
-                                </p>
+                                <h4 className="lpv-display-name">{formData.fullName}</h4>
+                                <p className="lpv-display-sub">{getLabel(formData.genderCode, QCTO_GENDER)} • {getLabel(formData.equityCode, QCTO_EQUITY)}</p>
                             </div>
                         </div>
 
                         <div className="lpv-grid-2">
-                            <ROField label="Full Legal Name" value={profile?.fullName} icon={<User size={13} />} />
-                            <ROField label="National ID Number" value={profile?.idNumber} icon={<Fingerprint size={13} />} />
-                            <EditField
-                                label="Contact Number" value={formData?.phone}
-                                icon={<Phone size={13} />} isEditing={isEditing}
-                                onChange={val => update('phone', val)}
-                            />
-                            <EditField
-                                label="Email Address" value={formData?.email}
-                                icon={<Mail size={13} />} isEditing={isEditing}
-                                onChange={val => update('email', val)}
-                            />
-                        </div>
-
-                        <div className="lpv-divider" />
-
-                        <div className="lpv-grid-3">
-                            <ROField label="Equity Group" value={profile?.equity} />
-                            <ROField label="Gender" value={profile?.gender} />
-                            <ROField label="Nationality" value={profile?.nationality || 'South African'} />
+                            <ROField label="National ID" value={formData.idNumber} icon={<Fingerprint size={13} />} />
+                            <EditField label="Citizenship Status" value={formData.citizenStatusCode} isEditing={isEditing} type="select" options={QCTO_CITIZEN_STATUS} onChange={(v: string) => update('citizenStatusCode', v)} />
+                            <EditField label="Home Language" value={formData.homeLanguageCode} isEditing={isEditing} type="select" options={QCTO_LANGUAGES} onChange={(v: string) => update('homeLanguageCode', v)} />
+                            <EditField label="Contact Number" value={formData.phone} icon={<Phone size={13} />} isEditing={isEditing} onChange={(v: string) => update('phone', v)} />
+                            <EditField label="Email Address" value={formData.email} icon={<Mail size={13} />} isEditing={isEditing} onChange={(v: string) => update('email', v)} />
                         </div>
                     </section>
 
-                    {/* Address & Next of Kin */}
+                    {/* 2. Socioeconomic & Disability */}
                     <section className="lpv-panel">
-                        <h3 className="lpv-panel__title lpv-panel__title--simple">
-                            <MapPin size={16} /> Address &amp; Emergency Contact
-                        </h3>
-
-                        <div style={{ marginBottom: '1.25rem' }}>
-                            <EditField
-                                label="Residential Address" value={formData?.streetAddress}
-                                isEditing={isEditing}
-                                onChange={val => update('streetAddress', val)}
-                            />
+                        <h3 className="lp-section-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', fontSize: '0.9rem', fontWeight: 600, color: 'var(--mlab-blue)' }}><Briefcase size={16} /> Background & Disability</h3>
+                        <div className="lpv-grid-2">
+                            <EditField label="Employment Status" value={formData.socioeconomicCode} isEditing={isEditing} type="select" options={QCTO_SOCIOECONOMIC} onChange={(v: string) => update('socioeconomicCode', v)} />
+                            <EditField label="Disability Status" value={formData.disabilityCode} isEditing={isEditing} type="select" options={QCTO_DISABILITY_STATUS} onChange={(v: string) => update('disabilityCode', v)} />
                         </div>
+                    </section>
 
-                        <div className="lpv-grid-3">
-                            <ROField label="City" value={profile?.city} />
-                            <ROField label="Province" value={profile?.province} />
-                            <ROField label="Postal Code" value={profile?.postalCode} />
+                    {/* 3. Address Section */}
+                    <section className="lpv-panel">
+                        <h3 className="lp-section-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', fontSize: '0.9rem', fontWeight: 600, color: 'var(--mlab-blue)' }}><MapPin size={16} /> Residential Address</h3>
+                        <div className="lpv-full-field" style={{ marginBottom: '1rem' }}>
+                            <EditField label="Street Address" value={formData.streetAddress} isEditing={isEditing} onChange={(v: string) => update('streetAddress', v)} />
                         </div>
-
-                        <div className="lpv-divider" />
-
                         <div className="lpv-grid-3">
-                            <EditField label="Next of Kin" value={formData?.nokName} isEditing={isEditing} onChange={val => update('nokName', val)} />
-                            <EditField label="Relationship" value={formData?.nokRelationship} isEditing={isEditing} onChange={val => update('nokRelationship', val)} />
-                            <EditField label="NOK Phone" value={formData?.nokPhone} isEditing={isEditing} onChange={val => update('nokPhone', val)} />
+                            <ROField label="City" value={formData.city} />
+                            <EditField label="Province" value={formData.provinceCode} isEditing={isEditing} type="select" options={QCTO_PROVINCES} onChange={(v: string) => update('provinceCode', v)} />
+                            <ROField label="Postal Code" value={formData.postalCode} />
+                        </div>
+                    </section>
+
+                    {/* 4. Next of Kin */}
+                    <section className="lpv-panel">
+                        <h3 className="lp-section-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', fontSize: '0.9rem', fontWeight: 600, color: 'var(--mlab-blue)' }}><Heart size={16} /> Emergency Contact</h3>
+                        <div className="lpv-grid-3">
+                            <EditField label="Full Name" value={formData.nokName} isEditing={isEditing} onChange={(v: string) => update('nokName', v)} />
+                            <EditField label="Relationship" value={formData.nokRelationship} isEditing={isEditing} onChange={(v: string) => update('nokRelationship', v)} />
+                            <EditField label="Contact Number" value={formData.nokPhone} isEditing={isEditing} onChange={(v: string) => update('nokPhone', v)} />
                         </div>
                     </section>
                 </div>
 
-                {/* ── Aside ─────────────────────────────────────────────── */}
+                {/* Aside Column */}
                 <aside className="lpv-aside">
-
-                    {/* Qualification Card */}
                     <div className="lpv-qual-card">
-                        <div className="lpv-qual-card__label">
-                            <GraduationCap size={13} /> Current Qualification
-                        </div>
-                        <p className="lpv-qual-card__name">
-                            {profile?.qualification?.name || 'Unassigned'}
-                        </p>
-                        <span className="lpv-qual-card__saqa">
-                            SAQA ID: {profile?.qualification?.saqaId || '—'}
-                        </span>
+                        <div className="lpv-qual-card__label"><GraduationCap size={13} /> Active Qualification</div>
+                        <p className="lpv-qual-card__name">{profile?.qualification?.name || 'Enrolment Pending'}</p>
+                        <span className="lpv-qual-card__saqa">SAQA ID: {profile?.qualification?.saqaId || '—'}</span>
                     </div>
 
-                    {/* Compliance Vault */}
                     <div className="lpv-vault-card">
-                        <h4 className="lpv-vault-card__title">
-                            <FileText size={15} /> Compliance Vault
-                        </h4>
+                        <h4 className="lpv-vault-card__title"><FileText size={15} /> Compliance Vault</h4>
                         <div className="lpv-vault-links">
                             <DocVaultLink label="Certified ID Copy" url={profile?.documents?.idUrl} />
                             <DocVaultLink label="Highest Qualification" url={profile?.documents?.qualUrl} />
@@ -235,16 +240,9 @@ export const LearnerProfileView: React.FC<ProfileProps> = ({ profile, user, onUp
                         </div>
                     </div>
 
-                    {/* Save Button — only while editing */}
                     {isEditing && (
-                        <button
-                            className="lpv-save-btn"
-                            onClick={handleSave}
-                            disabled={saving}
-                        >
-                            {saving
-                                ? <><Loader2 size={16} className="lpv-spin" /> Saving…</>
-                                : <><Save size={16} /> Confirm Changes</>}
+                        <button className="lpv-save-btn" onClick={handleSave} disabled={saving}>
+                            {saving ? <><Loader2 size={16} className="lpv-spin" /> Saving…</> : <><Save size={16} /> Confirm Changes</>}
                         </button>
                     )}
                 </aside>
@@ -253,52 +251,71 @@ export const LearnerProfileView: React.FC<ProfileProps> = ({ profile, user, onUp
     );
 };
 
-/* ── Helper Components ─────────────────────────────────────────────────────── */
+/* ── Internal Components ─────────────────────────────────────────────────── */
 
 const ROField = ({ label, value, icon }: { label: string; value?: string; icon?: React.ReactNode }) => (
-    <div>
+    <div className="lpv-field">
         <div className="lpv-field__label">{icon}{label}</div>
-        <div className={`lpv-field__value${!value ? ' lpv-field__value--empty' : ''}`}>
-            {value || '—'}
-        </div>
+        <div className={`lpv-field__value ${!value ? 'lpv-field__value--empty' : ''}`}>{value || '—'}</div>
     </div>
 );
 
 const EditField = ({
-    label, value, isEditing, onChange, icon
+    label,
+    value,
+    isEditing,
+    onChange,
+    icon,
+    type = 'text',
+    options = []
 }: {
-    label: string; value?: string; isEditing: boolean;
-    onChange: (val: string) => void; icon?: React.ReactNode;
-}) => (
-    <div>
-        <div className="lpv-field__label">{icon}{label}</div>
-        {isEditing ? (
-            <input
-                type="text"
-                className="lpv-input"
-                value={value || ''}
-                onChange={e => onChange(e.target.value)}
-            />
-        ) : (
-            <div className={`lpv-field__value${!value ? ' lpv-field__value--empty' : ''}`}>
-                {value || '—'}
-            </div>
-        )}
-    </div>
-);
+    label: string;
+    value?: string;
+    isEditing: boolean;
+    onChange: (val: string) => void;
+    icon?: React.ReactNode;
+    type?: 'text' | 'select';
+    options?: { label: string; value: string }[];
+}) => {
+    // We need to display the Label when NOT editing, but pass the Value when editing
+    const displayValue = type === 'select' && !isEditing
+        ? options.find(o => o.value === value)?.label
+        : value;
+
+    return (
+        <div className="lpv-field">
+            <div className="lpv-field__label">{icon}{label}</div>
+            {isEditing ? (
+                type === 'select' ? (
+                    <select
+                        className="lpv-input"
+                        value={value || ''}
+                        onChange={e => onChange(e.target.value)}
+                    >
+                        <option value="">Select...</option>
+                        {options.map((o: any) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                ) : (
+                    <input
+                        type="text"
+                        className="lpv-input"
+                        value={value || ''}
+                        onChange={e => onChange(e.target.value)}
+                    />
+                )
+            ) : (
+                <div className={`lpv-field__value ${!displayValue ? 'lpv-field__value--empty' : ''}`}>
+                    {displayValue || '—'}
+                </div>
+            )}
+        </div>
+    );
+};
 
 const DocVaultLink = ({ label, url }: { label: string; url?: string }) => (
-    <a
-        href={url || '#'}
-        target="_blank"
-        rel="noopener noreferrer"
-        className={`lpv-doc-link ${url ? 'lpv-doc-link--available' : 'lpv-doc-link--missing'}`}
-    >
-        <span className="lpv-doc-link__name">
-            <FileText size={13} /> {label}
-        </span>
-        {url
-            ? <Info size={13} color="var(--mlab-blue)" />
-            : <AlertCircle size={13} />}
+    <a href={url || '#'} target="_blank" rel="noopener noreferrer"
+        className={`lpv-doc-link ${url ? 'lpv-doc-link--available' : 'lpv-doc-link--missing'}`}>
+        <span className="lpv-doc-link__name"><FileText size={13} /> {label}</span>
+        {url ? <Info size={13} color="var(--mlab-blue)" /> : <AlertCircle size={13} />}
     </a>
 );

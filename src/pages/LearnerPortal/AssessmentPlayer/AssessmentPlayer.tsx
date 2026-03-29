@@ -161,7 +161,6 @@ const AssessmentPlayer: React.FC = () => {
             }
         }
     };
-    // // 🚀 FIXED: Rock-Solid Academic Integrity Handler (Captures Clipboard & Keyboard events)
     // const preventCopyPasteAndDrop = (e: React.ClipboardEvent | React.DragEvent | React.KeyboardEvent) => {
     //     // ONLY applies to active Knowledge Modules. Lets Practical/Workplace operate freely.
     //     if (!isLocked && !isPracticalModule) {
@@ -591,7 +590,7 @@ const AssessmentPlayer: React.FC = () => {
                     <h3 className="ap-rules-title"><ShieldAlert size={15} color="var(--mlab-red)" /> Assessment Rules</h3>
                     <ul className="ap-rules-list">
 
-                        {/* 🚀 PROCTORING RULE IN THE CHECKLIST */}
+                        {/* PROCTORING RULE IN THE CHECKLIST */}
                         {willBeProctored && (
                             <li className="ap-rule-item">
                                 <div className="ap-rule-icon" style={{ background: '#fff1f2', color: '#e11d48' }}><Video size={18} /></div>
