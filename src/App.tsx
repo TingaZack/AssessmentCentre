@@ -52,6 +52,7 @@ import { LearnerProfileView } from './components/views/LearnerProfileView/Learne
 import { WorkplacesManager } from './components/admin/WorkplacesManager/WorkplacesManager';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { CohortDetailsPage } from './pages/CohortDetails/CohortDetailsPage';
+import { fetchStatssaCodes } from './services/qctoService';
 
 // --- TRAFFIC CONTROLLER ---
 const RootRedirect = () => {
@@ -86,7 +87,13 @@ function App() {
   const user = useStore((state) => state.user);
   const fetchSettings = useStore((state) => state.fetchSettings);
 
+  const testFunc = async () => {
+    const codes = await fetchStatssaCodes();
+    console.log("Fetched STATSSA Codes:", codes);
+  }
+
   useEffect(() => {
+    testFunc();
     fetchSettings();
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {

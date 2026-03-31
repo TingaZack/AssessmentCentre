@@ -1,7 +1,5 @@
 // src/store/useStore.ts
 
-// src/store/useStore.ts
-
 import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
 import { db } from "../lib/firebase";
@@ -36,7 +34,6 @@ import {
 } from "./slices/cohortSlice.ts/cohortSlice";
 import { generateSorId } from "../pages/utils/validation";
 
-const USER_ID = getAuth().currentUser?.uid || "UnknownUser";
 const now = () => new Date().toISOString();
 
 export interface EnrollmentRecord {
@@ -250,7 +247,7 @@ export const useStore = create<StoreState>()(
     adHocCertificates: [],
     fetchAdHocCertificates: async (force = false) => {
       const { adHocCertificates } = get();
-      if (!force && adHocCertificates.length > 0) return; // Silent if data exists
+      if (!force && adHocCertificates.length > 0) return;
 
       try {
         const q = query(
@@ -293,7 +290,7 @@ export const useStore = create<StoreState>()(
           createdBy: USER_ID,
           createdAt: new Date().toISOString(),
         });
-        await get().fetchCertificateGroups(true); // Force refresh
+        await get().fetchCertificateGroups(true);
       } catch (error) {
         console.error("Failed to create folder", error);
         throw error;
@@ -305,7 +302,7 @@ export const useStore = create<StoreState>()(
           name: newName,
           updatedAt: new Date().toISOString(),
         });
-        await get().fetchCertificateGroups(true); // Force refresh to get new name
+        await get().fetchCertificateGroups(true);
       } catch (error) {
         console.error("Failed to rename folder", error);
         throw error;
@@ -439,6 +436,7 @@ export const useStore = create<StoreState>()(
     },
 
     addLearner: async (payload) => {
+      const USER_ID = getAuth().currentUser?.uid || "UnknownUser";
       try {
         const timestamp = now();
         const profileData: any = {};
@@ -517,15 +515,22 @@ export const useStore = create<StoreState>()(
     },
 
     updateLearner: async (id, updates) => {
+      const CURRENT_USER_ID = getAuth().currentUser?.uid || "UnknownUser";
       try {
         const existingRow = get().learners.find((l) => l.id === id);
-        if (!existingRow) throw new Error("Record not found in local state");
 
-        const learnerId = existingRow.learnerId;
-        const enrollmentId = existingRow.enrollmentId;
+        // BYPASS: If no record in local array (e.g. Learner portal), default to provided id
+        const learnerId = existingRow?.learnerId || id;
+        const enrollmentId = existingRow?.enrollmentId || null;
 
-        const profileUpdates: any = { updatedAt: now(), updatedBy: USER_ID };
-        const enrollmentUpdates: any = { updatedAt: now(), updatedBy: USER_ID };
+        const profileUpdates: any = {
+          updatedAt: now(),
+          updatedBy: CURRENT_USER_ID,
+        };
+        const enrollmentUpdates: any = {
+          updatedAt: now(),
+          updatedBy: CURRENT_USER_ID,
+        };
         let hasProfileUpdate = false;
         let hasEnrollmentUpdate = false;
 
@@ -545,12 +550,17 @@ export const useStore = create<StoreState>()(
           batch.update(doc(db, "learners", learnerId), profileUpdates);
         }
 
-        if (hasEnrollmentUpdate && enrollmentId) {
-          const enrolRef = doc(db, "enrollments", enrollmentId);
-          const enrolSnap = await getDoc(enrolRef);
-          if (enrolSnap.exists()) {
-            batch.update(enrolRef, enrollmentUpdates);
+        if (hasEnrollmentUpdate) {
+          if (enrollmentId) {
+            const enrolRef = doc(db, "enrollments", enrollmentId);
+            const enrolSnap = await getDoc(enrolRef);
+            if (enrolSnap.exists()) {
+              batch.update(enrolRef, enrollmentUpdates);
+            } else {
+              batch.update(doc(db, "learners", learnerId), enrollmentUpdates);
+            }
           } else {
+            // Fallback for learners updating their own profile without local enrollment mapping
             batch.update(doc(db, "learners", learnerId), enrollmentUpdates);
           }
         }
@@ -558,9 +568,14 @@ export const useStore = create<StoreState>()(
         await batch.commit();
 
         set((state) => {
+          // Attempt to update the array if they exist in it
           const index = state.learners.findIndex((l) => l.id === id);
           if (index !== -1) {
             state.learners[index] = { ...state.learners[index], ...updates };
+          }
+          // Also update the global user object if the person editing is themselves
+          if (state.user && state.user.uid === learnerId) {
+            state.user = { ...state.user, ...updates };
           }
         });
       } catch (error) {
@@ -866,6 +881,7 @@ export const useStore = create<StoreState>()(
       set((state) => {
         state.learnersLoading = true;
       });
+      const USER_ID = getAuth().currentUser?.uid || "UnknownUser";
       const functions = getFunctions();
       const createAccountFn = httpsCallable(functions, "createLearnerAccount");
 
@@ -1055,6 +1071,7 @@ export const useStore = create<StoreState>()(
     },
 
     addProgramme: async (programme) => {
+      const USER_ID = getAuth().currentUser?.uid || "UnknownUser";
       try {
         const timestamp = now();
         const pAudit = {
@@ -1077,6 +1094,7 @@ export const useStore = create<StoreState>()(
     },
 
     updateProgramme: async (id, updates) => {
+      const USER_ID = getAuth().currentUser?.uid || "UnknownUser";
       try {
         const updatePayload = {
           ...updates,
@@ -1098,6 +1116,7 @@ export const useStore = create<StoreState>()(
     },
 
     archiveProgramme: async (id) => {
+      const USER_ID = getAuth().currentUser?.uid || "UnknownUser";
       try {
         await updateDoc(doc(db, "programmes", id), {
           isArchived: true,
@@ -1231,6 +1250,7 @@ export const useStore = create<StoreState>()(
 
     // ==================== IMPORTS ====================
     importUnifiedLearners: async (file: File) => {
+      const USER_ID = getAuth().currentUser?.uid || "UnknownUser";
       return new Promise((resolve, reject) => {
         Papa.parse(file, {
           header: true,
@@ -1456,6 +1476,8 @@ export const useStore = create<StoreState>()(
   })),
 );
 
+// // src/store/useStore.ts
+
 // import { create } from "zustand";
 // import { immer } from "zustand/middleware/immer";
 // import { db } from "../lib/firebase";
@@ -1490,12 +1512,9 @@ export const useStore = create<StoreState>()(
 // } from "./slices/cohortSlice.ts/cohortSlice";
 // import { generateSorId } from "../pages/utils/validation";
 
-// // const GLOBAL_SDP_CODE = import.meta.env.VITE_SDP_CODE || "SDP070824115131";
-
 // const USER_ID = getAuth().currentUser?.uid || "UnknownUser";
 // const now = () => new Date().toISOString();
 
-// // The Enrollment Record Type for the Learner "Backpack"
 // export interface EnrollmentRecord {
 //   cohortId: string;
 //   programmeId: string;
@@ -1509,7 +1528,7 @@ export const useStore = create<StoreState>()(
 //   id: string;
 //   fullName: string;
 //   email: string;
-//   role: "admin" | "facilitator" | "assessor" | "moderator" | "mentor"; // Added 'mentor'
+//   role: "admin" | "facilitator" | "assessor" | "moderator" | "mentor";
 //   phone?: string;
 //   authUid: string;
 //   assessorRegNumber?: string;
@@ -1662,6 +1681,16 @@ export const useStore = create<StoreState>()(
 //   fetchAssessments: () => Promise<void>;
 //   fetchSubmissions: () => Promise<void>;
 //   fetchEnrollments: () => Promise<void>;
+
+//   // AD-HOC CERTIFICATE STUDIO HISTORY
+//   adHocCertificates: any[];
+//   fetchAdHocCertificates: (force?: boolean) => Promise<void>;
+
+//   certificateGroups: any[];
+//   fetchCertificateGroups: (force?: boolean) => Promise<void>;
+//   createCertificateGroup: (name: string) => Promise<void>;
+
+//   renameCertificateGroup: (id: string, newName: string) => Promise<void>;
 // }
 
 // export const useStore = create<StoreState>()(
@@ -1690,6 +1719,72 @@ export const useStore = create<StoreState>()(
 //         }
 //       } catch (error) {
 //         console.error("Store: Failed to refresh user data", error);
+//       }
+//     },
+
+//     // AD-HOC CERTIFICATE STUDIO HISTORY FETCH
+//     adHocCertificates: [],
+//     fetchAdHocCertificates: async (force = false) => {
+//       const { adHocCertificates } = get();
+//       if (!force && adHocCertificates.length > 0) return; // Silent if data exists
+
+//       try {
+//         const q = query(
+//           collection(db, "ad_hoc_certificates"),
+//           orderBy("createdAt", "desc"),
+//         );
+//         const snap = await getDocs(q);
+//         const history = snap.docs.map((doc) => ({
+//           id: doc.id,
+//           ...doc.data(),
+//         }));
+//         set({ adHocCertificates: history });
+//       } catch (error) {
+//         console.error("Failed to load ad-hoc certificates:", error);
+//       }
+//     },
+//     certificateGroups: [],
+//     fetchCertificateGroups: async (force = false) => {
+//       const { certificateGroups } = get();
+//       if (!force && certificateGroups.length > 0) return;
+
+//       try {
+//         const q = query(
+//           collection(db, "certificate_groups"),
+//           orderBy("createdAt", "desc"),
+//         );
+//         const snap = await getDocs(q);
+//         set({
+//           certificateGroups: snap.docs.map((d) => ({ id: d.id, ...d.data() })),
+//         });
+//       } catch (error) {
+//         console.error("Group Fetch Error:", error);
+//       }
+//     },
+//     createCertificateGroup: async (name: string) => {
+//       const USER_ID = getAuth().currentUser?.uid || "UnknownUser";
+//       try {
+//         await addDoc(collection(db, "certificate_groups"), {
+//           name,
+//           createdBy: USER_ID,
+//           createdAt: new Date().toISOString(),
+//         });
+//         await get().fetchCertificateGroups(true); // Force refresh
+//       } catch (error) {
+//         console.error("Failed to create folder", error);
+//         throw error;
+//       }
+//     },
+//     renameCertificateGroup: async (id: string, newName: string) => {
+//       try {
+//         await updateDoc(doc(db, "certificate_groups", id), {
+//           name: newName,
+//           updatedAt: new Date().toISOString(),
+//         });
+//         await get().fetchCertificateGroups(true); // Force refresh to get new name
+//       } catch (error) {
+//         console.error("Failed to rename folder", error);
+//         throw error;
 //       }
 //     },
 
@@ -1724,8 +1819,8 @@ export const useStore = create<StoreState>()(
 //         console.error(e);
 //       }
 //     },
-//     // ==================== EMPLOYERS SLICE (RELATIONAL UPDATE) ====================
 
+//     // ==================== EMPLOYERS SLICE ====================
 //     employers: [],
 //     fetchEmployers: async () => {
 //       try {
@@ -1735,7 +1830,6 @@ export const useStore = create<StoreState>()(
 //           ...doc.data(),
 //         })) as Employer[];
 
-//         // Sort alphabetically by name
 //         employersData.sort((a, b) => a.name.localeCompare(b.name));
 //         set({ employers: employersData });
 //       } catch (error) {
@@ -1743,7 +1837,7 @@ export const useStore = create<StoreState>()(
 //       }
 //     },
 
-//     // ==================== LEARNERS SLICE (RELATIONAL UPDATE) ====================
+//     // ==================== LEARNERS SLICE ====================
 //     learners: [],
 //     learnersLoading: false,
 //     learnersError: null,
@@ -1762,7 +1856,6 @@ export const useStore = create<StoreState>()(
 
 //       set({ learnersLoading: true, learnersError: null });
 //       try {
-//         // 1. Fetch Profiles (The Humans)
 //         const profilesSnap = await getDocs(query(collection(db, "learners")));
 //         const profilesMap = new Map<string, any>();
 
@@ -1770,16 +1863,12 @@ export const useStore = create<StoreState>()(
 //           profilesMap.set(doc.id, { id: doc.id, ...doc.data() });
 //         });
 
-//         // 2. Fetch Enrollments (The Academic Records)
 //         const enrollmentsSnap = await getDocs(
 //           query(collection(db, "enrollments")),
 //         );
 //         const combinedLearners: DashboardLearner[] = [];
-
-//         // Track which profiles have been mapped to an enrollment
 //         const usedProfileIds = new Set<string>();
 
-//         // Step A: Map New Relational Data
 //         enrollmentsSnap.docs.forEach((docSnap) => {
 //           const enrollment = docSnap.data();
 //           const profile = profilesMap.get(enrollment.learnerId);
@@ -1789,14 +1878,13 @@ export const useStore = create<StoreState>()(
 //             combinedLearners.push({
 //               ...profile,
 //               ...enrollment,
-//               id: docSnap.id, // Unique Row ID
-//               enrollmentId: docSnap.id, // Academic Record ID
-//               learnerId: profile.id, // Human Identity ID
+//               id: docSnap.id,
+//               enrollmentId: docSnap.id,
+//               learnerId: profile.id,
 //             } as DashboardLearner);
 //           }
 //         });
 
-//         // Step B: Map Legacy Flat Data
 //         profilesMap.forEach((profile, profileId) => {
 //           if (!usedProfileIds.has(profileId) && profile.cohortId) {
 //             combinedLearners.push({
@@ -1832,7 +1920,6 @@ export const useStore = create<StoreState>()(
 //         const profileData: any = {};
 //         const enrollmentData: any = {};
 
-//         // 1. Split payload into Profile (Human) vs Enrollment (Academic)
 //         Object.keys(payload).forEach((key) => {
 //           if (PROFILE_KEYS.includes(key))
 //             profileData[key] = (payload as any)[key];
@@ -1848,7 +1935,6 @@ export const useStore = create<StoreState>()(
 //         enrollmentData.isArchived = false;
 //         enrollmentData.status = "in-progress";
 
-//         // CRITICAL FIX: Generate SoR ID and permanently lock the issueDate
 //         if (!enrollmentData.verificationCode) {
 //           const issueDate = enrollmentData.issueDate || timestamp.split("T")[0];
 //           const name = profileData.fullName || "Unknown Learner";
@@ -1860,12 +1946,11 @@ export const useStore = create<StoreState>()(
 //             issueDate,
 //             providerCode,
 //           );
-//           enrollmentData.issueDate = issueDate; // 👈 LOCK THE DATE FOREVER
+//           enrollmentData.issueDate = issueDate;
 //         }
 
 //         let finalLearnerId = "";
 
-//         // Check if this human already exists
 //         const q = query(
 //           collection(db, "learners"),
 //           where("idNumber", "==", profileData.idNumber),
@@ -1886,14 +1971,12 @@ export const useStore = create<StoreState>()(
 //           finalLearnerId = newProfileRef.id;
 //         }
 
-//         // Save the new Enrollment record
 //         enrollmentData.learnerId = finalLearnerId;
 //         const newEnrollmentRef = await addDoc(
 //           collection(db, "enrollments"),
 //           enrollmentData,
 //         );
 
-//         // Update local state
 //         set((state) => {
 //           state.learners.push({
 //             ...profileData,
@@ -1962,10 +2045,6 @@ export const useStore = create<StoreState>()(
 //       }
 //     },
 
-//     // ════════════════════════════════════════════════════════════════
-//     // RELATIONAL ENROLLMENT ACTIONS
-//     // ════════════════════════════════════════════════════════════════
-
 //     enrollLearnerInCohort: async (
 //       learnerId: string,
 //       cohortId: string,
@@ -1986,7 +2065,6 @@ export const useStore = create<StoreState>()(
 //           const data = learnerSnap.data();
 //           const history = data.enrollmentHistory || [];
 
-//           // Remove existing entry for this specific class to cleanly overwrite
 //           const filteredHistory = history.filter(
 //             (h: any) => h.cohortId !== cohortId,
 //           );
@@ -1994,12 +2072,11 @@ export const useStore = create<StoreState>()(
 
 //           await updateDoc(learnerRef, {
 //             enrollmentHistory: filteredHistory,
-//             cohortId: cohortId, // Keep legacy field updated for older views
+//             cohortId: cohortId,
 //             updatedAt: now(),
 //           });
 //         }
 
-//         // Add learner to the Cohort's roster
 //         const cohortRef = doc(db, "cohorts", cohortId);
 //         await updateDoc(cohortRef, {
 //           learnerIds: arrayUnion(learnerId),
@@ -2028,7 +2105,6 @@ export const useStore = create<StoreState>()(
 //           const data = learnerSnap.data();
 //           const history = data.enrollmentHistory || [];
 
-//           // Find specific class and mark as dropped
 //           const updatedHistory = history.map((h: any) => {
 //             if (h.cohortId === cohortId) {
 //               return {
@@ -2043,7 +2119,7 @@ export const useStore = create<StoreState>()(
 
 //           await updateDoc(learnerRef, {
 //             enrollmentHistory: updatedHistory,
-//             status: "dropped", // Legacy fallback
+//             status: "dropped",
 //             updatedAt: now(),
 //           });
 
@@ -2080,7 +2156,6 @@ export const useStore = create<StoreState>()(
 //           createdBy: USER_ID,
 //         };
 
-//         // Auto-stamp Mentor ID if it's a workplace module
 //         if (
 //           assessmentTemplate.moduleType === "workplace" ||
 //           assessmentTemplate.moduleType === "qcto_workplace"
@@ -2138,7 +2213,6 @@ export const useStore = create<StoreState>()(
 //         const batch = writeBatch(db);
 //         const timestamp = new Date().toISOString();
 
-//         // CREATE THE AUDIT LOG (Acts as a backup and accountability trail)
 //         const auditRef = doc(collection(db, "audit_logs"));
 //         batch.set(auditRef, {
 //           action: "PERMANENT_DELETE",
@@ -2154,15 +2228,12 @@ export const useStore = create<StoreState>()(
 //           dataSnapshot: existingRow,
 //         });
 
-//         // DELETE THE ENROLLMENT (The Academic Record)
 //         const enrolId = existingRow.enrollmentId || id;
 //         batch.delete(doc(db, "enrollments", enrolId));
 
-//         // DELETE THE PROFILE (The Human Record)
 //         const humanId = existingRow.learnerId || id;
 //         batch.delete(doc(db, "learners", humanId));
 
-//         // FIND AND DELETE ALL LINKED ASSESSMENTS/SUBMISSIONS
 //         const subQ = query(
 //           collection(db, "learner_submissions"),
 //           where("enrollmentId", "==", enrolId),
@@ -2172,10 +2243,8 @@ export const useStore = create<StoreState>()(
 //           batch.delete(subDoc.ref);
 //         });
 
-//         // EXECUTE ALL DELETES AND LOGS AT ONCE
 //         await batch.commit();
 
-//         // UPDATE LOCAL UI STATE INSTANTLY
 //         set((state) => {
 //           state.learners = state.learners.filter((l) => l.id !== id);
 //         });
@@ -2413,7 +2482,6 @@ export const useStore = create<StoreState>()(
 
 //     settings: null,
 
-//     // Fetch settings from Firebase
 //     fetchSettings: async () => {
 //       try {
 //         const docRef = doc(db, "system_settings", "global");
@@ -2660,7 +2728,6 @@ export const useStore = create<StoreState>()(
 //                   val !== null && val !== undefined ? String(val).trim() : "";
 //                 const idNumber = getStr(row.NationalId || row.ID_Number);
 
-//                 // Extract the issueDate right away, fallback to today if missing
 //                 const issueDateStr =
 //                   getStr(row.StatementofResultsIssueDate) ||
 //                   now().split("T")[0];
@@ -2732,11 +2799,10 @@ export const useStore = create<StoreState>()(
 //                       getStr(row.LearnerReadinessforEISATypeId) === "01" ||
 //                       getStr(row.EISA_Admission).toLowerCase() === "yes",
 
-//                     // Bind the generated ID to the extracted date, and save that date!
 //                     verificationCode:
 //                       getStr(row.Verification_Code) ||
 //                       generateSorId(fullName, issueDateStr, providerCode),
-//                     issueDate: issueDateStr, // 👈 LOCK THE DATE FOREVER
+//                     issueDate: issueDateStr,
 
 //                     status: "in-progress",
 //                     demographics: {
@@ -2826,24 +2892,21 @@ export const useStore = create<StoreState>()(
 //           updatedAt: now(),
 //         };
 
-//         // 1. Save to Enrollment and Profile
 //         await setDoc(doc(db, "enrollments", targetId), payload, {
 //           merge: true,
 //         });
 //         await setDoc(doc(db, "learners", targetId), payload, { merge: true });
 
-//         // 2. Find this learner's human ID
 //         const existingLearner = get().learners.find(
 //           (l) => l.enrollmentId === targetId || l.id === targetId,
 //         );
 //         const humanId =
 //           existingLearner?.learnerId || existingLearner?.id || targetId;
 
-//         // Find all their Workplace Submissions and stamp the Mentor ID!
 //         const q = query(
 //           collection(db, "learner_submissions"),
 //           where("learnerId", "==", humanId),
-//           where("moduleType", "in", ["workplace", "qcto_workplace"]), // Catch workplace modules
+//           where("moduleType", "in", ["workplace", "qcto_workplace"]),
 //         );
 //         const submissionSnap = await getDocs(q);
 
@@ -2852,7 +2915,7 @@ export const useStore = create<StoreState>()(
 //           submissionSnap.forEach((docSnap) => {
 //             batch.update(docSnap.ref, {
 //               employerId: employerId,
-//               mentorId: mentorId, // 👈 Stamping it directly on the document
+//               mentorId: mentorId,
 //               updatedAt: now(),
 //             });
 //           });

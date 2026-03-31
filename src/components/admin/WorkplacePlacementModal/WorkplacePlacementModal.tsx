@@ -75,7 +75,7 @@ export const WorkplacePlacementModal: React.FC<WorkplacePlacementModalProps> = (
                             value={employerId}
                             onChange={handleEmployerChange}
                             disabled={saving}
-                            style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.9rem', outline: 'none' }}
+                            style={{ width: '100%', padding: '10px', background: 'whitesmoke', color: 'black', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.9rem', outline: 'none' }}
                         >
                             <option value="">-- Select Workplace --</option>
                             {activeEmployers.map(emp => (
@@ -93,7 +93,7 @@ export const WorkplacePlacementModal: React.FC<WorkplacePlacementModalProps> = (
                             disabled={!employerId || availableMentors.length === 0 || saving}
                             value={mentorId}
                             onChange={e => setMentorId(e.target.value)}
-                            style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.9rem', outline: 'none', backgroundColor: (!employerId || availableMentors.length === 0) ? '#f1f5f9' : 'white' }}
+                            style={{ width: '100%', padding: '10px', color: 'black', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.9rem', outline: 'none', backgroundColor: (!employerId || availableMentors.length === 0) ? '#f1f5f9' : 'white' }}
                         >
                             <option value="">-- Select Mentor --</option>
                             {availableMentors.map(mentor => (

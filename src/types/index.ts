@@ -1,7 +1,5 @@
 // src/types/index.ts
 
-import type { CustomCsvMapping } from "../pages/SettingsPage/SettingsPage";
-
 // ---------- Common Types ----------
 export type ModuleStatus =
   | "Competent"
@@ -77,7 +75,7 @@ export interface SystemSettings {
     nqfLevel: string;
     credits: string;
   };
-  customCsvMappings?: CustomCsvMapping[];
+  // customCsvMappings?: CustomCsvMapping[];
 }
 
 export interface BaseModule {

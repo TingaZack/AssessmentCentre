@@ -43,12 +43,22 @@ export const RoleProtectedRoute: React.FC<Props> = ({ children, allowedRoles }) 
     }
 
     // DEEP KYC CHECKS
-    // 1. Learner Check (Nested in demographics)
-    const hasLearnerEquity = !!(user as any).demographics?.equityCode;
-    const hasLearnerProvince = !!(user as any).demographics?.provinceCode;
-    const isLearnerFullyCompliant = user.profileCompleted === true && hasLearnerEquity && hasLearnerProvince;
+    // Learner Check (Nested in demographics)
+    const d = (user as any).demographics || {};
 
-    // 2. Staff/Admin Check (Root level province added in the new updates)
+    // STRICT QCTO COMPLIANCE GATEKEEPER FOR LEARNERS
+    const hasLearnerEquity = !!d.equityCode;
+    const hasLearnerProvince = !!d.provinceCode;
+    const hasLearnerStatssa = !!d.statssaAreaCode || !!d.statsaaAreaCode; // Allow typo key for backwards compatibility
+    const hasLearnerTitle = !!d.learnerTitle;
+
+    const isLearnerFullyCompliant = user.profileCompleted === true
+        && hasLearnerEquity
+        && hasLearnerProvince
+        && hasLearnerStatssa
+        && hasLearnerTitle;
+
+    // Staff/Admin Check (Root level province added in the new updates)
     const hasStaffProvince = !!(user as any).province;
     const isStaffFullyCompliant = user.profileCompleted === true && hasStaffProvince;
 

@@ -25,9 +25,9 @@ export const QualificationsView: React.FC<QualificationsViewProps> = ({
             <div className="mlab-qualifications__header">
                 <h2 className="mlab-qualifications__title">Programme Templates</h2>
                 <div className="mlab-qualifications__actions">
-                    <button className="mlab-btn mlab-btn--outline-blue" onClick={onUpload}>
+                    {/* <button className="mlab-btn mlab-btn--outline-blue" onClick={onUpload}>
                         <Upload size={15} /> Upload CSV
-                    </button>
+                    </button> */}
                     <button className="mlab-btn mlab-btn--green" onClick={onAdd}>
                         <Plus size={15} /> Create Template
                     </button>

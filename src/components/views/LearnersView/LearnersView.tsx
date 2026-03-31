@@ -6,14 +6,17 @@ import {
     Calendar, RotateCcw, ClipboardCheck, AlertTriangle,
     Eye, Archive as ArchiveIcon, Mail,
     Share2, GraduationCap, Users, History,
-    ShieldCheck, X, AlertCircle,
-    Loader2, MapPin, Award
+    ShieldCheck, X, AlertCircle, Check,
+    Loader2, MapPin, Award, FileSpreadsheet, FileText
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { doc, deleteDoc } from 'firebase/firestore';
+import { db } from '../../../lib/firebase';
 import './LearnersView.css';
 import type { DashboardLearner, Cohort } from '../../../types';
 import { useStore } from '../../../store/useStore';
 import { CertificateGenerator } from '../../common/CertificateGenerator/CertificateGenerator';
+import { StatusModal } from '../../common/StatusModal/StatusModal';
 
 interface LearnersViewProps {
     learners: DashboardLearner[];
@@ -44,7 +47,6 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
     onDeletePermanent
 }) => {
     const navigate = useNavigate();
-    // Pull currentUser AND settings to access dynamic campuses
     const { user: currentUser, settings } = useStore();
 
     // ─── VIEW STATE ───
@@ -59,9 +61,21 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
     const [web3Status, setWeb3Status] = useState<'all' | 'minted' | 'pending'>('all');
     const [copiedId, setCopiedId] = useState<string | null>(null);
 
+    // STATE TO INSTANTLY HIDE DELETED DRAFTS
+    const [hiddenDraftIds, setHiddenDraftIds] = useState<Set<string>>(new Set());
+
+    // DELETION & DISCARD STATES
     const [deletingLearner, setDeletingLearner] = useState<DashboardLearner | null>(null);
     const [deleteReason, setDeleteReason] = useState('');
     const [isDeleting, setIsDeleting] = useState(false);
+
+    // DISCARD DRAFT STATE
+    const [discardingLearner, setDiscardingLearner] = useState<DashboardLearner | null>(null);
+    const [isDiscarding, setIsDiscarding] = useState(false);
+
+    // APPROVE DRAFT STATE
+    const [approvingLearners, setApprovingLearners] = useState<DashboardLearner[] | null>(null);
+    const [isApproving, setIsApproving] = useState(false);
 
     // CERTIFICATE GENERATOR STATE
     const [certifyingLearner, setCertifyingLearner] = useState<DashboardLearner | null>(null);
@@ -80,7 +94,7 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
         return counts;
     }, [learners, stagingLearners]);
 
-    // FILTER LOGIC: Includes Campus filtering
+    // FILTER LOGIC
     const filteredLearners = useMemo(() => {
         let sourceData: DashboardLearner[] = [];
 
@@ -89,6 +103,8 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
         else sourceData = learners.filter(l => !l.isOffline);
 
         return sourceData.filter(learner => {
+            if (hiddenDraftIds.has(learner.id)) return false;
+
             const isArchived = learner.isArchived === true;
 
             if (viewMode === 'active' || viewMode === 'offline') {
@@ -115,7 +131,6 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
             if (web3Status === 'minted' && !learner.isBlockchainVerified) return false;
             if (web3Status === 'pending' && learner.isBlockchainVerified) return false;
 
-            // Filter by Campus (Checks learner's direct campus OR the assigned cohort's campus)
             if (selectedCampus !== 'all') {
                 const learnerCohort = cohorts.find(c => c.id === learner.cohortId);
                 const activeCampusId = learner.campusId || learnerCohort?.campusId;
@@ -127,7 +142,7 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
 
             return true;
         });
-    }, [learners, stagingLearners, viewMode, searchTerm, filterStatus, selectedYear, selectedQualification, selectedCampus, showArchived, web3Status, cohorts]);
+    }, [learners, stagingLearners, viewMode, searchTerm, filterStatus, selectedYear, selectedQualification, selectedCampus, showArchived, web3Status, cohorts, hiddenDraftIds]);
 
     const availableYears = useMemo(() => {
         const years = new Set<string>();
@@ -148,7 +163,7 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
 
     const activeCount = learners.filter(l => !l.isArchived && !l.isOffline).length;
     const offlineCount = learners.filter(l => !l.isArchived && l.isOffline).length;
-    const stagingCount = stagingLearners.length;
+    const stagingCount = stagingLearners.filter(l => !hiddenDraftIds.has(l.id)).length;
 
     const archivedCount = viewMode === 'offline'
         ? learners.filter(l => l.isArchived && l.isOffline).length
@@ -168,10 +183,17 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
     const executeBulkAction = (action: 'approve' | 'restore' | 'archive' | 'discard') => {
         const sourceList = viewMode === 'staging' ? stagingLearners : learners;
         const selected = sourceList.filter(l => selectedIds.has(l.id));
-        if (action === 'approve') onBulkApprove?.(selected);
-        if (action === 'restore') onBulkRestore?.(selected);
-        if (action === 'archive') onBulkArchive?.(selected);
-        if (action === 'discard') onBulkDiscard?.(selected);
+
+        if (action === 'approve') {
+            setApprovingLearners(selected);
+        } else if (action === 'restore') {
+            onBulkRestore?.(selected);
+        } else if (action === 'archive') {
+            onBulkArchive?.(selected);
+        } else if (action === 'discard') {
+            onBulkDiscard?.(selected);
+        }
+
         setSelectedIds(new Set());
     };
 
@@ -183,6 +205,21 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
         });
     };
 
+    // TRIGGER LOCAL FILE DOWNLOADS
+    const handleDownloadTemplate = (format: 'csv' | 'xlsx') => {
+        // Ensure files are placed in the public/templates/ directory
+        const fileUrl = format === 'csv'
+            ? '/templates/learners/Learner_Enrolment_Template.csv'
+            : '/templates/learners/Learner_Enrolment_Template.xlsx';
+
+        const link = document.createElement("a");
+        link.href = fileUrl;
+        link.download = `Learner_Enrolment_Template.${format}`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
     const handleExport = () => {
         const csvContent = "data:text/csv;charset=utf-8," +
             ["Full Name,ID Number,Class / Cohort,Campus,Qualification,Status,Start Date,Auth Status,Web3 Verified"].concat(
@@ -190,7 +227,6 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
                     const cohortObj = cohorts.find(c => c.id === l.cohortId);
                     const cohortName = cohortObj?.name || 'Unassigned';
 
-                    // Check Learner's direct campus first, then Cohort's campus
                     const activeCampusId = l.campusId || cohortObj?.campusId;
                     const campusName = activeCampusId
                         ? settings?.campuses?.find(c => c.id === activeCampusId)?.name || 'Unknown'
@@ -204,6 +240,43 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
         link.setAttribute("download", `learners_enrollments_${viewMode}_${new Date().toISOString().split('T')[0]}.csv`);
         document.body.appendChild(link);
         link.click();
+    };
+
+    const handleConfirmApprove = async () => {
+        if (!approvingLearners || approvingLearners.length === 0) return;
+        setIsApproving(true);
+        try {
+            if (onBulkApprove) {
+                await onBulkApprove(approvingLearners);
+            }
+            setApprovingLearners(null);
+        } catch (err) {
+            console.error("Approval failed", err);
+        } finally {
+            setIsApproving(false);
+        }
+    };
+
+    const handleConfirmDiscard = async () => {
+        if (!discardingLearner) return;
+
+        setIsDiscarding(true);
+        try {
+            await deleteDoc(doc(db, "staging_learners", discardingLearner.id));
+
+            setHiddenDraftIds(prev => {
+                const next = new Set(prev);
+                next.add(discardingLearner.id);
+                return next;
+            });
+
+            setDiscardingLearner(null);
+        } catch (err) {
+            console.error("Failed to discard draft", err);
+            alert("An error occurred while discarding the draft. Please check your connection.");
+        } finally {
+            setIsDiscarding(false);
+        }
     };
 
     const handleConfirmDelete = async () => {
@@ -355,12 +428,26 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
                 </div>
             ) : (
                 <div className="mlab-standard-actions">
-                    <button className="mlab-btn mlab-btn--outline mlab-btn--outline-blue" onClick={handleExport}>
-                        <Download size={15} /> Export
-                    </button>
-                    <button className="mlab-btn mlab-btn--primary" onClick={onUpload}>
-                        <Upload size={15} /> Import CSV
-                    </button>
+                    {/* HIDE EXPORT AND IMPORT IF VIEW MODE IS ACTIVE */}
+                    {viewMode !== 'active' && (
+                        <>
+                            {/* TWO TEMPLATE DOWNLOAD OPTIONS (Static Files) */}
+                            <div style={{ display: 'flex', gap: '4px', borderRight: '1px solid var(--mlab-border)', paddingRight: '8px', marginRight: '4px' }}>
+                                <button type="button" className="mlab-btn mlab-btn--ghost" style={{ padding: '0.4rem 0.6rem' }} onClick={() => handleDownloadTemplate('xlsx')}>
+                                    <FileSpreadsheet size={14} color="#10b981" /> .XLSX Template
+                                </button>
+                                <button type="button" className="mlab-btn mlab-btn--ghost" style={{ padding: '0.4rem 0.6rem' }} onClick={() => handleDownloadTemplate('csv')}>
+                                    <FileText size={14} color="#0ea5e9" /> .CSV
+                                </button>
+                            </div>
+                            <button className="mlab-btn mlab-btn--outline mlab-btn--outline-blue" onClick={handleExport}>
+                                <Download size={15} /> Export
+                            </button>
+                            <button className="mlab-btn mlab-btn--primary" onClick={onUpload}>
+                                <Upload size={15} /> Import File
+                            </button>
+                        </>
+                    )}
                     <button className="mlab-btn mlab-btn--green" onClick={onAdd}>
                         <Plus size={15} /> Add Enrollment
                     </button>
@@ -398,7 +485,6 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
                             const cohortObj = cohorts.find(c => c.id === learner.cohortId);
                             const cohortName = cohortObj ? cohortObj.name : (learner.cohortId === 'Unassigned' ? 'Unassigned' : 'Unknown Class');
 
-                            // Check Learner's direct campus first, then Cohort's campus
                             const activeCampusId = learner.campusId || cohortObj?.campusId;
                             const campusName = activeCampusId
                                 ? settings?.campuses?.find(c => c.id === activeCampusId)?.name || 'Unknown Location'
@@ -477,17 +563,25 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
 
                                     <td>
                                         <div className="mlab-icon-btn-group">
+                                            {viewMode === 'staging' && (
+                                                <button
+                                                    className="mlab-icon-btn mlab-icon-btn--green"
+                                                    onClick={() => setApprovingLearners([learner])}
+                                                    title="Approve & Import"
+                                                >
+                                                    <Check size={14} />
+                                                </button>
+                                            )}
+
                                             <button className="mlab-icon-btn mlab-icon-btn--blue" onClick={() => onEdit(learner)} title="Edit Enrollment Details">
                                                 <Edit size={14} />
                                             </button>
 
                                             {viewMode !== 'staging' && !learner.isArchived && !showArchived && (
                                                 <>
-                                                    {/* Issue Certificate Button */}
                                                     <button className="mlab-icon-btn mlab-icon-btn--emerald" onClick={() => setCertifyingLearner(learner)} title="Issue Certificate">
                                                         <Award size={14} />
                                                     </button>
-                                                    {/* Pointing back to the Statement of Results (/sor/)! */}
                                                     <button className="mlab-icon-btn mlab-icon-btn--blue" onClick={() => navigate(`/sor/${learner.id}`)} title="View Statement of Results">
                                                         <Eye size={14} />
                                                     </button>
@@ -518,7 +612,7 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
                                             )}
 
                                             {viewMode === 'staging' && (
-                                                <button className="mlab-icon-btn mlab-icon-btn--red" onClick={() => onDiscard(learner)} title="Discard Draft">
+                                                <button className="mlab-icon-btn mlab-icon-btn--red" onClick={() => setDiscardingLearner(learner)} title="Discard Draft">
                                                     <X size={14} />
                                                 </button>
                                             )}
@@ -544,6 +638,30 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
                     </div>
                 )}
             </div>
+
+            {/* STATUS MODAL FOR APPROVAL */}
+            {approvingLearners && approvingLearners.length > 0 && (
+                <StatusModal
+                    type="success"
+                    title={`Approve ${approvingLearners.length} enrollment${approvingLearners.length > 1 ? 's' : ''}?`}
+                    message={`These draft records will be moved from the Staging Area into your live database. The system will automatically create underlying user profiles and map all assigned qualifications. They will become fully Active.`}
+                    confirmText={isApproving ? "Approving..." : "Yes, Approve"}
+                    onClose={handleConfirmApprove}
+                    onCancel={() => setApprovingLearners(null)}
+                />
+            )}
+
+            {/* STATUS MODAL FOR DISCARD */}
+            {discardingLearner && (
+                <StatusModal
+                    type="error"
+                    title="Discard Staged Record"
+                    message={`Are you sure you want to discard the draft for ${discardingLearner.fullName}? This action will permanently remove them from the Staging Area.`}
+                    confirmText={isDiscarding ? "Discarding..." : "Yes, Discard It"}
+                    onClose={handleConfirmDiscard}
+                    onCancel={() => setDiscardingLearner(null)}
+                />
+            )}
 
             {/* PERMANENT DELETE CONFIRMATION MODAL */}
             {deletingLearner && (

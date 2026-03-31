@@ -397,3 +397,139 @@
   opacity: 0.65;
   cursor: not-allowed;
 }
+
+/* src/pages/LearnerPortal/LearnerProfileView/LearnerProfileView.css */
+
+/* --- Search & Verification Styling --- */
+
+.lpv-search-box {
+  background: #f8fafc;
+  padding: 1.25rem;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  margin-bottom: 1.5rem;
+}
+
+.lpv-search-input {
+  border: 2px solid var(--mlab-blue-light) !important;
+  background-color: #ffffff !important;
+  font-weight: 500;
+}
+
+.lpv-search-input:focus {
+  border-color: var(--mlab-blue) !important;
+  box-shadow: 0 0 0 4px rgba(14, 165, 233, 0.1);
+}
+
+/* --- Manual Address Editor Block --- */
+
+.lpv-address-editor {
+  transition: all 0.3s ease;
+  border-radius: 10px;
+}
+
+.lpv-address-editor--editing {
+  background: #f1f5f9; /* Slate-100 */
+  border: 1px dashed #cbd5e1;
+  padding: 1.5rem;
+  margin-top: 0.5rem;
+}
+
+.editor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.editor-header span {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* --- Verified GPS Badge --- */
+
+.v-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: #f0fdf4; /* Green-50 */
+  border: 1px solid #bbf7d0;
+  border-radius: 9999px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: #166534;
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+.v-pill:hover {
+  transform: translateY(-1px);
+  background: #dcfce7;
+}
+
+/* --- Input Overrides for Editor --- */
+
+.lpv-address-editor--editing .lpv-input {
+  background-color: #ffffff !important;
+  border: 1px solid #cbd5e1;
+}
+
+.lpv-address-editor--editing .lpv-field__label {
+  color: #64748b;
+  font-weight: 600;
+}
+
+/* --- Responsive Grid Adjustments --- */
+
+.lpv-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+}
+
+@media (max-width: 768px) {
+  .lpv-grid-3 {
+    grid-template-columns: 1fr;
+  }
+
+  .editor-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+}
+
+/* --- Stats-SA Field Highlight --- */
+
+.lpv-field[data-mandatory="true"] .lpv-field__label {
+  color: var(--mlab-blue-dark);
+}
+
+/* Google Autocomplete Dropdown Customization */
+.pac-container {
+  border-radius: 8px;
+  margin-top: 4px;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  border: 1px solid #e2e8f0;
+  font-family: inherit;
+  z-index: 9999 !important; /* Ensure it stays above the panel */
+}
+
+.pac-item {
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.pac-item:hover {
+  background-color: #f8fafc;
+}
