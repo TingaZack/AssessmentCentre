@@ -475,6 +475,7 @@ export const CohortDetailsPage: React.FC = () => {
                                                     <div className="mlab-module-chips">
                                                         <span className="mlab-chip mlab-chip--k">K: {learnerSubs.filter(s => s.moduleType === 'knowledge' && s.status !== 'not_started').length}</span>
                                                         <span className="mlab-chip mlab-chip--p">P: {learnerSubs.filter(s => s.moduleType === 'practical' && s.status !== 'not_started').length}</span>
+                                                        <span className="mlab-chip mlab-chip--k">W: {learnerSubs.filter(s => s.moduleType === 'workplace' && s.status !== 'not_started').length}</span>
                                                     </div>
                                                 </td>
                                                 <td>

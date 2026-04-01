@@ -4,10 +4,11 @@ import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
     X, Save, Loader2, AlertCircle, Users, BookOpen, Layers,
     FileText, Briefcase, ChevronDown, ChevronUp, RefreshCw,
-    Plus, UploadCloud, MapPin, ShieldCheck, Globe, Search
+    Plus, UploadCloud, MapPin, ShieldCheck, Globe, Search, FileSpreadsheet
 } from "lucide-react";
 import { collection, query, where, getDocs, doc, setDoc } from "firebase/firestore";
 import Autocomplete from "react-google-autocomplete";
+import * as XLSX from "xlsx";
 import { ModuleEditor } from "../../common/ModuleEditor/ModuleEditor";
 import { useStore } from "../../../store/useStore";
 import type { DashboardLearner, LearnerDemographics, ModuleCategory, ProgrammeTemplate, Qualification, Cohort } from "../../../types";
@@ -211,24 +212,23 @@ export const LearnerFormModal: React.FC<LearnerFormModalProps> = ({
     const [statusModal, setStatusModal] = useState<StatusModalProps | null>(null);
     const [showCohortModal, setShowCohortModal] = useState(false);
 
-    // INITIALIZE POSTAL SAME AS HOME STATE
+    // MULTI-SHEET EXCEL SUPPORT STATE
+    const [sheetSelection, setSheetSelection] = useState<{ workbook: XLSX.WorkBook, sheetNames: string[] } | null>(null);
+
     const [isPostalSameAsHome, setIsPostalSameAsHome] = useState(() => {
-        if (!learner) return true; // Default to true for new learners
+        if (!learner) return true;
         const d = learner.demographics || {};
-        // If a postal address exists and is different from home, it's custom.
         if (d.learnerPostalAddress1 && d.learnerPostalAddress1 !== d.learnerHomeAddress1) {
             return false;
         }
         return true;
     });
 
-    // STATSSA Search State
     const [allStatssaCodes, setAllStatssaCodes] = useState<any[]>([]);
     const [areaSearch, setAreaSearch] = useState("");
     const [isSearchingArea, setIsSearchingArea] = useState(false);
     const [showAreaDropdown, setShowAreaDropdown] = useState(false);
 
-    // Load STATSSA codes from Google Sheets when modal opens
     useEffect(() => {
         const loadCodes = async () => {
             setIsSearchingArea(true);
@@ -236,7 +236,6 @@ export const LearnerFormModal: React.FC<LearnerFormModalProps> = ({
             setAllStatssaCodes(codes);
             setIsSearchingArea(false);
 
-            // Set initial search value based on existing code in profile
             const existingCode = formData.demographics?.statsaaAreaCode || (formData.demographics as any)?.statsaaAreaCode;
             if (existingCode) {
                 const match = codes.find((c: any) => c.statssa_area_code === existingCode);
@@ -250,7 +249,6 @@ export const LearnerFormModal: React.FC<LearnerFormModalProps> = ({
         loadCodes();
     }, []);
 
-    // Filter codes based on search input (limit to 20 for performance)
     const filteredStatssaCodes = useMemo(() => {
         if (!areaSearch) return allStatssaCodes.slice(0, 20);
         const term = areaSearch.toLowerCase();
@@ -262,10 +260,9 @@ export const LearnerFormModal: React.FC<LearnerFormModalProps> = ({
         ).slice(0, 20);
     }, [areaSearch, allStatssaCodes]);
 
-    // Handle clicking a STATSSA code from the dropdown
     const handleStatssaSelect = (codeObj: any) => {
         updateDemographics("statssaAreaCode", codeObj.statssa_area_code);
-        updateDemographics("statsaaAreaCode", codeObj.statssa_area_code); // Sync typo
+        updateDemographics("statsaaAreaCode", codeObj.statssa_area_code);
         setAreaSearch(`${codeObj.statssa_area_code} (${codeObj.town} - ${codeObj.district_municipality} - ${codeObj.area})`);
         setShowAreaDropdown(false);
     };
@@ -293,19 +290,16 @@ export const LearnerFormModal: React.FC<LearnerFormModalProps> = ({
             ...prev, demographics: { ...(prev.demographics || {}), [field]: value } as any,
         }));
 
-    // UNIFIED HOME ADDRESS SYNC HANDLER (Supports Checkbox)
     const handleHomeAddressChange = (field: string, value: string) => {
         setFormData((prev: any) => {
             const updatedDemos = { ...prev.demographics, [field]: value };
 
-            // Automatically find and sync STATSSA Area Code if Postal Code changes
             if (field === 'learnerHomeAddressPostalCode') {
                 const areaCode = getAreaCode(value) || updatedDemos.statssaAreaCode;
                 updatedDemos.statssaAreaCode = areaCode;
                 updatedDemos.statsaaAreaCode = areaCode;
             }
 
-            // If the mirror checkbox is checked, update Postal simultaneously
             if (isPostalSameAsHome) {
                 if (field === 'learnerHomeAddress1') updatedDemos.learnerPostalAddress1 = value;
                 if (field === 'learnerHomeAddress2') updatedDemos.learnerPostalAddress2 = value;
@@ -316,7 +310,6 @@ export const LearnerFormModal: React.FC<LearnerFormModalProps> = ({
         });
     };
 
-    // Uncheck box if they manually type in Postal fields
     const handlePostalManualChange = (field: string, value: string) => {
         setIsPostalSameAsHome(false);
         updateDemographics(field, value);
@@ -336,7 +329,6 @@ export const LearnerFormModal: React.FC<LearnerFormModalProps> = ({
         const formatted = place.formatted_address || "";
         const streetLine = formatted.includes(buildingName) ? formatted : `${buildingName}, ${formatted}`;
 
-        // Attempt to auto-match the STATSSA code based on the Google Town name
         const match = allStatssaCodes.find(c => c.town.toLowerCase() === town.toLowerCase());
         if (match) {
             setFormData(prev => ({
@@ -362,7 +354,6 @@ export const LearnerFormModal: React.FC<LearnerFormModalProps> = ({
                 lat: extractedLat, lng: extractedLng
             };
 
-            // Mirror Google Maps result to Postal if checked
             if (isPostalSameAsHome) {
                 updatedDemos.learnerPostalAddress1 = streetLine;
                 updatedDemos.learnerPostalAddress2 = town;
@@ -373,35 +364,70 @@ export const LearnerFormModal: React.FC<LearnerFormModalProps> = ({
         });
     };
 
+    // ── SMART MULTI-SHEET UPLOAD HANDLER ──
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
+
         const reader = new FileReader();
-        reader.onload = (event) => parseCSV(event.target?.result as string);
-        reader.readAsText(file);
+        reader.onload = (event) => {
+            try {
+                const data = new Uint8Array(event.target?.result as ArrayBuffer);
+                const workbook = XLSX.read(data, { type: 'array' });
+
+                const sheetNames = workbook.SheetNames;
+
+                // If only 1 sheet exists, just process it immediately
+                if (sheetNames.length === 1) {
+                    processSpecificSheet(workbook, sheetNames[0]);
+                    return;
+                }
+
+                // If multiple sheets, try to auto-match using the learner's ID Number
+                let matchedSheet = null;
+                if (formData.idNumber) {
+                    for (const sheetName of sheetNames) {
+                        const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1, defval: "" }) as any[][];
+                        const idRow = rows.find(r => String(r[0]).toLowerCase().includes("id number"));
+
+                        if (idRow && String(idRow[1]).trim() === formData.idNumber.trim()) {
+                            matchedSheet = sheetName;
+                            break;
+                        }
+                    }
+                }
+
+                // If a perfect match is found, import it immediately
+                if (matchedSheet) {
+                    processSpecificSheet(workbook, matchedSheet);
+                } else {
+                    // OPEN THE NEW UI POPUP TO LET USER CHOOSE WHICH SHEET TO USE
+                    setSheetSelection({ workbook, sheetNames });
+                }
+
+            } catch (err: any) {
+                console.error("Spreadsheet Parse Error:", err);
+                setStatusModal({
+                    type: "error",
+                    title: "Import Failed",
+                    message: "Could not parse the file. Please ensure it is a valid .csv or .xlsx file.",
+                    onClose: () => setStatusModal(null)
+                });
+            }
+        };
+
+        reader.readAsArrayBuffer(file);
     };
 
-    const parseCSV = (csvText: string) => {
-        try {
-            const parseCSVText = (text: string) => {
-                const result: string[][] = [];
-                let row: string[] = [];
-                let inQuotes = false, val = "";
-                for (let i = 0; i < text.length; i++) {
-                    const char = text[i], nextChar = text[i + 1];
-                    if (char === '"' && inQuotes && nextChar === '"') { val += '"'; i++; }
-                    else if (char === '"') inQuotes = !inQuotes;
-                    else if (char === "," && !inQuotes) { row.push(val.trim()); val = ""; }
-                    else if ((char === "\n" || (char === "\r" && nextChar === "\n")) && !inQuotes) {
-                        row.push(val.trim()); result.push(row); row = []; val = "";
-                        if (char === "\r") i++;
-                    } else val += char;
-                }
-                row.push(val.trim()); result.push(row);
-                return result;
-            };
+    const processSpecificSheet = (workbook: XLSX.WorkBook, sheetName: string) => {
+        const worksheet = workbook.Sheets[sheetName];
+        const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" }) as string[][];
+        setSheetSelection(null); // Close the modal
+        parseCSVRows(rows);
+    };
 
-            const rows = parseCSVText(csvText);
+    const parseCSVRows = (rows: string[][]) => {
+        try {
             let fullName = "", qualName = "", nqfLevel = 0, saqaId = "", totalCredits = 0;
             let idNumber = "", emailAddress = "", phoneNumber = "", startDateStr = "", completionDateStr = "", issueDateStr = "";
             let importedCohortName = "", importedSdpCode = GLOBAL_SDP_CODE;
@@ -410,22 +436,24 @@ export const LearnerFormModal: React.FC<LearnerFormModalProps> = ({
 
             rows.forEach((cols) => {
                 if (!cols || cols.length === 0 || (cols.length === 1 && cols[0] === "")) return;
-                const col0 = (cols[0] || "").trim(), col1 = (cols[1] || "").trim(), col0Lower = col0.toLowerCase();
+                const col0 = String(cols[0] || "").trim();
+                const col1 = String(cols[1] || "").trim();
+                const col0Lower = col0.toLowerCase();
 
                 if (!isModuleSection) {
-                    if (col0Lower.includes("qualification title")) qualName = cols[1]?.trim();
+                    if (col0Lower.includes("qualification title")) qualName = String(cols[1] || "").trim();
                     else if (col0Lower.includes("nqf level")) nqfLevel = parseInt(cols[1]) || 0;
-                    else if (col0Lower.includes("saqa qual id")) saqaId = cols[1]?.trim();
+                    else if (col0Lower.includes("saqa qual id")) saqaId = String(cols[1] || "").trim();
                     else if (col0Lower.includes("credits")) totalCredits = parseInt(cols[1]) || 0;
-                    else if (col0Lower.includes("name") && (col0Lower.includes("learner") || col0Lower.includes("leaner"))) fullName = cols[1]?.trim();
-                    else if (col0Lower.includes("id number")) idNumber = cols[1]?.trim();
-                    else if (col0Lower.includes("email address")) emailAddress = cols[1]?.trim();
-                    else if (col0Lower.includes("phone number")) phoneNumber = cols[1]?.trim();
+                    else if (col0Lower.includes("name") && (col0Lower.includes("learner") || col0Lower.includes("leaner"))) fullName = String(cols[1] || "").trim();
+                    else if (col0Lower.includes("id number")) idNumber = String(cols[1] || "").trim();
+                    else if (col0Lower.includes("email address")) emailAddress = String(cols[1] || "").trim();
+                    else if (col0Lower.includes("phone number")) phoneNumber = String(cols[1] || "").trim();
                     else if (col0Lower.includes("start date")) startDateStr = parseLocalToSA(cols[1]);
                     else if (col0Lower.includes("completion date")) completionDateStr = parseLocalToSA(cols[1]);
                     else if (col0Lower.includes("issue date")) issueDateStr = parseLocalToSA(cols[1]);
-                    else if (col0Lower.includes("cohort")) importedCohortName = cols[1]?.trim();
-                    else if (col0Lower.includes("sdp code") || col0Lower.includes("provider code")) importedSdpCode = cols[1]?.trim() || GLOBAL_SDP_CODE;
+                    else if (col0Lower.includes("cohort")) importedCohortName = String(cols[1] || "").trim();
+                    else if (col0Lower.includes("sdp code") || col0Lower.includes("provider code")) importedSdpCode = String(cols[1] || "").trim() || GLOBAL_SDP_CODE;
 
                     if ((col0Lower === "modules" || col0Lower === "") && col1.toLowerCase() === "module name") {
                         isModuleSection = true; return;
@@ -433,14 +461,19 @@ export const LearnerFormModal: React.FC<LearnerFormModalProps> = ({
                 }
 
                 if (isModuleSection) {
-                    if (col0Lower.includes("knowledge")) currentSection = "K";
+                    if (col0Lower.includes("knowledge") || col0Lower.includes("knowlege")) currentSection = "K";
                     else if (col0Lower.includes("practical") || col0Lower.includes("skills")) currentSection = "P";
                     else if (col0Lower.includes("work") || col0Lower.includes("experience")) currentSection = "W";
 
                     if (col1 && col1.toLowerCase() !== "module name") {
-                        const modCode = cols[2]?.trim() || "";
-                        let status = cols[8]?.trim() || cols[7]?.trim() || "Not Started";
-                        if (!status || status === "") status = "Not Started";
+                        const modCode = String(cols[2] || "").trim();
+                        // Catch-all normalizer for the inline dropdowns
+                        let rawStatus = String(cols[8] || cols[7] || "").trim() || "Not Started";
+                        const s = rawStatus.toLowerCase();
+                        let status = "Not Started";
+                        if (s === "competent" || s === "pass" || s === "c") status = "Competent";
+                        else if (s === "not yet competent" || s === "not competent" || s === "fail" || s === "nyc") status = "Not Yet Competent";
+                        else if (s && s !== "not started") status = "In Progress";
 
                         const mod = {
                             name: col1.replace(/\n|\r/g, " ").trim(), code: modCode, nqfLevel: parseInt(cols[3]) || nqfLevel || 5,
@@ -461,7 +494,7 @@ export const LearnerFormModal: React.FC<LearnerFormModalProps> = ({
             });
 
             if (!idNumber) {
-                setStatusModal({ type: "error", title: "Missing ID", message: "Failed: No ID Number found in the CSV.", onClose: () => setStatusModal(null) });
+                setStatusModal({ type: "error", title: "Missing ID", message: "Failed: No ID Number found in the imported file.", onClose: () => setStatusModal(null) });
                 if (fileInputRef.current) fileInputRef.current.value = "";
                 return;
             }
@@ -499,8 +532,8 @@ export const LearnerFormModal: React.FC<LearnerFormModalProps> = ({
             setStatusModal({ type: "success", title: "Import Successful", message: successMessage, onClose: () => setStatusModal(null) });
             if (fileInputRef.current) fileInputRef.current.value = "";
         } catch (error) {
-            console.error("CSV Parse Error:", error);
-            setStatusModal({ type: "error", title: "Import Failed", message: "Could not parse the CSV file. Please ensure it matches the standard layout.", onClose: () => setStatusModal(null) });
+            console.error("CSV/Excel Parse Error:", error);
+            setStatusModal({ type: "error", title: "Import Failed", message: "Could not map the data accurately. Please ensure it matches the standard layout.", onClose: () => setStatusModal(null) });
         }
     };
 
@@ -797,10 +830,10 @@ export const LearnerFormModal: React.FC<LearnerFormModalProps> = ({
                                         </div>
                                     </div>
                                     <div style={{ paddingLeft: "0.5rem" }}>
-                                        <h4 style={{ margin: "0 0 0.5rem 0", color: "#16a34a", fontSize: "0.85rem" }}>Import External Results (CSV)</h4>
-                                        <input type="file" accept=".csv" ref={fileInputRef} onChange={handleFileUpload} style={{ display: "none" }} />
+                                        <h4 style={{ margin: "0 0 0.5rem 0", color: "#16a34a", fontSize: "0.85rem" }}>Import External Results (.CSV / .XLSX)</h4>
+                                        <input type="file" accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel" ref={fileInputRef} onChange={handleFileUpload} style={{ display: "none" }} />
                                         <button type="button" className="lfm-btn" onClick={() => fileInputRef.current?.click()} style={{ background: "#f0fdf4", border: "1px solid #16a34a", color: "#16a34a", width: "100%", display: "flex", justifyContent: "center" }}>
-                                            <UploadCloud size={16} /> Upload SoR CSV
+                                            <UploadCloud size={16} /> Upload SoR File
                                         </button>
                                     </div>
                                 </div>
@@ -894,12 +927,6 @@ export const LearnerFormModal: React.FC<LearnerFormModalProps> = ({
                                             else updateField('eisaAdmission', false);
                                         }} disabled={(formData.demographics as any)?.sorStatus === "02"} required={(formData.demographics as any)?.sorStatus === "01"} />
                                     </div>
-                                    {/* <div className="lfm-fg">
-                                        <label>FLC Status *</label>
-                                        <select className="lfm-input lfm-select" value={(formData.demographics as any)?.flcStatus || "06"} onChange={e => updateDemographics('flcStatus', e.target.value)}>
-                                            {[{ v: "01", l: "01 - FLC certificate (competent)" }, { v: "02", l: "02 - RPL" }, { v: "03", l: "03 - Grade 12/NCV Level 4 pass" }, { v: "04", l: "04 - Not yet competent" }, { v: "05", l: "05 - FLC not completed yet" }, { v: "06", l: "06 - Not applicable (NQF 5+)" }, { v: "07", l: "07 - Enrolled for FLC" }, { v: "08", l: "08 - N3 Mathematics and Business Lang" }].map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
-                                        </select>
-                                    </div> */}
                                     <div className="lfm-fg">
                                         <label>FLC Status *</label>
                                         <select className="lfm-input lfm-select" value={(formData.demographics as any)?.flcStatus || (formData.demographics as any)?.flc || "06"} onChange={e => {
@@ -909,11 +936,6 @@ export const LearnerFormModal: React.FC<LearnerFormModalProps> = ({
                                             {[{ v: "01", l: "01 - FLC certificate (competent)" }, { v: "02", l: "02 - RPL" }, { v: "03", l: "03 - Grade 12/NCV Level 4 pass" }, { v: "04", l: "04 - Not yet competent" }, { v: "05", l: "05 - FLC not completed yet" }, { v: "06", l: "06 - Not applicable (NQF 5+)" }, { v: "07", l: "07 - Enrolled for FLC" }, { v: "08", l: "08 - N3 Mathematics and Business Lang" }].map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
                                         </select>
                                     </div>
-
-                                    {/* <div className="lfm-fg">
-                                        <label>FLC Result/Certificate Number</label>
-                                        <input type="text" className="lfm-input" placeholder={(formData.demographics as any)?.flcStatus === "02" ? "e.g. RPL20260330" : "Certificate Number..."} value={(formData.demographics as any)?.flcResultNumber || ""} onChange={e => updateDemographics('flcResultNumber', e.target.value)} disabled={["04", "05", "06", "07"].includes((formData.demographics as any)?.flcStatus)} />
-                                    </div> */}
                                     <div className="lfm-fg">
                                         <label>FLC Result/Certificate Number</label>
                                         <input
@@ -923,13 +945,11 @@ export const LearnerFormModal: React.FC<LearnerFormModalProps> = ({
                                             value={formData.demographics?.flcStatementOfResultNumber || ""}
                                             onChange={e => {
                                                 updateDemographics('flcStatementOfResultNumber', e.target.value);
-                                                updateDemographics('flcResultNumber', e.target.value); // Sync old key for safety
+                                                updateDemographics('flcResultNumber', e.target.value);
                                             }}
-                                            // Disable if status is "Not Yet Competent" etc.
                                             disabled={["04", "05", "06", "07"].includes((formData.demographics as any)?.flcStatus || (formData.demographics as any)?.flc)}
                                         />
                                     </div>
-
                                 </div>
                             </div>
 
@@ -1187,6 +1207,54 @@ export const LearnerFormModal: React.FC<LearnerFormModalProps> = ({
                     </form>
                 </div>
             </div>
+
+            {/* SHEET SELECTOR MODAL (TRIGGERS IF MULTIPLE SHEETS ARE FOUND AND ID DOES NOT MATCH) */}
+            {sheetSelection && (
+                <div className="lfm-overlay" style={{ zIndex: 2000 }}>
+                    <div className="lfm-modal mlab-modal--sm animate-fade-in" style={{ padding: 0 }}>
+                        <div className="lfm-header" style={{ borderBottom: '1px solid var(--mlab-border)', padding: '16px' }}>
+                            <h2 className="lfm-header__title" style={{ fontSize: '1.1rem', color: 'var(--mlab-blue)' }}>Select Learner Data</h2>
+                            <button className="lfm-close-btn" type="button" onClick={() => setSheetSelection(null)}><X size={18} /></button>
+                        </div>
+                        <div className="lfm-body" style={{ padding: '16px' }}>
+                            <p style={{ fontSize: '0.85rem', color: 'var(--mlab-grey)', margin: '0 0 12px 0' }}>
+                                We found <strong>{sheetSelection.sheetNames.length}</strong> sheets in this file. Since we couldn't find an exact match for the ID Number, please select which sheet you want to import into this profile.
+                            </p>
+                            <div style={{ border: '1px solid var(--mlab-border)', borderRadius: '6px', maxHeight: '300px', overflowY: 'auto', background: '#f8fafc' }}>
+                                {sheetSelection.sheetNames.map((name, idx) => (
+                                    <button
+                                        key={idx}
+                                        type="button"
+                                        style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '8px',
+                                            width: '100%',
+                                            padding: '12px 16px',
+                                            textAlign: 'left',
+                                            background: 'none',
+                                            border: 'none',
+                                            borderBottom: idx !== sheetSelection.sheetNames.length - 1 ? '1px solid var(--mlab-border)' : 'none',
+                                            cursor: 'pointer',
+                                            color: 'var(--mlab-blue)',
+                                            fontWeight: 600,
+                                            fontSize: '0.9rem'
+                                        }}
+                                        onClick={() => processSpecificSheet(sheetSelection.workbook, name)}
+                                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#e2e8f0'}
+                                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                    >
+                                        <FileSpreadsheet size={16} color="#10b981" /> {name}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                        <div className="lfm-footer" style={{ padding: '12px 16px', borderTop: '1px solid var(--mlab-border)', justifyContent: 'flex-end' }}>
+                            <button type="button" className="lfm-btn lfm-btn--ghost" onClick={() => setSheetSelection(null)}>Cancel</button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {statusModal && (
                 <StatusModal type={statusModal.type} title={statusModal.title} message={statusModal.message} onClose={statusModal.onClose} onCancel={statusModal.onCancel} confirmText={statusModal.confirmText} />
