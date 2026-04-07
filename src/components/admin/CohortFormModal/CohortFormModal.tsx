@@ -1,5 +1,6 @@
 // src/components/admin/CohortFormModal.tsx
 
+
 import React, { useState, useEffect, useMemo } from 'react';
 import {
     X, Save, Loader2, ShieldAlert, CheckSquare, Square,
@@ -48,12 +49,20 @@ export const CohortFormModal: React.FC<Props> = ({ cohort, onClose, onSave }) =>
 
     // ── Filtered learner list ──
     const filteredLearners = useMemo(() => learners.filter(l => {
-        if (l.isArchived) return false;
+        // 🚀 SAFEGUARD: ONLY SHOW AUTHENTICATED LEARNERS
+        // Learner must not be archived, must be active, must NOT be offline (RPL), 
+        // AND must have a fully registered Firebase Auth account ('active').
+        if (l.isArchived || l.isOffline || l.status !== 'active' || l.authStatus !== 'active') {
+            return false;
+        }
+
         const matchesSearch =
             l.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
             l.idNumber.toLowerCase().includes(searchTerm.toLowerCase());
+
         if (!matchesSearch) return false;
         if (showAll) return true;
+
         return l.cohortId === 'Unassigned' || !l.cohortId || (cohort && cohort.id === l.cohortId);
     }), [learners, cohort, searchTerm, showAll]);
 
@@ -254,8 +263,11 @@ export const CohortFormModal: React.FC<Props> = ({ cohort, onClose, onSave }) =>
                             <div className="cfm-right">
                                 <div className="cfm-section-hdr">
                                     <User size={13} />
-                                    <span>3. Select Learners</span>
+                                    <span>3. Select Authenticated Learners</span>
                                     <span className="cfm-learner-count">{formData.learnerIds.length} selected</span>
+                                </div>
+                                <div style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: '12px', lineHeight: '1.2' }}>
+                                    <strong>Only Firebase-Authenticated learners are shown.</strong> If a learner is missing, please go to the Learners Dashboard and click "Send Auth Invites".
                                 </div>
 
                                 {/* Search + controls panel */}
@@ -292,11 +304,11 @@ export const CohortFormModal: React.FC<Props> = ({ cohort, onClose, onSave }) =>
                                     {filteredLearners.length === 0 ? (
                                         <div className="cfm-learner-empty">
                                             <User size={32} />
-                                            <span>No learners found.</span>
+                                            <span>No authenticated learners found.</span>
                                             <small>
                                                 {searchTerm
                                                     ? 'Try a different search term.'
-                                                    : "Import learners or enable 'Show all' above."}
+                                                    : "Ensure learners are marked 'Auth: Active' on the dashboard."}
                                             </small>
                                         </div>
                                     ) : filteredLearners.map(learner => {
@@ -352,4 +364,3 @@ export const CohortFormModal: React.FC<Props> = ({ cohort, onClose, onSave }) =>
         </>
     );
 };
-

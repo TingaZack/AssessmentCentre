@@ -99,6 +99,8 @@ interface StoreState extends CohortSlice {
   learnersError: string | null;
   learnersLastFetched: number | null;
 
+  clearUser: () => void;
+
   fetchLearners: (force?: boolean) => Promise<void>;
   fetchStagingLearners: () => Promise<void>;
 
@@ -222,6 +224,8 @@ export const useStore = create<StoreState>()(
     loading: true,
     setUser: (user) => set({ user }),
     setLoading: (loading) => set({ loading }),
+
+    clearUser: () => set({ user: null }),
 
     refreshUser: async () => {
       const currentUser = get().user;

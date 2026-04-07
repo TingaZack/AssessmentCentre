@@ -1,0 +1,106 @@
+/* src/components/views/PrivacyPolicy.css */
+
+.mlab-privacy-wrapper {
+  font-family:
+    "Inter",
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    Oxygen,
+    Ubuntu,
+    Cantarell,
+    sans-serif;
+  background-color: #ffffff;
+  color: #334155;
+}
+
+.mlab-privacy-wrapper h1,
+.mlab-privacy-wrapper h2 {
+  letter-spacing: -0.025em;
+}
+
+.mlab-privacy-wrapper p {
+  margin-bottom: 1rem;
+}
+
+.mlab-privacy-wrapper ul li {
+  line-height: 1.5;
+}
+
+/* Link hover effects */
+.mlab-privacy-wrapper a {
+  transition: color 0.2s ease;
+}
+
+.mlab-privacy-wrapper a:hover {
+  color: #0369a1 !important; /* Darker blue on hover */
+  text-decoration: none;
+}
+
+/* =========================================
+   PRINT STYLES (Triggers on Ctrl+P / Print)
+   ========================================= */
+@media print {
+  @page {
+    margin: 20mm;
+    size: A4 portrait;
+  }
+
+  body {
+    background-color: #ffffff;
+    color: #000000;
+  }
+
+  .mlab-privacy-wrapper {
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* 🚀 Hide the "Back" and "Print Policy" buttons on the physical paper */
+  .mlab-privacy-wrapper > div:first-child {
+    display: none !important;
+  }
+
+  /* Ensure background colors (like the contact box) print correctly */
+  .mlab-privacy-wrapper div {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Prevent awkward page breaks directly after a heading */
+  .mlab-privacy-wrapper h2 {
+    page-break-after: avoid;
+    break-after: avoid;
+  }
+
+  /* Prevent lists and contact boxes from splitting across two pages */
+  .mlab-privacy-wrapper ul,
+  .mlab-privacy-wrapper li,
+  .mlab-privacy-wrapper > div {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+}
+
+/* =========================================
+   MOBILE RESPONSIVENESS
+   ========================================= */
+@media (max-width: 640px) {
+  .mlab-privacy-wrapper {
+    padding: 1.5rem 1rem !important;
+  }
+
+  .mlab-privacy-wrapper h1 {
+    font-size: 1.5rem !important;
+  }
+
+  .mlab-privacy-wrapper h2 {
+    font-size: 1.15rem !important;
+  }
+
+  .mlab-privacy-wrapper > div:first-child {
+    margin-bottom: 1.5rem !important;
+  }
+}

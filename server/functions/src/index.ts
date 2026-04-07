@@ -38,7 +38,14 @@ export const helloTryWorld = onRequest((request, response) => {
 
 import * as admin from "firebase-admin";
 import * as nodemailer from "nodemailer";
-import { onDocumentCreated } from "firebase-functions/firestore";
+import {
+  onDocumentCreated,
+  onDocumentUpdated,
+} from "firebase-functions/firestore";
+import {
+  buildMlabEmailHtml,
+  buildMlabEmailPlainText,
+} from "./utils/emailBuilder";
 
 const cors = require("cors")({ origin: true });
 
@@ -54,24 +61,24 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-// interface CreateStaffRequest {
-//   email: string;
-//   fullName: string;
-//   role: string;
-// }
-
 export const createStaffAccount = onCall(async (request) => {
-  // 1. EXTRACT DATA & AUTH FROM THE SINGLE 'request' OBJECT
-  const { email, fullName, role, phone, employerId, assessorRegNumber } =
-    request.data;
+  const {
+    email,
+    fullName,
+    role,
+    phone,
+    employerId,
+    assessorRegNumber,
+    isSuperAdmin,
+    privileges,
+  } = request.data;
+
   const auth = request.auth;
 
-  // 2. Security Check: Ensure caller is Authenticated
   if (!auth) {
     throw new HttpsError("unauthenticated", "Authentication required.");
   }
 
-  // 3. Security Check: Ensure caller is an Admin
   const callerUid = auth.uid;
   const callerDoc = await admin
     .firestore()
@@ -82,22 +89,30 @@ export const createStaffAccount = onCall(async (request) => {
   if (!callerDoc.exists || callerDoc.data()?.role !== "admin") {
     throw new HttpsError(
       "permission-denied",
-      "Only Admins can create staff accounts.",
+      "Only Admins can provision staff accounts.",
+    );
+  }
+
+  // Strict Domain Enforcement for Admins
+  if (role === "admin" && !email.toLowerCase().endsWith("@mlab.co.za")) {
+    throw new HttpsError(
+      "permission-denied",
+      "Security Policy Violation: Admin accounts can only be provisioned for official @mlab.co.za domains.",
     );
   }
 
   try {
-    // 4. Create the User in Firebase Auth
     const userRecord = await admin.auth().createUser({
       email: email,
       displayName: fullName,
       emailVerified: true,
     });
 
-    // Set Custom Claims for strict Role-Based Access Control (RBAC)
-    await admin.auth().setCustomUserClaims(userRecord.uid, { role: role });
+    await admin.auth().setCustomUserClaims(userRecord.uid, {
+      role: role,
+      ...(role === "admin" && isSuperAdmin ? { isSuperAdmin: true } : {}),
+    });
 
-    // 6. Build the Firestore Profile
     const userData: any = {
       uid: userRecord.uid,
       fullName: fullName,
@@ -106,62 +121,57 @@ export const createStaffAccount = onCall(async (request) => {
       phone: phone || "",
       status: "active",
       createdAt: new Date().toISOString(),
-      signatureUrl: "", // Empty until they log in
+      signatureUrl: "",
     };
 
-    // Add specific fields based on Role
-    if (role === "mentor" && employerId) {
+    if (role === "admin") {
+      userData.isSuperAdmin = !!isSuperAdmin;
+      if (!isSuperAdmin && privileges) {
+        userData.privileges = privileges;
+      }
+    } else if (role === "mentor" && employerId) {
       userData.employerId = employerId;
     } else if (["assessor", "moderator"].includes(role) && assessorRegNumber) {
       userData.assessorRegNumber = assessorRegNumber;
     }
 
-    // Save to Firestore
     await admin
       .firestore()
       .collection("users")
       .doc(userRecord.uid)
       .set(userData);
 
-    // 7. Generate Password Reset Link
     const link = await admin.auth().generatePasswordResetLink(email);
 
-    // Format role nicely for the email
     const displayRole =
-      role.charAt(0).toUpperCase() + role.slice(1).replace("_", " ");
+      role === "admin" && isSuperAdmin
+        ? "Super Administrator"
+        : role.charAt(0).toUpperCase() + role.slice(1).replace("_", " ");
 
-    // 8. Send Email via Nodemailer
+    // USING THE MODULAR BUILDER
+    const emailParams = {
+      title: "Platform Access Granted",
+      subtitle: "Secure your account to access your dashboard",
+      recipientName: fullName,
+      bodyHtml: `You have been securely provisioned as a <strong>${displayRole}</strong> on the mLab platform. Please click the button below to set your private password and access your dashboard.`,
+      ctaText: "Set Password & Login",
+      ctaLink: link,
+      showStepIndicator: false, // Turn off the 3-step timeline for this specific email
+    };
+
     const mailOptions = {
-      from: '"mLab Admin" <brndkt@gmail.com>',
+      from: '"mLab Assessment Platform" <brndkt@gmail.com>',
       to: email,
-      subject: `Welcome to mLab Assessment Platform - ${displayRole}`,
-      html: `
-        <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #eee;">
-            <h2 style="color: #0f172a;">Welcome, ${fullName}!</h2>
-            <p>You have been registered as a <strong>${displayRole}</strong> on the mLab Assessment Platform.</p>
-            <p>Please click the button below to set your secure password and access your dashboard:</p>
-            
-            <div style="margin: 30px 0;">
-                <a href="${link}" style="background-color: #6366f1; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">
-                    Set Password & Login
-                </a>
-            </div>
-            
-            <p style="color: #64748b; font-size: 12px;">
-                If the button above doesn't work, copy and paste this link into your browser:<br/>
-                <a href="${link}">${link}</a>
-            </p>
-            <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
-            <p style="font-size: 12px; color: #94a3b8;">mLab Admin Team</p>
-        </div>
-      `,
+      subject: `Action Required: Access Granted - ${displayRole}`,
+      text: buildMlabEmailPlainText(emailParams),
+      html: buildMlabEmailHtml(emailParams),
     };
 
     await transporter.sendMail(mailOptions);
 
     return {
       success: true,
-      message: `Account created for ${email}`,
+      message: `Account created securely for ${email}`,
       uid: userRecord.uid,
     };
   } catch (error: any) {
@@ -250,7 +260,7 @@ export const createStaffAccount = onCall(async (request) => {
 
 // ================= CONFIGURATION =================
 // I will replace this with my actual deployed URL
-const APP_URL = "https://mlab-assessment-platform.web.app";
+const APP_URL = "https://assessmentcentr.web.app/";
 
 // Helper: Send Email with basic styling
 const sendEmail = async (to: string, subject: string, htmlContent: string) => {
@@ -425,7 +435,7 @@ export const createLearnerAccount = onRequest((req, res) => {
         if (error.code === "auth/user-not-found") {
           const newUser = await admin.auth().createUser({
             email,
-            emailVerified: true,
+            emailVerified: false,
             displayName: fullName,
           });
           uid = newUser.uid;
@@ -1540,5 +1550,693 @@ exports.sendAdHocCertificate = onCall(async (request) => {
   } catch (error) {
     console.error("Email Error:", error);
     throw new HttpsError("internal", "Failed to send email.");
+  }
+});
+
+// ================= TRIGGER: ON SUBMISSION STATUS CHANGE =================
+// Handles Alerts for Assessors, Moderators, and Learners during the grading lifecycle
+export const onSubmissionStatusChange = onDocumentUpdated(
+  "learner_submissions/{submissionId}",
+  async (event) => {
+    const beforeData = event.data?.before.data();
+    const afterData = event.data?.after.data();
+    const submissionId = event.params.submissionId;
+
+    if (!beforeData || !afterData) return;
+
+    const db = admin.firestore();
+    const learnerId = afterData.learnerId;
+    const cohortId = afterData.cohortId;
+    const moduleName =
+      afterData.title || afterData.moduleNumber || "Assessment";
+
+    // Helper to fetch user email by ID
+    const getUserEmailAndName = async (uid: string) => {
+      if (!uid) return null;
+      const doc = await db.collection("users").doc(uid).get();
+      if (!doc.exists) return null;
+      return { email: doc.data()?.email, name: doc.data()?.fullName || "User" };
+    };
+
+    // Helper to fetch Learner email by ID
+    const getLearnerEmailAndName = async (uid: string) => {
+      if (!uid) return null;
+      const doc = await db.collection("learners").doc(uid).get();
+      if (!doc.exists) return null;
+      return {
+        email: doc.data()?.email,
+        name: doc.data()?.fullName || "Learner",
+      };
+    };
+
+    // Helper to get cohort staff IDs if not explicitly attached to the submission
+    const getCohortStaff = async () => {
+      if (!cohortId) return {};
+      const cohortDoc = await db.collection("cohorts").doc(cohortId).get();
+      return cohortDoc.data() || {};
+    };
+
+    try {
+      const cohortStaff = await getCohortStaff();
+
+      // 1. ASSESSOR & FACILITATOR ALERT: Learner uploads a new PoE
+      if (
+        beforeData.status !== "submitted" &&
+        afterData.status === "submitted"
+      ) {
+        const assessorId = afterData.gradedBy || cohortStaff.assessorId;
+        const facilitatorId = cohortStaff.facilitatorId;
+
+        const assessor = await getUserEmailAndName(assessorId);
+        const facilitator = await getUserEmailAndName(facilitatorId);
+        const learner = await getLearnerEmailAndName(learnerId);
+
+        // Alert the Assessor to grade it
+        if (assessor?.email) {
+          await sendEmail(
+            assessor.email,
+            `Action Required: New PoE Submitted for ${moduleName}`,
+            `<h3>Hello ${assessor.name},</h3>
+             <p><strong>${learner?.name}</strong> has just submitted their Portfolio of Evidence for <strong>${moduleName}</strong>.</p>
+             <p>The submission is now waiting in your queue to be graded.</p>
+             <div style="text-align: center; margin-top: 20px;">
+                <a href="${APP_URL}/assessments/grade/${submissionId}" style="background-color: #ef4444; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Review & Grade</a>
+             </div>`,
+          );
+        }
+
+        // Alert the Facilitator of progress
+        if (facilitator?.email) {
+          await sendEmail(
+            facilitator.email,
+            `Progress Update: ${learner?.name} finished ${moduleName}`,
+            `<h3>Hi ${facilitator.name},</h3>
+             <p>Your learner, <strong>${learner?.name}</strong>, has successfully submitted their work for <strong>${moduleName}</strong>.</p>
+             <p>The assessment has been routed to the cohort Assessor for grading. You can track the result on your class dashboard.</p>`,
+          );
+        }
+      }
+
+      // 2. MODERATOR ALERT & LEARNER ALERT: Assessor finalizes a grade
+      if (beforeData.status !== "graded" && afterData.status === "graded") {
+        const moderatorId =
+          afterData.moderation?.moderatedBy || cohortStaff.moderatorId;
+        const moderator = await getUserEmailAndName(moderatorId);
+        const learner = await getLearnerEmailAndName(learnerId);
+        const marks = afterData.marks || 0;
+        const totalMarks = afterData.totalMarks || 100;
+        const competency =
+          afterData.competency === "C" ? "Competent" : "Not Yet Competent";
+
+        // Alert Moderator to sample the grade
+        if (moderator?.email) {
+          await sendEmail(
+            moderator.email,
+            `Grading Finalized for Moderation: ${moduleName}`,
+            `<h3>Hello ${moderator.name},</h3>
+             <p>An Assessor has finalized the grading for <strong>${learner?.name}</strong> on <strong>${moduleName}</strong>.</p>
+             <p>This submission is now available for your internal moderation and quality assurance review.</p>
+             <div style="text-align: center; margin-top: 20px;">
+                <a href="${APP_URL}/assessments/moderate/${submissionId}" style="background-color: #22c55e; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Moderate Grade</a>
+             </div>`,
+          );
+        }
+
+        // Alert Learner that their grade is published
+        if (learner?.email) {
+          await sendEmail(
+            learner.email,
+            `Assessment Graded: ${moduleName}`,
+            `<h3>Hello ${learner.name},</h3>
+             <p>Your assessment for <strong>${moduleName}</strong> has been graded!</p>
+             <p><strong>Score:</strong> ${marks} / ${totalMarks}<br/>
+                <strong>Outcome:</strong> ${competency}</p>
+             <p>Log in to your portal to read your Assessor's feedback.</p>
+             <div style="text-align: center; margin-top: 20px;">
+                <a href="${APP_URL}/portal/assessments/${submissionId}" style="background-color: #0ea5e9; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">View Feedback</a>
+             </div>`,
+          );
+        }
+      }
+
+      // 3. REWORK / REJECTION ALERT: Moderator rejects a grade back to Assessor
+      const wasRejected =
+        afterData.status === "rework" ||
+        (afterData.moderation?.status === "rejected" &&
+          beforeData.moderation?.status !== "rejected");
+
+      if (wasRejected) {
+        const assessorId = afterData.gradedBy || cohortStaff.assessorId;
+        const assessor = await getUserEmailAndName(assessorId);
+        const moderatorName =
+          afterData.moderation?.moderatorName || "The Internal Moderator";
+
+        if (assessor?.email) {
+          await sendEmail(
+            assessor.email,
+            `Action Required: Moderation Rework on ${moduleName}`,
+            `<h3>Hello ${assessor.name},</h3>
+             <p>${moderatorName} has requested a rework on your grading for <strong>${moduleName}</strong>.</p>
+             <p><strong>Moderator Notes:</strong><br/>
+             <i>"${afterData.moderation?.feedback || "Please review the assessment again."}"</i></p>
+             <p>Please log in immediately to apply the required corrective actions.</p>
+             <div style="text-align: center; margin-top: 20px;">
+                <a href="${APP_URL}/assessments/grade/${submissionId}" style="background-color: #f59e0b; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Correct Assessment</a>
+             </div>`,
+          );
+        }
+      }
+    } catch (error) {
+      console.error("Error processing submission notifications:", error);
+    }
+  },
+);
+
+// ================= TRIGGER: ON ASSESSMENT CREATED =================
+// Notifies learners immediately when a new task is released or scheduled
+export const onAssessmentCreated = onDocumentCreated(
+  "assessments/{assessmentId}",
+  async (event) => {
+    const data = event.data?.data();
+    if (!data) return;
+
+    const { title, cohortId, availableFrom, dueDate } = data;
+    if (!cohortId) return;
+
+    const db = admin.firestore();
+
+    try {
+      // Fetch the Cohort to get the list of enrolled learners
+      const cohortSnap = await db.collection("cohorts").doc(cohortId).get();
+      const cohortData = cohortSnap.data();
+      if (!cohortData || !cohortData.learnerIds) return;
+
+      const learnerIds = cohortData.learnerIds;
+
+      // Loop through learners and send notifications
+      const emailPromises = learnerIds.map(async (uid: string) => {
+        const lSnap = await db.collection("learners").doc(uid).get();
+        const learner = lSnap.data();
+        if (!learner?.email) return;
+
+        return sendEmail(
+          learner.email,
+          `New Assessment Available: ${title}`,
+          `<h3>Hi ${learner.fullName},</h3>
+           <p>A new assessment <strong>${title}</strong> has been assigned to your class.</p>
+           
+           <div style="background-color: #f8fafc; padding: 15px; border-radius: 6px; border: 1px solid #e2e8f0; margin: 20px 0;">
+              <p style="margin: 0; color: #475569;">
+                ${availableFrom ? `📅 <b>Scheduled Start:</b> ${availableFrom}<br/>` : ""}
+                ${dueDate ? `⏰ <b>Submission Deadline:</b> ${dueDate}` : ""}
+              </p>
+           </div>
+
+           <p>Please log in to your learner portal to review the requirements and start your submission.</p>
+           <div style="text-align: center; margin-top: 20px;">
+              <a href="${APP_URL}/portal/assessments" style="background-color: #073f4e; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold;">Go to Assessment</a>
+           </div>`,
+        );
+      });
+
+      await Promise.all(emailPromises);
+      console.log(
+        `Notifications sent to ${learnerIds.length} learners for assessment: ${title}`,
+      );
+    } catch (error) {
+      console.error("Error sending new assessment alerts:", error);
+    }
+  },
+);
+
+// ================= TRIGGER: ON BLOCKCHAIN CERTIFICATION =================
+// Handles Learner Alerts when their SoR is officially minted
+export const onLearnerBlockchainVerified = onDocumentUpdated(
+  "learners/{learnerId}",
+  async (event) => {
+    const beforeData = event.data?.before.data();
+    const afterData = event.data?.after.data();
+
+    if (!beforeData || !afterData) return;
+
+    // Check if isBlockchainVerified flipped from false to true
+    if (!beforeData.isBlockchainVerified && afterData.isBlockchainVerified) {
+      const email = afterData.email;
+      const fullName = afterData.fullName || "Learner";
+      const verificationCode = afterData.verificationCode;
+      const qualName = afterData.qualification?.name || "Qualification";
+
+      if (email && verificationCode) {
+        try {
+          await sendEmail(
+            email,
+            `🎉 Official Statement of Results Minted: ${qualName}`,
+            `<h3>Congratulations ${fullName}!</h3>
+             <p>Your official Statement of Results for <strong>${qualName}</strong> has been successfully minted to the blockchain.</p>
+             <p>This means your academic credential is now permanently secured, immutable, and instantly verifiable by future employers.</p>
+             
+             <div style="background-color: #f0fdf4; padding: 15px; border-radius: 6px; border: 1px solid #bbf7d0; margin: 20px 0;">
+                <p style="margin: 0; color: #166534;"><strong>Your Verification ID:</strong> ${verificationCode}</p>
+             </div>
+
+             <p>You can view, download, and share your official digital credential using your public verification link below:</p>
+             
+             <div style="text-align: center; margin-top: 30px; margin-bottom: 30px;">
+                <a href="${APP_URL}/sor/${verificationCode}" style="background-color: #073f4e; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold;">View Official Credential</a>
+             </div>
+             
+             <p>Best Regards,<br/>mLab Academic Management Team</p>`,
+          );
+          console.log(`Blockchain verification email sent to ${email}`);
+        } catch (error) {
+          console.error("Error sending blockchain verification email:", error);
+        }
+      }
+    }
+  },
+);
+
+export const sendCustomVerificationEmail = onCall(async (request) => {
+  const authCtx = request.auth;
+  if (!authCtx) {
+    throw new HttpsError(
+      "unauthenticated",
+      "Must be logged in to request a verification link.",
+    );
+  }
+
+  const userEmail = authCtx.token.email;
+  const uid = authCtx.uid;
+
+  if (!userEmail) {
+    throw new HttpsError("invalid-argument", "No email found for this user.");
+  }
+
+  try {
+    // 1. DYNAMICALLY FETCH THE USER'S REAL NAME FROM FIRESTORE
+    let userName = authCtx.token.name;
+
+    if (!userName) {
+      const userDoc = await admin
+        .firestore()
+        .collection("users")
+        .doc(uid)
+        .get();
+      if (userDoc.exists) {
+        userName = userDoc.data()?.fullName;
+      }
+    }
+
+    // Ultimate fallback if no name exists anywhere yet
+    userName = userName || "there"; // Results in "Hi there,"
+
+    const verificationLink = await admin
+      .auth()
+      .generateEmailVerificationLink(userEmail);
+    const currentYear = new Date().getFullYear();
+
+    /* ─────────────────────────────────────────────────────────────────────
+       PLAIN TEXT FALLBACK
+    ───────────────────────────────────────────────────────────────────── */
+    const plainText = `
+mLab Southern Africa — Email Verification
+
+Hi ${userName},
+
+Please verify your email address to secure your account and access the mLab Assessment Platform.
+
+Verify here: ${verificationLink}
+
+This link expires in 24 hours.
+If you didn't create this account, you can safely ignore this email.
+
+Privacy Policy: ${APP_URL}/privacy-policy
+Terms of Service: ${APP_URL}/terms
+
+© ${currentYear} Mobile Applications Laboratory NPC
+Empowering the next generation of African tech talent.
+    `.trim();
+
+    /* ─────────────────────────────────────────────────────────────────────
+       HTML EMAIL
+    ───────────────────────────────────────────────────────────────────── */
+    const htmlContent = `
+<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <title>Verify Your Email — mLab Southern Africa</title>
+  <style type="text/css">
+    @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&display=swap');
+
+    /* CLIENT RESETS */
+    body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+    table, td           { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+    img                 { -ms-interpolation-mode: bicubic; border: 0; outline: none; text-decoration: none; }
+    body                { margin: 0 !important; padding: 0 !important; width: 100% !important; }
+
+    /* CTA HOVER */
+    .ve-cta:hover {
+      background-color: #0a5266 !important;
+    }
+
+    /* RESPONSIVE */
+    @media only screen and (max-width: 600px) {
+      .wrapper    { width: 100% !important; max-width: 100% !important; }
+      .col-2      { display: block !important; width: 100% !important; }
+      .hide-sm    { display: none !important; }
+      .pad-sm     { padding: 28px 20px !important; }
+      .title-sm   { font-size: 22px !important; }
+      .heading-sm { font-size: 26px !important; }
+      .cta-sm     { padding: 14px 24px !important; font-size: 13px !important; }
+    }
+  </style>
+</head>
+<body style="margin:0; padding:0; background-color:#e4edf0; font-family:'Trebuchet MS','Lucida Grande',Arial,sans-serif;">
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+         style="background-color:#e4edf0; min-height:100vh;">
+    <tr>
+      <td align="center" style="padding:40px 16px;">
+
+        <table class="wrapper" role="presentation" cellpadding="0" cellspacing="0" border="0"
+               style="width:580px; max-width:580px; background-color:#ffffff;
+                      box-shadow:0 8px 32px rgba(7,63,78,0.18), 0 2px 8px rgba(7,63,78,0.08);">
+
+          <tr>
+            <td height="5" style="padding:0; line-height:5px; font-size:5px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td width="508" height="5" bgcolor="#073f4e" style="font-size:1px; line-height:1px;">&nbsp;</td>
+                  <td width="72"  height="5" bgcolor="#94c73d" style="font-size:1px; line-height:1px;">&nbsp;</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td class="pad-sm" align="center"
+                style="background-color:#073f4e; padding:44px 40px 36px;
+                       background-image:repeating-linear-gradient(-45deg,transparent,transparent 28px,rgba(255,255,255,0.02) 28px,rgba(255,255,255,0.02) 29px);">
+
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto 22px;">
+                <tr>
+                  <td style="background:rgba(148,199,61,0.15); border:1px solid rgba(148,199,61,0.4); padding:5px 14px;">
+                    <span style="color:#94c73d; font-family:'Oswald',sans-serif; font-size:10px; font-weight:700;
+                                 letter-spacing:0.2em; text-transform:uppercase;">
+                      &#x1F512;&nbsp; Secure Verification
+                    </span>
+                  </td>
+                </tr>
+              </table>
+
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto 18px;">
+                <tr>
+                  <td width="72" height="72" bgcolor="#0a5266" align="center" valign="middle"
+                      style="border:2px solid rgba(148,199,61,0.45);">
+                    <img src="https://img.icons8.com/ios-glyphs/48/94c73d/new-post.png"
+                         alt="Email" width="36" height="36"
+                         style="display:block; margin:auto;" />
+                  </td>
+                </tr>
+              </table>
+
+              <h1 class="title-sm"
+                  style="color:#ffffff; margin:0 0 6px; font-family:'Oswald',sans-serif;
+                         font-size:26px; font-weight:700; letter-spacing:0.12em; text-transform:uppercase;
+                         line-height:1.1;">
+                Mobile Applications Laboratory NPC 
+              </h1>
+              <p style="color:rgba(255,255,255,0.45); margin:0; font-size:11px; font-family:'Trebuchet MS',sans-serif;
+                        letter-spacing:0.08em; text-transform:uppercase;">
+                Assessment &amp; Credentialing Platform
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td align="center"
+                style="background-color:#052e3a; padding:18px 40px; border-bottom:3px solid #94c73d;">
+              <h2 class="heading-sm"
+                  style="color:#ffffff; margin:0; font-family:'Oswald',sans-serif;
+                         font-size:28px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase;">
+                Verify Your Email
+              </h2>
+              <p style="color:rgba(255,255,255,0.45); margin:6px 0 0; font-size:12px;
+                        font-family:'Trebuchet MS',sans-serif; letter-spacing:0.05em;">
+                Secure your account to access your platform dashboard
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="background-color:#f0f4f6; padding:16px 40px; border-bottom:1px solid #dde4e8;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td align="center" width="33%" style="padding:0 4px;">
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;">
+                      <tr>
+                        <td width="26" height="26" bgcolor="#94c73d" align="center" valign="middle"
+                            style="border:2px solid #7aaa2e; font-family:'Oswald',sans-serif;
+                                   font-size:10px; font-weight:700; color:#ffffff; letter-spacing:0;">
+                          &#10003;
+                        </td>
+                      </tr>
+                    </table>
+                    <p style="margin:5px 0 0; font-family:'Oswald',sans-serif; font-size:9px; font-weight:700;
+                               letter-spacing:0.12em; text-transform:uppercase; color:#7aaa2e;">
+                      Account Created
+                    </p>
+                  </td>
+
+                  <td align="center" valign="middle" style="padding-bottom:18px;">
+                    <div style="height:2px; background:#dde4e8; min-width:20px;">&nbsp;</div>
+                  </td>
+
+                  <td align="center" width="33%" style="padding:0 4px;">
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;">
+                      <tr>
+                        <td width="26" height="26" bgcolor="#073f4e" align="center" valign="middle"
+                            style="border:2px solid #073f4e; font-family:'Oswald',sans-serif;
+                                   font-size:10px; font-weight:700; color:#94c73d;">
+                          &#9993;
+                        </td>
+                      </tr>
+                    </table>
+                    <p style="margin:5px 0 0; font-family:'Oswald',sans-serif; font-size:9px; font-weight:700;
+                               letter-spacing:0.12em; text-transform:uppercase; color:#073f4e;">
+                      Verify Email
+                    </p>
+                  </td>
+
+                  <td align="center" valign="middle" style="padding-bottom:18px;">
+                    <div style="height:2px; background:#dde4e8; min-width:20px;">&nbsp;</div>
+                  </td>
+
+                  <td align="center" width="33%" style="padding:0 4px;">
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;">
+                      <tr>
+                        <td width="26" height="26" bgcolor="#ffffff" align="center" valign="middle"
+                            style="border:2px solid #dde4e8; font-family:'Oswald',sans-serif;
+                                   font-size:10px; font-weight:700; color:#9b9b9b;">
+                          3
+                        </td>
+                      </tr>
+                    </table>
+                    <p style="margin:5px 0 0; font-family:'Oswald',sans-serif; font-size:9px; font-weight:700;
+                               letter-spacing:0.12em; text-transform:uppercase; color:#9b9b9b;">
+                      Access Dashboard
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td class="pad-sm" style="padding:36px 40px; background-color:#ffffff;">
+
+              <p style="color:#6b6b6b; font-size:15px; line-height:1.7; margin:0 0 22px;
+                        font-family:'Trebuchet MS',sans-serif;">
+                Hi <strong style="color:#073f4e;">${userName}</strong>,
+              </p>
+              <p style="color:#6b6b6b; font-size:15px; line-height:1.7; margin:0 0 28px;
+                        font-family:'Trebuchet MS',sans-serif;">
+                Welcome to the mLab Assessment Platform. To secure your credentials and unlock
+                your platform dashboard, please verify your email address by clicking the button below.
+              </p>
+
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+                     style="margin-bottom:28px; border:1px solid #dde4e8; border-left:4px solid #073f4e;">
+                <tr>
+                  <td style="padding:14px 18px; background-color:#e4edf0;">
+                    <p style="margin:0 0 3px; font-family:'Oswald',sans-serif; font-size:9px; font-weight:700;
+                               letter-spacing:0.18em; text-transform:uppercase; color:#9b9b9b;">
+                      Verification Recipient
+                    </p>
+                    <p style="margin:0; color:#073f4e; font-size:16px; font-weight:700;
+                               font-family:'Trebuchet MS',sans-serif; word-break:break-all;">
+                      ${userEmail}
+                    </p>
+                  </td>
+                </tr>
+              </table>
+
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+                     style="margin:0 0 28px;">
+                <tr>
+                  <td align="center">
+                    <a href="${verificationLink}" class="ve-cta cta-sm"
+                       style="display:inline-block; background-color:#073f4e; color:#ffffff;
+                              padding:16px 40px; text-decoration:none;
+                              font-family:'Oswald',sans-serif; font-weight:700; font-size:14px;
+                              letter-spacing:0.14em; text-transform:uppercase;
+                              border:2px solid #052e3a;
+                              box-shadow:0 4px 12px rgba(7,63,78,0.25);">
+                      &#x2192;&nbsp; Verify Email Address
+                    </a>
+                  </td>
+                </tr>
+              </table>
+
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+                     style="margin-bottom:28px; background-color:#fffbeb;
+                            border:1px solid #fde68a; border-left:4px solid #d97706;">
+                <tr>
+                  <td style="padding:14px 18px;">
+                    <p style="color:#92400e; font-size:13px; line-height:1.6; margin:0 0 6px;
+                               font-family:'Oswald',sans-serif; font-weight:700;
+                               letter-spacing:0.06em; text-transform:uppercase;">
+                      Button not working?
+                    </p>
+                    <p style="color:#78350f; font-size:12px; line-height:1.6; margin:0;
+                               font-family:'Trebuchet MS',sans-serif;">
+                      Copy and paste this link into your browser:<br />
+                      <a href="${verificationLink}"
+                         style="color:#0a5266; word-break:break-all; text-decoration:underline;">
+                        ${verificationLink}
+                      </a>
+                    </p>
+                  </td>
+                </tr>
+              </table>
+
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+                     style="border-top:1px solid #dde4e8; padding-top:20px;">
+                <tr>
+                  <td align="center" style="padding-top:20px;">
+                    <p style="color:#9b9b9b; font-size:12px; line-height:1.6; margin:0;
+                               font-family:'Trebuchet MS',sans-serif; text-align:center;">
+                      This verification link expires in
+                      <strong style="color:#073f4e;">24 hours</strong>.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+
+            </td>
+          </tr>
+
+          <tr>
+            <td style="background-color:#f0f4f6; padding:24px 40px; border-top:1px solid #dde4e8;">
+
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+                     style="margin-bottom:20px;">
+                <tr>
+                  <td width="72" height="3" bgcolor="#94c73d" style="font-size:1px; line-height:1px;">&nbsp;</td>
+                  <td height="3" bgcolor="#073f4e" style="font-size:1px; line-height:1px;">&nbsp;</td>
+                </tr>
+              </table>
+
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto 16px;">
+                <tr>
+                  <td style="padding:0 10px;">
+                    <a href="${APP_URL}"
+                       style="color:#073f4e; text-decoration:none; font-family:'Oswald',sans-serif;
+                              font-size:11px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase;">
+                      Website
+                    </a>
+                  </td>
+                  <td style="color:#dde4e8; padding:0 4px;">|</td>
+                  <td style="padding:0 10px;">
+                    <a href="mailto:support@mlab.co.za"
+                       style="color:#073f4e; text-decoration:none; font-family:'Oswald',sans-serif;
+                              font-size:11px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase;">
+                      Support
+                    </a>
+                  </td>
+                  <td style="color:#dde4e8; padding:0 4px;">|</td>
+                  <td style="padding:0 10px;">
+                    <a href="${APP_URL}/privacy-policy"
+                       style="color:#073f4e; text-decoration:none; font-family:'Oswald',sans-serif;
+                              font-size:11px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase;">
+                      Privacy
+                    </a>
+                  </td>
+                  <td style="color:#dde4e8; padding:0 4px;">|</td>
+                  <td style="padding:0 10px;">
+                    <a href="${APP_URL}/terms"
+                       style="color:#073f4e; text-decoration:none; font-family:'Oswald',sans-serif;
+                              font-size:11px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase;">
+                      Terms
+                    </a>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="color:#9b9b9b; font-size:11px; line-height:1.65; margin:0 0 6px;
+                        font-family:'Trebuchet MS',sans-serif; text-align:center;">
+                &copy; ${currentYear} Mobile Applications Laboratory NPC. All rights reserved.
+              </p>
+              <p style="color:#9b9b9b; font-size:11px; line-height:1.55; margin:0;
+                        font-family:'Trebuchet MS',sans-serif; text-align:center;">
+                If you didn&rsquo;t create this account, you can safely ignore this email.
+              </p>
+              <p style="margin:10px 0 0; text-align:center; font-size:11px;
+                        font-family:'Trebuchet MS',sans-serif; color:#9b9b9b;">
+                <span style="color:#94c73d;">&#9632;</span>
+                Empowering the next generation of African tech talent.
+              </p>
+
+            </td>
+          </tr>
+
+        </table>
+        <table role="presentation" width="580" cellpadding="0" cellspacing="0" border="0"
+               style="max-width:580px; width:100%; margin-top:16px;">
+          <tr>
+            <td align="center">
+              <p style="color:rgba(7,63,78,0.45); font-size:10px; margin:0;
+                        font-family:'Trebuchet MS',sans-serif; letter-spacing:0.04em;">
+                Automated message from the mLab Assessment Platform &middot; Do not reply to this email
+              </p>
+            </td>
+          </tr>
+        </table>
+
+      </td>
+    </tr>
+  </table>
+
+</body>
+</html>
+    `.trim();
+
+    /* ─── SEND ─────────────────────────────────────────────────────────── */
+    const mailOptions = {
+      from: '"mLab Assessment Platform" <brndkt@gmail.com>',
+      to: userEmail,
+      subject: "Verify Your mLab Account",
+      text: plainText,
+      html: htmlContent,
+    };
+
+    await transporter.sendMail(mailOptions);
+    return { success: true, message: "Verification email sent." };
+  } catch (error: any) {
+    console.error("Email Error:", error);
+    throw new HttpsError("internal", error.message || "Failed to send email");
   }
 });

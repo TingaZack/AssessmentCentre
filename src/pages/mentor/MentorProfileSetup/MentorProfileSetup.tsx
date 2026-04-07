@@ -1,8 +1,10 @@
+// src/pages/FacilitatorDashboard/MentorProfileSetup/MentorProfileSetup.tsx
+
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     User, Upload, CheckCircle,
-    Save, ChevronRight, ShieldCheck, Loader2, Camera, Calendar, Fingerprint, Globe, Briefcase
+    Save, ChevronRight, ShieldCheck, Camera, Calendar, Fingerprint, Globe, Briefcase, Lock
 } from 'lucide-react';
 import { doc, updateDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -140,6 +142,7 @@ export const MentorProfileSetup: React.FC = () => {
             const finalData: any = {
                 ...formData,
                 profilePhotoUrl: photoUrl,
+                popiActDate: new Date().toISOString(), // Secure timestamp of consent
                 profileCompleted: true,
                 updatedAt: new Date().toISOString(),
             };
@@ -304,7 +307,7 @@ export const MentorProfileSetup: React.FC = () => {
                     </div>
                 )}
 
-                {/* STEP 3: DOCUMENT VAULT */}
+                {/* STEP 3: DOCUMENT VAULT & LEGAL CHECKPOINT */}
                 {step === 3 && (
                     <div className="lp-form-body animate-fade-in">
                         <h3 className="lp-section-title"><ShieldCheck size={16} /> Compliance Document Vault</h3>
@@ -320,17 +323,45 @@ export const MentorProfileSetup: React.FC = () => {
                             <DocUpload label="SME / Mentor Certificate" file={smeCertDoc} onUpload={setSmeCertDoc} isOptional={true} />
                         </div>
 
-                        <div className="lp-popia-box">
-                            <label className="lp-popia-checkbox">
-                                <input type="checkbox" checked={formData.popiaConsent} onChange={e => setFormData({ ...formData, popiaConsent: e.target.checked })} />
-                                <span style={{ color: 'black' }}>I declare the above details to be true and accurate, and consent to my data being processed for QCTO compliance purposes and inline with POPIA act.</span>
-                            </label>
+                        {/* STAFF DATA HANDLER CHECKPOINT */}
+                        <div style={{
+                            display: 'flex', gap: '1rem', alignItems: 'flex-start',
+                            background: formData.popiaConsent ? '#f0fdf4' : '#f8fafc',
+                            padding: '1.25rem', border: `1px solid ${formData.popiaConsent ? '#bbf7d0' : '#e2e8f0'}`,
+                            borderRadius: '8px', marginTop: '2rem', transition: 'all 0.3s ease'
+                        }}>
+                            <input
+                                type="checkbox"
+                                id="staff-popia-consent"
+                                checked={formData.popiaConsent}
+                                onChange={e => setFormData({ ...formData, popiaConsent: e.target.checked })}
+                                style={{ marginTop: '0.25rem', width: '20px', height: '20px', cursor: 'pointer', flexShrink: 0 }}
+                            />
+                            <div>
+                                <label htmlFor="staff-popia-consent" style={{ fontWeight: 600, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', cursor: 'pointer' }}>
+                                    <ShieldCheck size={18} color={formData.popiaConsent ? "#16a34a" : "#64748b"} />
+                                    Data Handling & POPIA Compliance Declaration
+                                </label>
+                                <p style={{ fontSize: '0.85rem', color: '#475569', margin: 0, lineHeight: 1.5 }}>
+                                    <strong>I formally consent to the processing of my own data for QCTO compliance.</strong> Additionally, as a Workplace Mentor, I understand I will have access to learner progress and identity data. By checking this box, I agree to the <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: '#0ea5e9', textDecoration: 'underline' }}>Terms of Service</a> and the <a href="/privacy-policy" target="_blank" rel="noopener noreferrer" style={{ color: '#0ea5e9', textDecoration: 'underline' }}>POPIA Privacy Policy</a>, and I legally bind myself to strict confidentiality regarding all learner records.
+                                </p>
+                            </div>
                         </div>
-                        <div className="lp-actions">
+
+                        <div className="lp-actions" style={{ marginTop: '2rem' }}>
                             <button className="lp-btn-ghost" onClick={() => setStep(2)}>Back</button>
-                            {/* REMOVED !idDoc || !cvDoc from the disabled check */}
-                            <button className="lp-btn-primary" onClick={handleSubmit} disabled={loading || !formData.popiaConsent}>
-                                {loading ? <Loader2 className="spin" size={15} /> : 'Complete Registration'} <Save size={15} />
+                            <button
+                                className="lp-btn-primary"
+                                onClick={handleSubmit}
+                                disabled={loading || !formData.popiaConsent}
+                                style={{
+                                    opacity: (!formData.popiaConsent || loading) ? 0.6 : 1,
+                                    cursor: (!formData.popiaConsent || loading) ? 'not-allowed' : 'pointer',
+                                    display: 'flex', alignItems: 'center', gap: '0.5rem'
+                                }}
+                            >
+                                {loading ? 'Saving Registration...' : 'Complete Registration'}
+                                {formData.popiaConsent ? <Save size={16} /> : <Lock size={16} />}
                             </button>
                         </div>
                     </div>
@@ -354,4 +385,3 @@ const DocUpload: React.FC<{ label: string; file: File | null; onUpload: (f: File
         <input type="file" accept=".pdf" className="lp-file-input" onChange={e => e.target.files && onUpload(e.target.files[0])} />
     </div>
 );
-

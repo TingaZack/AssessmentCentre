@@ -395,3 +395,166 @@
 .mlab-role-badge--mentor .mlab-role-badge__dot {
   background-color: #f59e0b; /* Amber 500 */
 }
+
+/* Access Control CSS is integrated directly into StaffView.css for simplicity, as it shares many common styles and components with the staff directory view. This allows us to maintain a consistent design language across both views while minimizing redundant code. Specific styles for Access Control components (like tables, buttons, and headers) are included in this file, clearly commented for easy identification and future maintenance. */
+
+/* src/pages/AdminDashboard/AccessManager/AccessManager.tsx */
+
+.mlab-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(7, 63, 78, 0.7);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999; /* Boosted to ensure it covers all dashboard headers */
+  padding: 1rem;
+}
+
+.mlab-modal-card {
+  background: var(--mlab-white);
+  width: 100%;
+  max-width: 600px;
+  max-height: 90vh; /* Forces the card to never exceed the screen height */
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  overflow: hidden; /* Clips the inner body so it can scroll */
+}
+
+.mlab-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.5rem 2rem;
+  background: var(--mlab-blue);
+  color: var(--mlab-white);
+  flex-shrink: 0; /* Prevents the header from squishing */
+}
+
+.mlab-modal-title {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: 1.25rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.mlab-modal-close {
+  background: none;
+  border: none;
+  color: var(--mlab-white);
+  cursor: pointer;
+  opacity: 0.8;
+  transition: opacity 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mlab-modal-close:hover {
+  opacity: 1;
+}
+
+.mlab-modal-body {
+  padding: 2rem;
+  overflow-y: auto; /* Allows only the body to scroll! */
+  flex: 1;
+}
+
+/* Custom Form Styles */
+.mlab-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.mlab-form-label {
+  font-family: var(--font-heading);
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--mlab-grey);
+  letter-spacing: 0.05em;
+}
+
+.mlab-input-wrap {
+  position: relative;
+}
+
+.mlab-input-icon {
+  position: absolute;
+  left: 1rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--mlab-grey);
+  opacity: 0.6;
+}
+
+.mlab-input {
+  width: 100%;
+  padding: 0.75rem 1rem 0.75rem 2.75rem;
+  border: 2px solid var(--mlab-light-blue);
+  border-radius: 6px;
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  color: var(--mlab-blue);
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.mlab-input:focus {
+  border-color: var(--mlab-green);
+}
+
+/* Custom Toggle Switch */
+.mlab-toggle {
+  width: 44px;
+  height: 24px;
+  border-radius: 12px;
+  background: #cbd5e1;
+  position: relative;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+  flex-shrink: 0;
+}
+
+.mlab-toggle--active {
+  background: var(--mlab-green);
+}
+
+.mlab-toggle__knob {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: white;
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.mlab-toggle--active .mlab-toggle__knob {
+  left: 22px;
+}
+
+/* Privilege Row */
+.mlab-privilege-row {
+  border: 1px solid var(--mlab-light-blue);
+  border-radius: 8px;
+  padding: 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: border-color 0.2s;
+}
+
+.mlab-privilege-row:hover {
+  border-color: var(--mlab-blue);
+}

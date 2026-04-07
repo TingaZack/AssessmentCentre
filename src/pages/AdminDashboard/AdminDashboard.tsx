@@ -5,7 +5,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
 import { auth, db } from '../../lib/firebase';
 import { doc, writeBatch, updateDoc } from 'firebase/firestore';
-import { Menu, X } from 'lucide-react';
+import { Menu, X, ShieldAlert } from 'lucide-react';
 import { useStore, type StaffMember } from '../../store/useStore';
 import type { DashboardLearner, ProgrammeTemplate, Cohort } from '../../types';
 import { Sidebar } from '../../components/dashboard/Sidebar/Sidebar';
@@ -27,6 +27,7 @@ import { DashboardOverview } from '../../components/views/DashboardOverview/Dash
 
 import { CertificateStudio } from './CertificateStudio/CertificateStudio';
 import { AdminProfileView } from './AdminProfileView/AdminProfileView';
+import { AccessManager } from './AccessManager/AccessManager';
 
 const AdminDashboard: React.FC = () => {
     const navigate = useNavigate();
@@ -35,7 +36,7 @@ const AdminDashboard: React.FC = () => {
     const { user, setUser } = store;
 
     // ----- Navigation State -----
-    const [currentNav, setCurrentNav] = useState<'directory' | 'learners' | 'staff' | 'qualifications' | 'cohorts' | 'workplaces' | 'studio' | 'dashboard' | 'profile'>(
+    const [currentNav, setCurrentNav] = useState<'directory' | 'learners' | 'staff' | 'qualifications' | 'cohorts' | 'workplaces' | 'studio' | 'dashboard' | 'profile' | 'access'>(
         (location.state as any)?.activeTab || 'dashboard'
     );
 
@@ -259,6 +260,7 @@ const AdminDashboard: React.FC = () => {
                             {currentNav === 'cohorts' && 'Cohort Management'}
                             {currentNav === 'workplaces' && 'Workplace Management'}
                             {currentNav === 'profile' && 'My Administrator Profile'}
+                            {currentNav === 'access' && 'Platform Access Control'}
                         </h1>
                         <p>
                             {currentNav === 'dashboard' && 'Welcome to the administration portal'}
@@ -269,6 +271,7 @@ const AdminDashboard: React.FC = () => {
                             {currentNav === 'cohorts' && 'Organize learners into training classes and assign educators'}
                             {currentNav === 'workplaces' && 'Manage employer partners and workplace mentor allocations'}
                             {currentNav === 'profile' && 'Manage your institutional compiler and contact details'}
+                            {currentNav === 'access' && 'Manage Super Administrator access and permissions'}
                         </p>
                     </div>
                 </header>
@@ -334,6 +337,18 @@ const AdminDashboard: React.FC = () => {
                             user={user}
                             onUpdate={handleUpdateAdminProfile}
                         />
+                    )}
+
+                    {currentNav === 'access' && (
+                        (user as any)?.isSuperAdmin ? (
+                            <AccessManager />
+                        ) : (
+                            <div style={{ textAlign: 'center', padding: '4rem', color: '#ef4444' }}>
+                                <ShieldAlert size={48} style={{ margin: '0 auto 1rem' }} />
+                                <h2>Unauthorized Access</h2>
+                                <p>You do not have Super Admin privileges to view this module.</p>
+                            </div>
+                        )
                     )}
                 </div>
             </main>

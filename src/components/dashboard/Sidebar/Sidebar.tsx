@@ -6,7 +6,7 @@ import {
     LayoutDashboard, Users, BookOpen, UserCheck,
     Settings, LogOut, Layers, ShieldCheck,
     GraduationCap, ClipboardList, CheckSquare, User, UserCircle, Building2,
-    Award
+    Award, Key
 } from 'lucide-react';
 import type { UserRole } from '../../../types/auth.types';
 import { useStore } from '../../../store/useStore';
@@ -33,7 +33,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, currentNav, setCurrentNa
     const getMenuItems = () => {
         switch (activeRole) {
             case 'admin':
-                return [
+                const adminMenu = [
                     { id: 'dashboard', label: 'Overview', icon: LayoutDashboard, path: '/admin' },
                     { id: 'directory', label: 'Master Directory', icon: Users, path: '/admin' },
                     { id: 'learners', label: 'Course Enrollments', icon: GraduationCap, path: '/admin' },
@@ -44,6 +44,19 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, currentNav, setCurrentNa
                     { id: 'studio', label: 'Certificate Studio', icon: Award, path: '/admin/studio' },
                     { id: 'profile', label: 'My Profile', icon: UserCircle, path: '/admin' },
                 ];
+
+                // SUPER ADMIN ONLY: Inject 'Access Control' right above 'My Profile'
+                // This ensures completely zero visibility for standard admins
+                if ((user as any)?.isSuperAdmin === true) {
+                    adminMenu.splice(adminMenu.length - 1, 0, {
+                        id: 'access',
+                        label: 'Access Control',
+                        icon: Key,
+                        path: '/admin'
+                    });
+                }
+
+                return adminMenu;
             case 'assessor':
                 return [
                     { id: 'dashboard', label: 'Marking Queue', icon: CheckSquare, path: '/marking' },

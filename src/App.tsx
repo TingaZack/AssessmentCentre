@@ -19,6 +19,7 @@ import AdminDashboard from './pages/AdminDashboard/AdminDashboard';
 import { SettingsPage } from './pages/SettingsPage/SettingsPage';
 import { CertificateStudio } from './pages/AdminDashboard/CertificateStudio/CertificateStudio';
 import { AdminProfileSetup } from './pages/AdminDashboard/AdminProfileSetup/AdminProfileSetup';
+import { AccessManager } from './pages/AdminDashboard/AccessManager/AccessManager';
 
 // Staff (Facilitator, Assessor, Moderator, Invigilator)
 import { FacilitatorLayout } from './pages/FacilitatorDashboard/FacilitatorLayout/FacilitatorLayout';
@@ -53,6 +54,8 @@ import { WorkplacesManager } from './components/admin/WorkplacesManager/Workplac
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { CohortDetailsPage } from './pages/CohortDetails/CohortDetailsPage';
 import { fetchStatssaCodes } from './services/qctoService';
+import { PrivacyPolicy } from './components/views/PrivacyPolicy/PrivacyPolicy';
+
 
 // --- TRAFFIC CONTROLLER ---
 const RootRedirect = () => {
@@ -133,6 +136,10 @@ function App() {
             <Route path="/verify" element={<PublicVerification />} />
             <Route path="/sor/:id" element={<StatementOfResults />} />
 
+            {/* LEGAL & COMPLIANCE ROUTES */}
+            <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+            <Route path="/terms" element={<PrivacyPolicy />} /> {/* Serving Privacy Policy temporarily as Terms */}
+
             {/* ================= ONBOARDING GATES ================= */}
             <Route path="/setup-admin" element={
               <RoleProtectedRoute allowedRoles={['admin']}>
@@ -175,6 +182,13 @@ function App() {
             } />
 
             {/* STANDALONE ADMIN PAGES */}
+            {/* 🚀 SUPER ADMIN ONLY: ACCESS MANAGER */}
+            <Route path="/admin/access" element={
+              <RoleProtectedRoute allowedRoles={['admin']} requireSuperAdmin={true}>
+                <AccessManager />
+              </RoleProtectedRoute>
+            } />
+
             <Route path="/admin/studio" element={
               <RoleProtectedRoute allowedRoles={['admin', 'facilitator']}>
                 <CertificateStudio />
