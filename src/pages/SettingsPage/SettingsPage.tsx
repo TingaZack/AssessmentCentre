@@ -367,7 +367,7 @@ export const SettingsPage: React.FC = () => {
         { id: 'org', label: 'Organization', icon: Building2 },
         { id: 'academic', label: 'Academic Rules', icon: GraduationCap },
         { id: 'data', label: 'Data & Imports', icon: Database },
-        { id: 'web3', label: 'Web3 & Blockchain', icon: Link2 },
+        // { id: 'web3', label: 'Web3 & Blockchain', icon: Link2 },
         { id: 'notifications', label: 'Notifications', icon: Bell },
         { id: 'audit', label: 'Security & Audit', icon: ShieldAlert },
         { id: 'profile', label: 'My Profile', icon: User },

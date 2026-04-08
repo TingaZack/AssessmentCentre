@@ -6,7 +6,7 @@ import Autocomplete from "react-google-autocomplete";
 import {
     User, Upload, FileText, CheckCircle,
     Save, ChevronRight, ShieldCheck, MapPin, Loader2, Heart, Camera,
-    Briefcase, Globe, Lock
+    Briefcase, Globe, Lock, Plus, Trash2
 } from 'lucide-react';
 import { doc, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -111,7 +111,6 @@ const QCTO_ALT_ID_TYPE = [
 const NOK_RELATIONSHIPS = ["Mother", "Father", "Sister", "Brother", "Guardian", "Spouse", "Partner", "Aunt", "Uncle", "Grandparent", "Cousin"];
 
 interface LearnerProfileData {
-    // Identity
     idNumber: string;
     phone: string;
     profilePhotoUrl?: string;
@@ -124,15 +123,11 @@ interface LearnerProfileData {
     nationalityCode: string;
     immigrantStatus: string;
     alternativeIdType: string;
-
-    // Background
     highestQualification: string;
     flcStatementOfResultNumber: string;
     socioeconomicCode: string;
     disabilityCode: string;
     disabilityRating: string;
-
-    // Address
     streetAddress: string;
     city: string;
     provinceCode: string;
@@ -140,24 +135,25 @@ interface LearnerProfileData {
     statssaAreaCode: string;
     lat: number;
     lng: number;
-
-    // Postal Address
     sameAsResidential: boolean;
     postalAddress1: string;
     postalAddress2: string;
     postalAddress3: string;
     customPostalCode: string;
-
-    // Next of Kin
     nokName: string;
     nokRelationship: string;
     nokPhone: string;
-
-    // Compliance
     popiaConsent: boolean;
-    hasIdDoc?: boolean;
-    hasQualDoc?: boolean;
-    hasCvDoc?: boolean;
+}
+
+// Dynamic Document Interface
+export interface DynamicDocument {
+    id: string;
+    name: string;
+    file: File | null;
+    url: string;
+    isFixed: boolean; // Protects required documents from deletion
+    isRequired: boolean;
 }
 
 const getQCTODate = () => {
@@ -186,7 +182,6 @@ export const LearnerProfileSetup: React.FC = () => {
     const [learnerDocId, setLearnerDocId] = useState<string | null>(null);
     const [showLegacyModal, setShowLegacyModal] = useState(false);
 
-    // Dynamic STATSSA State
     const [allStatssaCodes, setAllStatssaCodes] = useState<any[]>([]);
 
     const [formData, setFormData] = useState<Partial<LearnerProfileData>>({
@@ -197,13 +192,16 @@ export const LearnerProfileSetup: React.FC = () => {
         immigrantStatus: '03'
     });
 
-    const [idDoc, setIdDoc] = useState<File | null>(null);
-    const [qualDoc, setQualDoc] = useState<File | null>(null);
-    const [cvDoc, setCvDoc] = useState<File | null>(null);
+    // Dynamic Documents Array State
+    const [docsList, setDocsList] = useState<DynamicDocument[]>([
+        { id: 'id', name: 'Certified ID Copy', file: null, url: '', isFixed: true, isRequired: true },
+        { id: 'qual', name: 'Highest Qualification', file: null, url: '', isFixed: true, isRequired: true },
+        { id: 'cv', name: 'Updated CV', file: null, url: '', isFixed: true, isRequired: false }
+    ]);
+
     const [profilePhoto, setProfilePhoto] = useState<File | null>(null);
     const [photoPreview, setPhotoPreview] = useState<string | null>(null);
 
-    // Load STATSSA codes globally for this modal
     useEffect(() => {
         const loadCodes = async () => {
             const codes = await fetchStatssaCodes();
@@ -212,7 +210,6 @@ export const LearnerProfileSetup: React.FC = () => {
         loadCodes();
     }, []);
 
-    // Map dynamically fetched codes to FormSelect format
     const statssaOptions = useMemo(() => {
         return allStatssaCodes.map(c => ({
             value: c.statssa_area_code,
@@ -249,42 +246,34 @@ export const LearnerProfileSetup: React.FC = () => {
                     setLearnerDocId(docId);
                     const d = learnerData.demographics || {};
                     const nok = learnerData.nextOfKin || {};
-                    const docs = learnerData.documents || {};
+
+                    // We only look at uploadedDocuments now, ignoring the old legacy 'documents' object
+                    const uploadedDocs = learnerData.uploadedDocuments || [];
 
                     const isPostalCustom = d.learnerPostalAddress1 && d.learnerPostalAddress1 !== d.learnerHomeAddress1;
 
                     setFormData({
                         idNumber: learnerData.idNumber || '',
                         phone: learnerData.phone || d.learnerPhoneNumber || '',
-
-                        // Background
                         highestQualification: learnerData.highestQualification || '',
                         flcStatementOfResultNumber: d.flcStatementOfResultNumber || d.flcResultNumber || '',
-
-                        // Identity
                         learnerTitle: d.learnerTitle || '',
                         learnerMiddleName: d.learnerMiddleName || '',
                         nationalityCode: d.nationalityCode || '',
                         immigrantStatus: d.immigrantStatus || '03',
                         alternativeIdType: d.alternativeIdType || '533',
                         statssaAreaCode: d.statssaAreaCode || d.statsaaAreaCode || '',
-
-                        // Address
                         streetAddress: d.learnerHomeAddress1 || '',
                         city: d.learnerHomeAddress2 || '',
                         provinceCode: d.provinceCode || '',
                         postalCode: d.learnerHomeAddressPostalCode || '',
                         lat: d.lat || 0,
                         lng: d.lng || 0,
-
-                        // Postal
                         sameAsResidential: !isPostalCustom,
                         postalAddress1: isPostalCustom ? d.learnerPostalAddress1 : '',
                         postalAddress2: isPostalCustom ? d.learnerPostalAddress2 : '',
                         postalAddress3: isPostalCustom ? d.learnerPostalAddress3 : '',
                         customPostalCode: isPostalCustom ? d.learnerPostalAddressPostCode : '',
-
-                        // Demographics
                         equityCode: d.equityCode || '',
                         genderCode: d.genderCode || '',
                         homeLanguageCode: d.homeLanguageCode || '',
@@ -294,19 +283,40 @@ export const LearnerProfileSetup: React.FC = () => {
                         disabilityRating: d.disabilityRating || '',
                         popiaConsent: d.popiActAgree === 'Y',
                         profilePhotoUrl: learnerData.profilePhotoUrl || '',
-
-                        // NOK
                         nokName: nok.name || '',
                         nokRelationship: nok.relationship || '',
                         nokPhone: nok.phone || '',
-
-                        // Docs
-                        hasIdDoc: !!docs.idUrl,
-                        hasQualDoc: !!docs.qualUrl,
-                        hasCvDoc: !!docs.cvUrl
                     });
 
                     if (learnerData.profilePhotoUrl) setPhotoPreview(learnerData.profilePhotoUrl);
+
+                    // HYDRATE DYNAMIC DOCUMENTS ARRAY FROM FIRESTORE
+                    if (uploadedDocs && uploadedDocs.length > 0) {
+                        setDocsList(prev => {
+                            const updatedDocs = [...prev];
+
+                            uploadedDocs.forEach((savedDoc: any) => {
+                                // Update existing required docs if they match the ID
+                                const existingDocIndex = updatedDocs.findIndex(d => d.id === savedDoc.id);
+
+                                if (existingDocIndex >= 0) {
+                                    updatedDocs[existingDocIndex].url = savedDoc.url;
+                                } else {
+                                    // Append any completely custom docs the user added previously
+                                    updatedDocs.push({
+                                        id: savedDoc.id,
+                                        name: savedDoc.name,
+                                        file: null,
+                                        url: savedDoc.url,
+                                        isFixed: false,
+                                        isRequired: false
+                                    });
+                                }
+                            });
+
+                            return updatedDocs;
+                        });
+                    }
 
                     if (learnerData.profileCompleted === true && (!d.equityCode || !d.provinceCode || (!d.statssaAreaCode && !d.statsaaAreaCode) || !d.learnerTitle)) {
                         setShowLegacyModal(true);
@@ -339,7 +349,6 @@ export const LearnerProfileSetup: React.FC = () => {
         const postal = getComp("postal_code");
         const formattedAddress = place.formatted_address || "";
 
-        // Auto-match STATSSA Code via Google Map string
         const match = allStatssaCodes.find(c => c.town.toLowerCase() === townName.toLowerCase());
 
         setFormData(prev => ({
@@ -364,13 +373,31 @@ export const LearnerProfileSetup: React.FC = () => {
         return await getDownloadURL(snapshot.ref);
     };
 
+    // Dynamic Document Handlers
+    const handleAddDocument = () => {
+        setDocsList(prev => [
+            ...prev,
+            { id: `doc_${Date.now()}`, name: '', file: null, url: '', isFixed: false, isRequired: false }
+        ]);
+    };
+
+    const handleRemoveDocument = (id: string) => {
+        setDocsList(prev => prev.filter(doc => doc.id !== id || doc.isFixed));
+    };
+
+    const handleDocUpdate = (id: string, field: keyof DynamicDocument, value: any) => {
+        setDocsList(prev => prev.map(doc => doc.id === id ? { ...doc, [field]: value } : doc));
+    };
+
     const handleSubmit = async () => {
         if (!user?.uid) return;
 
-        const hasId = idDoc || formData.hasIdDoc;
-        const hasQual = qualDoc || formData.hasQualDoc;
+        // Check required documents dynamically
+        const missingRequired = docsList.filter(d => d.isRequired && !d.file && !d.url);
+        if (missingRequired.length > 0) {
+            return alert(`Please upload all required documents: ${missingRequired.map(d => d.name).join(', ')}`);
+        }
 
-        if (!hasId || !hasQual) return alert('Certified ID and Qualification are mandatory.');
         if (!formData.popiaConsent) return alert('You must accept the POPIA consent to continue.');
         if (!formData.statssaAreaCode) return alert('You must select a STATS-SA Area Code.');
 
@@ -383,13 +410,28 @@ export const LearnerProfileSetup: React.FC = () => {
                 finalPhotoUrl = await handleFileUpload(profilePhoto, `learners/${user.uid}/profile_${Date.now()}.${getExt(profilePhoto)}`);
             }
 
-            const idUrl = idDoc ? await handleFileUpload(idDoc, `learners/${user.uid}/id_doc_${Date.now()}.${getExt(idDoc)}`) : null;
-            const qualUrl = qualDoc ? await handleFileUpload(qualDoc, `learners/${user.uid}/qual_${Date.now()}.${getExt(qualDoc)}`) : null;
-            const cvUrl = cvDoc ? await handleFileUpload(cvDoc, `learners/${user.uid}/cv_${Date.now()}.${getExt(cvDoc)}`) : null;
+            // PROCESS ALL DYNAMIC DOCUMENTS
+            const finalUploadedDocs = [];
+
+            for (const docItem of docsList) {
+                let finalUrl = docItem.url;
+
+                // If they selected a new file, upload it
+                if (docItem.file) {
+                    finalUrl = await handleFileUpload(docItem.file, `learners/${user.uid}/${docItem.id}_${Date.now()}.${getExt(docItem.file)}`);
+                }
+
+                // If it has a URL (either newly uploaded or previously existing), save it
+                if (finalUrl) {
+                    finalUploadedDocs.push({
+                        id: docItem.id,
+                        name: docItem.name || 'Untitled Document',
+                        url: finalUrl
+                    });
+                }
+            }
 
             const cleanedPhone = formatAsText(formData.phone, 10);
-
-            // Determine Postal Logic
             const postalLine1 = formData.sameAsResidential ? formData.streetAddress : formData.postalAddress1;
             const postalLine2 = formData.sameAsResidential ? formData.city : formData.postalAddress2;
             const residentialZip = formatAsText(formData.postalCode, 4);
@@ -402,6 +444,10 @@ export const LearnerProfileSetup: React.FC = () => {
                 highestQualification: formData.highestQualification,
                 profileCompleted: true,
                 updatedAt: new Date().toISOString(),
+
+                // Save only the new array, dropping the old documents object completely
+                uploadedDocuments: finalUploadedDocs,
+
                 demographics: {
                     learnerTitle: formData.learnerTitle,
                     learnerMiddleName: formData.learnerMiddleName,
@@ -416,26 +462,18 @@ export const LearnerProfileSetup: React.FC = () => {
                     disabilityStatusCode: formData.disabilityCode,
                     disabilityRating: formData.disabilityCode === 'N' ? '' : formData.disabilityRating,
                     provinceCode: formData.provinceCode,
-
                     flcStatementOfResultNumber: formData.flcStatementOfResultNumber,
-
-                    // Core QCTO Address Link
                     statssaAreaCode: formData.statssaAreaCode,
                     statsaaAreaCode: formData.statssaAreaCode,
-
-                    // Residential
                     learnerHomeAddress1: formData.streetAddress,
                     learnerHomeAddress2: formData.city,
                     learnerHomeAddressPostalCode: residentialZip,
                     lat: formData.lat,
                     lng: formData.lng,
-
-                    // Postal
                     learnerPostalAddress1: postalLine1,
                     learnerPostalAddress2: postalLine2,
                     learnerPostalAddress3: formData.postalAddress3 || '',
                     learnerPostalAddressPostCode: postalCodeFinal,
-
                     learnerPhoneNumber: cleanedPhone,
                     popiActAgree: "Y",
                     popiActDate: getQCTODate()
@@ -446,14 +484,6 @@ export const LearnerProfileSetup: React.FC = () => {
                     phone: formatAsText(formData.nokPhone, 10)
                 }
             };
-
-            const currentDocs: any = { ...(user as any).documents || {} };
-            if (idUrl) currentDocs.idUrl = idUrl;
-            if (qualUrl) currentDocs.qualUrl = qualUrl;
-            if (cvUrl) currentDocs.cvUrl = cvUrl;
-            if (Object.keys(currentDocs).length > 0) {
-                finalData.documents = { ...currentDocs, updatedAt: new Date().toISOString() };
-            }
 
             await updateDoc(doc(db, 'users', user.uid), finalData);
             if (learnerDocId) await updateDoc(doc(db, 'learners', learnerDocId), finalData);
@@ -620,11 +650,23 @@ export const LearnerProfileSetup: React.FC = () => {
                                 <FG label="Relationship"><select className="lp-input" value={formData.nokRelationship || ''} onChange={e => handleChange('nokRelationship', e.target.value)}><option value="">Select...</option>{NOK_RELATIONSHIPS.map(rel => <option key={rel} value={rel}>{rel}</option>)}</select></FG>
                                 <FG label="Contact Number"><input className="lp-input" value={formData.nokPhone || ''} onChange={e => handleChange('nokPhone', e.target.value)} /></FG>
                             </div>
-                            <h3 className="lp-section-title"><FileText size={16} /> Compliance Uploads</h3>
+
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                                <h3 className="lp-section-title" style={{ margin: 0 }}><FileText size={16} /> Compliance Uploads</h3>
+                                <button className="lp-btn-ghost" style={{ fontSize: '0.85rem', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '4px' }} onClick={handleAddDocument}>
+                                    <Plus size={14} /> Add Document
+                                </button>
+                            </div>
+
                             <div className="lp-upload-grid">
-                                <DocUpload label="Certified ID Copy" file={idDoc} hasExisting={formData.hasIdDoc} onUpload={setIdDoc} />
-                                <DocUpload label="Highest Qualification" file={qualDoc} hasExisting={formData.hasQualDoc} onUpload={setQualDoc} />
-                                <DocUpload label="Updated CV" file={cvDoc} hasExisting={formData.hasCvDoc} onUpload={setCvDoc} />
+                                {docsList.map((docItem) => (
+                                    <DynamicDocUpload
+                                        key={docItem.id}
+                                        document={docItem}
+                                        onUpdate={(field, val) => handleDocUpdate(docItem.id, field, val)}
+                                        onRemove={() => handleRemoveDocument(docItem.id)}
+                                    />
+                                ))}
                             </div>
 
                             {/* ENHANCED POPIA LEGAL CHECKPOINT */}
@@ -654,17 +696,17 @@ export const LearnerProfileSetup: React.FC = () => {
 
                             <div className="lp-actions" style={{ marginTop: '2rem' }}>
                                 <button className="lp-btn-ghost" onClick={() => setStep(2)}>Back</button>
-                                <button 
-                                    className="lp-btn-primary" 
-                                    onClick={handleSubmit} 
+                                <button
+                                    className="lp-btn-primary"
+                                    onClick={handleSubmit}
                                     disabled={loading || !formData.popiaConsent || !formData.statssaAreaCode}
-                                    style={{ 
-                                        opacity: (!formData.popiaConsent || loading || !formData.statssaAreaCode) ? 0.6 : 1, 
+                                    style={{
+                                        opacity: (!formData.popiaConsent || loading || !formData.statssaAreaCode) ? 0.6 : 1,
                                         cursor: (!formData.popiaConsent || loading || !formData.statssaAreaCode) ? 'not-allowed' : 'pointer',
                                         display: 'flex', alignItems: 'center', gap: '0.5rem'
                                     }}
                                 >
-                                    {loading ? 'Saving Compliance...' : 'Complete Profile'} 
+                                    {loading ? 'Saving Compliance...' : 'Complete Profile'}
                                     {formData.popiaConsent ? <Save size={16} /> : <Lock size={16} />}
                                 </button>
                             </div>
@@ -680,10 +722,67 @@ const FG: React.FC<{ label: string; children: React.ReactNode }> = ({ label, chi
     <div className="lp-fg"><label className="lp-fg-label">{label}</label>{children}</div>
 );
 
-const DocUpload: React.FC<{ label: string; file: File | null; hasExisting?: boolean; onUpload: (f: File) => void }> = ({ label, file, hasExisting, onUpload }) => (
-    <div className={`lp-doc-card${(file || hasExisting) ? ' uploaded' : ''}`}>
-        <div className="lp-doc-icon">{(file || hasExisting) ? <CheckCircle size={22} /> : <Upload size={22} />}</div>
-        <div className="lp-doc-info"><h4>{label}</h4><span>{file ? file.name : (hasExisting ? 'Document on file' : 'Select PDF or Image')}</span></div>
-        <input type="file" accept=".pdf,image/*" className="lp-file-input" onChange={e => e.target.files && onUpload(e.target.files[0])} />
-    </div>
-);
+// Dynamic Document Upload Component
+export const DynamicDocUpload: React.FC<{ document: DynamicDocument; onUpdate: (f: keyof DynamicDocument, v: any) => void; onRemove: () => void; }> = ({ document, onUpdate, onRemove }) => {
+    const hasData = document.file || document.url;
+
+    return (
+        <div className={`lp-doc-card ${hasData ? 'uploaded' : ''}`} style={{ position: 'relative' }}>
+            {!document.isFixed && (
+                <button
+                    onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        onRemove();
+                    }}
+                    style={{
+                        position: 'absolute', top: '8px', right: '8px', background: 'none', border: 'none',
+                        color: '#ef4444', cursor: 'pointer', padding: '4px',
+                        zIndex: 20 // 👈 Forces button above the file input
+                    }}
+                    title="Remove Document"
+                >
+                    <Trash2 size={14} />
+                </button>
+            )}
+
+            <div className="lp-doc-icon" style={{ pointerEvents: 'none' }}>
+                {hasData ? <CheckCircle size={22} /> : <Upload size={22} />}
+            </div>
+
+            <div className="lp-doc-info" style={{ width: '100%' }}>
+                {document.isFixed ? (
+                    <h4 style={{ pointerEvents: 'none' }}>{document.name} {document.isRequired && <span style={{ color: '#ef4444' }}>*</span>}</h4>
+                ) : (
+                    <input
+                        type="text"
+                        placeholder="Document Name (e.g. Proof of Address)"
+                        value={document.name}
+                        onChange={(e) => onUpdate('name', e.target.value)}
+                        onClick={(e) => e.stopPropagation()} // Prevent bubbling just in case
+                        style={{
+                            width: '90%', padding: '4px 8px', marginBottom: '4px',
+                            border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '0.85rem',
+                            position: 'relative', zIndex: 20,
+                            background: 'whitesmoke', color: '#0f172a'
+                        }}
+                    />
+                )}
+                <span style={{ pointerEvents: 'none' }}>{document.file ? document.file.name : (document.url ? 'Document on file' : 'Select PDF or Image')}</span>
+            </div>
+
+            {/* The invisible file input */}
+            <input
+                type="file"
+                accept=".pdf,image/*"
+                className="lp-file-input"
+                onChange={e => e.target.files && onUpdate('file', e.target.files[0])}
+                style={{
+                    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+                    width: '100%', height: '100%', opacity: 0, cursor: 'pointer',
+                    zIndex: 10 // 👈 Sits below the text input and button (20), but above the card background
+                }}
+            />
+        </div>
+    );
+};

@@ -55,6 +55,7 @@ import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { CohortDetailsPage } from './pages/CohortDetails/CohortDetailsPage';
 import { fetchStatssaCodes } from './services/qctoService';
 import { PrivacyPolicy } from './components/views/PrivacyPolicy/PrivacyPolicy';
+import Loader from './components/common/Loader/Loader';
 
 
 // --- TRAFFIC CONTROLLER ---
@@ -63,16 +64,62 @@ const RootRedirect = () => {
   const loading = useStore((state) => state.loading);
 
   if (loading) return (
-    <div className="ap-fullscreen" style={{ position: 'absolute', left: 0, right: 0, bottom: 0, top: 0 }}>
-      <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
-        <div className="ap-spinner" />
-        <span style={{ fontFamily: 'var(--font-heading)', fontSize: '0.8rem', letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--mlab-grey)' }}>Syncing Session...</span>
-      </div>
+    <div className="ap-fullscreen" style={{ position: 'absolute', left: 0, right: 0, bottom: 0, top: 0, backgroundColor: 'var(--mlab-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <Loader message="Syncing Session..." fullScreen={false} />
     </div>
   );
 
   if (!user) return <Navigate to="/login" replace />;
 
+  const rawUploadedDocs = (user as any).uploadedDocuments;
+  const uploadedDocs = Array.isArray(rawUploadedDocs) ? rawUploadedDocs : [];
+  const hasDoc = (docId: string) => uploadedDocs.some((doc: any) => doc.id === docId && typeof doc.url === 'string' && doc.url.trim() !== '');
+
+  // 1. Learner Compliance Logic
+  const isLearnerCompliant = () => {
+    if (user.role !== 'learner') return true;
+    const d = (user as any).demographics || {};
+    const hasDemographics = !!d.equityCode && !!d.provinceCode && (!!d.statssaAreaCode || !!d.statsaaAreaCode) && !!d.learnerTitle;
+    return user.profileCompleted === true && hasDemographics && hasDoc('id') && hasDoc('qual');
+  };
+
+  // 2. Staff Compliance Logic
+  const isStaffCompliant = () => {
+    if (user.role === 'learner') return true;
+    if (!user.profileCompleted) return false;
+
+    const hasStaffProvince = !!(user as any).province;
+    const isForeignNational = (user as any).nationalityType === 'Foreign National';
+    const hasPermitIfForeign = isForeignNational ? hasDoc('permit') : true;
+
+    switch (user.role) {
+      case 'facilitator':
+        return hasStaffProvince && hasDoc('id') && hasDoc('cv') && hasPermitIfForeign;
+      case 'assessor':
+        return hasStaffProvince && hasDoc('id') && hasDoc('assessor_cert') && hasDoc('reg_letter') && hasPermitIfForeign;
+      case 'moderator':
+        return hasStaffProvince && hasDoc('id') && hasDoc('moderator_cert') && hasDoc('reg_letter') && hasPermitIfForeign;
+      case 'admin':
+        if ((user as any).isSuperAdmin) return true;
+        return hasStaffProvince && hasDoc('id') && hasDoc('appointment') && hasPermitIfForeign;
+      case 'mentor':
+        return hasStaffProvince;
+      default:
+        return true;
+    }
+  };
+
+  // 3. APPLY GATES
+  if (user.role === 'learner' && !isLearnerCompliant()) {
+    return <Navigate to="/setup-profile" replace />;
+  }
+
+  const staffRoles = ['facilitator', 'assessor', 'moderator', 'mentor', 'admin'];
+  if (staffRoles.includes(user.role) && !isStaffCompliant()) {
+    return <Navigate to={`/setup-${user.role}`} replace />;
+  }
+
+  // 4. FINAL TRAFFIC CONTROL (Fully Compliant Users)
   switch (user.role) {
     case 'admin': return <Navigate to="/admin" replace />;
     case 'facilitator': return <Navigate to="/facilitator" replace />;

@@ -488,12 +488,55 @@ export const ViewPortfolio: React.FC = () => {
                         </div>
                     )}
 
-                    {activeTab === 'compliance' && (
+                    {/* {activeTab === 'compliance' && (
                         <div className="vp-panel vp-panel--padded">
                             <div className="vp-doc-grid">
                                 {renderDocRow('National ID', 'idUrl', (enrollment as any).documents?.idUrl)}
                                 {renderDocRow('CV', 'cvUrl', (enrollment as any).documents?.cvUrl)}
                                 {renderDocRow('Qualification', 'qualUrl', (enrollment as any).documents?.qualUrl)}
+                            </div>
+                        </div>
+                    )} */}
+                    {activeTab === 'compliance' && (
+                        <div className="vp-panel vp-panel--padded">
+                            <div className="vp-doc-grid">
+                                {/* DYNAMIC DOCUMENT LOGIC */}
+                                {(() => {
+                                    const legacyDocs = (enrollment as any).documents || {};
+                                    const rawUploadedDocs = (enrollment as any).uploadedDocuments;
+                                    const uploadedDocs = Array.isArray(rawUploadedDocs) ? rawUploadedDocs : [];
+
+                                    // 1. Identify Core Docs (Priority: Array -> Legacy Fallback)
+                                    const idUrl = uploadedDocs.find((d: any) => d.id === 'id')?.url || legacyDocs.idUrl;
+                                    const cvUrl = uploadedDocs.find((d: any) => d.id === 'cv')?.url || legacyDocs.cvUrl;
+                                    const qualUrl = uploadedDocs.find((d: any) => d.id === 'qual')?.url || legacyDocs.qualUrl;
+
+                                    // 2. Identify Custom/Additional Docs (Everything else in the array)
+                                    const coreDocIds = ['id', 'cv', 'qual'];
+                                    const customDocs = uploadedDocs.filter((d: any) => !coreDocIds.includes(d.id));
+
+                                    return (
+                                        <>
+                                            {/* Standard Required Rows */}
+                                            {renderDocRow('National ID', 'id', idUrl)}
+                                            {renderDocRow('Highest Qualification', 'qual', qualUrl)}
+                                            {renderDocRow('Detailed CV', 'cv', cvUrl)}
+
+                                            {/* Additional Dynamic Rows */}
+                                            {customDocs.map((doc: any, idx: number) => (
+                                                renderDocRow(doc.name || 'Additional Document', doc.id || `custom_${idx}`, doc.url)
+                                            ))}
+
+                                            {/* Empty State for Docs */}
+                                            {!idUrl && !cvUrl && !qualUrl && customDocs.length === 0 && (
+                                                <div className="vp-empty-state" style={{ gridColumn: '1 / -1' }}>
+                                                    <AlertCircle size={32} color="var(--mlab-grey)" />
+                                                    <p>No compliance documents found on file.</p>
+                                                </div>
+                                            )}
+                                        </>
+                                    );
+                                })()}
                             </div>
                         </div>
                     )}

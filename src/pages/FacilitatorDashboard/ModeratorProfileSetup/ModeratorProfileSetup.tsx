@@ -1,18 +1,19 @@
 // src/pages/FacilitatorDashboard/ModeratorProfileSetup/ModeratorProfileSetup.tsx
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Autocomplete from "react-google-autocomplete";
 import {
-    User, Upload, CheckCircle,
-    Save, ChevronRight, ShieldCheck, Camera, Calendar, Fingerprint, Globe, Scale, MapPin, Phone, Lock
+    User,
+    Save, ChevronRight, ShieldCheck, Camera, Calendar, Fingerprint, Globe, Scale, MapPin, Phone, Lock, Plus
 } from 'lucide-react';
 import { doc, updateDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useStore } from '../../../store/useStore';
 import { db, storage } from '../../../lib/firebase';
 import mLabLogo from '../../../assets/logo/mlab_logo.png';
-import '../AssessorProfileSetup/AssessorProfileSetup.css';
+import '../AssessorProfileSetup/AssessorProfileSetup.css'; // Reuses the Assessor styling base
+import { DynamicDocUpload, type DynamicDocument } from '../../LearnerPortal/LearnerProfileSetup/LearnerProfileSetup';
 
 // ─── DICTIONARIES ─────────────────────────────────────────────────────────
 const QCTO_PROVINCES = [
@@ -66,14 +67,39 @@ export const ModeratorProfileSetup: React.FC = () => {
         sameAsResidential: true,
     });
 
-    const [idDoc, setIdDoc] = useState<File | null>(null);
-    const [permitDoc, setPermitDoc] = useState<File | null>(null);
-    const [moderatorCert, setModeratorCert] = useState<File | null>(null);
-    const [regLetter, setRegLetter] = useState<File | null>(null);
-    const [cvDoc, setCvDoc] = useState<File | null>(null);
+    // DYNAMIC DOCUMENT STATE
+    const [docsList, setDocsList] = useState<DynamicDocument[]>([
+        { id: 'id', name: 'Certified ID / Passport Copy', file: null, url: '', isFixed: true, isRequired: true },
+        { id: 'moderator_cert', name: 'Moderator Certificate', file: null, url: '', isFixed: true, isRequired: true },
+        { id: 'reg_letter', name: 'SETA Reg. Letter', file: null, url: '', isFixed: true, isRequired: true },
+        { id: 'cv', name: 'Detailed QA CV', file: null, url: '', isFixed: true, isRequired: false }
+    ]);
 
     const [profilePhoto, setProfilePhoto] = useState<File | null>(null);
     const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+
+    // ─── EFFECTS ─────────────────────────────────────────────────────────
+
+    // Automatically require a Work Permit if they are a Foreign National
+    useEffect(() => {
+        setDocsList(prev => {
+            const hasPermit = prev.find(d => d.id === 'permit');
+
+            if (formData.nationalityType === 'Foreign National') {
+                if (!hasPermit) {
+                    const newList = [...prev];
+                    // Insert Permit after ID
+                    newList.splice(1, 0, { id: 'permit', name: 'Work Permit / Visa', file: null, url: '', isFixed: true, isRequired: true });
+                    return newList;
+                }
+            } else {
+                if (hasPermit) {
+                    return prev.filter(d => d.id !== 'permit');
+                }
+            }
+            return prev;
+        });
+    }, [formData.nationalityType]);
 
     // ─── VALIDATION HELPERS ──────────────────────────────────────────────
 
@@ -101,6 +127,8 @@ export const ModeratorProfileSetup: React.FC = () => {
     const canMoveToStep3 = () => {
         return !!(formData.moderatorRegNumber && formData.primarySeta && formData.highestQualification && formData.city);
     };
+
+    const missingRequiredDocs = docsList.filter(d => d.isRequired && !d.file && !d.url);
 
     // ─── HANDLERS ─────────────────────────────────────────────────────────
 
@@ -145,32 +173,80 @@ export const ModeratorProfileSetup: React.FC = () => {
         return await getDownloadURL(snapshot.ref);
     };
 
+    // DYNAMIC DOC HANDLERS
+    const handleAddDocument = () => {
+        setDocsList(prev => [
+            ...prev,
+            { id: `doc_${Date.now()}`, name: '', file: null, url: '', isFixed: false, isRequired: false }
+        ]);
+    };
+
+    const handleRemoveDocument = (id: string) => {
+        setDocsList(prev => prev.filter(doc => doc.id !== id || doc.isFixed));
+    };
+
+    const handleDocUpdate = (id: string, field: keyof DynamicDocument, value: any) => {
+        setDocsList(prev => prev.map(doc => doc.id === id ? { ...doc, [field]: value } : doc));
+    };
+
     const handleSubmit = async () => {
         if (!user?.uid) return;
+
+        if (missingRequiredDocs.length > 0) {
+            alert(`Please upload all required documents: ${missingRequiredDocs.map(d => d.name).join(', ')}`);
+            return;
+        }
+
         setLoading(true);
         try {
-            const getExt = (f: File) => f.name.split('.').pop();
-
             let photoUrl = user?.profilePhotoUrl || "";
-            if (profilePhoto) photoUrl = await handleFileUpload(profilePhoto, `staff/${user.uid}/profile_${Date.now()}.${getExt(profilePhoto)}`);
+            if (profilePhoto) {
+                const getExt = (f: File) => f.name.split('.').pop();
+                photoUrl = await handleFileUpload(profilePhoto, `staff/${user.uid}/profile_${Date.now()}.${getExt(profilePhoto)}`);
+            }
 
-            const docs: any = {};
-            if (idDoc) docs.identificationUrl = await handleFileUpload(idDoc, `staff/${user.uid}/identity_doc_${Date.now()}.${getExt(idDoc)}`);
-            if (moderatorCert) docs.moderatorCertUrl = await handleFileUpload(moderatorCert, `staff/${user.uid}/moderator_cert_${Date.now()}.${getExt(moderatorCert)}`);
-            if (regLetter) docs.regLetterUrl = await handleFileUpload(regLetter, `staff/${user.uid}/reg_letter_${Date.now()}.${getExt(regLetter)}`);
-            if (cvDoc) docs.cvUrl = await handleFileUpload(cvDoc, `staff/${user.uid}/cv_${Date.now()}.${getExt(cvDoc)}`);
-            if (permitDoc) docs.workPermitUrl = await handleFileUpload(permitDoc, `staff/${user.uid}/work_permit_${Date.now()}.${getExt(permitDoc)}`);
+            // PROCESS ALL DYNAMIC DOCUMENTS
+            const finalUploadedDocs = [];
+            const legacyDocsObject: any = { ...((user as any).complianceDocs || {}) }; // Preserve legacy format
+
+            for (const docItem of docsList) {
+                let finalUrl = docItem.url;
+
+                if (docItem.file) {
+                    const ext = docItem.file.name.split('.').pop();
+                    finalUrl = await handleFileUpload(docItem.file, `staff/${user.uid}/${docItem.id}_${Date.now()}.${ext}`);
+                }
+
+                if (finalUrl) {
+                    finalUploadedDocs.push({
+                        id: docItem.id,
+                        name: docItem.name || 'Untitled Document',
+                        url: finalUrl
+                    });
+
+                    // Map specific core documents to the legacy object
+                    if (docItem.id === 'id') legacyDocsObject.identificationUrl = finalUrl;
+                    if (docItem.id === 'cv') legacyDocsObject.cvUrl = finalUrl;
+                    if (docItem.id === 'moderator_cert') legacyDocsObject.moderatorCertUrl = finalUrl;
+                    if (docItem.id === 'reg_letter') legacyDocsObject.regLetterUrl = finalUrl;
+                    if (docItem.id === 'permit') legacyDocsObject.workPermitUrl = finalUrl;
+                }
+            }
 
             const postalLine1 = formData.sameAsResidential ? formData.streetAddress : formData.postalAddress;
             const postalCodeFinal = formData.sameAsResidential ? formData.postalCode : formData.customPostalCode;
+
+            // Generate strict timestamp for when they agreed to the terms
+            const popiaTimestamp = new Date().toISOString();
 
             const finalData = {
                 ...formData,
                 postalAddress: postalLine1,
                 customPostalCode: postalCodeFinal,
                 profilePhotoUrl: photoUrl,
-                complianceDocs: { ...(user as any).complianceDocs, ...docs, updatedAt: new Date().toISOString() },
-                popiActDate: new Date().toISOString(), // Secure timestamp of consent
+                uploadedDocuments: finalUploadedDocs, // 👈 New robust array format
+                complianceDocs: { ...legacyDocsObject, updatedAt: new Date().toISOString() }, // 👈 Legacy format fallback
+                popiActDate: popiaTimestamp, // Audit trail for staff consent
                 profileCompleted: true,
                 updatedAt: new Date().toISOString(),
             };
@@ -403,17 +479,27 @@ export const ModeratorProfileSetup: React.FC = () => {
                 {/* DOCUMENT VAULT & LEGAL CHECKPOINT */}
                 {step === 3 && (
                     <div className="lp-form-body animate-fade-in">
-                        <h3 className="lp-section-title"><ShieldCheck size={16} /> Compliance Document Vault</h3>
-                        <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '1.5rem', marginTop: '-0.5rem' }}>
-                            Please upload your verified compliance documents. <strong>ID, Certificate and Registration are mandatory.</strong>
-                        </p>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                            <div>
+                                <h3 className="lp-section-title" style={{ margin: 0, borderBottom: 'none', paddingBottom: 0 }}><ShieldCheck size={16} /> Compliance Document Vault</h3>
+                                <p style={{ fontSize: '0.85rem', color: '#64748b', margin: '4px 0 0 0' }}>
+                                    Please upload your verified compliance documents. <strong>ID, Certificate and Registration are mandatory.</strong>
+                                </p>
+                            </div>
+                            <button className="lp-btn-ghost" style={{ fontSize: '0.85rem', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '4px' }} onClick={handleAddDocument}>
+                                <Plus size={14} /> Add Document
+                            </button>
+                        </div>
 
                         <div className="lp-upload-grid">
-                            <DocUpload label={formData.nationalityType === 'South African' ? 'Certified ID Copy *' : 'Passport Copy *'} file={idDoc} onUpload={setIdDoc} />
-                            {formData.nationalityType === 'Foreign National' && <DocUpload label="Work Permit / Visa *" file={permitDoc} onUpload={setPermitDoc} />}
-                            <DocUpload label="Moderator Certificate *" file={moderatorCert} onUpload={setModeratorCert} />
-                            <DocUpload label="SETA Reg. Letter *" file={regLetter} onUpload={setRegLetter} />
-                            <DocUpload label="Detailed QA CV (Optional)" file={cvDoc} onUpload={setCvDoc} isOptional={true} />
+                            {docsList.map((docItem) => (
+                                <DynamicDocUpload
+                                    key={docItem.id}
+                                    document={docItem}
+                                    onUpdate={(field, val) => handleDocUpdate(docItem.id, field, val)}
+                                    onRemove={() => handleRemoveDocument(docItem.id)}
+                                />
+                            ))}
                         </div>
 
                         {/* STAFF DATA HANDLER CHECKPOINT */}
@@ -446,11 +532,11 @@ export const ModeratorProfileSetup: React.FC = () => {
                             <button
                                 className="lp-btn-primary"
                                 onClick={handleSubmit}
-                                disabled={loading || !formData.popiaConsent || !idDoc || !moderatorCert || !regLetter}
+                                disabled={loading || !formData.popiaConsent || missingRequiredDocs.length > 0}
                                 style={{
                                     background: 'var(--mlab-green)',
-                                    opacity: (!formData.popiaConsent || loading || !idDoc || !moderatorCert || !regLetter) ? 0.6 : 1,
-                                    cursor: (!formData.popiaConsent || loading || !idDoc || !moderatorCert || !regLetter) ? 'not-allowed' : 'pointer',
+                                    opacity: (!formData.popiaConsent || loading || missingRequiredDocs.length > 0) ? 0.6 : 1,
+                                    cursor: (!formData.popiaConsent || loading || missingRequiredDocs.length > 0) ? 'not-allowed' : 'pointer',
                                     display: 'flex', alignItems: 'center', gap: '0.5rem'
                                 }}
                             >
@@ -467,15 +553,4 @@ export const ModeratorProfileSetup: React.FC = () => {
 
 const FG: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
     <div className="lp-fg"><label className="lp-fg-label">{label}</label>{children}</div>
-);
-
-const DocUpload: React.FC<{ label: string; file: File | null; onUpload: (f: File) => void; isOptional?: boolean }> = ({ label, file, onUpload, isOptional }) => (
-    <div className={`lp-doc-card${file ? ' uploaded' : ''}`}>
-        <div className="lp-doc-icon">{file ? <CheckCircle size={22} color="var(--mlab-green)" /> : <Upload size={22} />}</div>
-        <div className="lp-doc-info">
-            <h4>{label}</h4>
-            <span>{file ? file.name : (isOptional ? 'Optional PDF upload' : 'Required PDF upload')}</span>
-        </div>
-        <input type="file" accept=".pdf,image/*" className="lp-file-input" onChange={e => e.target.files && onUpload(e.target.files[0])} />
-    </div>
 );

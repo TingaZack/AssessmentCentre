@@ -1,17 +1,16 @@
-// src/pages/FacilitatorDashboard/FacilitatorProfileSetup/FacilitatorProfileSetup.tsx
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Autocomplete from "react-google-autocomplete";
 import {
-    User, Upload, CheckCircle,
-    Save, ChevronRight, ShieldCheck, Loader2, Camera, Calendar, Fingerprint, Globe, BookOpen, MapPin, Phone, Lock
+    User,
+    Save, ChevronRight, ShieldCheck, Loader2, Camera, Calendar, Fingerprint, Globe, BookOpen, MapPin, Phone, Lock, Plus
 } from 'lucide-react';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useStore } from '../../../store/useStore';
 import { db, storage } from '../../../lib/firebase';
 import './FacilitatorProfileSetup.css';
+import { DynamicDocUpload, type DynamicDocument } from '../../LearnerPortal/LearnerProfileSetup/LearnerProfileSetup';
 
 interface FacilitatorData {
     fullName: string;
@@ -39,28 +38,125 @@ interface FacilitatorData {
 
 export const FacilitatorProfileSetup: React.FC = () => {
     const navigate = useNavigate();
-    const { user, refreshUser } = useStore();
+    const { user, refreshUser, setUser } = useStore(); // Added setUser here
 
     const [step, setStep] = useState(1);
     const [loading, setLoading] = useState(false);
+    const [fetchingInitial, setFetchingInitial] = useState(true);
+
     const [formData, setFormData] = useState<Partial<FacilitatorData>>({
         fullName: user?.fullName || '',
         phone: (user as any)?.phone || '',
         nationalityType: 'South African',
         popiaConsent: false,
         yearsExperience: 0,
-        sameAsResidential: true, // Default to true
+        sameAsResidential: true,
     });
 
-    // Compliance Document States
-    const [idDoc, setIdDoc] = useState<File | null>(null);
-    const [permitDoc, setPermitDoc] = useState<File | null>(null);
-    const [cvDoc, setCvDoc] = useState<File | null>(null);
-    const [facCertDoc, setFacCertDoc] = useState<File | null>(null); // Optional
+    // DYNAMIC DOCUMENT STATE
+    const [docsList, setDocsList] = useState<DynamicDocument[]>([
+        { id: 'id', name: 'Certified ID / Passport Copy', file: null, url: '', isFixed: true, isRequired: true },
+        { id: 'cv', name: 'Detailed CV', file: null, url: '', isFixed: true, isRequired: true },
+        { id: 'fac_cert', name: 'Facilitator Certificate', file: null, url: '', isFixed: true, isRequired: false },
+    ]);
 
     // Photo Preview States
     const [profilePhoto, setProfilePhoto] = useState<File | null>(null);
     const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+
+    // ─── EFFECTS ─────────────────────────────────────────────────────────
+
+    // 🚀 NEW: Fetch Existing Data from Firestore to Pre-fill Form
+    useEffect(() => {
+        const fetchExistingData = async () => {
+            if (!user?.uid) return;
+            try {
+                const docRef = doc(db, 'users', user.uid);
+                const docSnap = await getDoc(docRef);
+
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+
+                    const sameAsRes = data.sameAsResidential !== undefined
+                        ? data.sameAsResidential
+                        : (data.postalAddress === data.streetAddress || !data.postalAddress);
+
+                    setFormData({
+                        fullName: data.fullName || user.fullName || '',
+                        nationalityType: data.nationalityType || 'South African',
+                        idNumber: data.idNumber || '',
+                        passportNumber: data.passportNumber || '',
+                        dateOfBirth: data.dateOfBirth || '',
+                        phone: data.phone || '',
+                        streetAddress: data.streetAddress || '',
+                        city: data.city || '',
+                        province: data.province || '',
+                        postalCode: data.postalCode || '',
+                        sameAsResidential: sameAsRes,
+                        postalAddress: data.postalAddress || '',
+                        customPostalCode: data.customPostalCode || '',
+                        yearsExperience: data.yearsExperience || 0,
+                        highestQualification: data.highestQualification || '',
+                        bio: data.bio || '',
+                        popiaConsent: data.popiaConsent || false,
+                        profilePhotoUrl: data.profilePhotoUrl || ''
+                    });
+
+                    if (data.profilePhotoUrl) setPhotoPreview(data.profilePhotoUrl);
+
+                    // 🚀 HYDRATE DOCUMENTS
+                    const legacyDocs = data.complianceDocs || {};
+                    const rawUploadedDocs = data.uploadedDocuments;
+                    const uploadedDocsArray = Array.isArray(rawUploadedDocs) ? rawUploadedDocs : [];
+
+                    const initialDocs: DynamicDocument[] = [
+                        { id: 'id', name: 'Certified ID / Passport Copy', file: null, url: uploadedDocsArray.find((d: any) => d.id === 'id')?.url || legacyDocs.identificationUrl || '', isFixed: true, isRequired: true },
+                        { id: 'cv', name: 'Detailed CV', file: null, url: uploadedDocsArray.find((d: any) => d.id === 'cv')?.url || legacyDocs.cvUrl || '', isFixed: true, isRequired: true },
+                        { id: 'fac_cert', name: 'Facilitator Certificate', file: null, url: uploadedDocsArray.find((d: any) => d.id === 'fac_cert')?.url || legacyDocs.facilitatorCertUrl || '', isFixed: true, isRequired: false },
+                    ];
+
+                    if (data.nationalityType === 'Foreign National') {
+                        initialDocs.splice(1, 0, { id: 'permit', name: 'Work Permit / Visa', file: null, url: uploadedDocsArray.find((d: any) => d.id === 'permit')?.url || legacyDocs.workPermitUrl || '', isFixed: true, isRequired: true });
+                    }
+
+                    const coreDocIds = ['id', 'cv', 'fac_cert', 'permit'];
+                    uploadedDocsArray.forEach((savedDoc: any) => {
+                        if (!coreDocIds.includes(savedDoc.id)) {
+                            initialDocs.push({ id: savedDoc.id, name: savedDoc.name, file: null, url: savedDoc.url, isFixed: false, isRequired: false });
+                        }
+                    });
+
+                    setDocsList(initialDocs);
+                }
+            } catch (error) {
+                console.error("Error fetching existing profile data:", error);
+            } finally {
+                setFetchingInitial(false);
+            }
+        };
+
+        fetchExistingData();
+    }, [user?.uid]);
+
+    // Automatically require a Work Permit if they switch to Foreign National
+    useEffect(() => {
+        setDocsList(prev => {
+            const hasPermit = prev.find(d => d.id === 'permit');
+
+            if (formData.nationalityType === 'Foreign National') {
+                if (!hasPermit) {
+                    const newList = [...prev];
+                    newList.splice(1, 0, { id: 'permit', name: 'Work Permit / Visa', file: null, url: '', isFixed: true, isRequired: true });
+                    return newList;
+                }
+            } else {
+                if (hasPermit) {
+                    return prev.filter(d => d.id !== 'permit');
+                }
+            }
+            return prev;
+        });
+    }, [formData.nationalityType]);
 
     // ─── VALIDATION HELPERS ──────────────────────────────────────────────
 
@@ -89,6 +185,8 @@ export const FacilitatorProfileSetup: React.FC = () => {
         return !!formData.highestQualification && !!formData.bio && !!formData.city;
     };
 
+    const missingRequiredDocs = docsList.filter(d => d.isRequired && !d.file && !d.url);
+
     // ─── HANDLERS ─────────────────────────────────────────────────────────
 
     const handleIDChange = (val: string) => {
@@ -109,7 +207,6 @@ export const FacilitatorProfileSetup: React.FC = () => {
         }
     };
 
-    // Handle Google Address Autocomplete
     const handlePlaceSelected = (place: any) => {
         const addressComponents = place.address_components;
         const getComp = (type: string) => addressComponents?.find((c: any) => c.types.includes(type))?.long_name || "";
@@ -133,25 +230,63 @@ export const FacilitatorProfileSetup: React.FC = () => {
         return await getDownloadURL(snapshot.ref);
     };
 
+    // DYNAMIC DOC HANDLERS
+    const handleAddDocument = () => {
+        setDocsList(prev => [
+            ...prev,
+            { id: `doc_${Date.now()}`, name: '', file: null, url: '', isFixed: false, isRequired: false }
+        ]);
+    };
+
+    const handleRemoveDocument = (id: string) => {
+        setDocsList(prev => prev.filter(doc => doc.id !== id || doc.isFixed));
+    };
+
+    const handleDocUpdate = (id: string, field: keyof DynamicDocument, value: any) => {
+        setDocsList(prev => prev.map(doc => doc.id === id ? { ...doc, [field]: value } : doc));
+    };
+
     const handleSubmit = async () => {
         if (!user?.uid) return;
-        if (!idDoc || !cvDoc) {
-            alert("ID Document and CV are mandatory.");
+
+        if (missingRequiredDocs.length > 0) {
+            alert(`Please upload all required documents: ${missingRequiredDocs.map(d => d.name).join(', ')}`);
             return;
         }
 
         setLoading(true);
         try {
-            let photoUrl = user?.profilePhotoUrl || "";
-            if (profilePhoto) photoUrl = await handleFileUpload(profilePhoto, `staff/${user.uid}/profile.jpg`);
+            let photoUrl = formData.profilePhotoUrl || "";
+            if (profilePhoto) {
+                const ext = profilePhoto.name.split('.').pop();
+                photoUrl = await handleFileUpload(profilePhoto, `staff/${user.uid}/profile_${Date.now()}.${ext}`);
+            }
 
-            const docs: any = {
-                identificationUrl: await handleFileUpload(idDoc, `staff/${user.uid}/identity_doc.pdf`),
-                cvUrl: await handleFileUpload(cvDoc, `staff/${user.uid}/cv.pdf`),
-            };
+            // PROCESS ALL DYNAMIC DOCUMENTS
+            const finalUploadedDocs = [];
+            const legacyDocsObject: any = { ...((user as any).complianceDocs || {}) };
 
-            if (permitDoc) docs.workPermitUrl = await handleFileUpload(permitDoc, `staff/${user.uid}/work_permit.pdf`);
-            if (facCertDoc) docs.facilitatorCertUrl = await handleFileUpload(facCertDoc, `staff/${user.uid}/facilitator_cert.pdf`);
+            for (const docItem of docsList) {
+                let finalUrl = docItem.url;
+
+                if (docItem.file) {
+                    const ext = docItem.file.name.split('.').pop();
+                    finalUrl = await handleFileUpload(docItem.file, `staff/${user.uid}/${docItem.id}_${Date.now()}.${ext}`);
+                }
+
+                if (finalUrl) {
+                    finalUploadedDocs.push({
+                        id: docItem.id,
+                        name: docItem.name || 'Untitled Document',
+                        url: finalUrl
+                    });
+
+                    if (docItem.id === 'id') legacyDocsObject.identificationUrl = finalUrl;
+                    if (docItem.id === 'cv') legacyDocsObject.cvUrl = finalUrl;
+                    if (docItem.id === 'fac_cert') legacyDocsObject.facilitatorCertUrl = finalUrl;
+                    if (docItem.id === 'permit') legacyDocsObject.workPermitUrl = finalUrl;
+                }
+            }
 
             const postalLine1 = formData.sameAsResidential ? formData.streetAddress : formData.postalAddress;
             const postalCodeFinal = formData.sameAsResidential ? formData.postalCode : formData.customPostalCode;
@@ -161,15 +296,27 @@ export const FacilitatorProfileSetup: React.FC = () => {
                 postalAddress: postalLine1,
                 customPostalCode: postalCodeFinal,
                 profilePhotoUrl: photoUrl,
-                complianceDocs: docs,
-                popiActDate: new Date().toISOString(), // Secure timestamp of consent
+                uploadedDocuments: finalUploadedDocs,
+                complianceDocs: legacyDocsObject,
+                popiActDate: new Date().toISOString(),
                 profileCompleted: true,
                 updatedAt: new Date().toISOString(),
             };
 
+            // 1. Save strictly to DB
             await updateDoc(doc(db, 'users', user.uid), finalData);
+
+            // 2. FORCE local state override to bust the redirect loop!
+            if (setUser) {
+                setUser({ ...user, ...finalData, profileCompleted: true } as any);
+            }
+
+            // 3. Await the refresh
             await refreshUser();
-            navigate('/facilitator');
+
+            // 4. Force replace navigate to break out of setup route
+            navigate('/facilitator', { replace: true });
+
         } catch (error) {
             console.error(error);
             alert('Compliance sync failed. Please check your connection.');
@@ -177,6 +324,16 @@ export const FacilitatorProfileSetup: React.FC = () => {
             setLoading(false);
         }
     };
+
+    if (fetchingInitial) {
+        return (
+            <div className="lp-loading" style={{ position: 'absolute', right: 0, left: 0, bottom: 0, top: 0 }}>
+                <Loader2 className="spin" size={40} color="var(--mlab-blue)" />
+                <h2 className="lp-loading__title">Loading Profile</h2>
+                <p className="lp-loading__sub">Retrieving your existing records...</p>
+            </div>
+        );
+    }
 
     return (
         <div className="lp-container animate-fade-in">
@@ -300,7 +457,6 @@ export const FacilitatorProfileSetup: React.FC = () => {
                             </FG>
                         </div>
 
-                        {/* Address Section Added Here */}
                         <h3 className="lp-section-title"><MapPin size={16} /> Residential Address</h3>
                         <div style={{ marginBottom: '1rem' }}>
                             <FG label="Address Search (Google Verified)">
@@ -381,19 +537,30 @@ export const FacilitatorProfileSetup: React.FC = () => {
                 {/* DOCUMENT VAULT & LEGAL CHECKPOINT */}
                 {step === 3 && (
                     <div className="lp-form-body animate-fade-in">
-                        <h3 className="lp-section-title"><ShieldCheck size={16} /> Compliance Document Vault</h3>
-                        <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '1.5rem', marginTop: '-0.5rem' }}>
-                            Please upload your verified compliance documents. <strong>ID and CV are mandatory.</strong>
-                        </p>
-
-                        <div className="lp-upload-grid">
-                            <DocUpload label={formData.nationalityType === 'South African' ? 'Certified ID Copy *' : 'Passport Copy *'} file={idDoc} onUpload={setIdDoc} />
-                            {formData.nationalityType === 'Foreign National' && <DocUpload label="Work Permit / Visa *" file={permitDoc} onUpload={setPermitDoc} />}
-                            <DocUpload label="Detailed CV *" file={cvDoc} onUpload={setCvDoc} />
-                            <DocUpload label="Facilitator Certificate (Optional)" file={facCertDoc} onUpload={setFacCertDoc} isOptional={true} />
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                            <div>
+                                <h3 className="lp-section-title" style={{ margin: 0, borderBottom: 'none', paddingBottom: 0 }}><ShieldCheck size={16} /> Compliance Document Vault</h3>
+                                <p style={{ fontSize: '0.85rem', color: '#64748b', margin: '4px 0 0 0' }}>
+                                    Please upload your verified compliance documents. <strong>ID and CV are mandatory.</strong>
+                                </p>
+                            </div>
+                            <button className="lp-btn-ghost" style={{ fontSize: '0.85rem', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '4px' }} onClick={handleAddDocument}>
+                                <Plus size={14} /> Add Document
+                            </button>
                         </div>
 
-                        {/* 🚀 STAFF DATA HANDLER CHECKPOINT */}
+                        <div className="lp-upload-grid">
+                            {docsList.map((docItem) => (
+                                <DynamicDocUpload
+                                    key={docItem.id}
+                                    document={docItem}
+                                    onUpdate={(field, val) => handleDocUpdate(docItem.id, field, val)}
+                                    onRemove={() => handleRemoveDocument(docItem.id)}
+                                />
+                            ))}
+                        </div>
+
+                        {/* STAFF DATA HANDLER CHECKPOINT */}
                         <div style={{
                             display: 'flex', gap: '1rem', alignItems: 'flex-start',
                             background: formData.popiaConsent ? '#f0fdf4' : '#f8fafc',
@@ -423,10 +590,10 @@ export const FacilitatorProfileSetup: React.FC = () => {
                             <button
                                 className="lp-btn-primary"
                                 onClick={handleSubmit}
-                                disabled={loading || !formData.popiaConsent || !idDoc || !cvDoc}
+                                disabled={loading || !formData.popiaConsent || missingRequiredDocs.length > 0}
                                 style={{
-                                    opacity: (!formData.popiaConsent || loading || !idDoc || !cvDoc) ? 0.6 : 1,
-                                    cursor: (!formData.popiaConsent || loading || !idDoc || !cvDoc) ? 'not-allowed' : 'pointer',
+                                    opacity: (!formData.popiaConsent || loading || missingRequiredDocs.length > 0) ? 0.6 : 1,
+                                    cursor: (!formData.popiaConsent || loading || missingRequiredDocs.length > 0) ? 'not-allowed' : 'pointer',
                                     display: 'flex', alignItems: 'center', gap: '0.5rem'
                                 }}
                             >
@@ -443,15 +610,4 @@ export const FacilitatorProfileSetup: React.FC = () => {
 
 const FG: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
     <div className="lp-fg"><label className="lp-fg-label">{label}</label>{children}</div>
-);
-
-const DocUpload: React.FC<{ label: string; file: File | null; onUpload: (f: File) => void; isOptional?: boolean }> = ({ label, file, onUpload, isOptional }) => (
-    <div className={`lp-doc-card${file ? ' uploaded' : ''}`}>
-        <div className="lp-doc-icon">{file ? <CheckCircle size={22} /> : <Upload size={22} />}</div>
-        <div className="lp-doc-info">
-            <h4>{label}</h4>
-            <span>{file ? file.name : (isOptional ? 'Optional PDF upload' : 'Required PDF upload')}</span>
-        </div>
-        <input type="file" accept=".pdf" className="lp-file-input" onChange={e => e.target.files && onUpload(e.target.files[0])} />
-    </div>
 );
