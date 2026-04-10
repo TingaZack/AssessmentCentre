@@ -1,8 +1,5 @@
 // src/components/common/CertificateGenerator/CertificateGenerator.tsx
 
-
-// src/components/common/CertificateGenerator/CertificateGenerator.tsx
-
 import React, { useState, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Award, Loader2, ChevronDown, Download, FileCheck, Hexagon, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';

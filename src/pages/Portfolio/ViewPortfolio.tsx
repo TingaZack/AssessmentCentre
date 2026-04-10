@@ -127,7 +127,7 @@ const PoEGenerator: React.FC<{ learnerId: string, requestedByUid: string }> = ({
     const strokeDashoffset = circumference - (progress / 100) * circumference;
 
     return (
-        <div style={{ background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '1.5rem', marginBottom: '1.5rem' }}>
+        <div style={{ background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '8px', padding: 16, marginBottom: '1.5rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
                 <div>
                     <h3 style={{ margin: '0 0 8px 0', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.1rem' }}>
@@ -397,7 +397,7 @@ export const ViewPortfolio: React.FC = () => {
 
                 <PageHeader theme={user?.role === 'learner' ? 'student' : 'default'} variant="hero" title={enrollment.fullName} eyebrow="Portfolio of Evidence" description={matchingProgramme?.name || "Qualification"} onBack={() => navigate(-1)} status={{ label: enrollment.status?.toUpperCase(), variant: enrollment.status === 'active' ? 'active' : 'warning' }} />
 
-                <div className="admin-content vp-content">
+                <div className="admin-content vp-content" style={{ paddingLeft: 16, paddingRight: 16 }}>
                     <div className="vp-profile-card">
                         <div className="vp-profile-card__avatar">{(enrollment as any).profilePhotoUrl ? <img src={(enrollment as any).profilePhotoUrl} alt="" className="vp-profile-card__avatar-img" /> : <User size={34} />}</div>
                         <div className="vp-profile-card__info"><h2 className="vp-profile-card__name">{enrollment.fullName}</h2><div className="vp-profile-card__meta"><span><strong>ID:</strong> {enrollment.idNumber}</span><span><Calendar size={12} /> {new Date(enrollment.trainingStartDate).toLocaleDateString()}</span></div></div>

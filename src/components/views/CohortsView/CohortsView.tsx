@@ -12,8 +12,11 @@ import type { StaffMember } from '../../../store/useStore';
 import type { Cohort } from '../../../types';
 import { db } from '../../../lib/firebase';
 import { useStore } from '../../../store/useStore';
-import './CohortsView.css';
 import { useToast } from '../../common/Toast/Toast';
+
+// 🚀 CRITICAL: Import WorkplacesManager CSS for the bespoke Header
+import '../../admin/WorkplacesManager/WorkplacesManager.css';
+import './CohortsView.css';
 
 interface CohortsViewProps {
     cohorts: Cohort[];
@@ -311,21 +314,28 @@ export const CohortsView: React.FC<CohortsViewProps> = ({ cohorts, staff, onAdd,
     };
 
     return (
-        <div className="mlab-cohorts">
-            <div className="mlab-cohorts__header">
-                <div className="mlab-cohorts__header-text">
-                    <h2 className="mlab-cohorts__title">Active Classes (Cohorts)</h2>
-                    <p className="mlab-cohorts__subtitle">Manage training groups and generate compliant QCTO reports.</p>
+        <div className="wm-root animate-fade-in">
+
+            {/* ── PAGE HEADER (Reusing wm-page-header styling) ── */}
+            <div className="wm-page-header">
+                <div className="wm-page-header__left">
+                    <div className="wm-page-header__icon"><Layers size={22} /></div>
+                    <div>
+                        <h1 className="wm-page-header__title">Active Classes (Cohorts)</h1>
+                        <p className="wm-page-header__desc">Manage training groups and generate compliant QCTO reports.</p>
+                    </div>
                 </div>
                 <div style={{ display: 'flex', gap: '10px' }}>
-                    <button className="mlab-btn mlab-btn--outline" onClick={handleMasterInstitutionalExport} disabled={isMasterExporting}>
-                        {isMasterExporting ? <Loader2 size={16} className="spin" /> : <FileSpreadsheet size={16} />} Master Export
+                    <button className="wm-btn wm-btn--ghost" onClick={handleMasterInstitutionalExport} disabled={isMasterExporting} style={{ background: 'rgba(255,255,255,0.1)', color: 'white', borderColor: 'rgba(255,255,255,0.2)' }}>
+                        {isMasterExporting ? <Loader2 size={14} className="spin" /> : <FileSpreadsheet size={14} />} Master Export
                     </button>
-                    <button className="mlab-btn mlab-btn--green" onClick={onAdd}><Plus size={16} /> Create New Cohort</button>
+                    <button className="wm-btn wm-btn--primary" onClick={onAdd}>
+                        <Plus size={14} /> Create New Cohort
+                    </button>
                 </div>
             </div>
 
-            <div className="mlab-cohort-grid">
+            <div className="mlab-cohort-grid" style={{ padding: '0 1.5rem' }}>
                 {cohorts.map(cohort => (
                     <div key={cohort.id} className="mlab-cohort-card animate-fade-in">
                         <div className="mlab-cohort-card__header">
@@ -376,7 +386,7 @@ export const CohortsView: React.FC<CohortsViewProps> = ({ cohorts, staff, onAdd,
                 ))}
 
                 {cohorts.length === 0 && (
-                    <div className="mlab-cohort-empty">
+                    <div className="mlab-cohort-empty" style={{ gridColumn: '1 / -1', margin: '2rem 0' }}>
                         <Layers size={44} color="var(--mlab-green)" style={{ opacity: 0.5 }} />
                         <p className="mlab-cohort-empty__title">No Cohorts Yet</p>
                         <p className="mlab-cohort-empty__desc">Create a class to get started with learner tracking.</p>
@@ -389,6 +399,7 @@ export const CohortsView: React.FC<CohortsViewProps> = ({ cohorts, staff, onAdd,
 
 
 
+// // src/components/views/CohortsView.tsx
 
 // import React, { useState } from 'react';
 // import {
@@ -415,9 +426,6 @@ export const CohortsView: React.FC<CohortsViewProps> = ({ cohorts, staff, onAdd,
 
 // // ─── QCTO HELPERS ────────────────────────────────────────────────────────
 
-// /**
-//  * Formats date to YYYYMMDD as required by LEISA naming convention
-//  */
 // const formatQCTODate = (dateString?: string) => {
 //     if (!dateString) return '';
 //     const d = new Date(dateString);
@@ -443,10 +451,6 @@ export const CohortsView: React.FC<CohortsViewProps> = ({ cohorts, staff, onAdd,
 //     }
 // };
 
-// /**
-//  * The "Nuclear Option" for Excel: Forces every cell to be an explicit String
-//  * to prevent Excel from dropping leading zeros in IDs and Postal Codes.
-//  */
 // const createTextCell = (val: any) => ({
 //     t: 's',
 //     v: String(val === null || val === undefined ? '' : val),
@@ -456,7 +460,6 @@ export const CohortsView: React.FC<CohortsViewProps> = ({ cohorts, staff, onAdd,
 // export const CohortsView: React.FC<CohortsViewProps> = ({ cohorts, staff, onAdd, onEdit, onArchive }) => {
 //     const navigate = useNavigate();
 //     const toast = useToast();
-
 //     const { settings, user, programmes } = useStore();
 
 //     const [exportingCohort, setExportingCohort] = useState<string | null>(null);
@@ -464,7 +467,6 @@ export const CohortsView: React.FC<CohortsViewProps> = ({ cohorts, staff, onAdd,
 
 //     const getStaffName = (id: string) => staff.find(s => s.id === id)?.fullName || 'Unassigned';
 
-//     // ─── MASTER INSTITUTIONAL EXPORT ───────────────────────────────────────
 //     const handleMasterInstitutionalExport = async () => {
 //         const allLearnerIds = Array.from(new Set(cohorts.flatMap(c => c.learnerIds)));
 //         if (allLearnerIds.length === 0) {
@@ -519,7 +521,6 @@ export const CohortsView: React.FC<CohortsViewProps> = ({ cohorts, staff, onAdd,
 //         }
 //     };
 
-//     // ─── QCTO LEISA EXPORT (STRICT COMPLIANCE) ────────────────────────────
 //     const handleQCTOExport = async (cohort: Cohort) => {
 //         if (!cohort.learnerIds || cohort.learnerIds.length === 0) {
 //             toast.error('Cannot export an empty cohort.');
@@ -542,28 +543,22 @@ export const CohortsView: React.FC<CohortsViewProps> = ({ cohorts, staff, onAdd,
 //                 snap.forEach(doc => learners.push({ id: doc.id, ...doc.data() }));
 //             }
 
-//             // 1. Resolve Institutional/Campus Details
-//             const cohortCampusId = (cohort as any).campusId;
-//             const activeCampus = settings?.campuses?.find((c: any) => c.id === cohortCampusId)
+//             const activeCampus = settings?.campuses?.find((c: any) => c.id === cohort.campusId)
 //                 || settings?.campuses?.find((c: any) => c.isDefault)
 //                 || settings?.campuses?.[0];
 
-//             // REQUIREMENT: Strictly use Main Institution Name
 //             const mainInstitutionName = settings?.institutionName || 'mLab Southern Africa';
 //             const rawSdpCode = activeCampus?.siteAccreditationNumber?.trim() || 'SDP_PENDING';
 
-//             // 2. Resolve Qualification Logic
 //             const targetProgId = (cohort as any).programmeId || (cohort as any).qualificationId;
 //             const qualObj = programmes.find(p => p.id === targetProgId || (p as any).saqaId === targetProgId);
 
-//             // REQUIREMENT: Qualification ID Column must be SAQA ID
 //             const saqaId = String((qualObj as any)?.saqaId || targetProgId || '000000');
 //             const qualNameForHeader = qualObj?.name || 'Qualification Name Missing';
 
 //             const todayQCTO = formatQCTODate(new Date().toISOString());
 //             const expectedCompletion = formatQCTODate(cohort.endDate);
 
-//             // 3. Map Rows (Forced String/AOA to preserve leading zeros)
 //             const headers = [
 //                 "SDP Code", "Qualification Id", "National Id", "Learner Alternate ID", "Alternative Id Type",
 //                 "Equity Code", "Nationality Code", "Home Language Code", "Gender Code", "Citizen Resident Status Code",
@@ -585,28 +580,95 @@ export const CohortsView: React.FC<CohortsViewProps> = ({ cohorts, staff, onAdd,
 //                 const names = (learner.fullName || '').trim().split(' ');
 //                 const lastName = names.length > 1 ? names.pop() : '';
 //                 const firstNames = names.join(' ');
-//                 const title = d.genderCode === 'F' ? 'Ms' : 'Mr';
+//                 const title = d.learnerTitle || (d.genderCode === 'F' ? 'Ms' : 'Mr');
+
+//                 // RESOLVE DB KEYS ROBUSTLY
+//                 const actualSorStatus = d.statementOfResultsStatus || (d as any).sorStatus || "02";
+//                 const actualSorDate = d.statementOfResultsIssueDate || (d as any).sorIssueDate || "";
+//                 const actualEisaId = d.learnerReadinessForEISATypeId || (d as any).eisaReadinessId || "1";
+//                 const actualFlcStatus = d.flc || (d as any).flcStatus || "06";
+//                 const actualFlcResultNumber = d.flcStatementOfResultNumber || (d as any).flcResultNumber || "";
+
+//                 let formattedSorDate = "";
+//                 if (actualSorDate) {
+//                     const dateParts = actualSorDate.split('-');
+//                     if (dateParts.length === 3) {
+//                         if (dateParts[0].length === 4 && dateParts[1].length === 2 && dateParts[2].length === 2) {
+//                             formattedSorDate = `${dateParts[0]}${dateParts[1]}${dateParts[2]}`;
+//                         } else if (dateParts[2].length === 4) {
+//                             formattedSorDate = `${dateParts[2]}${dateParts[1]}${dateParts[0]}`;
+//                         }
+//                     }
+//                 }
+
+//                 let formattedPopiDate = todayQCTO;
+//                 if (d.popiActDate) {
+//                     const popiParts = d.popiActDate.split('-');
+//                     if (popiParts.length === 3) {
+//                         if (popiParts[0].length === 4) formattedPopiDate = `${popiParts[0]}${popiParts[1]}${popiParts[2]}`;
+//                         else if (popiParts[2].length === 4) formattedPopiDate = `${popiParts[2]}${popiParts[1]}${popiParts[0]}`;
+//                     }
+//                 }
+
+//                 let formattedExpCompletion = expectedCompletion;
+//                 if (d.expectedTrainingCompletionDate) {
+//                     const expParts = d.expectedTrainingCompletionDate.split('-');
+//                     if (expParts.length === 3) {
+//                         if (expParts[0].length === 4) formattedExpCompletion = `${expParts[0]}${expParts[1]}${expParts[2]}`;
+//                         else if (expParts[2].length === 4) formattedExpCompletion = `${expParts[2]}${expParts[1]}${expParts[0]}`;
+//                     }
+//                 }
 
 //                 dataRows.push([
 //                     rawSdpCode,
 //                     saqaId,
 //                     learner.idNumber,
-//                     "", "533",
-//                     d.equityCode, d.citizenResidentStatusCode === 'SA' ? 'SA' : 'O', d.homeLanguageCode, d.genderCode, d.citizenResidentStatusCode || 'SA',
-//                     d.socioeconomicStatusCode, d.disabilityStatusCode || 'N', d.disabilityRating, "03",
-//                     lastName, firstNames, "", title, getDOBFromID(learner.idNumber),
-//                     d.learnerHomeAddress1, d.learnerHomeAddress2, "",
-//                     d.learnerPostalAddress1 || d.learnerHomeAddress1, d.learnerPostalAddress2 || d.learnerHomeAddress2, "",
-//                     d.learnerHomeAddressPostalCode, (d as any).statsaaAreaCode || d.learnerHomeAddressPostalCode,
-//                     learner.phone, learner.phone, "", learner.email,
-//                     d.provinceCode, (d as any).statsaaAreaCode || '', d.popiActAgree || 'Y', d.popiActDate || todayQCTO,
-//                     expectedCompletion, "02", "", "", "1", "06", "", todayQCTO
+//                     d.learnerAlternateId || "",
+//                     d.alternativeIdType || "533",
+//                     d.equityCode || "",
+//                     d.nationalityCode || (d.citizenResidentStatusCode === 'SA' ? 'SA' : 'O'),
+//                     d.homeLanguageCode || "",
+//                     d.genderCode || "",
+//                     d.citizenResidentStatusCode || 'SA',
+//                     d.socioeconomicStatusCode || "01",
+//                     d.disabilityStatusCode || 'N',
+//                     d.disabilityRating || "",
+//                     d.immigrantStatus || "03",
+//                     lastName,
+//                     firstNames,
+//                     d.learnerMiddleName || "",
+//                     title,
+//                     getDOBFromID(learner.idNumber),
+//                     d.learnerHomeAddress1 || "",
+//                     d.learnerHomeAddress2 || "",
+//                     d.learnerHomeAddress3 || "",
+//                     d.learnerPostalAddress1 || d.learnerHomeAddress1 || "",
+//                     d.learnerPostalAddress2 || d.learnerHomeAddress2 || "",
+//                     d.learnerPostalAddress3 || "",
+//                     d.learnerHomeAddressPostalCode || "",
+//                     d.learnerPostalAddressPostCode || d.learnerHomeAddressPostalCode || "",
+//                     d.learnerPhoneNumber || learner.phone || "",
+//                     d.learnerPhoneNumber || learner.phone || "",
+//                     d.learnerFaxNumber || "",
+//                     d.learnerEmailAddress || learner.email || "",
+//                     d.provinceCode || "",
+//                     d.statsaaAreaCode || (d as any).statssaAreaCode || "",
+//                     d.popiActAgree === 'No' ? 'N' : 'Y',
+//                     formattedPopiDate,
+//                     formattedExpCompletion,
+
+//                     actualSorStatus,
+//                     actualSorStatus === "01" ? formattedSorDate : "",
+//                     d.assessmentCentreCode || "",
+//                     actualEisaId,
+//                     actualFlcStatus,
+//                     actualFlcResultNumber,
+//                     d.dateStamp || todayQCTO
 //                 ].map(createTextCell));
 //             });
 
 //             const wb = XLSX.utils.book_new();
 
-//             // SHEET 1: INSTRUCTIONS (AOA Format)
 //             const instructions = [
 //                 ["DETAILS: (COMPULSORY INFORMATION)"],
 //                 ["Name and Surname of Compiler:", user?.fullName || ''],
@@ -632,11 +694,9 @@ export const CohortsView: React.FC<CohortsViewProps> = ({ cohorts, staff, onAdd,
 //             wsInstructions['!cols'] = [{ wch: 35 }, { wch: 65 }];
 //             XLSX.utils.book_append_sheet(wb, wsInstructions, "Instructions");
 
-//             // SHEET 2: DATA
 //             const wsData = XLSX.utils.aoa_to_sheet(dataRows);
 //             XLSX.utils.book_append_sheet(wb, wsData, "Learner Enrolment and EISA");
 
-//             // NAMING CONVENTION: LEISAyyyymmdd-SDP/AC name
 //             const safeInstitutionName = mainInstitutionName.replace(/[^a-zA-Z0-9]/g, '_');
 //             const fileName = `LEISA${todayQCTO}-${safeInstitutionName}.xlsx`;
 
@@ -659,7 +719,7 @@ export const CohortsView: React.FC<CohortsViewProps> = ({ cohorts, staff, onAdd,
 //                     <p className="mlab-cohorts__subtitle">Manage training groups and generate compliant QCTO reports.</p>
 //                 </div>
 //                 <div style={{ display: 'flex', gap: '10px' }}>
-//                     <button className="mlab-btn mlab-btn--outline" onClick={handleMasterInstitutionalExport} disabled={isMasterExporting}>
+//                     <button className="mlab-btn mlab-btn--outline-blue" onClick={handleMasterInstitutionalExport} disabled={isMasterExporting}>
 //                         {isMasterExporting ? <Loader2 size={16} className="spin" /> : <FileSpreadsheet size={16} />} Master Export
 //                     </button>
 //                     <button className="mlab-btn mlab-btn--green" onClick={onAdd}><Plus size={16} /> Create New Cohort</button>

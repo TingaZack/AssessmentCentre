@@ -160,7 +160,7 @@
   align-items: center;
   gap: 0.4rem;
   padding: 0.45rem 1rem;
-  border: 2px solid var(--mlab-blue);
+  border: 2px solid var(--mlab-green);
   background: transparent;
   color: var(--mlab-blue);
   cursor: pointer;

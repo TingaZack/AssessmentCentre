@@ -1,17 +1,18 @@
+// src/pages/FacilitatorDashboard/AssessorProfileView/AssessorProfileView.tsx
+
 import React, { useState, useEffect } from 'react';
 import {
     User, Mail, Phone, ShieldCheck, FileText, Edit3, Save, X,
     Fingerprint, GraduationCap, AlertCircle, Info, Loader2,
-    Camera, Award, Calendar, Briefcase, PenTool, Clock, MapPin, Plus, Trash2, CheckCircle, Upload
+    Camera, Award, Calendar, Briefcase, PenTool, Clock, MapPin, Plus,
 } from 'lucide-react';
+import { doc, onSnapshot } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { storage } from '../../../lib/firebase';
+import { db, storage } from '../../../lib/firebase';
 import Autocomplete from "react-google-autocomplete";
 import './AssessorProfileView.css';
-import { SignatureSetupModal } from '../../../components/auth/SignatureSetupModal';
 import { DynamicDocUpload, type DynamicDocument } from '../../LearnerPortal/LearnerProfileSetup/LearnerProfileSetup';
-
-
+import { SignatureSetupModal } from '../../../components/auth/SignatureSetupModal';
 
 // ─── DICTIONARIES ─────────────────────────────────────────────────────────
 const QCTO_PROVINCES = [
@@ -30,111 +31,89 @@ export const AssessorProfileView: React.FC<ProfileProps> = ({ profile, user, onU
     const [saving, setSaving] = useState(false);
     const [isSigModalOpen, setIsSigModalOpen] = useState(false);
 
+    // 🚀 NEW: The Single Source of Truth (Real-time DB State)
+    const [liveProfile, setLiveProfile] = useState<any>(profile || user || {});
+
+    // The Draft State (Only used when isEditing is true)
     const [formData, setFormData] = useState<any>({});
-    const [initialData, setInitialData] = useState<any>({});
 
     const [profilePhoto, setProfilePhoto] = useState<File | null>(null);
-    const [photoPreview, setPhotoPreview] = useState<string | null>(profile?.profilePhotoUrl || null);
+    const [photoPreview, setPhotoPreview] = useState<string | null>(null);
 
     // Dynamic Document State
     const [docsList, setDocsList] = useState<DynamicDocument[]>([]);
-    const [initialDocsList, setInitialDocsList] = useState<DynamicDocument[]>([]);
+
+    const targetId = profile?.uid || profile?.id || user?.uid;
 
     // STRICT COMPLIANCE: Assessor Pen is always RED
     const inkColor = 'red';
 
-    // Sync data when 'profile' prop arrives from Firestore
+    // 1. REAL-TIME LISTENER: Keep liveProfile perfectly in sync with Firestore
     useEffect(() => {
-        if (profile) {
-            if (!isEditing) {
-                // Safely load profile data and determine if postal is same as residential
-                const sameAsRes = profile.sameAsResidential !== undefined
-                    ? profile.sameAsResidential
-                    : (profile.postalAddress === profile.streetAddress || !profile.postalAddress);
+        if (!targetId) return;
 
-                const loadData = {
-                    ...profile,
-                    sameAsResidential: sameAsRes
-                };
+        const unsubscribe = onSnapshot(doc(db, 'users', targetId), (docSnap) => {
+            if (docSnap.exists()) {
+                const data = docSnap.data();
+                setLiveProfile(data);
 
-                setFormData(loadData);
-                setInitialData(loadData);
+                // If signature just arrived, close the modal automatically!
+                if (data.signatureUrl && isSigModalOpen) {
+                    setIsSigModalOpen(false);
+                }
             }
-            if (profile.profilePhotoUrl && !profilePhoto) {
-                setPhotoPreview(profile.profilePhotoUrl);
-            }
+        });
+
+        return () => unsubscribe();
+    }, [targetId, isSigModalOpen]);
+
+    // 2. HYDRATE UI FROM LIVE PROFILE (Only when NOT editing)
+    useEffect(() => {
+        if (!isEditing && liveProfile) {
+            // Safely load profile data and determine if postal is same as residential
+            const sameAsRes = liveProfile.sameAsResidential !== undefined
+                ? liveProfile.sameAsResidential
+                : (liveProfile.postalAddress === liveProfile.streetAddress || !liveProfile.postalAddress);
+
+            setFormData({ ...liveProfile, sameAsResidential: sameAsRes });
+            setPhotoPreview(liveProfile.profilePhotoUrl || null);
 
             // POPULATE DYNAMIC DOCUMENTS FROM PROFILE
-            const legacyDocs = profile.complianceDocs || {};
-            const rawUploadedDocs = profile.uploadedDocuments;
+            const legacyDocs = liveProfile.complianceDocs || {};
+            const rawUploadedDocs = liveProfile.uploadedDocuments;
             const uploadedDocsArray = Array.isArray(rawUploadedDocs) ? rawUploadedDocs : [];
 
-            const initialDocs: DynamicDocument[] = [
-                {
-                    id: 'id',
-                    name: 'Certified ID / Passport Copy',
-                    file: null,
-                    url: uploadedDocsArray.find((d: any) => d.id === 'id')?.url || legacyDocs.identificationUrl || '',
-                    isFixed: true,
-                    isRequired: true
-                },
-                {
-                    id: 'assessor_cert',
-                    name: 'Assessor Certificate',
-                    file: null,
-                    url: uploadedDocsArray.find((d: any) => d.id === 'assessor_cert')?.url || legacyDocs.assessorCertUrl || '',
-                    isFixed: true,
-                    isRequired: true
-                },
-                {
-                    id: 'reg_letter',
-                    name: 'SETA Reg. Letter',
-                    file: null,
-                    url: uploadedDocsArray.find((d: any) => d.id === 'reg_letter')?.url || legacyDocs.regLetterUrl || '',
-                    isFixed: true,
-                    isRequired: true
-                },
-                {
-                    id: 'cv',
-                    name: 'Detailed CV',
-                    file: null,
-                    url: uploadedDocsArray.find((d: any) => d.id === 'cv')?.url || legacyDocs.cvUrl || '',
-                    isFixed: true,
-                    isRequired: true
-                }
+            const currentDocs: DynamicDocument[] = [
+                { id: 'id', name: 'Certified ID / Passport Copy', file: null, url: uploadedDocsArray.find((d: any) => d.id === 'id')?.url || legacyDocs.identificationUrl || '', isFixed: true, isRequired: true },
+                { id: 'assessor_cert', name: 'Assessor Certificate', file: null, url: uploadedDocsArray.find((d: any) => d.id === 'assessor_cert')?.url || legacyDocs.assessorCertUrl || '', isFixed: true, isRequired: true },
+                { id: 'reg_letter', name: 'SETA Reg. Letter', file: null, url: uploadedDocsArray.find((d: any) => d.id === 'reg_letter')?.url || legacyDocs.regLetterUrl || '', isFixed: true, isRequired: true },
+                { id: 'cv', name: 'Detailed CV', file: null, url: uploadedDocsArray.find((d: any) => d.id === 'cv')?.url || legacyDocs.cvUrl || '', isFixed: true, isRequired: true }
             ];
 
             // Conditionally add Work Permit if Foreign National
-            if (profile.nationalityType === 'Foreign National') {
-                initialDocs.splice(1, 0, {
-                    id: 'permit',
-                    name: 'Work Permit / Visa',
-                    file: null,
-                    url: uploadedDocsArray.find((d: any) => d.id === 'permit')?.url || legacyDocs.workPermitUrl || '',
-                    isFixed: true,
-                    isRequired: true
-                });
+            if (liveProfile.nationalityType === 'Foreign National') {
+                currentDocs.splice(1, 0, { id: 'permit', name: 'Work Permit / Visa', file: null, url: uploadedDocsArray.find((d: any) => d.id === 'permit')?.url || legacyDocs.workPermitUrl || '', isFixed: true, isRequired: true });
             }
 
             // Append any additional custom documents
             const coreDocIds = ['id', 'cv', 'assessor_cert', 'reg_letter', 'permit'];
             uploadedDocsArray.forEach((savedDoc: any) => {
                 if (!coreDocIds.includes(savedDoc.id)) {
-                    initialDocs.push({
-                        id: savedDoc.id,
-                        name: savedDoc.name,
-                        file: null,
-                        url: savedDoc.url,
-                        isFixed: false,
-                        isRequired: false
-                    });
+                    currentDocs.push({ id: savedDoc.id, name: savedDoc.name, file: null, url: savedDoc.url, isFixed: false, isRequired: false });
                 }
             });
 
-            setDocsList(initialDocs);
-            setInitialDocsList(JSON.parse(JSON.stringify(initialDocs))); // Deep copy for cancel check
+            setDocsList(currentDocs);
         }
-    }, [profile, isEditing, profilePhoto]);
+    }, [liveProfile, isEditing]);
+
+    // 3. STRICT COMPLIANCE: Trigger Signature Modal automatically
+    useEffect(() => {
+        if (liveProfile && Object.keys(liveProfile).length > 0 && !liveProfile.signatureUrl) {
+            setIsSigModalOpen(true);
+        }
+    }, [liveProfile.signatureUrl]);
+
 
     // ─── Handlers ──────────────────────────────────────────────────────────
     const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -184,23 +163,9 @@ export const AssessorProfileView: React.FC<ProfileProps> = ({ profile, user, onU
     };
 
     const handleSave = async () => {
-        const targetId = profile?.uid || profile?.id;
         if (!targetId) return;
-
-        const hasFormChanges = JSON.stringify(formData) !== JSON.stringify(initialData);
-        const hasPhotoChanges = profilePhoto !== null;
-
-        // Check for document changes
-        const hasDocChanges = docsList.some(d => d.file !== null) ||
-            docsList.length !== initialDocsList.length ||
-            JSON.stringify(docsList.map(d => d.name)) !== JSON.stringify(initialDocsList.map(d => d.name));
-
-        if (!hasFormChanges && !hasPhotoChanges && !hasDocChanges) {
-            setIsEditing(false);
-            return;
-        }
-
         setSaving(true);
+
         try {
             let finalPhotoUrl = formData.profilePhotoUrl;
 
@@ -211,7 +176,7 @@ export const AssessorProfileView: React.FC<ProfileProps> = ({ profile, user, onU
 
             // PROCESS ALL DYNAMIC DOCUMENTS
             const finalUploadedDocs = [];
-            const legacyDocsObject: any = { ...(profile.complianceDocs || {}) }; // Keep backward compatibility
+            const legacyDocsObject: any = { ...(liveProfile.complianceDocs || {}) }; // Keep backward compatibility
 
             for (const docItem of docsList) {
                 let finalUrl = docItem.url;
@@ -247,20 +212,19 @@ export const AssessorProfileView: React.FC<ProfileProps> = ({ profile, user, onU
                 customPostalCode: postalCodeFinal,
                 profilePhotoUrl: finalPhotoUrl,
                 uploadedDocuments: finalUploadedDocs, // 👈 New robust array format
-                complianceDocs: legacyDocsObject      // 👈 Legacy fallback
+                complianceDocs: legacyDocsObject,     // 👈 Legacy fallback
+                updatedAt: new Date().toISOString()
             };
 
             await onUpdate(targetId, updatedData);
 
+            // Cleanup edit state. The snapshot listener will instantly update liveProfile and the UI.
             setIsEditing(false);
             setProfilePhoto(null);
 
-            // Sync initial states
-            setInitialData(updatedData);
-            setInitialDocsList(JSON.parse(JSON.stringify(docsList)));
-
         } catch (error) {
             console.error('Update failed', error);
+            alert("Failed to update profile.");
         } finally {
             setSaving(false);
         }
@@ -269,7 +233,10 @@ export const AssessorProfileView: React.FC<ProfileProps> = ({ profile, user, onU
     const update = (field: string, val: string | number | boolean) =>
         setFormData((prev: any) => ({ ...prev, [field]: val }));
 
-    const isVerified = profile?.profileCompleted === true;
+    const isVerified = liveProfile?.profileCompleted === true;
+
+    // We strictly determine if postal is mapped to residential for the UI
+    const isPostalSame = formData.sameAsResidential !== false;
 
     // DYNAMIC DOCUMENT VAULT RENDERER
     const renderDocumentVault = () => {
@@ -300,16 +267,18 @@ export const AssessorProfileView: React.FC<ProfileProps> = ({ profile, user, onU
         );
     };
 
+    // We use liveProfile for display unless we are actively editing
+    const displayData = isEditing ? formData : liveProfile;
+
     return (
         <div className="lpv-wrapper animate-fade-in">
 
-            {/* SIGNATURE MODAL */}
+            {/* STRICT SIGNATURE MODAL */}
             {isSigModalOpen && (
                 <SignatureSetupModal
-                    userUid={profile.uid || profile.id}
+                    userUid={targetId}
                     onComplete={() => {
-                        setIsSigModalOpen(false);
-                        window.location.reload(); // Refresh to sync the new signature from Firestore
+                        // The onSnapshot listener will automatically close this and update the UI!
                     }}
                 />
             )}
@@ -348,10 +317,8 @@ export const AssessorProfileView: React.FC<ProfileProps> = ({ profile, user, onU
                                     setIsEditing(!isEditing);
                                     if (isEditing) {
                                         // Cancel Edits
-                                        setFormData(initialData);
-                                        setDocsList(JSON.parse(JSON.stringify(initialDocsList)));
-                                        setPhotoPreview(profile?.profilePhotoUrl || null);
                                         setProfilePhoto(null);
+                                        setPhotoPreview(liveProfile?.profilePhotoUrl || null);
                                     }
                                 }}
                             >
@@ -377,7 +344,7 @@ export const AssessorProfileView: React.FC<ProfileProps> = ({ profile, user, onU
                                 )}
                             </div>
                             <div>
-                                <h4 style={{ margin: '0 0 0.25rem 0', color: '#0f172a', fontSize: '1.05rem' }}>{formData?.fullName || 'Practitioner'}</h4>
+                                <h4 style={{ margin: '0 0 0.25rem 0', color: '#0f172a', fontSize: '1.05rem' }}>{displayData?.fullName || 'Practitioner'}</h4>
                                 <p style={{ margin: 0, color: '#64748b', fontSize: '0.85rem' }}>
                                     {isEditing ? 'Click the camera icon to update your photo.' : 'Registered Assessor'}
                                 </p>
@@ -385,10 +352,10 @@ export const AssessorProfileView: React.FC<ProfileProps> = ({ profile, user, onU
                         </div>
 
                         <div className="lpv-grid-2">
-                            <EditField label="Full Legal Name" value={formData?.fullName} icon={<User size={13} />} isEditing={isEditing} onChange={val => update('fullName', val)} />
-                            <ROField label="National ID / Passport" value={profile?.idNumber || profile?.passportNumber} icon={<Fingerprint size={13} />} />
-                            <EditField label="Contact Number" value={formData?.phone} icon={<Phone size={13} />} isEditing={isEditing} onChange={val => update('phone', val)} />
-                            <ROField label="Email Address" value={profile?.email} icon={<Mail size={13} />} />
+                            <EditField label="Full Legal Name" value={displayData?.fullName} icon={<User size={13} />} isEditing={isEditing} onChange={val => update('fullName', val)} />
+                            <ROField label="National ID / Passport" value={liveProfile?.idNumber || liveProfile?.passportNumber} icon={<Fingerprint size={13} />} />
+                            <EditField label="Contact Number" value={displayData?.phone} icon={<Phone size={13} />} isEditing={isEditing} onChange={val => update('phone', val)} />
+                            <ROField label="Email Address" value={liveProfile?.email} icon={<Mail size={13} />} />
                         </div>
                     </section>
 
@@ -406,17 +373,17 @@ export const AssessorProfileView: React.FC<ProfileProps> = ({ profile, user, onU
                                     onPlaceSelected={handlePlaceSelected}
                                     options={{ types: [], componentRestrictions: { country: "za" } }}
                                     className="lpv-input"
-                                    defaultValue={formData.streetAddress}
+                                    defaultValue={displayData.streetAddress}
                                     placeholder="Start typing your street name..."
                                 />
                             </div>
                         )}
 
                         <div className="lpv-grid-3">
-                            <EditField label="Street Address" value={formData.streetAddress} isEditing={isEditing} onChange={(v: string) => update('streetAddress', v)} />
-                            <ROField label="City" value={formData.city} />
-                            <EditField label="Province" value={formData.province} isEditing={isEditing} type="select" options={QCTO_PROVINCES} onChange={(v: string) => update('province', v)} />
-                            <ROField label="Postal Code" value={formData.postalCode} />
+                            <EditField label="Street Address" value={displayData.streetAddress} isEditing={isEditing} onChange={(v: string) => update('streetAddress', v)} />
+                            <ROField label="City" value={displayData.city} />
+                            <EditField label="Province" value={displayData.province} isEditing={isEditing} type="select" options={QCTO_PROVINCES} onChange={(v: string) => update('province', v)} />
+                            <ROField label="Postal Code" value={displayData.postalCode} />
                         </div>
 
                         {/* Postal Address Logic */}
@@ -425,29 +392,35 @@ export const AssessorProfileView: React.FC<ProfileProps> = ({ profile, user, onU
                                 <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontWeight: 500, color: '#0f172a', fontSize: '0.9rem' }}>
                                     <input
                                         type="checkbox"
-                                        checked={formData.sameAsResidential}
+                                        checked={displayData.sameAsResidential}
                                         onChange={e => update('sameAsResidential', e.target.checked)}
                                     />
                                     Postal Address is the same as Residential
                                 </label>
-                                {!formData.sameAsResidential && (
+                                {!displayData.sameAsResidential && (
                                     <div className="animate-fade-in lpv-grid-2" style={{ marginTop: '1rem' }}>
-                                        <EditField label="Alternate Postal Address" value={formData.postalAddress} isEditing={true} onChange={(v: string) => update('postalAddress', v)} />
-                                        <EditField label="Alternate Postal Code" value={formData.customPostalCode} isEditing={true} onChange={(v: string) => update('customPostalCode', v)} />
+                                        <EditField label="Alternate Postal Address" value={displayData.postalAddress} isEditing={true} onChange={(v: string) => update('postalAddress', v)} />
+                                        <EditField label="Alternate Postal Code" value={displayData.customPostalCode} isEditing={true} onChange={(v: string) => update('customPostalCode', v)} />
                                     </div>
                                 )}
                             </div>
                         ) : (
-                            !formData.sameAsResidential && (
-                                <>
-                                    <div className="lpv-divider" />
-                                    <h4 style={{ fontSize: '0.85rem', color: '#64748b', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Postal Address</h4>
-                                    <div className="lpv-grid-2">
-                                        <ROField label="Address" value={formData.postalAddress} />
-                                        <ROField label="Postal Code" value={formData.customPostalCode} />
-                                    </div>
-                                </>
-                            )
+                            <>
+                                {/* 🚀 READ-ONLY MODE NOW EXPLICITLY SHOWS POSTAL ADDRESS */}
+                                <div className="lpv-divider" style={{ marginTop: '1.5rem', marginBottom: '1rem', borderTop: '1px solid #e2e8f0' }} />
+                                <h4 style={{ fontSize: '0.8rem', color: '#64748b', textTransform: 'uppercase', marginBottom: '0.75rem', display: 'flex', alignItems: 'center' }}>
+                                    Postal Address
+                                    {isPostalSame && (
+                                        <span style={{ fontSize: '0.65rem', background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px', marginLeft: '8px', color: '#64748b', border: '1px solid #cbd5e1' }}>
+                                            Same as Residential
+                                        </span>
+                                    )}
+                                </h4>
+                                <div className="lpv-grid-2">
+                                    <ROField label="Address" value={isPostalSame ? displayData.streetAddress : displayData.postalAddress} />
+                                    <ROField label="Postal Code" value={isPostalSame ? displayData.postalCode : displayData.customPostalCode} />
+                                </div>
+                            </>
                         )}
                     </section>
 
@@ -458,15 +431,15 @@ export const AssessorProfileView: React.FC<ProfileProps> = ({ profile, user, onU
                                 <PenTool size={16} /> Digital Signature Certificate
                             </h3>
                             {isEditing && (
-                                <button className="lpv-sig-edit-btn" onClick={() => setIsSigModalOpen(true)}>
-                                    <Edit3 size={12} /> Update Signature
+                                <button className="lpv-sig-edit-btn" onClick={(e) => { e.preventDefault(); setIsSigModalOpen(true); }}>
+                                    <Edit3 size={12} /> Redraw Signature
                                 </button>
                             )}
                         </div>
                         <div style={{ padding: '1.5rem', background: '#f8fafc', border: '1px dashed #cbd5e1', borderRadius: '8px', textAlign: 'center' }}>
-                            {profile?.signatureUrl ? (
+                            {liveProfile?.signatureUrl ? (
                                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                                    <TintedSignature imageUrl={profile.signatureUrl} color={inkColor} />
+                                    <TintedSignature imageUrl={liveProfile.signatureUrl} color={inkColor} />
                                     <span style={{ fontSize: '0.7rem', color: inkColor, textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 'bold', marginTop: '10px' }}>
                                         Registered Assessor Signature (Red Ink)
                                     </span>
@@ -489,10 +462,10 @@ export const AssessorProfileView: React.FC<ProfileProps> = ({ profile, user, onU
                         </h3>
 
                         <div className="lpv-grid-2">
-                            <EditField label="Assessor Reg. Number" value={formData?.assessorRegNumber} icon={<ShieldCheck size={13} />} isEditing={isEditing} onChange={val => update('assessorRegNumber', val)} />
-                            <EditField label="Primary SETA" value={formData?.primarySeta} icon={<Award size={13} />} isEditing={isEditing} onChange={val => update('primarySeta', val)} />
-                            <EditField label="Specialization Scope" value={formData?.specializationScope} icon={<Briefcase size={13} />} isEditing={isEditing} onChange={val => update('specializationScope', val)} />
-                            <EditField label="Reg. Expiry Date" value={formData?.registrationExpiry} icon={<Calendar size={13} />} isEditing={isEditing} onChange={val => update('registrationExpiry', val)} />
+                            <EditField label="Assessor Reg. Number" value={displayData?.assessorRegNumber} icon={<ShieldCheck size={13} />} isEditing={isEditing} onChange={val => update('assessorRegNumber', val)} />
+                            <EditField label="Primary SETA" value={displayData?.primarySeta} icon={<Award size={13} />} isEditing={isEditing} onChange={val => update('primarySeta', val)} />
+                            <EditField label="Specialization Scope" value={displayData?.specializationScope} icon={<Briefcase size={13} />} isEditing={isEditing} onChange={val => update('specializationScope', val)} />
+                            <EditField label="Reg. Expiry Date" value={displayData?.registrationExpiry} icon={<Calendar size={13} />} isEditing={isEditing} type="text" onChange={val => update('registrationExpiry', val)} />
                         </div>
 
                         <div className="lpv-divider" />
@@ -503,13 +476,13 @@ export const AssessorProfileView: React.FC<ProfileProps> = ({ profile, user, onU
                                 <textarea
                                     className="lpv-input"
                                     rows={5}
-                                    value={formData?.bio || ''}
+                                    value={displayData?.bio || ''}
                                     onChange={e => update('bio', e.target.value)}
                                     style={{ resize: 'vertical' }}
                                 />
                             ) : (
                                 <div className="lpv-field__value" style={{ fontWeight: 'normal', lineHeight: '1.6', textAlign: 'justify', color: '#334155' }}>
-                                    {profile?.bio || 'No professional bio provided.'}
+                                    {liveProfile?.bio || 'No professional bio provided.'}
                                 </div>
                             )}
                         </div>
@@ -524,10 +497,10 @@ export const AssessorProfileView: React.FC<ProfileProps> = ({ profile, user, onU
                             <GraduationCap size={13} /> Highest Qualification
                         </div>
                         <p className="lpv-qual-card__name">
-                            {profile?.highestQualification || 'Not Specified'}
+                            {liveProfile?.highestQualification || 'Not Specified'}
                         </p>
                         <span className="lpv-qual-card__saqa">
-                            Experience: {profile?.yearsExperience || 0} Years
+                            Experience: {liveProfile?.yearsExperience || 0} Years
                         </span>
                     </div>
 

@@ -310,7 +310,7 @@
 }
 
 .mlab-btn--primary {
-  background: var(--mlab-blue);
+  background: var(--mlab-green);
   color: var(--mlab-white);
   border-color: var(--mlab-blue);
 }

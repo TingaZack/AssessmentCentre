@@ -285,7 +285,8 @@ function App() {
               <Route path="profile" element={<FacilitatorDashboard />} />
               <Route path="attendance" element={<FacilitatorDashboard />} />
               <Route path="attendance/:cohortId" element={<AttendancePage />} />
-              <Route path="assessments" element={<AssessmentManager />} />
+              {/* <Route path="assessments" element={<AssessmentManager />} /> */}
+              <Route path="assessments" element={<FacilitatorDashboard />} />
               <Route path="assessments/builder/:assessmentId?" element={<AssessmentBuilder />} />
             </Route>
 

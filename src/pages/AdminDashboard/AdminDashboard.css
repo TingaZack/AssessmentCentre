@@ -140,11 +140,11 @@
    CONTENT PANE
 ══════════════════════════════════════════════════════════════════════════════ */
 .admin-content {
-  background: var(--mlab-white);
+  /* background: var(--mlab-white);
   border: 1px solid var(--mlab-border);
   border-top: 3px solid var(--mlab-green);
   padding: 1.75rem 2rem;
-  flex: 1;
+  flex: 1; */
 }
 
 .edit-grid {

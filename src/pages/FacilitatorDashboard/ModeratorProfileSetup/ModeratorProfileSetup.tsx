@@ -5,7 +5,8 @@ import { useNavigate } from 'react-router-dom';
 import Autocomplete from "react-google-autocomplete";
 import {
     User,
-    Save, ChevronRight, ShieldCheck, Camera, Calendar, Fingerprint, Globe, Scale, MapPin, Phone, Lock, Plus
+    Save, ChevronRight, ShieldCheck, Camera, Calendar, Fingerprint, Globe, Scale, MapPin, Phone, Lock, Plus,
+    Loader2
 } from 'lucide-react';
 import { doc, updateDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -57,9 +58,11 @@ export const ModeratorProfileSetup: React.FC = () => {
 
     const [step, setStep] = useState(1);
     const [loading, setLoading] = useState(false);
+
+    // Initialize empty, we will pre-fill via useEffect
     const [formData, setFormData] = useState<Partial<ModeratorData>>({
-        fullName: user?.fullName || '',
-        phone: (user as any)?.phone || '',
+        fullName: '',
+        phone: '',
         nationalityType: 'South African',
         popiaConsent: false,
         yearsExperience: 0,
@@ -79,6 +82,98 @@ export const ModeratorProfileSetup: React.FC = () => {
     const [photoPreview, setPhotoPreview] = useState<string | null>(null);
 
     // ─── EFFECTS ─────────────────────────────────────────────────────────
+
+    // Pre-fill data when the user object arrives from the database
+    useEffect(() => {
+        if (user) {
+            const u = user as any;
+
+            // 1. Pre-fill textual form data
+            setFormData({
+                fullName: u.fullName || '',
+                phone: u.phone || '',
+                nationalityType: u.nationalityType || 'South African',
+                idNumber: u.idNumber || '',
+                passportNumber: u.passportNumber || '',
+                dateOfBirth: u.dateOfBirth || '',
+                streetAddress: u.streetAddress || '',
+                city: u.city || '',
+                province: u.province || '',
+                postalCode: u.postalCode || '',
+                sameAsResidential: u.sameAsResidential !== undefined ? u.sameAsResidential : true,
+                postalAddress: u.postalAddress || '',
+                customPostalCode: u.customPostalCode || '',
+                moderatorRegNumber: u.moderatorRegNumber || '',
+                assessorRegNumber: u.assessorRegNumber || '',
+                primarySeta: u.primarySeta || 'MICT SETA',
+                specializationScope: u.specializationScope || '',
+                registrationExpiry: u.registrationExpiry || '',
+                yearsExperience: u.yearsExperience || 0,
+                highestQualification: u.highestQualification || '',
+                bio: u.bio || '',
+                popiaConsent: u.popiaConsent || !!u.popiActDate || false,
+            });
+
+            // 2. Pre-fill profile photo preview
+            if (u.profilePhotoUrl) {
+                setPhotoPreview(u.profilePhotoUrl);
+            }
+
+            // 3. Pre-fill dynamic documents
+            if (u.uploadedDocuments && Array.isArray(u.uploadedDocuments)) {
+                setDocsList(prev => {
+                    const updatedList = [...prev];
+                    u.uploadedDocuments.forEach((docItem: any) => {
+                        const existingIdx = updatedList.findIndex(d => d.id === docItem.id);
+                        if (existingIdx >= 0) {
+                            updatedList[existingIdx].url = docItem.url;
+                            if (docItem.name) updatedList[existingIdx].name = docItem.name;
+                        } else {
+                            updatedList.push({
+                                id: docItem.id,
+                                name: docItem.name || 'Additional Document',
+                                file: null,
+                                url: docItem.url,
+                                isFixed: false,
+                                isRequired: false
+                            });
+                        }
+                    });
+                    return updatedList;
+                });
+            } else if (u.complianceDocs) {
+                // Fallback to fetch from legacy document format
+                setDocsList(prev => {
+                    const updatedList = [...prev];
+                    if (u.complianceDocs.identificationUrl) {
+                        const idx = updatedList.findIndex(d => d.id === 'id');
+                        if (idx >= 0) updatedList[idx].url = u.complianceDocs.identificationUrl;
+                    }
+                    if (u.complianceDocs.moderatorCertUrl) {
+                        const idx = updatedList.findIndex(d => d.id === 'moderator_cert');
+                        if (idx >= 0) updatedList[idx].url = u.complianceDocs.moderatorCertUrl;
+                    }
+                    if (u.complianceDocs.regLetterUrl) {
+                        const idx = updatedList.findIndex(d => d.id === 'reg_letter');
+                        if (idx >= 0) updatedList[idx].url = u.complianceDocs.regLetterUrl;
+                    }
+                    if (u.complianceDocs.cvUrl) {
+                        const idx = updatedList.findIndex(d => d.id === 'cv');
+                        if (idx >= 0) updatedList[idx].url = u.complianceDocs.cvUrl;
+                    }
+                    if (u.complianceDocs.workPermitUrl) {
+                        const idx = updatedList.findIndex(d => d.id === 'permit');
+                        if (idx >= 0) {
+                            updatedList[idx].url = u.complianceDocs.workPermitUrl;
+                        } else {
+                            updatedList.splice(1, 0, { id: 'permit', name: 'Work Permit / Visa', file: null, url: u.complianceDocs.workPermitUrl, isFixed: true, isRequired: true });
+                        }
+                    }
+                    return updatedList;
+                });
+            }
+        }
+    }, [user]);
 
     // Automatically require a Work Permit if they are a Foreign National
     useEffect(() => {
@@ -278,7 +373,7 @@ export const ModeratorProfileSetup: React.FC = () => {
                     <div className="lp-stepper">
                         {[1, 2, 3].map(s => (
                             <React.Fragment key={s}>
-                                <div className={`lp-step ${step >= s ? 'active' : ''}`} style={step >= s ? { background: 'var(--mlab-green)' } : {}}>{s}</div>
+                                <div className={`lp-step ${step >= s ? 'active' : ''}`} style={step >= s ? { background: 'var(--mlab-green)', borderColor: 'var(--mlab-green)' } : {}}>{s}</div>
                                 {s < 3 && <div className="lp-step-line" />}
                             </React.Fragment>
                         ))}
@@ -294,7 +389,7 @@ export const ModeratorProfileSetup: React.FC = () => {
                             <div className="setup-avatar-circle">
                                 {photoPreview ? <img src={photoPreview} alt="Preview" style={{ objectFit: 'cover', width: '100%', height: '100%' }} /> : <User size={40} color="#94a3b8" />}
                             </div>
-                            <label className="setup-camera-btn">
+                            <label className="setup-camera-btn" style={{ background: 'var(--mlab-green)' }}>
                                 <Camera size={16} />
                                 <input type="file" accept="image/*" onChange={handlePhotoSelect} style={{ display: 'none' }} />
                             </label>
@@ -368,6 +463,7 @@ export const ModeratorProfileSetup: React.FC = () => {
                 {step === 2 && (
                     <div className="lp-form-body animate-fade-in">
                         <h3 className="lp-section-title"><Scale size={16} /> QA Moderator Registration</h3>
+
                         <div className="lp-grid">
                             <FG label="Primary SETA Quality Partner">
                                 <select className="lp-input" value={formData.primarySeta || ''} onChange={e => setFormData({ ...formData, primarySeta: e.target.value })}>
@@ -400,7 +496,7 @@ export const ModeratorProfileSetup: React.FC = () => {
                             </FG>
                         </div>
 
-                        <div style={{ marginBottom: '2rem' }}>
+                        <div style={{ marginBottom: '2rem', marginTop: '1rem' }}>
                             <FG label="Moderation Scope & Bio">
                                 <textarea className="lp-input" rows={3} placeholder="Summarize your experience as a quality assurance moderator..." value={formData.bio || ''} onChange={e => setFormData({ ...formData, bio: e.target.value })} />
                             </FG>
@@ -540,7 +636,7 @@ export const ModeratorProfileSetup: React.FC = () => {
                                     display: 'flex', alignItems: 'center', gap: '0.5rem'
                                 }}
                             >
-                                {loading ? 'Saving Registration...' : 'Complete Registration'}
+                                {loading ? <Loader2 className="spin" size={15} /> : 'Complete Registration'}
                                 {formData.popiaConsent ? <Save size={16} /> : <Lock size={16} />}
                             </button>
                         </div>

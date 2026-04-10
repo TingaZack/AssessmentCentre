@@ -360,7 +360,7 @@ export const CohortDetailsPage: React.FC = () => {
     };
 
     return (
-        <div className="admin-layout" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
+        <div className="admin-layout">
 
             {modalConfig.isOpen && (
                 <StatusModal type={modalConfig.type} title={modalConfig.title} message={modalConfig.message} onClose={() => setModalConfig(prev => ({ ...prev, isOpen: false }))} />
@@ -402,7 +402,7 @@ export const CohortDetailsPage: React.FC = () => {
                     }
                 />
 
-                <div className="admin-content" style={{ paddingBottom: '4rem' }}>
+                <div className="admin-content" style={{ paddingBottom: '4rem', padding: 16 }}>
 
                     <div className="mlab-summary-card">
                         <div className="mlab-summary-item">
@@ -423,7 +423,7 @@ export const CohortDetailsPage: React.FC = () => {
                         </div>
                     </div>
 
-                    <div className="mlab-section">
+                    <div className="mlab-section" style={{ padding: 16 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                             <h3 className="mlab-section__title" style={{ margin: 0 }}>
                                 <Users size={16} /> Enrolled Learners ({enrolledLearners.length})

@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Autocomplete from "react-google-autocomplete";
 import {
-    User, Save, ChevronRight, ShieldCheck, Loader2, Camera, Calendar, Fingerprint, Globe, Briefcase, Phone, MapPin, Plus
+    User, Save, ChevronRight, ShieldCheck, Loader2, Camera, Calendar, Fingerprint, Globe, Briefcase, Phone, MapPin, Plus, Lock
 } from 'lucide-react';
 import { doc, updateDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -14,9 +14,7 @@ import { db, storage } from '../../../lib/firebase';
 import mLabLogo from '../../../assets/logo/mlab_logo.png';
 import '../../FacilitatorDashboard/AssessorProfileSetup/AssessorProfileSetup.css';
 
-
 import { DynamicDocUpload, type DynamicDocument } from '../../LearnerPortal/LearnerProfileSetup/LearnerProfileSetup';
-
 
 interface AdminData {
     fullName: string;
@@ -44,10 +42,12 @@ export const AdminProfileSetup: React.FC = () => {
 
     const [step, setStep] = useState(1);
     const [loading, setLoading] = useState(false);
+
+    // Initialize empty, we will pre-fill via useEffect
     const [formData, setFormData] = useState<Partial<AdminData>>({
-        fullName: user?.fullName || '',
-        email: user?.email || '',
-        phone: (user as any)?.phone || '',
+        fullName: '',
+        email: '',
+        phone: '',
         nationalityType: 'South African',
         popiaConsent: false,
     });
@@ -62,6 +62,81 @@ export const AdminProfileSetup: React.FC = () => {
     const [photoPreview, setPhotoPreview] = useState<string | null>(null);
 
     // ─── EFFECTS ─────────────────────────────────────────────────────────
+
+    // Pre-fill data when the user object arrives from the database
+    useEffect(() => {
+        if (user) {
+            const u = user as any;
+
+            // 1. Pre-fill textual form data
+            setFormData({
+                fullName: u.fullName || '',
+                email: u.email || '',
+                phone: u.phone || '',
+                nationalityType: u.nationalityType || 'South African',
+                idNumber: u.idNumber || '',
+                passportNumber: u.passportNumber || '',
+                dateOfBirth: u.dateOfBirth || '',
+                jobTitle: u.jobTitle || '',
+                streetAddress: u.streetAddress || '',
+                city: u.city || '',
+                province: u.province || '',
+                postalCode: u.postalCode || '',
+                popiaConsent: u.popiaConsent || !!u.popiActDate || false,
+            });
+
+            // 2. Pre-fill profile photo preview
+            if (u.profilePhotoUrl) {
+                setPhotoPreview(u.profilePhotoUrl);
+            }
+
+            // 3. Pre-fill dynamic documents
+            if (u.uploadedDocuments && Array.isArray(u.uploadedDocuments)) {
+                setDocsList(prev => {
+                    const updatedList = [...prev];
+                    u.uploadedDocuments.forEach((docItem: any) => {
+                        const existingIdx = updatedList.findIndex(d => d.id === docItem.id);
+                        if (existingIdx >= 0) {
+                            updatedList[existingIdx].url = docItem.url;
+                            if (docItem.name) updatedList[existingIdx].name = docItem.name;
+                        } else {
+                            updatedList.push({
+                                id: docItem.id,
+                                name: docItem.name || 'Additional Document',
+                                file: null,
+                                url: docItem.url,
+                                isFixed: false,
+                                isRequired: false
+                            });
+                        }
+                    });
+                    return updatedList;
+                });
+            } else if (u.complianceDocs) {
+                // Fallback to fetch from legacy document format
+                setDocsList(prev => {
+                    const updatedList = [...prev];
+                    if (u.complianceDocs.identificationUrl) {
+                        const idx = updatedList.findIndex(d => d.id === 'id');
+                        if (idx >= 0) updatedList[idx].url = u.complianceDocs.identificationUrl;
+                    }
+                    if (u.complianceDocs.appointmentLetterUrl) {
+                        const idx = updatedList.findIndex(d => d.id === 'appointment');
+                        if (idx >= 0) updatedList[idx].url = u.complianceDocs.appointmentLetterUrl;
+                    }
+                    if (u.complianceDocs.workPermitUrl) {
+                        const idx = updatedList.findIndex(d => d.id === 'permit');
+                        if (idx >= 0) {
+                            updatedList[idx].url = u.complianceDocs.workPermitUrl;
+                        } else {
+                            updatedList.splice(1, 0, { id: 'permit', name: 'Work Permit / Visa', file: null, url: u.complianceDocs.workPermitUrl, isFixed: true, isRequired: true });
+                        }
+                    }
+                    return updatedList;
+                });
+            }
+        }
+    }, [user]);
 
     // Automatically require a Work Permit if they are a Foreign National
     useEffect(() => {
@@ -428,24 +503,46 @@ export const AdminProfileSetup: React.FC = () => {
                             ))}
                         </div>
 
-                        <div className="lp-popia-box" style={{ color: 'grey', marginTop: '2rem' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                                <ShieldCheck size={20} color="var(--mlab-blue)" />
-                                <h4 style={{ margin: 0, color: '#0f172a' }}>Declarations & POPIA Consent</h4>
+                        {/* ENHANCED POPIA LEGAL CHECKPOINT */}
+                        <div style={{
+                            display: 'flex', gap: '1rem', alignItems: 'flex-start',
+                            background: formData.popiaConsent ? '#f0fdf4' : '#f8fafc',
+                            padding: '1.25rem', border: `1px solid ${formData.popiaConsent ? '#bbf7d0' : '#e2e8f0'}`,
+                            borderRadius: '8px', marginTop: '2rem', transition: 'all 0.3s ease'
+                        }}>
+                            <input
+                                type="checkbox"
+                                id="popia-consent"
+                                checked={formData.popiaConsent}
+                                onChange={(e) => setFormData({ ...formData, popiaConsent: e.target.checked })}
+                                style={{ marginTop: '0.25rem', width: '20px', height: '20px', cursor: 'pointer', flexShrink: 0 }}
+                            />
+                            <div>
+                                <label htmlFor="popia-consent" style={{ fontWeight: 600, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', cursor: 'pointer' }}>
+                                    <ShieldCheck size={18} color={formData.popiaConsent ? "#16a34a" : "#64748b"} />
+                                    POPIA Consent & Terms of Service
+                                </label>
+                                <p style={{ fontSize: '0.85rem', color: '#475569', margin: 0, lineHeight: 1.5 }}>
+                                    <strong>I formally consent to the processing of my data for QCTO compliance.</strong> By checking this box, I confirm that I have read and agree to the <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: '#0ea5e9', textDecoration: 'underline' }}>Terms & Conditions</a> and the <a href="/privacy-policy" target="_blank" rel="noopener noreferrer" style={{ color: '#0ea5e9', textDecoration: 'underline' }}>POPIA Privacy Policy</a>. Furthermore, I declare the above to be true and confirm that I am authorized by this institution to act as a Compiler and system Administrator.
+                                </p>
                             </div>
-                            <p style={{ margin: '0 0 1rem 0' }}>
-                                I formally consent to the processing of my data for QCTO compliance. Furthermore, I declare the above to be true and confirm that I am authorized by this institution to act as a Compiler and system Administrator.
-                            </p>
-                            <label className="lp-popia-checkbox" style={{ color: 'black' }}>
-                                <input type="checkbox" checked={formData.popiaConsent} onChange={e => setFormData({ ...formData, popiaConsent: e.target.checked })} />
-                                <span>I agree to the terms and authorize this profile.</span>
-                            </label>
                         </div>
 
-                        <div className="lp-actions">
+                        <div className="lp-actions" style={{ marginTop: '2rem' }}>
                             <button className="lp-btn-ghost" onClick={() => setStep(2)}>Back</button>
-                            <button className="lp-btn-primary" style={{ background: '#0f172a' }} onClick={handleSubmit} disabled={loading || !formData.popiaConsent || missingRequiredDocs.length > 0}>
-                                {loading ? <Loader2 className="spin" size={15} /> : 'Complete Setup'} <Save size={15} />
+                            <button
+                                className="lp-btn-primary"
+                                onClick={handleSubmit}
+                                disabled={loading || !formData.popiaConsent || missingRequiredDocs.length > 0}
+                                style={{
+                                    background: '#0f172a',
+                                    opacity: (!formData.popiaConsent || loading || missingRequiredDocs.length > 0) ? 0.6 : 1,
+                                    cursor: (!formData.popiaConsent || loading || missingRequiredDocs.length > 0) ? 'not-allowed' : 'pointer',
+                                    display: 'flex', alignItems: 'center', gap: '0.5rem'
+                                }}
+                            >
+                                {loading ? <Loader2 className="spin" size={15} /> : 'Complete Setup'}
+                                {formData.popiaConsent ? <Save size={16} /> : <Lock size={16} />}
                             </button>
                         </div>
                     </div>
