@@ -56,6 +56,7 @@ import { CohortDetailsPage } from './pages/CohortDetails/CohortDetailsPage';
 import { fetchStatssaCodes } from './services/qctoService';
 import { PrivacyPolicy } from './components/views/PrivacyPolicy/PrivacyPolicy';
 import Loader from './components/common/Loader/Loader';
+import ResetPassword from './pages/ResetPassword/ResetPassword';
 
 
 // --- TRAFFIC CONTROLLER ---
@@ -180,6 +181,7 @@ function App() {
           <Routes>
             {/* ================= PUBLIC ROUTES ================= */}
             <Route path="/login" element={user ? <Navigate to="/" replace /> : <Login />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/verify" element={<PublicVerification />} />
             <Route path="/sor/:id" element={<StatementOfResults />} />
 

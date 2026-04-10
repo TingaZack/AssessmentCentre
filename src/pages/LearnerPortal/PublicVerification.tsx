@@ -2,12 +2,14 @@
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Search, Loader, AlertCircle, ShieldCheck, FileSearch } from 'lucide-react';
+import {
+    Search, Loader, AlertCircle, ShieldCheck, FileSearch,
+    Hexagon, Mail, ArrowRight
+} from 'lucide-react';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import mLabLogo from '../../assets/logo/mlab_logo.png';
-
-import './LearnerProfileSetup/LearnerProfileSetup.css';
+import '../Login/Login.css';
 
 const PublicVerification: React.FC = () => {
     const [searchParams] = useSearchParams();
@@ -17,7 +19,6 @@ const PublicVerification: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [isSearching, setIsSearching] = useState(false);
 
-    // Auto-search if URL has ?id=...
     useEffect(() => {
         const urlId = searchParams.get('id');
         if (urlId) {
@@ -34,22 +35,16 @@ const PublicVerification: React.FC = () => {
         setError(null);
 
         try {
-            // 🔒 SECURE FIRESTORE QUERY: Only fetch the single requested document.
-            // We check if the input matches EITHER an ID Number OR a Blockchain Verification Code
             const learnersRef = collection(db, 'learners');
-
-            // First, try searching by SA ID Number
             let q = query(learnersRef, where('idNumber', '==', cleanId));
             let snapshot = await getDocs(q);
 
-            // If not found by ID, try searching by Blockchain Certificate Code
             if (snapshot.empty) {
                 q = query(learnersRef, where('verificationCode', '==', cleanId));
                 snapshot = await getDocs(q);
             }
 
             if (!snapshot.empty) {
-                // Match found! Navigate securely to the SOR page
                 navigate(`/sor/${snapshot.docs[0].id}`);
             } else {
                 setError("No verified credential found for this ID or Certificate Number.");
@@ -68,113 +63,103 @@ const PublicVerification: React.FC = () => {
     };
 
     return (
-        <div className="lp-container animate-fade-in" style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'linear-gradient(135deg, var(--mlab-blue), var(--mlab-green))',
-            zIndex: 9999
-        }}>
-            <div className="lp-card" style={{
-                height: 'auto',
-                padding: '3rem 2.5rem',
-                maxWidth: '450px',
-                textAlign: 'center',
-                margin: 'auto',
-                border: 'none',
-                boxShadow: '0 20px 60px rgba(0,0,0,0.3)'
-            }}>
+        <div className="auth-container" style={{ borderRadius: 0, position: 'absolute', right: 0, left: 0, top: 0, bottom: 0 }}>
+            {/* Animated Background Elements */}
+            <div className="auth-bg-hexagons">
+                {[...Array(6)].map((_, i) => (
+                    <Hexagon
+                        key={i}
+                        className={`auth-hex auth-hex--${i + 1}`}
+                        size={60 + i * 20}
+                        strokeWidth={1}
+                    />
+                ))}
+            </div>
+            <div className="auth-bg-glow auth-bg-glow--green" />
+            <div className="auth-bg-glow auth-bg-glow--blue" />
+
+            <div className="auth-card" style={{ maxWidth: '480px' }}>
                 {/* Brand Header */}
-                <div style={{ marginBottom: '2rem' }}>
-                    <div style={{ marginBottom: '1rem' }}>
-                        <img src={mLabLogo} height={70} alt="mLab Logo" />
+                <div className="auth-brand">
+                    <div className="auth-logo-wrapper">
+                        <img src={mLabLogo} alt="mLab Southern Africa" className="auth-logo" />
+                        {/* <div className="auth-logo-ring" /> */}
                     </div>
-                    <h2 style={{
-                        fontFamily: 'var(--font-heading)',
-                        fontSize: '1.4rem',
-                        fontWeight: 700,
-                        color: 'var(--mlab-blue)',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.05em',
-                        margin: 0,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '0.5rem'
-                    }}>
-                        <ShieldCheck size={24} color="var(--mlab-green)" />
+                    <h1 className="auth-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem' }}>
+                        <ShieldCheck size={28} color="#94c73d" />
                         Public Verification
-                    </h2>
-                    <p style={{
-                        fontFamily: 'var(--font-body)',
-                        fontSize: '0.9rem',
-                        color: 'var(--mlab-grey)',
-                        marginTop: '0.75rem',
-                        lineHeight: '1.5'
-                    }}>
-                        Enter a Learner ID Number or Blockchain Certificate ID to verify a credential.
+                    </h1>
+                    <p className="auth-subtitle">
+                        Enter a Learner ID Number or Blockchain Certificate ID to verify a credential
                     </p>
                 </div>
 
-                <form onSubmit={onSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-
-                    <div style={{ position: 'relative' }}>
-                        <FileSearch size={20} color="var(--mlab-grey-light)" style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)' }} />
-                        <input
-                            type="text"
-                            placeholder="e.g. 920814... or CERT-123..."
-                            value={idInput}
-                            onChange={(e) => setIdInput(e.target.value)}
-                            style={{ paddingLeft: '3rem' }}
-                            className={`lp-input ${error ? 'error' : ''}`}
-                            required
-                        />
+                <form onSubmit={onSubmit} className="auth-form">
+                    {/* Search Input */}
+                    <div className="auth-field">
+                        <label className="auth-label">Credential ID</label>
+                        <div className="auth-input-wrapper">
+                            <FileSearch className="auth-input-icon" size={18} />
+                            <input
+                                type="text"
+                                placeholder="e.g. 920814... or CERT-123..."
+                                value={idInput}
+                                onChange={(e) => setIdInput(e.target.value)}
+                                required
+                                className={`auth-input ${error ? 'auth-input--error' : ''}`}
+                            />
+                        </div>
                     </div>
 
+                    {/* Error Alert */}
                     {error && (
-                        <div style={{
-                            color: '#ef4444', fontSize: '0.85rem', display: 'flex',
-                            alignItems: 'center', gap: '0.5rem', background: '#fef2f2',
-                            padding: '0.75rem', borderRadius: '6px', textAlign: 'left',
-                            border: '1px solid #fecaca', fontFamily: 'var(--font-body)'
-                        }}>
-                            <AlertCircle size={18} style={{ flexShrink: 0 }} /> {error}
+                        <div className="auth-alert auth-alert--error">
+                            <AlertCircle size={18} />
+                            <span>{error}</span>
                         </div>
                     )}
 
+                    {/* Submit Button */}
                     <button
                         type="submit"
                         disabled={isSearching || !idInput.trim()}
-                        className="lp-btn-primary"
-                        style={{
-                            width: '100%',
-                            justifyContent: 'center',
-                            padding: '0.85rem',
-                            marginTop: '0.5rem'
-                        }}
+                        className={`auth-btn ${isSearching ? 'auth-btn--loading' : ''}`}
                     >
                         {isSearching ? (
-                            <><Loader className="spin" size={18} /> Querying Ledger...</>
+                            <>
+                                <Loader className="auth-spin" size={18} />
+                                <span>Querying Ledger...</span>
+                            </>
                         ) : (
-                            <><Search size={18} /> Verify Result</>
+                            <>
+                                <Search size={18} />
+                                <span>Verify Credential</span>
+                                <ArrowRight size={16} className="auth-btn-icon" />
+                            </>
                         )}
                     </button>
                 </form>
 
-                <div style={{
-                    marginTop: '2rem', paddingTop: '1.5rem', borderTop: '2px solid var(--mlab-light-blue)',
-                    fontSize: '0.85rem', color: 'var(--mlab-grey)', fontFamily: 'var(--font-body)'
-                }}>
-                    <p style={{ margin: '0 0 0.5rem 0' }}>Having trouble verifying a credential?</p>
-                    <a href="mailto:info@mlab.co.za" style={{ color: 'var(--mlab-blue)', fontWeight: 700, textDecoration: 'none' }}>
-                        Contact Support
-                    </a>
-
-                    <div style={{ marginTop: '1.5rem' }}>
-                        <a href="/login" style={{ color: 'var(--mlab-grey-light)', textDecoration: 'none', fontWeight: 600, fontSize: '0.8rem' }}>
+                {/* Footer Links */}
+                <div className="auth-footer" style={{ marginTop: '2rem' }}>
+                    <div className="auth-footer-item">
+                        <span>Need help verifying?</span>
+                        <a href="mailto:info@mlab.co.za" className="auth-link">
+                            Contact Support
+                        </a>
+                    </div>
+                    <div className="auth-divider" />
+                    <div className="auth-footer-item" style={{ justifyContent: 'center' }}>
+                        <a href="/login" className="auth-link auth-link--highlight">
                             Institution Login
                         </a>
                     </div>
                 </div>
+            </div>
+
+            {/* Copyright */}
+            <div className="auth-copyright">
+                © {new Date().getFullYear()} Mobile Applications Laboratory NPC. All rights reserved.
             </div>
         </div>
     );

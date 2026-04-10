@@ -181,6 +181,7 @@ export const AssessmentBuilder: React.FC = () => {
     const isDeployed = assessmentStatus !== "draft" && assessmentId !== undefined;
 
     useEffect(() => {
+        console.log('USERSAAA: ', user)
         if (cohorts.length === 0) fetchCohorts();
         if (learners.length === 0) fetchLearners();
         if (programmes.length === 0) fetchProgrammes();
@@ -708,11 +709,14 @@ export const AssessmentBuilder: React.FC = () => {
                                             </select>
                                             <ChevronDown size={12} className="ab-sel-arr" />
                                         </div>
-                                        <Tooltip content="Create Blueprint" placement="top">
-                                            <button className="ab-btn ab-btn-ghost ab-btn-sm" onClick={() => setShowProgrammeModal(true)}>
-                                                <Plus size={13} /> New
-                                            </button>
-                                        </Tooltip>
+                                        {user?.role === 'admin' && (
+                                            <Tooltip content="Create Blueprint" placement="top">
+                                                <button className="ab-btn ab-btn-ghost ab-btn-sm" onClick={() => setShowProgrammeModal(true)}>
+                                                    <Plus size={13} /> New
+                                                </button>
+                                            </Tooltip>
+                                        )}
+
                                     </div>
                                 </FG>
                                 {selectedProgrammeId && activeProgramme && (
@@ -858,7 +862,9 @@ export const AssessmentBuilder: React.FC = () => {
                                 <div className="ab-fg">
                                     <div className="ab-fg-header">
                                         <label className="ab-fg-label">Assign to Cohorts</label>
-                                        <button className="ab-text-btn" onClick={() => setShowCohortModal(true)}>+ New Class</button>
+                                        {user?.role === 'admin' && (
+                                            <button className="ab-text-btn" onClick={() => setShowCohortModal(true)}>+ New Class</button>
+                                        )}
                                     </div>
                                     <div className="ab-cohort-panel">
                                         {cohorts.map((c) => (

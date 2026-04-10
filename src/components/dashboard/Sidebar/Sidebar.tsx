@@ -38,6 +38,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, currentNav, setCurrentNa
                     { id: 'directory', label: 'Master Directory', icon: Users, path: '/admin' },
                     { id: 'learners', label: 'Course Enrollments', icon: GraduationCap, path: '/admin' },
                     { id: 'qualifications', label: 'Qualifications', icon: BookOpen, path: '/admin' },
+                    { id: 'assessments', label: 'Assessments', icon: ClipboardList, path: '/admin' },
                     { id: 'staff', label: 'Staff Management', icon: UserCheck, path: '/admin' },
                     { id: 'workplaces', label: 'Workplaces', icon: Building2, path: '/admin' },
                     { id: 'cohorts', label: 'Cohorts (Classes)', icon: Layers, path: '/admin' },
