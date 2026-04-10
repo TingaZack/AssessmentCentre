@@ -1,0 +1,395 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   FacilitatorDashboard.css
+   mLab Corporate Identity Brand Guide 2019
+   Consistent with CohortsView.css · CohortDetailsPage.css · PageHeader.css
+
+   Colours:
+     --mlab-blue:   #073f4e  (Midnight Blue)
+     --mlab-green:  #94c73d  (Green – primary accent)
+     --mlab-grey:   #6b6b6b  (Grey – secondary text)
+     --mlab-white:  #ffffff
+
+   Typefaces:
+     Oswald       – headings, labels, buttons, values (uppercase)
+     Trebuchet MS – body, metadata, descriptions
+───────────────────────────────────────────────────────────────────────────── */
+
+@import url("https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&display=swap");
+
+/* ── CSS Variables ─────────────────────────────────────────────────────────── */
+:root {
+  --mlab-blue: #073f4e;
+  --mlab-blue-dark: #052e3a;
+  --mlab-green: #94c73d;
+  --mlab-green-dark: #7aaa2e;
+  --mlab-grey: #6b6b6b;
+  --mlab-white: #ffffff;
+  --mlab-light-blue: #e8f0f3;
+  --mlab-light-green: #f0f7e1;
+  --mlab-amber: #d97706;
+  --mlab-red: #ef4444;
+  --mlab-border: #d1dde3;
+  --mlab-bg: #f4f7f9;
+
+  --font-heading: "Oswald", "Trebuchet MS", sans-serif;
+  --font-body:
+    "Trebuchet MS", "Lucida Grande", "Lucida Sans Unicode", Arial, sans-serif;
+
+  --radius-sm: 3px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --transition: 0.18s ease;
+}
+
+/* ── Fade-in animation ─────────────────────────────────────────────────────── */
+@keyframes fd-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-fade-in {
+  animation: fd-fade-in 0.25s ease both;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   PAGE SHELL
+   dashboard-content is the outer wrapper rendered inside main-wrapper
+══════════════════════════════════════════════════════════════════════════════ */
+.dashboard-content {
+  font-family: var(--font-body);
+  color: var(--mlab-blue);
+  padding: 0;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   STATS ROW
+══════════════════════════════════════════════════════════════════════════════ */
+.f-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1.25rem;
+  margin-bottom: 2rem;
+}
+
+.stat-card {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  background: var(--mlab-white);
+  border: 1px solid var(--mlab-border);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  transition:
+    box-shadow var(--transition),
+    transform var(--transition);
+}
+.stat-card:hover {
+  box-shadow: 0 4px 16px rgba(7, 63, 78, 0.08);
+  transform: translateY(-1px);
+}
+
+/* Icon box inside stat card */
+.f-stat-icon {
+  width: 54px;
+  height: 54px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  /* colour variants set via sibling classes or inline — defaults below */
+  background: var(--mlab-light-blue);
+  color: var(--mlab-blue);
+}
+/* Named colour modifiers (used in TSX as className="f-stat-icon blue") */
+.f-stat-icon.blue {
+  background: #e0f2fe;
+  color: #0284c7;
+}
+.f-stat-icon.green {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+.stat-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.stat-info label {
+  font-family: var(--font-heading);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--mlab-grey);
+  cursor: default;
+}
+.stat-info .value {
+  font-family: var(--font-heading);
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: var(--mlab-blue);
+  line-height: 1.1;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   SECTION WRAPPER & TITLE
+══════════════════════════════════════════════════════════════════════════════ */
+.list-view {
+  margin-bottom: 2rem;
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--font-heading);
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--mlab-blue);
+  margin: 0 0 1.25rem;
+  padding-bottom: 0.85rem;
+  border-bottom: 3px solid var(--mlab-blue);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   COHORT CARD GRID  (mirrors CohortsView pattern)
+══════════════════════════════════════════════════════════════════════════════ */
+.ld-cohort-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1.25rem;
+}
+
+/* ── Card ──────────────────────────────────────────────────────────────────── */
+.ld-cohort-card {
+  background: var(--mlab-white);
+  border: 1px solid var(--mlab-border);
+  border-top: 4px solid var(--mlab-blue);
+  /* border-radius: var(--radius-md); */
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  transition:
+    box-shadow var(--transition),
+    transform var(--transition);
+}
+.ld-cohort-card:hover {
+  box-shadow: 0 6px 20px rgba(7, 63, 78, 0.1);
+  transform: translateY(-2px);
+}
+
+/* Card header: name + status badge */
+.ld-cohort-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.ld-cohort-card__name {
+  font-family: var(--font-heading);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--mlab-blue);
+  margin: 0;
+  flex: 1;
+  line-height: 1.3;
+}
+
+/* "Facilitating" active badge */
+.ld-badge-active {
+  display: inline-block;
+  padding: 3px 10px;
+  font-family: var(--font-heading);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  background: var(--mlab-green);
+  color: var(--mlab-white);
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Date range row */
+.ld-cohort-card__dates {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: var(--mlab-grey);
+  margin-bottom: 0.85rem;
+  padding: 0.35rem 0.65rem;
+  background: var(--mlab-light-blue);
+  border-left: 3px solid var(--mlab-green);
+}
+
+/* Roles / stats list */
+.ld-cohort-card__roles {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  flex: 1;
+  margin-bottom: 0.25rem;
+}
+
+.ld-role-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+}
+
+.ld-role-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.ld-role-dot--blue {
+  background: var(--mlab-blue);
+}
+
+.ld-role-label {
+  color: var(--mlab-grey);
+  flex-shrink: 0;
+}
+.ld-role-name {
+  font-weight: 700;
+  color: var(--mlab-blue);
+}
+
+/* Card footer: action buttons */
+.ld-cohort-card__footer {
+  margin-top: 1rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--mlab-border);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Attendance Register button — secondary */
+.ld-attendance-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-heading);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--mlab-blue);
+  background: transparent;
+  border: 2px solid var(--mlab-blue);
+  border-radius: var(--radius-sm);
+  padding: 0.42rem 0.85rem;
+  cursor: pointer;
+  transition: all var(--transition);
+  outline: none;
+  white-space: nowrap;
+}
+.ld-attendance-btn:hover {
+  background: var(--mlab-light-blue);
+}
+
+/* View Class button — primary */
+.ld-portfolio-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-heading);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--mlab-white);
+  background: var(--mlab-blue);
+  border: 2px solid var(--mlab-blue);
+  border-radius: var(--radius-sm);
+  padding: 0.42rem 0.85rem;
+  cursor: pointer;
+  transition: all var(--transition);
+  outline: none;
+  white-space: nowrap;
+}
+.ld-portfolio-btn:hover {
+  background: var(--mlab-blue-dark);
+  border-color: var(--mlab-blue-dark);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   EMPTY STATE
+══════════════════════════════════════════════════════════════════════════════ */
+.f-empty-state {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 4rem 2rem;
+  border: 1px dashed var(--mlab-border);
+  border-radius: var(--radius-lg);
+  background: #f8fafc;
+  text-align: center;
+  color: var(--mlab-grey);
+}
+.f-empty-state p:first-of-type {
+  font-family: var(--font-heading);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--mlab-blue);
+  margin: 0.5rem 0 0;
+}
+.f-empty-state p:last-of-type {
+  font-size: 0.85rem;
+  color: var(--mlab-grey);
+  margin: 0.25rem 0 0;
+  line-height: 1.5;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   RESPONSIVE
+══════════════════════════════════════════════════════════════════════════════ */
+@media (max-width: 900px) {
+  .f-stats-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .ld-cohort-grid {
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .f-stats-grid {
+    grid-template-columns: 1fr;
+  }
+  .ld-cohort-grid {
+    grid-template-columns: 1fr;
+  }
+  .section-title {
+    font-size: 0.85rem;
+  }
+  .stat-info .value {
+    font-size: 1.5rem;
+  }
+}

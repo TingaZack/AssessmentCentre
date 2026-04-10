@@ -1,111 +1,304 @@
-// src/pages/Login/Login.tsx
-
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '../../lib/firebase';
+import { doc, getDoc } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
+import { auth, db } from '../../lib/firebase';
 import { useNavigate } from 'react-router-dom';
-import { Lock, AlertCircle, Loader } from 'lucide-react';
-import './Login.css'; // We'll reuse the portal styles or create simple ones
+import {
+    Lock, AlertCircle, Loader2, KeyRound, CheckCircle2,
+    ArrowLeft, Mail, Shield, Eye, EyeOff, ArrowRight,
+    Hexagon, Server, ShieldCheck, Fingerprint
+} from 'lucide-react';
+import mLabLogo from '../../assets/logo/mlab_logo.png';
+import './Login.css';
 
 const Login: React.FC = () => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
+    const [successMessage, setSuccessMessage] = useState('');
     const [loading, setLoading] = useState(false);
+    const [isResetFlow, setIsResetFlow] = useState(false);
+    const [showPassword, setShowPassword] = useState(false);
+    const [isSecureContext, setIsSecureContext] = useState(true);
+    const [showSecurityTooltip, setShowSecurityTooltip] = useState(false);
+
     const navigate = useNavigate();
+
+    useEffect(() => {
+        if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
+            setIsSecureContext(false);
+        }
+    }, []);
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
         setError('');
+        setSuccessMessage('');
 
         try {
-            await signInWithEmailAndPassword(auth, email, password);
-            navigate('/'); // Success! Go to Dashboard
+            const userCredential = await signInWithEmailAndPassword(auth, email, password);
+            const uid = userCredential.user.uid;
+            const docRef = doc(db, 'users', uid);
+            const docSnap = await getDoc(docRef);
+
+            if (docSnap.exists()) {
+                const userData = docSnap.data();
+                const role = userData.role || 'learner';
+
+                const routes: Record<string, string> = {
+                    admin: '/admin',
+                    learner: '/portal',
+                    facilitator: '/facilitator',
+                    assessor: '/marking',
+                    moderator: '/moderation',
+                    mentor: '/mentor'
+                };
+
+                navigate(routes[role] || '/portal');
+            } else {
+                setError("No user profile found. Please contact support.");
+            }
         } catch (err: any) {
-            console.error(err);
-            setError("Invalid email or password.");
+            if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
+                setError("Invalid email or password.");
+            } else if (err.code === 'auth/too-many-requests') {
+                setError("Account temporarily locked. Please try again later.");
+            } else {
+                setError("Authentication failed. Please try again.");
+            }
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleResetPassword = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!email) {
+            setError("Please enter your email address.");
+            return;
+        }
+
+        setLoading(true);
+        setError('');
+        setSuccessMessage('');
+
+        try {
+            const functions = getFunctions();
+            const sendReset = httpsCallable(functions, 'sendCustomPasswordReset');
+            await sendReset({ email });
+            setSuccessMessage("Secure mLab reset link sent! Check your inbox.");
+        } catch (err: any) {
+            console.error("Reset error:", err);
+            if (err.message?.includes('not-found') || err.code === 'not-found') {
+                setError("No account found with this email.");
+            } else {
+                setError("Failed to send custom reset link. Please try again.");
+            }
         } finally {
             setLoading(false);
         }
     };
 
     return (
-        <div style={{ background: 'red', position: 'absolute', left: 0, top: 0, right: 0 }}>
+        <div className="auth-container" style={{ borderRadius: 0, position: 'absolute', right: 0, left: 0, top: 0, bottom: 0 }}>
+            {/* Animated Background Elements */}
+            <div className="auth-bg-hexagons">
+                {[...Array(6)].map((_, i) => (
+                    <Hexagon
+                        key={i}
+                        className={`auth-hex auth-hex--${i + 1}`}
+                        size={60 + i * 20}
+                        strokeWidth={1}
+                    />
+                ))}
+            </div>
+            <div className="auth-bg-glow auth-bg-glow--green" />
+            <div className="auth-bg-glow auth-bg-glow--blue" />
 
-            <div style={{
-                minHeight: '100vh',
-                display: 'flex',
-                // width: "150vh",
-                justifyContent: 'center',
-                alignItems: 'center',
-                position: 'absolute',
-                left: 0, right: 0,
-                top: 0, bottom: 0,
-                background: 'linear-gradient(135deg, #073f4e, #94c73d)'
-            }}>
-                <div style={{
-                    background: 'white',
-                    padding: '2.5rem',
-                    borderRadius: '12px',
-                    boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
-                    width: '100%',
-                    maxWidth: '400px',
-                    textAlign: 'center'
-                }}>
-                    <div style={{ marginBottom: '1.5rem', color: '#073f4e' }}>
-                        <div className="logo-text" style={{ fontSize: '2rem', fontWeight: 'bold', marginBottom: '1rem' }}>
-                            <span style={{ color: '#94c73d' }}>m</span>lab
+            {/* Security Badge */}
+            <div
+                className={`auth-security-badge ${!isSecureContext ? 'auth-security-badge--warning' : ''}`}
+                onMouseEnter={() => setShowSecurityTooltip(true)}
+                onMouseLeave={() => setShowSecurityTooltip(false)}
+                onClick={() => setShowSecurityTooltip(!showSecurityTooltip)}
+            >
+                <Shield size={12} />
+                <span>{isSecureContext ? 'Secure Connection' : 'Unsecured Network'}</span>
+
+                {showSecurityTooltip && (
+                    <div className="auth-security-tooltip">
+                        <div className={`auth-security-tooltip-header ${!isSecureContext ? 'warning' : ''}`}>
+                            {isSecureContext ? <ShieldCheck size={16} /> : <AlertCircle size={16} />}
+                            {isSecureContext ? 'Connection Encrypted' : 'Warning: Not Private'}
                         </div>
-                        <h2 style={{ fontSize: '1.5rem', fontWeight: 600 }}>Admin Login</h2>
+                        <div className="auth-security-tooltip-body">
+                            <div className="auth-security-item">
+                                <Lock size={14} />
+                                <span><strong>TLS 1.2+ SSL</strong><br />Data in transit is fully encrypted.</span>
+                            </div>
+                            <div className="auth-security-item">
+                                <Server size={14} />
+                                <span><strong>POPIA Compliant</strong><br />Stored via GCP Secure Cloud.</span>
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            <div className={`auth-card ${successMessage ? 'auth-card--success' : ''}`}>
+                {/* Brand Header */}
+                <div className="auth-brand">
+                    <div className="auth-logo-wrapper">
+                        <img src={mLabLogo} alt="mLab Southern Africa" className="auth-logo" />
+                        {/* <div className="auth-logo-ring" /> */}
+                    </div>
+                    <h1 className="auth-title">
+                        {isResetFlow ? 'Reset Password' : 'Welcome Back'}
+                    </h1>
+                    <p className="auth-subtitle">
+                        {isResetFlow
+                            ? 'Enter your email to receive a secure reset link'
+                            : 'Sign in to access your learning dashboard'}
+                    </p>
+                </div>
+
+                <form
+                    onSubmit={isResetFlow ? handleResetPassword : handleLogin}
+                    className="auth-form"
+                >
+                    {/* Email Field */}
+                    <div className="auth-field">
+                        <label className="auth-label">Email Address</label>
+                        <div className="auth-input-wrapper">
+                            <Mail className="auth-input-icon" size={18} />
+                            <input
+                                type="email"
+                                placeholder="name@mlab.co.za"
+                                value={email}
+                                onChange={(e) => setEmail(e.target.value)}
+                                required
+                                className="auth-input"
+                            />
+                        </div>
                     </div>
 
-                    <form onSubmit={handleLogin} style={{ display: 'flex', color: 'black', flexDirection: 'column', gap: '1rem' }}>
-                        <input
-                            type="email"
-                            placeholder="Email Address"
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            required
-                            style={{ padding: '0.8rem', borderRadius: '6px', border: '1px solid #ddd', fontSize: '1rem' }}
-                        />
-                        <input
-                            type="password"
-                            placeholder="Password"
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            required
-                            style={{ padding: '0.8rem', borderRadius: '6px', border: '1px solid #ddd', fontSize: '1rem' }}
-                        />
-
-                        {error && (
-                            <div style={{ color: '#ef4444', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#fef2f2', padding: '0.5rem', borderRadius: '4px' }}>
-                                <AlertCircle size={16} /> {error}
+                    {/* Password Field */}
+                    {!isResetFlow && (
+                        <div className="auth-field">
+                            <div className="auth-label-row">
+                                <label className="auth-label">Password</label>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setIsResetFlow(true);
+                                        setError('');
+                                        setSuccessMessage('');
+                                    }}
+                                    className="auth-link-sm"
+                                >
+                                    Forgot password?
+                                </button>
                             </div>
-                        )}
+                            <div className="auth-input-wrapper">
+                                <Lock className="auth-input-icon" size={18} />
+                                <input
+                                    type={showPassword ? "text" : "password"}
+                                    placeholder="Enter your password"
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    required
+                                    className="auth-input"
+                                />
+                                <button
+                                    type="button"
+                                    className="auth-toggle-btn"
+                                    onClick={() => setShowPassword(!showPassword)}
+                                    tabIndex={-1}
+                                >
+                                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                </button>
+                            </div>
+                        </div>
+                    )}
 
+                    {/* Alert Messages */}
+                    {error && (
+                        <div className="auth-alert auth-alert--error">
+                            <AlertCircle size={18} />
+                            <span>{error}</span>
+                        </div>
+                    )}
+
+                    {successMessage && (
+                        <div className="auth-alert auth-alert--success">
+                            <CheckCircle2 size={18} />
+                            <span>{successMessage}</span>
+                        </div>
+                    )}
+
+                    {/* Submit Button */}
+                    <button
+                        type="submit"
+                        disabled={loading}
+                        className={`auth-btn ${loading ? 'auth-btn--loading' : ''}`}
+                    >
+                        {loading ? (
+                            <Loader2 className="auth-spin" size={20} />
+                        ) : isResetFlow ? (
+                            <>
+                                <KeyRound size={18} />
+                                <span>Send Reset Link</span>
+                            </>
+                        ) : (
+                            <>
+                                <span>Sign In Securely</span>
+                                <ArrowRight size={16} className="auth-btn-icon" />
+                            </>
+                        )}
+                    </button>
+
+                    {/* Back to Login Link */}
+                    {isResetFlow && (
                         <button
-                            type="submit"
-                            disabled={loading}
-                            style={{
-                                background: '#073f4e',
-                                color: 'white',
-                                padding: '0.8rem',
-                                borderRadius: '6px',
-                                border: 'none',
-                                fontSize: '1rem',
-                                fontWeight: 600,
-                                cursor: loading ? 'not-allowed' : 'pointer',
-                                display: 'flex',
-                                justifyContent: 'center',
-                                alignItems: 'center',
-                                gap: '0.5rem'
+                            type="button"
+                            onClick={() => {
+                                setIsResetFlow(false);
+                                setError('');
+                                setSuccessMessage('');
                             }}
+                            className="auth-btn auth-btn--secondary"
                         >
-                            {loading ? <Loader className="spin" size={18} /> : <><Lock size={18} /> Login</>}
+                            <ArrowLeft size={16} />
+                            <span>Back to Sign In</span>
                         </button>
-                    </form>
-                </div>
+                    )}
+                </form>
+
+                {/* Footer Links */}
+                {!isResetFlow && (
+                    <div className="auth-footer">
+                        <div className="auth-footer-item">
+                            <span>Need help?</span>
+                            <a href="mailto:support@mlab.co.za" className="auth-link">
+                                Contact Support
+                            </a>
+                        </div>
+                        <div className="auth-divider" />
+                        <div className="auth-footer-item">
+                            <span>Verify credentials?</span>
+                            <a href="/verify" className="auth-link auth-link--highlight">
+                                Check Results
+                            </a>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* Copyright */}
+            <div className="auth-copyright">
+                © {new Date().getFullYear()} Mobile Applications Laboratory NPC. All rights reserved.
             </div>
         </div>
     );

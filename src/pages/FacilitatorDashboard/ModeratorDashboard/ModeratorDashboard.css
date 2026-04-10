@@ -1,0 +1,511 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   ModeratorDashboard.css  —  mLab Corporate Identity v2.1
+   Modified for Moderator (Green Theme)
+───────────────────────────────────────────────────────────────────────────── */
+
+@import url("https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&display=swap");
+
+:root {
+  --mlab-blue: #073f4e;
+  --mlab-blue-dark: #052e3a;
+  --mlab-green: #94c73d;
+  --mlab-green-dark: #7aaa2e;
+  --mlab-grey: #6b6b6b;
+  --mlab-white: #ffffff;
+  --mlab-light-blue: #e8f0f3;
+  --mlab-light-green: #f0f7e1;
+  --mlab-red: #ef4444;
+  --mlab-red-light: #fef2f2;
+  --mlab-amber: #d97706;
+  --font-heading: "Oswald", "Trebuchet MS", sans-serif;
+  --font-body: "Trebuchet MS", "Lucida Grande", Arial, sans-serif;
+}
+
+@keyframes md-fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes md-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.md-animate {
+  animation: md-fadeIn 0.3s ease both;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   DIAGNOSTIC CONSOLE
+══════════════════════════════════════════════════════════════════════════ */
+.md-diagnostic {
+  background: #0f172a;
+  color: #94a3b8;
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+  border-left: 5px solid #22c55e;
+}
+
+.md-diagnostic__heading {
+  color: var(--mlab-white);
+  font-family: var(--font-heading);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin: 0 0 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.md-diagnostic__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+.md-diagnostic__item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.md-diagnostic__item--full {
+  grid-column: span 2;
+}
+
+.md-diagnostic__label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.md-diagnostic__code {
+  background: #1e293b;
+  padding: 4px 8px;
+  color: #4ade80;
+  font-size: 0.8rem;
+  font-family: monospace;
+  word-break: break-all;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   METRICS ROW
+══════════════════════════════════════════════════════════════════════════ */
+.md-metrics-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.md-metric-card {
+  background: var(--mlab-white);
+  border: 2px solid var(--mlab-blue);
+  border-left: 5px solid var(--mlab-green);
+  padding: 1.25rem 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1.1rem;
+}
+
+.md-metric-icon {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.md-metric-icon--blue {
+  background: #e0f2fe;
+  color: #0284c7;
+}
+.md-metric-icon--amber {
+  background: #f0fdf4;
+  color: #16a34a;
+} /* Green for Moderation */
+
+.md-metric-data {
+  display: flex;
+  flex-direction: column;
+}
+
+.md-metric-val {
+  font-family: var(--font-heading);
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--mlab-blue);
+  line-height: 1;
+}
+
+.md-metric-lbl {
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  color: var(--mlab-grey);
+  margin-top: 4px;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   PANEL — MODERATOR THEME (GREEN)
+══════════════════════════════════════════════════════════════════════════ */
+.md-panel {
+  background: var(--mlab-white);
+  border: 2px solid var(--mlab-blue);
+  border-top: 5px solid var(--mlab-green);
+  overflow: hidden;
+}
+
+.md-panel-header {
+  background: var(--mlab-light-green);
+  padding: 0.85rem 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid #c2e08a;
+}
+
+.md-panel-title {
+  font-family: var(--font-heading);
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--mlab-green-dark);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.md-panel-badge {
+  font-family: var(--font-heading);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 3px 10px;
+  background: var(--mlab-green);
+  color: white;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   TASK LIST
+══════════════════════════════════════════════════════════════════════════ */
+.md-task-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.md-task-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding: 1.1rem 1.25rem;
+  border-bottom: 1px solid var(--mlab-light-blue);
+  transition: background 0.12s;
+  flex-wrap: wrap;
+}
+.md-task-card:last-child {
+  border-bottom: none;
+}
+.md-task-card:hover {
+  background: #f0fdf4;
+}
+
+.md-task-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.md-task-header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.3rem;
+  flex-wrap: wrap;
+}
+
+.md-task-learner {
+  font-family: var(--font-heading);
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--mlab-blue);
+  margin: 0;
+}
+
+.md-task-title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  color: var(--mlab-grey);
+  margin: 0 0 0.2rem;
+}
+
+.md-task-date {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  color: #94a3b8;
+  margin: 0;
+}
+
+/* ── Perform QA button ───────────────────────────────────────────────────────── */
+.md-grade-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.55rem 1.1rem;
+  background: var(--mlab-green);
+  color: var(--mlab-white);
+  border: 2px solid var(--mlab-green);
+  cursor: pointer;
+  font-family: var(--font-heading);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  outline: none;
+  transition: background 0.15s;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.md-grade-btn:hover {
+  background: var(--mlab-green-dark);
+  border-color: var(--mlab-green-dark);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LOADING / EMPTY STATE
+══════════════════════════════════════════════════════════════════════════ */
+.md-state-box {
+  padding: 4rem 2rem;
+  text-align: center;
+  color: var(--mlab-grey);
+  font-family: var(--font-body);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.md-spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid rgba(7, 63, 78, 0.12);
+  border-top-color: var(--mlab-green);
+  border-radius: 50%;
+  animation: md-spin 0.85s linear infinite;
+  margin-bottom: 0.5rem;
+}
+
+.md-state-box__title {
+  font-family: var(--font-heading);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--mlab-green-dark);
+  margin: 0.5rem 0 0;
+}
+
+.md-state-box__sub {
+  font-size: 0.88rem;
+  color: var(--mlab-grey);
+  margin: 0;
+}
+.md-state-box__warn {
+  font-size: 0.8rem;
+  color: var(--mlab-red);
+  font-weight: 700;
+  margin-top: 1rem;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   SECTION TITLE
+══════════════════════════════════════════════════════════════════════════ */
+.md-section-title {
+  font-family: var(--font-heading);
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--mlab-blue);
+  margin: 0 0 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   COHORT CARDS GRID
+══════════════════════════════════════════════════════════════════════════ */
+.md-cohort-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1.25rem;
+}
+
+.md-cohort-card {
+  background: var(--mlab-white);
+  border: 2px solid var(--mlab-blue);
+  border-top: 4px solid var(--mlab-green);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.md-cohort-card__header {
+  padding: 1.1rem 1.25rem 0.75rem;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border-bottom: 1px solid var(--mlab-light-blue);
+}
+
+.md-cohort-card__name {
+  font-family: var(--font-heading);
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--mlab-blue);
+  margin: 0;
+  line-height: 1.2;
+}
+
+.md-cohort-card__dates {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.65rem 1.25rem;
+  font-family: var(--font-body);
+  font-size: 0.82rem;
+  color: var(--mlab-grey);
+  border-bottom: 1px solid var(--mlab-light-blue);
+}
+
+.md-cohort-card__roles {
+  padding: 0.75rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  flex: 1;
+}
+.md-role-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--font-body);
+  font-size: 0.82rem;
+}
+.md-role-dot {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+}
+.md-role-dot--red {
+  background: var(--mlab-red);
+}
+
+.md-role-label {
+  color: var(--mlab-grey);
+  flex-shrink: 0;
+}
+.md-role-name {
+  color: var(--mlab-blue);
+  font-weight: 600;
+}
+
+.md-cohort-card__footer {
+  padding: 0.85rem 1.25rem;
+  background: var(--mlab-light-blue);
+  border-top: 1px solid var(--mlab-blue);
+}
+
+.md-portfolio-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  justify-content: center;
+  padding: 0.55rem 1rem;
+  background: var(--mlab-blue);
+  color: var(--mlab-white);
+  border: 2px solid var(--mlab-blue);
+  cursor: pointer;
+  font-family: var(--font-heading);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  outline: none;
+  transition: background 0.15s;
+}
+.md-portfolio-btn:hover {
+  background: var(--mlab-blue-dark);
+  border-color: var(--mlab-blue-dark);
+}
+
+.md-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  font-family: var(--font-heading);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.md-badge--active {
+  background: var(--mlab-light-green);
+  color: var(--mlab-green-dark);
+  border: 1px solid #c2e08a;
+}
+
+.md-empty {
+  padding: 4rem 2rem;
+  text-align: center;
+  color: var(--mlab-grey);
+  grid-column: 1 / -1;
+}
+.md-empty__icon {
+  opacity: 0.25;
+  margin-bottom: 1rem;
+  display: flex;
+  justify-content: center;
+}
+.md-empty__title {
+  font-family: var(--font-heading);
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--mlab-blue);
+  display: block;
+}
+.md-empty__link {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--mlab-blue);
+  text-decoration: underline;
+  padding: 0;
+}

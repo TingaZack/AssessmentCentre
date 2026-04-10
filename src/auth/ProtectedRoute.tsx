@@ -14,7 +14,6 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        // Listen for auth state changes
         const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
             setUser(currentUser);
             setLoading(false);
@@ -30,11 +29,9 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
         );
     }
 
-    // If no user, redirect to Login
     if (!user) {
         return <Navigate to="/login" replace />;
     }
 
-    // If user exists, render the protected content (Dashboard)
     return <>{children}</>;
 };

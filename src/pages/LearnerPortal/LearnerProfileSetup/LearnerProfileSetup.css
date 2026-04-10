@@ -1,0 +1,464 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   LearnerProfileSetup.css
+   - Only the form body scrolls; header and stepper remain fixed within card.
+───────────────────────────────────────────────────────────────────────────── */
+
+@import url("https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&display=swap");
+
+/* ── CSS Variables ─────────────────────────────────────────────────────────── */
+:root {
+  --mlab-blue: #073f4e;
+  --mlab-blue-dark: #052e3a;
+  --mlab-green: #94c73d;
+  --mlab-green-dark: #7aaa2e;
+  --mlab-grey: #6b6b6b;
+  --mlab-grey-light: #94a3b8;
+  --mlab-white: #ffffff;
+  --mlab-light-blue: #e8f0f3;
+  --mlab-light-green: #f0f7e1;
+  --mlab-bg: #f4f7f9;
+
+  --font-heading: "Oswald", "Trebuchet MS", sans-serif;
+  --font-body:
+    "Trebuchet MS", "Lucida Grande", "Lucida Sans Unicode", Arial, sans-serif;
+}
+
+/* ── Global reset to allow card-based scrolling ────────────────────────────── */
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden; /* Prevents page scroll – only card scrolls */
+}
+
+/* ── Main container: full viewport, centers card ──────────────────────────── */
+.lp-container {
+  height: 100vh;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  box-sizing: border-box;
+  background: var(--mlab-bg);
+  font-family: var(--font-body);
+}
+
+/* ── Card: fixed max height, flex column, header stays top ────────────────── */
+.lp-card {
+  width: 100%;
+  max-width: 680px;
+  height: 90vh; /* Use most of viewport, but not full to allow margin */
+  max-height: 800px; /* Optional: limit on very tall screens */
+  background: var(--mlab-white);
+  border: 2px solid var(--mlab-blue);
+  box-shadow: 0 8px 32px rgba(7, 63, 78, 0.1);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden; /* Prevents card overflow – scrolling inside form-body */
+}
+
+/* ── Header section (never scrolls) ───────────────────────────────────────── */
+.lp-header {
+  background: var(--mlab-blue);
+  padding: 1.5rem 2rem 1.2rem;
+  text-align: center;
+  flex-shrink: 0; /* Prevents shrinking */
+}
+
+.lp-logo {
+  font-family: var(--font-heading);
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--mlab-white);
+  margin-bottom: 1rem;
+  display: block;
+}
+
+.lp-logo__m {
+  color: var(--mlab-green);
+}
+
+.lp-header__title {
+  font-family: var(--font-heading);
+  font-size: 1.2rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--mlab-white);
+  margin: 0 0 0.3rem;
+}
+
+.lp-header__sub {
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.65);
+  margin: 0 0 1.5rem;
+  font-family: var(--font-body);
+}
+
+/* ── Stepper (inside header, also fixed) ──────────────────────────────────── */
+.lp-stepper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+}
+
+.lp-step {
+  font-family: var(--font-heading);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.4);
+  padding: 0.4rem 1rem;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  white-space: nowrap;
+  transition: all 0.2s;
+}
+
+.lp-step.active {
+  background: var(--mlab-green);
+  color: var(--mlab-white);
+  border-color: var(--mlab-green);
+}
+
+.lp-step-line {
+  width: 2rem;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.2);
+  flex-shrink: 0;
+}
+
+/* ── Form body: scrollable area ───────────────────────────────────────────── */
+.lp-form-body {
+  padding: 2rem;
+  overflow-y: auto; /* Enables scrolling */
+  flex: 1; /* Takes remaining space */
+  scroll-behavior: smooth;
+}
+
+/* Custom scrollbar (optional, but good UX) */
+.lp-form-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.lp-form-body::-webkit-scrollbar-track {
+  background: var(--mlab-light-blue);
+}
+
+.lp-form-body::-webkit-scrollbar-thumb {
+  background: var(--mlab-blue);
+  border-radius: 3px;
+}
+
+/* ── Loading state (full viewport, not inside card) ───────────────────────── */
+.lp-loading {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  background: var(--mlab-bg);
+  font-family: var(--font-body);
+  color: var(--mlab-blue);
+  text-align: center;
+}
+
+.lp-loading__title {
+  font-family: var(--font-heading);
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--mlab-blue);
+  margin: 0;
+}
+
+.lp-loading__sub {
+  font-size: 0.85rem;
+  color: var(--mlab-grey);
+  margin: 0;
+}
+
+/* ── Form elements (unchanged from original, but kept for completeness) ────── */
+.lp-section-title {
+  font-family: var(--font-heading);
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--mlab-blue);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 1.5rem;
+  padding-bottom: 0.6rem;
+  border-bottom: 2px solid var(--mlab-light-blue);
+}
+
+.lp-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+}
+
+@media (max-width: 520px) {
+  .lp-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.lp-fg {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.lp-fg label {
+  font-family: var(--font-heading);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--mlab-grey);
+}
+
+.lp-input {
+  width: 100%;
+  padding: 0.65rem 0.85rem;
+  border: 2px solid #cbd5e1;
+  background: var(--mlab-white);
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  color: var(--mlab-blue);
+  outline: none;
+  transition:
+    border-color 0.18s,
+    box-shadow 0.18s;
+  box-sizing: border-box;
+  appearance: none;
+}
+
+.lp-input:focus {
+  border-color: var(--mlab-blue);
+  box-shadow: 0 0 0 3px rgba(7, 63, 78, 0.08);
+}
+
+select.lp-input {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b6b6b' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.85rem center;
+  padding-right: 2.5rem;
+  cursor: pointer;
+}
+
+.readonly-field {
+  background-color: var(--mlab-light-blue);
+  cursor: default;
+}
+
+.lp-upload-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  margin-bottom: 1.5rem;
+}
+
+.lp-doc-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  border: 2px dashed #b0c4cc;
+  background: var(--mlab-bg);
+  cursor: pointer;
+  transition:
+    border-color 0.2s,
+    background 0.2s;
+  overflow: hidden;
+}
+
+.lp-doc-card:hover {
+  border-color: var(--mlab-blue);
+  background: var(--mlab-light-blue);
+}
+
+.lp-doc-card.uploaded {
+  border-style: solid;
+  border-color: var(--mlab-green);
+  background: var(--mlab-light-green);
+}
+
+.lp-doc-icon {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--mlab-light-blue);
+  color: var(--mlab-blue);
+  flex-shrink: 0;
+}
+
+.lp-doc-card.uploaded .lp-doc-icon {
+  background: var(--mlab-green);
+  color: var(--mlab-white);
+}
+
+.lp-doc-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.lp-doc-info h4 {
+  font-family: var(--font-heading);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--mlab-blue);
+  margin: 0 0 2px;
+}
+
+.lp-doc-info span {
+  font-size: 0.78rem;
+  color: var(--mlab-grey);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+}
+
+.lp-file-input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  width: 100%;
+  height: 100%;
+}
+
+.lp-popia-box {
+  background: var(--mlab-light-blue);
+  border-left: 4px solid var(--mlab-blue);
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.lp-popia-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.lp-popia-header h4 {
+  font-family: var(--font-heading);
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--mlab-blue);
+  margin: 0;
+}
+
+.lp-popia-content p {
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--mlab-blue);
+  margin: 0 0 0.75rem;
+}
+
+.lp-popia-checkbox {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  font-size: 0.82rem;
+  cursor: pointer;
+  margin-top: 0.5rem;
+}
+
+.lp-popia-checkbox input {
+  margin-top: 2px;
+  accent-color: var(--mlab-green);
+}
+
+.lp-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 1.25rem;
+  border-top: 2px solid var(--mlab-light-blue);
+  margin-top: 0.5rem;
+  gap: 0.75rem;
+}
+
+.lp-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.7rem 1.5rem;
+  background: var(--mlab-green);
+  color: var(--mlab-white);
+  border: 2px solid var(--mlab-green);
+  cursor: pointer;
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 0.82rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition:
+    background 0.18s,
+    border-color 0.18s;
+}
+
+.lp-btn-primary:hover:not(:disabled) {
+  background: var(--mlab-green-dark);
+  border-color: var(--mlab-green-dark);
+}
+
+.lp-btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.lp-btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.7rem 1.25rem;
+  background: transparent;
+  color: var(--mlab-grey);
+  border: 2px solid #cbd5e1;
+  cursor: pointer;
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 0.82rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition:
+    border-color 0.18s,
+    color 0.18s;
+}
+
+.lp-btn-ghost:hover {
+  border-color: var(--mlab-blue);
+  color: var(--mlab-blue);
+}
+
+/* Utility margins */
+.mt-4 {
+  margin-top: 1rem;
+}
+.mt-8 {
+  margin-top: 2rem;
+}
+.mb-6 {
+  margin-bottom: 1.5rem;
+}

@@ -4,7 +4,7 @@ interface StatCardProps {
     icon: React.ReactNode;
     title: string;
     value: number;
-    color: string; // kept for future styling
+    color: string;
 }
 
 export const StatCard: React.FC<StatCardProps> = ({ icon, title, value }) => (

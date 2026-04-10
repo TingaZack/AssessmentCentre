@@ -1,0 +1,685 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   LearnerProfileView.css
+   mLab Corporate Identity Brand Guide 2019
+   Consistent with ViewPortfolio.css · CohortDetailsPage.css · PageHeader.css
+
+   Colours:
+     --mlab-blue:   #073f4e  (Midnight Blue)
+     --mlab-green:  #94c73d  (Green – primary accent)
+     --mlab-grey:   #6b6b6b  (Grey – secondary text)
+     --mlab-white:  #ffffff
+
+   Typefaces:
+     Oswald       – headings, labels, buttons, chips (uppercase)
+     Trebuchet MS – body, field values, metadata
+───────────────────────────────────────────────────────────────────────────── */
+
+@import url("https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&display=swap");
+
+/* ── CSS Variables ─────────────────────────────────────────────────────────── */
+:root {
+  --mlab-blue: #073f4e;
+  --mlab-blue-dark: #052e3a;
+  --mlab-green: #94c73d;
+  --mlab-green-dark: #7aaa2e;
+  --mlab-grey: #6b6b6b;
+  --mlab-white: #ffffff;
+  --mlab-light-blue: #e8f0f3;
+  --mlab-light-green: #f0f7e1;
+  --mlab-amber: #d97706;
+  --mlab-red: #ef4444;
+  --mlab-border: #d1dde3;
+  --mlab-bg: #f4f7f9;
+
+  --font-heading: "Oswald", "Trebuchet MS", sans-serif;
+  --font-body:
+    "Trebuchet MS", "Lucida Grande", "Lucida Sans Unicode", Arial, sans-serif;
+
+  --radius-sm: 3px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --transition: 0.18s ease;
+}
+
+/* ── Spinner ───────────────────────────────────────────────────────────────── */
+@keyframes lpv-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.lpv-spin {
+  animation: lpv-spin 0.8s linear infinite;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   LAYOUT SHELL
+══════════════════════════════════════════════════════════════════════════════ */
+.lpv-full-screen {
+  position: absolute;
+  inset: 0;
+  display: flex;
+}
+
+/* Centred loading / error */
+.lpv-centered {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  flex: 1;
+  color: var(--mlab-blue);
+}
+.lpv-loading-label {
+  font-family: var(--font-heading);
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--mlab-grey);
+  margin: 0;
+}
+
+/* Scrollable content area (extends admin-content) */
+.lpv-scroll-area {
+  overflow-y: auto;
+  flex: 1;
+}
+
+/* Inner max-width wrapper */
+.lpv-wrapper {
+  /* max-width: 1100px; */
+  padding: 0;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   404 NOT FOUND STATE
+══════════════════════════════════════════════════════════════════════════════ */
+.lpv-not-found {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 4rem 2rem;
+  text-align: center;
+}
+.lpv-not-found__icon {
+  color: #94a3b8;
+}
+.lpv-not-found__title {
+  font-family: var(--font-heading);
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--mlab-blue);
+  margin: 0.5rem 0 0;
+}
+.lpv-not-found__desc {
+  font-size: 0.85rem;
+  color: var(--mlab-grey);
+  margin: 0;
+  max-width: 380px;
+  line-height: 1.6;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   TWO-COLUMN PAGE LAYOUT
+   Main stack (2/3) + Aside (1/3)
+══════════════════════════════════════════════════════════════════════════════ */
+.lpv-layout {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.lpv-main-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  min-width: 0;
+}
+
+.lpv-aside {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  position: sticky;
+  top: 1.5rem;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   SECTION PANEL  (Identity, Demographics)
+══════════════════════════════════════════════════════════════════════════════ */
+.lpv-panel {
+  background: var(--mlab-white);
+  border: 1px solid var(--mlab-border);
+  border-top: 4px solid var(--mlab-blue);
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  padding: 1.25rem 1.5rem;
+}
+
+.lpv-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 2px solid var(--mlab-light-blue);
+}
+
+.lpv-panel__title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--font-heading);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--mlab-blue);
+  margin: 0;
+}
+
+.lpv-edit-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-heading);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--mlab-grey);
+  background: none;
+  border: 1.5px solid var(--mlab-border);
+  border-radius: var(--radius-sm);
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: all var(--transition);
+  outline: none;
+}
+.lpv-edit-trigger:hover {
+  color: var(--mlab-blue);
+  border-color: var(--mlab-blue);
+  background: var(--mlab-light-blue);
+}
+
+/* ── Identity banner (avatar + name + status chip) ─────────────────────────── */
+.lpv-identity-banner {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  background: var(--mlab-bg);
+  border: 1px solid var(--mlab-border);
+  border-radius: var(--radius-md);
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.25rem;
+  flex-wrap: wrap;
+}
+
+.lpv-avatar {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: var(--mlab-light-blue);
+  border: 2px solid var(--mlab-blue);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--mlab-blue);
+  flex-shrink: 0;
+  overflow: hidden;
+}
+.lpv-avatar__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+.lpv-avatar__placeholder {
+  opacity: 0.5;
+}
+
+.lpv-identity-banner__info {
+  flex: 1;
+  min-width: 0;
+}
+.lpv-identity-banner__name {
+  font-family: var(--font-heading);
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--mlab-blue);
+  margin: 0 0 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lpv-identity-banner__email {
+  font-size: 0.82rem;
+  color: var(--mlab-grey);
+  margin: 0;
+}
+
+/* Auth status chip */
+.lpv-status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  font-family: var(--font-heading);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  border-radius: 20px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.lpv-status-chip--active {
+  background: #dcfce7;
+  color: #166534;
+  border: 1.5px solid #86efac;
+}
+.lpv-status-chip--pending {
+  background: #fef9c3;
+  color: #854d0e;
+  border: 1.5px solid #fde68a;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   FORM GRIDS
+══════════════════════════════════════════════════════════════════════════════ */
+.lpv-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+.lpv-grid-3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 1rem;
+}
+
+/* ── Readonly / editable field ──────────────────────────────────────────────── */
+.lpv-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.lpv-field__label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-heading);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--mlab-grey);
+}
+.lpv-field__value {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--mlab-blue);
+  line-height: 1.4;
+  word-break: break-word;
+}
+.lpv-field__value--empty {
+  color: #94a3b8;
+  font-weight: 400;
+  font-style: italic;
+}
+
+.lpv-input {
+  font-family: var(--font-body);
+  font-size: 0.88rem;
+  color: var(--mlab-blue);
+  background: var(--mlab-white);
+  border: 1.5px solid var(--mlab-border);
+  border-radius: var(--radius-sm);
+  padding: 7px 10px;
+  width: 100%;
+  box-sizing: border-box;
+  outline: none;
+  transition:
+    border-color var(--transition),
+    box-shadow var(--transition);
+}
+.lpv-input:focus {
+  border-color: var(--mlab-blue);
+  box-shadow: 0 0 0 3px rgba(7, 63, 78, 0.1);
+}
+
+/* Divider between field groups */
+.lpv-divider {
+  height: 1px;
+  background: var(--mlab-border);
+  margin: 1rem 0;
+}
+
+/* Edit mode action row */
+.lpv-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--mlab-border);
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────────────── */
+.lpv-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 0.55rem 1.1rem;
+  border-radius: var(--radius-sm);
+  border: 2px solid transparent;
+  cursor: pointer;
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 0.78rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  transition: all var(--transition);
+  outline: none;
+}
+.lpv-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.lpv-btn--primary {
+  background: var(--mlab-blue);
+  color: var(--mlab-white);
+  border-color: var(--mlab-blue);
+}
+.lpv-btn--primary:hover:not(:disabled) {
+  background: var(--mlab-blue-dark);
+  border-color: var(--mlab-blue-dark);
+}
+
+.lpv-btn--ghost {
+  background: transparent;
+  color: var(--mlab-grey);
+  border-color: var(--mlab-border);
+}
+.lpv-btn--ghost:hover:not(:disabled) {
+  background: var(--mlab-light-blue);
+  color: var(--mlab-blue);
+  border-color: var(--mlab-blue);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   ASIDE — OVERVIEW CARD
+══════════════════════════════════════════════════════════════════════════════ */
+.lpv-overview-card {
+  background: var(--mlab-blue);
+  border-radius: var(--radius-md);
+  padding: 1.25rem;
+  color: var(--mlab-white);
+}
+.lpv-overview-card__eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-heading);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--mlab-green);
+  margin-bottom: 0.5rem;
+}
+.lpv-overview-card__count {
+  font-family: var(--font-heading);
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--mlab-white);
+  margin: 0 0 2px;
+  line-height: 1.1;
+}
+.lpv-overview-card__sub {
+  font-size: 0.78rem;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   ASIDE — GENERIC CARD  (Compliance Vault, Course Enrollments)
+══════════════════════════════════════════════════════════════════════════════ */
+.lpv-card {
+  background: var(--mlab-white);
+  border: 1px solid var(--mlab-border);
+  border-top: 4px solid var(--mlab-green);
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  padding: 1.1rem 1.25rem;
+}
+.lpv-card__title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-heading);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--mlab-blue);
+  margin: 0 0 0.85rem;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid var(--mlab-border);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   COMPLIANCE VAULT LINKS
+══════════════════════════════════════════════════════════════════════════════ */
+.lpv-vault-links {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lpv-doc-link-wrap {
+  text-decoration: none;
+}
+
+.lpv-doc-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--mlab-border);
+  transition: all var(--transition);
+  cursor: pointer;
+}
+.lpv-doc-link--available {
+  background: var(--mlab-light-green);
+  border-color: #c2e08a;
+}
+.lpv-doc-link--available:hover {
+  background: #d9f0a3;
+}
+.lpv-doc-link--missing {
+  background: var(--mlab-bg);
+  border-color: var(--mlab-border);
+  opacity: 0.7;
+  cursor: default;
+}
+
+.lpv-doc-link__name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--mlab-blue);
+  font-family: var(--font-body);
+}
+.lpv-doc-link--missing .lpv-doc-link__name {
+  color: var(--mlab-grey);
+}
+
+.lpv-doc-link__icon {
+  flex-shrink: 0;
+  color: var(--mlab-green-dark);
+}
+.lpv-doc-link--missing .lpv-doc-link__icon {
+  color: #94a3b8;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   ENROLLMENT CARDS
+══════════════════════════════════════════════════════════════════════════════ */
+.lpv-enrollments {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lpv-enrollment-card {
+  border: 1px solid var(--mlab-border);
+  border-left: 4px solid var(--mlab-border);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  padding: 10px 12px;
+  background: var(--mlab-white);
+  transition: background var(--transition);
+}
+.lpv-enrollment-card--active {
+  border-left-color: var(--mlab-green);
+}
+.lpv-enrollment-card--completed {
+  border-left-color: var(--mlab-blue);
+}
+.lpv-enrollment-card--dropped {
+  border-left-color: var(--mlab-red);
+  opacity: 0.7;
+}
+
+.lpv-enrollment-card__qual {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--mlab-blue);
+  margin: 0 0 5px;
+  line-height: 1.35;
+}
+.lpv-enrollment-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 0.72rem;
+  color: var(--mlab-grey);
+  margin-bottom: 8px;
+}
+.lpv-enrollment-card__meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.lpv-enrollment-card__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* Enrollment status pill */
+.lpv-status-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px;
+  font-family: var(--font-heading);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+.lpv-status-pill--active {
+  background: rgba(148, 199, 61, 0.15);
+  color: var(--mlab-green-dark);
+  border: 1px solid rgba(148, 199, 61, 0.35);
+}
+.lpv-status-pill--completed {
+  background: var(--mlab-light-blue);
+  color: var(--mlab-blue);
+  border: 1px solid var(--mlab-border);
+}
+.lpv-status-pill--dropped {
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fca5a5;
+}
+
+/* View SoR link-button */
+.lpv-sor-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-heading);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--mlab-blue);
+  background: none;
+  border: 1.5px solid var(--mlab-blue);
+  border-radius: var(--radius-sm);
+  padding: 3px 9px;
+  cursor: pointer;
+  transition: all var(--transition);
+  outline: none;
+  white-space: nowrap;
+}
+.lpv-sor-link:hover {
+  background: var(--mlab-light-blue);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   RESPONSIVE
+══════════════════════════════════════════════════════════════════════════════ */
+@media (max-width: 1024px) {
+  .lpv-layout {
+    grid-template-columns: 1fr;
+  }
+  .lpv-aside {
+    position: static;
+  }
+  .lpv-grid-3 {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .lpv-grid-2 {
+    grid-template-columns: 1fr;
+  }
+  .lpv-grid-3 {
+    grid-template-columns: 1fr;
+  }
+  .lpv-identity-banner {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .lpv-panel {
+    padding: 1rem;
+  }
+  .lpv-card {
+    padding: 0.85rem 1rem;
+  }
+  .lpv-edit-actions {
+    flex-direction: column;
+  }
+  .lpv-btn {
+    width: 100%;
+    justify-content: center;
+  }
+}

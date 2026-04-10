@@ -1,0 +1,1805 @@
+.sr-root {
+  min-height: 100vh;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #f1f5f9;
+  font-family: "Trebuchet MS", sans-serif;
+  display: flex;
+  flex-direction: column;
+  overflow-y: scroll;
+}
+
+.sr-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  font-size: 1.1rem;
+  color: #073f4e;
+  font-weight: bold;
+}
+
+.sr-spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid #e2e8f0;
+  border-top-color: #94c73d;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 1rem;
+}
+
+/* ── Header ── */
+.sr-header {
+  background: #073f4e;
+  padding: 1.25rem 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.sr-header__left {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.sr-back-btn {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.7);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+  padding: 0;
+}
+.sr-back-btn:hover {
+  color: white;
+}
+
+.sr-header__title {
+  margin: 0;
+  color: white;
+  font-family: "Oswald", sans-serif;
+  font-size: 1.2rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.sr-header__sub {
+  margin: 0;
+  color: #94a3b8;
+  font-size: 0.85rem;
+}
+.sr-header__sub strong {
+  color: white;
+}
+
+.sr-header__right {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.sr-badge {
+  padding: 0.4rem 0.8rem;
+  border-radius: 99px;
+  font-size: 0.75rem;
+  font-family: "Oswald", sans-serif;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.sr-badge--warning {
+  background: #fef3c7;
+  color: #b45309;
+  border: 1px solid #fde68a;
+}
+.sr-badge--review {
+  background: #e0f2fe;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+}
+.sr-badge--success {
+  background: #dcfce7;
+  color: #15803d;
+  border: 1px solid #bbf7d0;
+}
+
+/* ── Split Layout ── */
+.sr-layout {
+  display: grid;
+  grid-template-columns: 1fr 350px;
+  gap: 2rem;
+  padding: 2rem;
+  max-width: 1400px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+@media (max-width: 1000px) {
+  .sr-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Left Pane: Content ── */
+.sr-content-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  width: 100%;
+  min-width: 0;
+}
+.sr-learner-meta {
+  background: white;
+  padding: 1rem 1.5rem;
+  /* border-radius: 8px; */
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  font-size: 0.9rem;
+  color: #475569;
+  border: 1px solid #e2e8f0;
+}
+
+.sr-dot {
+  width: 4px;
+  height: 4px;
+  background: #cbd5e1;
+  border-radius: 50%;
+}
+
+.sr-section-title {
+  font-family: "Oswald", sans-serif;
+  text-transform: uppercase;
+  color: #073f4e;
+  margin: 1rem 0 0 0;
+  font-size: 1.3rem;
+}
+
+/* ── Question Cards ── */
+.sr-q-card {
+  background: white;
+  /* border-radius: 12px; */
+  border: 1px solid #e2e8f0;
+  border-top: 4px solid #073f4e;
+  overflow: hidden;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+}
+
+.sr-q-header {
+  background: #f8fafc;
+  padding: 1.25rem;
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.sr-q-num {
+  font-family: "Oswald", sans-serif;
+  font-weight: bold;
+  color: #073f4e;
+  background: #e0f2fe;
+  padding: 0.2rem 0.6rem;
+  /* border-radius: 4px; */
+  font-size: 0.9rem;
+}
+
+.sr-q-text {
+  font-weight: bold;
+  color: #1e293b;
+  line-height: 1.5;
+  font-size: 1.05rem;
+}
+
+.sr-q-body {
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  min-width: 0;
+}
+
+/* Answers */
+.sr-answer-label {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  font-weight: bold;
+  color: #64748b;
+  margin-bottom: 0.5rem;
+}
+
+.sr-text-ans {
+  background: #f8fafc;
+  padding: 1rem;
+  /* border-radius: 8px; */
+  border: 1px solid #e2e8f0;
+  color: #334155;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.sr-mcq-ans {
+  padding: 1rem;
+  /* border-radius: 8px; */
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.sr-mcq-ans.correct {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #16a34a;
+}
+.sr-mcq-ans.wrong {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #ef4444;
+}
+
+.sr-mcq-correct-hint {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  color: #64748b;
+}
+
+/* Grading Controls */
+.sr-grade-box {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  padding: 1rem;
+  /* border-radius: 8px; */
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.sr-score-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: bold;
+  color: #b45309;
+}
+.sr-score-input {
+  width: 60px;
+  padding: 0.4rem;
+  border: 1px solid #fcd34d;
+  /* border-radius: 4px; */
+  font-size: 1rem;
+  font-weight: bold;
+  text-align: center;
+  color: #073f4e;
+  outline: none;
+}
+.sr-score-input:focus {
+  border-color: #f59e0b;
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2);
+}
+
+.sr-feedback-wrap {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  background: white;
+  border: 1px solid #fde68a;
+  padding: 0.5rem;
+  /* border-radius: 6px; */
+}
+.sr-feedback-input {
+  width: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-family: inherit;
+  font-size: 0.9rem;
+  color: #334155;
+}
+
+/* ── Right Pane: Summary ── */
+.sr-sidebar {
+  position: sticky;
+  top: 100px;
+}
+
+.sr-summary-card {
+  background: white;
+  /* border-radius: 12px; */
+  padding: 2rem;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  border: 1px solid #e2e8f0;
+}
+
+.sr-summary-title {
+  font-family: "Oswald", sans-serif;
+  font-size: 1.1rem;
+  text-transform: uppercase;
+  color: #073f4e;
+  margin: 0 0 1.5rem 0;
+  text-align: center;
+}
+
+.sr-score-display {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 2rem;
+  padding-bottom: 2rem;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.sr-score-circle {
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  border: 5px solid #94c73d;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.sr-score-val {
+  font-size: 2rem;
+  font-weight: bold;
+  color: #073f4e;
+  line-height: 1;
+}
+.sr-score-max {
+  font-size: 0.85rem;
+  color: #64748b;
+  font-weight: bold;
+}
+.sr-score-percent {
+  font-family: "Oswald", sans-serif;
+  font-size: 1.2rem;
+  color: #94c73d;
+}
+
+.sr-sidebar-label {
+  display: block;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  font-weight: bold;
+  color: #64748b;
+  margin-bottom: 0.75rem;
+  letter-spacing: 0.05em;
+}
+
+.sr-comp-toggles {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 2rem;
+}
+.sr-comp-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 1rem 0.5rem;
+  border: 2px solid #e2e8f0;
+  /* border-radius: 8px; */
+  background: white;
+  cursor: pointer;
+  font-weight: bold;
+  font-size: 0.8rem;
+  color: #64748b;
+  transition: all 0.2s;
+}
+.sr-comp-btn.active-c {
+  background: #f0fdf4;
+  border-color: #22c55e;
+  color: #16a34a;
+}
+.sr-comp-btn.active-nyc {
+  background: #fef2f2;
+  border-color: #ef4444;
+  color: #dc2626;
+}
+
+.sr-textarea {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid #cbd5e1;
+  /* border-radius: 6px; */
+  font-family: inherit;
+  font-size: 0.9rem;
+  resize: vertical;
+  margin-bottom: 2rem;
+  outline-color: #073f4e;
+}
+
+.sr-action-area {
+  text-align: center;
+}
+.sr-audit-notice {
+  font-size: 0.75rem;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  margin-bottom: 1rem;
+  background: #f8fafc;
+  padding: 0.5rem;
+  /* border-radius: 4px; */
+}
+.sr-submit-btn {
+  width: 100%;
+  background: #073f4e;
+  color: white;
+  border: none;
+  padding: 1rem;
+  /* border-radius: 8px; */
+  font-family: "Oswald", sans-serif;
+  font-size: 1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.sr-submit-btn:hover:not(:disabled) {
+  background: #052e3a;
+}
+.sr-submit-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.sr-graded-notice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  padding: 1.5rem;
+  /* border-radius: 8px; */
+  color: #15803d;
+  font-weight: bold;
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+/* --- VISUAL MARKING (Tick / Cross) --- */
+.sr-q-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.sr-visual-mark {
+  display: flex;
+  gap: 4px;
+  background: #f1f5f9;
+  padding: 4px;
+  border-radius: 8px;
+}
+
+.sr-mark-btn {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  color: #cbd5e1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.sr-mark-btn:disabled {
+  cursor: default;
+}
+
+.sr-mark-btn:not(:disabled):hover {
+  background: #e2e8f0;
+}
+
+/* Active States */
+.active-tick {
+  background: #dcfce7 !important;
+  color: #16a34a !important;
+}
+
+.active-cross {
+  background: #fee2e2 !important;
+  color: #ef4444 !important;
+}
+
+/* --- PRINT READINESS & AUDIT STAMPS --- */
+.sr-print-btn {
+  background: white;
+  border: 1px solid #cbd5e1;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: bold;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 1rem;
+}
+
+.sr-print-header {
+  display: none; /* Hidden on screen, visible on print */
+}
+
+@media print {
+  /* Hide sidebars and navs */
+  .no-print,
+  .sr-sidebar,
+  .sidebar {
+    display: none !important;
+  }
+
+  /* Expand content area */
+  .sr-content-pane {
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+  }
+
+  /* Show Official Audit Header */
+  .sr-print-header {
+    display: block;
+    border-bottom: 2px solid #0f172a;
+    padding-bottom: 1rem;
+    margin-bottom: 2rem;
+  }
+
+  .sr-print-stamp h2 {
+    margin: 0 0 10px 0;
+    font-family: "Oswald", sans-serif;
+    text-transform: uppercase;
+  }
+
+  .sr-signature-block {
+    display: flex;
+    gap: 2rem;
+    margin-top: 1.5rem;
+  }
+
+  .sr-sig-box {
+    flex: 1;
+    border: 1px solid #cbd5e1;
+    padding: 1rem;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .sr-sig-box span {
+    font-size: 0.8rem;
+    color: #64748b;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  .sr-sig-box strong {
+    font-size: 1.1rem;
+  }
+  .sr-sig-box em {
+    font-size: 0.85rem;
+    font-style: normal;
+    margin-top: 2px;
+  }
+
+  .sr-sig-line {
+    margin-top: 1rem;
+    border-top: 1px dashed #94a3b8;
+    padding-top: 4px;
+    font-size: 0.7rem;
+    text-align: center;
+    color: #94a3b8;
+  }
+
+  /* Keep page breaks clean */
+  .sr-q-card {
+    page-break-inside: avoid;
+    border: 1px solid #e2e8f0 !important;
+  }
+}
+.ap-player-topbar__right {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-shrink: 0;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   QUILL READ-ONLY CONTENT STYLING (For Assessor View)
+───────────────────────────────────────────────────────────────────────────── */
+.quill-read-only-content {
+  font-family: inherit;
+  color: #334155;
+  line-height: 1.6;
+
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  white-space: pre-wrap;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.quill-read-only-content p {
+  margin-top: 0;
+  margin-bottom: 0.75rem;
+}
+
+.quill-read-only-content p:last-child {
+  margin-bottom: 0;
+}
+
+.quill-read-only-content ul,
+.quill-read-only-content ol {
+  margin-top: 0.25rem;
+  margin-bottom: 0.75rem;
+  padding-left: 1.5rem;
+}
+
+.quill-read-only-content li {
+  margin-bottom: 0.25rem;
+}
+
+/* Ensure images embedded by Quill scale down nicely instead of breaking layouts */
+.quill-read-only-content img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   ROLE GUIDES (JIT COMPLIANCE REMINDERS)
+───────────────────────────────────────────────────────────────────────────── */
+.sr-role-guide {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.sr-role-guide svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.sr-role-guide strong {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-family: "Oswald", sans-serif;
+}
+
+/* Facilitator / Blue Pen Box */
+.sr-role-guide.blue {
+  background: #e0f2fe;
+  border: 1px solid #bae6fd;
+  color: #0369a1;
+}
+
+/* Assessor / Red Pen Box */
+.sr-role-guide.red {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #b91c1c;
+}
+
+/* Moderator / Green Pen Box */
+.sr-role-guide.green {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #15803d;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   ROLE GUIDES (JIT COMPLIANCE REMINDERS)
+───────────────────────────────────────────────────────────────────────────── */
+.sr-role-guide {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.sr-role-guide svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.sr-role-guide strong {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-family: "Oswald", sans-serif;
+}
+
+/* Facilitator / Blue Pen Box */
+.sr-role-guide.blue {
+  background: #e0f2fe;
+  border: 1px solid #bae6fd;
+  color: #0369a1;
+}
+
+/* Assessor / Red Pen Box */
+.sr-role-guide.red {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #b91c1c;
+}
+
+/* Moderator / Green Pen Box */
+.sr-role-guide.green {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #15803d;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   LOCKED / WAITING STATES
+───────────────────────────────────────────────────────────────────────────── */
+.sr-locked-card {
+  background: #f8fafc;
+  border-top: 4px solid #cbd5e1;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2.5rem 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.sr-locked-card svg {
+  margin-bottom: 1rem;
+  color: #94a3b8;
+  opacity: 0.6;
+}
+
+.sr-locked-card h3 {
+  color: #64748b !important;
+  margin-bottom: 0.5rem;
+  font-family: "Oswald", sans-serif;
+  text-transform: uppercase;
+}
+
+.sr-locked-card p {
+  color: #94a3b8;
+  font-size: 0.9rem;
+  margin: 0;
+  font-style: italic;
+  line-height: 1.5;
+}
+
+/* --- VISUAL MARKING (Tick / Cross) --- */
+.sr-visual-mark {
+  display: flex;
+  gap: 4px;
+  background: transparent;
+  padding: 4px;
+}
+
+.sr-mark-btn {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.sr-mark-btn:disabled {
+  cursor: default;
+}
+
+.sr-mark-btn:not(:disabled):hover {
+  background: #e2e8f0;
+}
+
+/* --- PRINT READINESS & AUDIT STAMPS --- */
+.sr-print-btn {
+  background: white;
+  border: 1px solid #cbd5e1;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: bold;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 1rem;
+}
+
+.sr-print-header {
+  display: none; /* Hidden on screen, visible on print */
+}
+
+@media print {
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  /* Hide sidebars and navs */
+  .no-print,
+  .sr-sidebar,
+  .sidebar {
+    display: none !important;
+  }
+
+  /* Expand content area */
+  .sr-content-pane {
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+  }
+
+  /* Show Official Audit Header */
+  .sr-print-header {
+    display: block;
+    border-bottom: 2px solid #0f172a;
+    padding-bottom: 1rem;
+    margin-bottom: 2rem;
+  }
+
+  .sr-print-header h2 {
+    margin: 0 0 15px 0;
+    font-family: "Oswald", sans-serif;
+    text-transform: uppercase;
+    color: #073f4e;
+  }
+
+  .sr-signature-block {
+    display: flex;
+    gap: 2rem;
+    margin-top: 1.5rem;
+  }
+
+  .sr-sig-box {
+    flex: 1;
+    border: 1px solid #cbd5e1;
+    padding: 1rem;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .sr-sig-box span {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  .sr-sig-box strong {
+    font-size: 1.1rem;
+  }
+  .sr-sig-box em {
+    font-size: 0.85rem;
+    font-style: normal;
+    margin-top: 2px;
+  }
+
+  .sr-sig-line {
+    margin-top: 1rem;
+    border-top: 1px dashed #94a3b8;
+    padding-top: 4px;
+    font-size: 0.7rem;
+    text-align: center;
+  }
+
+  /* Keep page breaks clean */
+  .sr-q-card {
+    page-break-inside: avoid;
+    border: 1px solid #e2e8f0 !important;
+  }
+}
+
+.ap-player-topbar__right {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-shrink: 0;
+}
+
+/* ==========================================================================
+   READ-ONLY AUDIT FEEDBACK BLOCKS (DUAL-LAYER GRADING)
+   ========================================================================== */
+
+.sr-read-only-feedback {
+  margin-top: 0.75rem;
+  padding: 0.85rem;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.sr-read-only-feedback .label {
+  font-family: var(--font-heading);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: bold;
+  font-size: 0.75rem;
+}
+
+.sr-read-only-feedback .content {
+  font-style: italic;
+}
+
+.sr-read-only-feedback .score {
+  font-weight: bold;
+  font-style: normal;
+  margin-right: 6px;
+}
+
+/* Facilitator's Locked Blue Pen Box */
+.blue-pen-locked {
+  background: #e0f2fe;
+  border-left: 3px solid #0284c7;
+  color: #0369a1;
+}
+
+/* Assessor's Locked Red Pen Box */
+.red-pen-locked {
+  background: #fef2f2;
+  border-left: 3px solid #dc2626;
+  color: #b91c1c;
+}
+
+/* ==========================================================================
+   HELPER UTILITIES (SPINNERS & TIMESTAMPS)
+   ========================================================================== */
+
+.sr-timestamp-text {
+  height: 45px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-style: italic;
+  font-size: 0.75rem;
+  opacity: 0.7;
+  margin-bottom: 8px;
+}
+
+/* Spinner Icon Animation for Auto-Save */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+/* ==========================================================================
+   DUAL-LAYER GRADING HIGHLIGHTS (COMPETENCY BUTTONS)
+   ========================================================================== */
+
+/* Assessor Red Pen Active States */
+.sr-comp-btn.active-c-red {
+  background-color: #fef2f2;
+  border-color: #ef4444;
+  color: #b91c1c;
+  font-weight: 700;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2);
+}
+
+.sr-comp-btn.active-nyc-red {
+  background-color: #fef2f2;
+  border-color: #ef4444;
+  color: #b91c1c;
+  font-weight: 700;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2);
+}
+
+/* Moderator Green Pen Active States */
+.sr-comp-btn.active-c-green {
+  background-color: #f0fdf4;
+  border-color: #22c55e;
+  color: #15803d;
+  font-weight: 700;
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.2);
+}
+
+.sr-comp-btn.active-nyc-green {
+  background-color: #f0fdf4;
+  border-color: #22c55e;
+  color: #15803d;
+  font-weight: 700;
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.2);
+}
+/* ══════════════════════════════════════════════════════════════════════════
+   OFFICIAL QCTO PRINT COVER & PDF FIXES
+══════════════════════════════════════════════════════════════════════════ */
+
+/* 1. Hide the print cover entirely on the screen */
+.print-only-cover {
+  display: none !important;
+}
+
+@media print {
+  /* 2. PROPER PRINT MARGINS: Let the browser handle the padding */
+  @page {
+    margin: 1.5cm; /* Standard professional document margin */
+  }
+
+  /* 3. SCORCHED EARTH OVERFLOW RESET: Fixes the "One Page Only" cut-off bug */
+  /* We MUST target every single wrapper from the HTML tag down to the content pane */
+  html,
+  body,
+  #root,
+  .App,
+  .admin-layout,
+  .main-wrapper,
+  .admin-content,
+  .sr-root,
+  .sr-layout,
+  .sr-content-pane,
+  .ap-player,
+  .ap-player-body {
+    display: block !important;
+    position: relative !important;
+    height: auto !important;
+    min-height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: white !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  /* 4. Hide all sidebars, topbars, and buttons */
+  .no-print,
+  .sr-sidebar,
+  .ap-sidebar,
+  .ap-player-topbar,
+  .ap-right-sidebar {
+    display: none !important;
+  }
+
+  /* 5. Force the Cover to display */
+  .print-only-cover {
+    display: block !important;
+    font-family: "Times New Roman", Times, serif !important;
+    color: black !important;
+    line-height: 1.5 !important;
+    width: 100% !important;
+  }
+
+  /* 6. Force strict Page Breaks (Removed the heavy padding) */
+  .print-page {
+    page-break-after: always !important;
+    break-after: page !important;
+    padding: 0 !important; /* Removed heavy padding */
+    margin: 0 !important;
+  }
+
+  /* 7. Prevent questions and signatures from being cut in half across pages */
+  .sr-q-card,
+  .ap-block-question,
+  .sr-signature-block,
+  .ap-signature-blocks,
+  .print-table,
+  tr,
+  td {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  /* 8. Style the formal cover tables */
+  .print-table {
+    border-collapse: collapse !important;
+    margin-top: 10px !important;
+    width: 100% !important;
+  }
+
+  .print-table td {
+    border: 1px solid black !important;
+    padding: 6px 10px !important; /* Slightly tighter padding inside the table */
+    vertical-align: top !important;
+  }
+
+  .print-table.no-border td {
+    border: none !important;
+    border-bottom: 1px solid #ccc !important;
+    padding: 4px 8px !important;
+  }
+
+  /* 9. Ensure text on the cover is strictly black for the PDF */
+  .print-only-cover h1,
+  .print-only-cover h2,
+  .print-only-cover h3,
+  .print-only-cover p,
+  .print-only-cover td,
+  .print-only-cover li {
+    color: black !important;
+  }
+
+  .print-only-cover h3 {
+    margin-top: 15px !important;
+    margin-bottom: 5px !important;
+    font-size: 12pt !important;
+    border-bottom: 1px solid black !important;
+    padding-bottom: 4px !important;
+    font-family: Arial, Helvetica, sans-serif !important;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   SUBMISSION REVIEW — PRINT / PDF FIX PATCH
+   Drop this at the BOTTOM of SubmissionReview.css, replacing the existing
+   @media print block and the .print-only-cover block entirely.
+
+   Problems fixed:
+   ① Signature boxes collapse / images don't render in PDF
+      → .sr-signature-block and .sr-sig-box are now defined on-screen too
+        (just hidden via the parent .sr-print-header display:none).
+        This forces the browser to fully lay them out before printing.
+   ② Stretching in PDF when only 1–2 sig boxes are present
+      → max-width: 220px + align-items: flex-start prevents boxes
+        from ballooning across the full page width.
+   ③ Cover pages pushing content off-screen
+      → print-page padding removed; @page margin handles whitespace.
+   ④ Overflow / height lock causing single-page cut-off
+      → Scorched-earth overflow reset targeting every ancestor wrapper.
+══════════════════════════════════════════════════════════════════════════ */
+
+/* ── 1. SIGNATURE BLOCK — defined on-screen so browser rasterises it ───── */
+/*      sr-print-header is display:none on screen, so this is invisible      */
+/*      but fully laid out, meaning print captures it correctly.             */
+
+.sr-print-header {
+  display: none; /* screen: hidden */
+  font-family: "Trebuchet MS", sans-serif;
+  padding-bottom: 1rem;
+  margin-bottom: 2rem;
+}
+
+.sr-signature-block {
+  display: flex;
+  flex-wrap: wrap; /* wraps if 3 boxes don't fit side-by-side */
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+  align-items: flex-start; /* ← FIXES stretching: boxes size to content */
+}
+
+.sr-sig-box {
+  flex: 0 0 auto; /* ← don't grow; fixes balloon stretching */
+  width: 200px; /* fixed width — 3 boxes fit on A4 at 1.5cm margin */
+  min-width: 150px;
+  border: 1px solid currentColor; /* inherits the role colour (blue/red/green) */
+  padding: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+
+.sr-sig-box span {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: bold;
+  margin-bottom: 4px;
+  /* colour inherits from inline style on the element */
+}
+
+.sr-sig-box strong {
+  font-size: 0.9rem;
+  margin-top: 4px;
+}
+
+.sr-sig-box em {
+  font-size: 0.75rem;
+  font-style: normal;
+  opacity: 0.85;
+}
+
+.sr-sig-line {
+  margin-top: 0.6rem;
+  border-top: 1px dashed rgba(0, 0, 0, 0.25);
+  padding-top: 3px;
+  font-size: 0.62rem;
+  text-align: center;
+  opacity: 0.6;
+}
+
+/* Signature image — constrained so it never overflows the box */
+.sr-sig-box img {
+  height: 52px;
+  width: auto;
+  max-width: 100%;
+  object-fit: contain;
+  margin-bottom: 6px;
+  /* filter is applied inline per TintedSignature component */
+}
+
+/* Fallback "no signature" placeholder */
+.sr-sig-no-image {
+  height: 52px;
+  display: flex;
+  align-items: center;
+  font-style: italic;
+  font-size: 0.75rem;
+  opacity: 0.6;
+  margin-bottom: 6px;
+}
+
+/* ── 2. COVER PAGES ─────────────────────────────────────────────────────── */
+.print-only-cover {
+  display: none !important; /* always hidden on screen */
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   PRINT ALIGNMENT FIX — replaces the @media print block in your CSS.
+   
+   The core problem: the browser prints whatever layout it rendered on screen.
+   If the screen is 1400px wide, the PDF is 1400px wide.
+   
+   The fix: we use a print-only wrapper (.sr-print-wrap) that is:
+   - Invisible on screen (display:none)  
+   - In print: position:fixed, sized in mm to exact A4 printable area
+   
+   All screen layout is hidden. Only .sr-print-wrap renders in the PDF.
+   This gives us pixel-perfect A4 alignment every time.
+══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Screen: hide the print wrapper entirely ── */
+.sr-print-wrap {
+  display: none;
+}
+
+@media print {
+  /* ── 1. Colour fidelity ── */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* ── 2. A4 page setup ── */
+  @page {
+    size: 210mm 297mm; /* A4 portrait, explicit mm */
+    margin: 20mm 18mm 20mm 18mm; /* top right bottom left */
+    /* usable area: 174mm wide × 257mm tall */
+  }
+
+  /* ── 3. Kill ALL screen layout ── */
+  html,
+  body {
+    width: 210mm !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: white !important;
+    overflow: visible !important;
+  }
+
+  /* Hide every screen element by default */
+  body > * {
+    display: none !important;
+  }
+
+  /* ── 4. The print wrapper is the ONLY thing that renders ── */
+  .sr-print-wrap {
+    display: block !important;
+    width: 174mm !important; /* A4 width minus 18mm × 2 margins */
+    max-width: 174mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-sizing: border-box !important;
+    font-family: "Trebuchet MS", sans-serif !important;
+    font-size: 9pt !important;
+    color: black !important;
+    background: white !important;
+    overflow: visible !important;
+  }
+
+  /* ── 5. Everything inside the wrapper fills the column ── */
+  .sr-print-wrap * {
+    box-sizing: border-box !important;
+    max-width: 100% !important;
+    overflow-wrap: break-word !important;
+    word-break: break-word !important;
+  }
+
+  /* ── 6. Cover pages ── */
+  .sr-print-wrap .print-page {
+    display: block !important;
+    width: 100% !important;
+    page-break-after: always !important;
+    break-after: page !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* ── 7. Audit header — info rows stack vertically ── */
+  .sr-print-header {
+    display: block !important;
+    width: 100% !important;
+    border-bottom: 2px solid black !important;
+    padding-bottom: 8mm !important;
+    margin-bottom: 8mm !important;
+  }
+
+  /* The two-column info row becomes single column */
+  .sr-print-header-info {
+    display: block !important;
+    width: 100% !important;
+    margin-bottom: 4mm !important;
+  }
+
+  .sr-print-header-info p {
+    margin: 2mm 0 !important;
+    font-size: 9pt !important;
+    text-align: left !important;
+  }
+
+  /* ── 8. Signature block — 3 equal columns at fixed mm widths ── */
+  .sr-signature-block {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    gap: 5mm !important;
+    align-items: flex-start !important;
+    width: 174mm !important;
+    margin-top: 5mm !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  .sr-sig-box {
+    flex: 0 0 54mm !important; /* (174mm - 2×5mm gap) / 3 = 54.67mm */
+    width: 54mm !important;
+    max-width: 54mm !important;
+    min-height: 35mm !important;
+    border: 0.3mm solid currentColor !important;
+    padding: 3mm !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 1mm !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    overflow: hidden !important;
+  }
+
+  .sr-sig-box span {
+    font-size: 6.5pt !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.04em !important;
+    font-weight: bold !important;
+    margin-bottom: 1mm !important;
+    display: block !important;
+  }
+
+  .sr-sig-box img,
+  .sr-sig-box .sr-sig-no-image {
+    height: 14mm !important;
+    width: auto !important;
+    max-width: 100% !important;
+    object-fit: contain !important;
+    display: block !important;
+    margin-bottom: 1mm !important;
+  }
+
+  .sr-sig-box strong {
+    font-size: 8pt !important;
+    display: block !important;
+  }
+
+  .sr-sig-box em {
+    font-size: 7pt !important;
+    font-style: normal !important;
+    display: block !important;
+    opacity: 0.8 !important;
+  }
+
+  .sr-sig-line {
+    margin-top: 2mm !important;
+    border-top: 0.2mm dashed rgba(0, 0, 0, 0.3) !important;
+    padding-top: 1mm !important;
+    font-size: 6pt !important;
+    text-align: center !important;
+    opacity: 0.6 !important;
+  }
+
+  /* ── 9. Cover tables ── */
+  .print-table {
+    border-collapse: collapse !important;
+    width: 100% !important;
+    margin-bottom: 5mm !important;
+    font-size: 9pt !important;
+  }
+
+  .print-table td {
+    border: 0.3mm solid black !important;
+    padding: 2mm 3mm !important;
+    vertical-align: top !important;
+  }
+
+  .print-table.no-border td {
+    border: none !important;
+    border-bottom: 0.2mm solid #ccc !important;
+    padding: 1.5mm 2mm !important;
+  }
+
+  /* ── 10. Question cards ── */
+  .sr-q-card {
+    border: 0.3mm solid #cbd5e1 !important;
+    border-top: 1mm solid #073f4e !important;
+    box-shadow: none !important;
+    margin-bottom: 5mm !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    width: 100% !important;
+    overflow: hidden !important;
+  }
+
+  .sr-q-header {
+    background: #f8fafc !important;
+    padding: 3mm !important;
+    border-bottom: 0.2mm solid #e2e8f0 !important;
+  }
+
+  .sr-q-body {
+    padding: 3mm !important;
+  }
+
+  .sr-q-num {
+    font-family: "Oswald", sans-serif !important;
+    font-weight: bold !important;
+    font-size: 8pt !important;
+  }
+
+  .sr-q-text {
+    font-size: 9pt !important;
+    line-height: 1.4 !important;
+  }
+
+  /* ── 11. Answers ── */
+  .sr-text-ans,
+  .sr-mcq-ans {
+    font-size: 9pt !important;
+    padding: 2mm 3mm !important;
+    width: 100% !important;
+    word-break: break-word !important;
+  }
+
+  .sr-answer-textarea {
+    display: none !important; /* disabled textarea — not needed in print */
+  }
+
+  /* ── 12. Feedback layers (blue/red/green ink) ── */
+  .sr-read-only-feedback {
+    font-size: 8pt !important;
+    padding: 2mm 3mm !important;
+    margin-top: 2mm !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  /* ── 13. Active grading inputs — hide in print ── */
+  .sr-grade-box,
+  .sr-visual-mark,
+  .sr-role-guide,
+  .no-print,
+  .sr-sidebar,
+  .ap-player-topbar {
+    display: none !important;
+  }
+
+  /* ── 14. Quill rich text ── */
+  .quill-read-only-content {
+    font-size: 9pt !important;
+    line-height: 1.5 !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+    max-width: 100% !important;
+  }
+
+  .quill-read-only-content img {
+    max-width: 100% !important;
+    height: auto !important;
+  }
+
+  /* ── 15. Cover page typography ── */
+  .sr-print-wrap h1 {
+    font-size: 14pt !important;
+    margin-bottom: 3mm !important;
+  }
+  .sr-print-wrap h2 {
+    font-size: 12pt !important;
+    margin-bottom: 3mm !important;
+  }
+  .sr-print-wrap h3 {
+    font-size: 10pt !important;
+    margin: 4mm 0 2mm !important;
+    border-bottom: 0.3mm solid black !important;
+    padding-bottom: 1mm !important;
+  }
+  .sr-print-wrap p {
+    font-size: 9pt !important;
+    line-height: 1.5 !important;
+    margin: 2mm 0 !important;
+  }
+  .sr-print-wrap li {
+    font-size: 9pt !important;
+    line-height: 1.4 !important;
+    margin-bottom: 1mm !important;
+  }
+
+  /* Force page breaks between sections */
+  .sr-q-card,
+  tr,
+  td {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+}
+
+.sr-print-wrap {
+  display: none;
+}
+
+.sr-tick-history {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-weight: bold;
+}
+.sr-tick-history.blue {
+  background: #e0f2fe;
+  color: #0284c7;
+}
+.sr-tick-history.red {
+  background: #fef2f2;
+  color: #ef4444;
+}
+.sr-tick-history.green {
+  background: #f0fdf4;
+  color: #22c55e;
+}
+
+.sr-feedback-readonly {
+  padding: 8px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-style: italic;
+  border-left: 3px solid;
+}
+.sr-feedback-readonly.blue {
+  background: #f0f9ff;
+  color: #0369a1;
+  border-color: #0ea5e9;
+}
+.sr-feedback-readonly.red {
+  background: #fef2f2;
+  color: #b91c1c;
+  border-color: #ef4444;
+}
+
+.audit-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  font-size: 0.8rem;
+}
+.audit-entry span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #64748b;
+}
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 15mm;
+  }
+  html,
+  body,
+  #root {
+    width: 100% !important;
+    height: auto !important;
+    background: white !important;
+    overflow: visible !important;
+  }
+  body > * {
+    display: none !important;
+  }
+
+  .sr-print-wrap {
+    display: block !important;
+    width: 174mm !important;
+    margin: 0 auto !important;
+    color: black !important;
+    font-family: "Times New Roman", serif !important;
+    font-size: 10pt !important;
+  }
+  .print-only-cover {
+    display: block !important;
+  }
+  .print-page {
+    page-break-after: always !important;
+    break-after: page !important;
+    padding-top: 10mm !important;
+  }
+
+  .print-table {
+    border-collapse: collapse !important;
+    width: 100% !important;
+    margin-bottom: 5mm !important;
+  }
+  .print-table td {
+    border: 0.3mm solid black !important;
+    padding: 2mm 3mm !important;
+  }
+  .print-table.no-border td {
+    border: none !important;
+    border-bottom: 0.1mm solid #ccc !important;
+  }
+
+  .sr-print-header {
+    border-bottom: 2px solid black !important;
+    padding-bottom: 5mm !important;
+    margin-bottom: 8mm !important;
+  }
+  .sr-print-header-info p {
+    margin: 1mm 0 !important;
+  }
+
+  .sr-signature-block {
+    display: flex !important;
+    flex-direction: row !important;
+    gap: 4mm !important;
+    width: 100% !important;
+    margin-top: 5mm !important;
+  }
+  .sr-sig-box {
+    flex: 1 !important;
+    border: 0.3mm solid black !important;
+    padding: 3mm !important;
+    min-height: 35mm !important;
+    page-break-inside: avoid !important;
+  }
+  .sr-sig-line {
+    border-top: 0.2mm dashed #000 !important;
+    margin-top: 2mm !important;
+    font-size: 7pt !important;
+    text-align: center !important;
+  }
+
+  .sr-q-card {
+    border: 0.2mm solid #ccc !important;
+    margin-bottom: 5mm !important;
+    page-break-inside: avoid !important;
+    width: 100% !important;
+  }
+  .sr-q-header {
+    background: #f8fafc !important;
+    padding: 3mm !important;
+    border-bottom: 0.2mm solid #e2e8f0 !important;
+  }
+  .sr-read-only-feedback {
+    margin-top: 2mm !important;
+    padding: 2mm !important;
+    font-size: 9pt !important;
+  }
+  .blue-ink {
+    background: #f0f9ff !important;
+    color: #0369a1 !important;
+    border-left: 1mm solid #0ea5e9 !important;
+  }
+  .red-ink {
+    background: #fef2f2 !important;
+    color: #b91c1c !important;
+    border-left: 1mm solid #ef4444 !important;
+  }
+  .green-ink {
+    background: #f0fdf4 !important;
+    color: #16a34a !important;
+    border-left: 1mm solid #22c55e !important;
+  }
+
+  .no-print,
+  .sr-visual-mark,
+  .sr-grade-box,
+  .sr-sidebar,
+  .ap-player-topbar {
+    display: none !important;
+  }
+}
+
+/* ── PRINT-SPECIFIC OVERRIDES FOR TRUNCATION FIXES ── */
+.print-only {
+  display: none !important;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+
+  /* Force the main layouts to break free from fixed screen bounds */
+  body,
+  html,
+  #root,
+  .sr-root,
+  .ap-player,
+  .sr-layout,
+  .sr-content-pane,
+  .ap-player-body,
+  .ap-player-content {
+    height: auto !important;
+    overflow: visible !important;
+    position: static !important;
+  }
+
+  /* Prevent specific cards from breaking awkwardly across two pages */
+  .sr-q-card,
+  .ap-block-question,
+  .sr-summary-card,
+  .ap-audit-card,
+  .print-page {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    margin-bottom: 25px !important;
+  }
+}

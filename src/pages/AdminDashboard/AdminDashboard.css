@@ -1,381 +1,228 @@
-/* ==========================================================================
-   1. MAIN LAYOUT (SIDEBAR + CONTENT)
-   ========================================================================== */
+/* ─────────────────────────────────────────────────────────────────────────────
+   AdminDashboard.css
+   mLab Corporate Identity Brand Guide
+───────────────────────────────────────────────────────────────────────────── */
 
+@import url("https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&display=swap");
+
+:root {
+  --mlab-blue: #073f4e;
+  --mlab-blue-dark: #052e3a;
+  --mlab-green: #94c73d;
+  --mlab-green-dark: #7aaa2e;
+  --mlab-grey: #6b6b6b;
+  --mlab-white: #ffffff;
+  --mlab-light-blue: #e8f0f3;
+  --mlab-light-green: #f0f7e1;
+  --mlab-amber: #d97706;
+  --mlab-red: #ef4444;
+  --mlab-border: #d1dde3;
+  --mlab-bg: #f4f7f9;
+
+  --font-heading: "Oswald", "Trebuchet MS", sans-serif;
+  --font-body:
+    "Trebuchet MS", "Lucida Grande", "Lucida Sans Unicode", Arial, sans-serif;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   FULL-SCREEN LAYOUT SHELL
+══════════════════════════════════════════════════════════════════════════════ */
 .admin-layout {
   display: flex;
-  width: 100vw;
   height: 100vh;
+  width: 100vw;
   overflow: hidden;
-  font-family:
-    "Inter",
-    system-ui,
-    -apple-system,
-    sans-serif;
-  background-color: transparent; /* Adapts to OS/Browser theme */
-  color: inherit;
+  background: var(--mlab-bg);
+  font-family: var(--font-body);
+  color: var(--mlab-blue);
+  position: relative;
 }
 
-/* ==========================================================================
-   2. SIDEBAR
-   ========================================================================== */
-
-.sidebar {
-  width: 260px;
-  background-color: #073f4e; /* mLab Midnight Blue */
-  /* color: white; */
-  display: flex;
-  flex-direction: column;
-  flex-shrink: 0;
-  box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
-  z-index: 100;
+/* --- MOBILE HEADER (Hidden on Desktop) --- */
+.admin-mobile-header {
+  display: none;
+  align-items: center;
+  padding: 1rem 1.5rem;
+  background: var(--mlab-white);
+  border-bottom: 1px solid var(--mlab-border);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  z-index: 40;
 }
 
-.sidebar-header {
-  padding: 1.5rem 2rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.sidebar-logo {
-  font-size: 1.8rem;
-  font-weight: 800;
-  letter-spacing: -1px;
-}
-
-.sidebar-logo .m {
-  color: #fff;
-}
-.sidebar-logo .lab {
-  color: #94c73d;
-} /* mLab Green */
-
-.sidebar-nav {
-  padding: 1.5rem 1rem;
-  flex-grow: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.nav-item {
+.admin-hamburger-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--mlab-blue);
+  margin-right: 1rem;
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.8rem 1rem;
-  color: rgba(255, 255, 255, 0.7);
-  background: transparent;
-  border: none;
-  border-radius: 6px;
-  font-size: 0.95rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  width: 100%;
-  text-align: left;
-  font-family: inherit;
+  justify-content: center;
+  padding: 0.25rem;
 }
 
-.nav-item:hover {
-  color: white;
-  background: rgba(255, 255, 255, 0.05);
+.admin-mobile-title {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  color: var(--mlab-blue);
+  font-size: 1.2rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
-.nav-item.active {
-  background-color: #94c73d;
-  color: white;
-}
-
-.sidebar-footer {
-  padding: 1.5rem 1rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-/* ==========================================================================
-   3. MAIN CONTENT WRAPPER & HEADER
-   ========================================================================== */
-
-.main-wrapper {
-  flex-grow: 1;
+/* --- SIDEBAR WRAPPER --- */
+.admin-sidebar-wrapper {
+  z-index: 50;
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  overflow-y: auto; /* Scroll only the main content */
-  background-color: transparent;
 }
 
+.admin-close-btn {
+  display: none;
+}
+
+/* --- OVERLAY --- */
+.admin-sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 45;
+  backdrop-filter: blur(2px);
+}
+
+/* ── Main content pane ─────────────────────────────────────────────────────── */
+.main-wrapper {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  background: var(--mlab-bg);
+  position: relative;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   DASHBOARD HEADER
+══════════════════════════════════════════════════════════════════════════════ */
 .dashboard-header {
   display: flex;
+  align-items: flex-end;
   justify-content: space-between;
-  align-items: center;
-  padding: 1.5rem 3rem;
-  border-bottom: 1px solid rgba(128, 128, 128, 0.2);
-  position: sticky;
-  top: 0;
-  z-index: 50;
-  background-color: transparent;
-  backdrop-filter: blur(12px); /* Glassmorphism effect when scrolling */
+  padding: 1.5rem 0 1.25rem;
+  margin-bottom: 1.5rem;
+  border-bottom: 3px solid var(--mlab-blue);
+  flex-wrap: wrap;
+  gap: 0.75rem;
 }
 
 .header-title h1 {
-  margin: 0;
-  font-size: 1.5rem;
-  color: inherit;
+  font-family: var(--font-heading);
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--mlab-blue);
+  margin: 0 0 0.2rem;
+  line-height: 1.2;
 }
 
 .header-title p {
-  margin: 0.2rem 0 0 0;
+  font-family: var(--font-body);
   font-size: 0.85rem;
-  opacity: 0.6;
+  color: var(--mlab-grey);
+  margin: 0;
+  line-height: 1.5;
 }
 
+/* ══════════════════════════════════════════════════════════════════════════════
+   CONTENT PANE
+══════════════════════════════════════════════════════════════════════════════ */
 .admin-content {
-  padding: 2rem 3rem 4rem 3rem;
-  flex-grow: 1;
-  width: 100%;
-  box-sizing: border-box;
-}
-
-/* ==========================================================================
-   4. BUTTONS & ACTIONS
-   ========================================================================== */
-
-.admin-actions {
-  display: flex;
-  gap: 1rem;
-  align-items: center;
-}
-
-.btn {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.6rem 1.2rem;
-  border-radius: 6px;
-  font-weight: 600;
-  font-size: 0.9rem;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-family: inherit;
-}
-
-.btn-primary {
-  background-color: #94c73d;
-  color: #fff;
-  border: 1px solid #94c73d;
-}
-
-.btn-primary:hover {
-  background-color: #82b332;
-  border-color: #82b332;
-}
-
-.btn-outline {
-  background-color: transparent;
-  color: inherit;
-  border: 1px solid rgba(128, 128, 128, 0.4);
-}
-
-.btn-outline:hover {
-  background-color: rgba(128, 128, 128, 0.05);
-  border-color: inherit;
-}
-
-.icon-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 0.5rem;
-  border-radius: 6px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition: background-color 0.2s;
-  color: inherit;
-  opacity: 0.7;
-}
-
-.icon-btn:hover {
-  background-color: rgba(128, 128, 128, 0.1);
-  opacity: 1;
-}
-
-.action-edit:hover {
-  color: #073f4e;
-}
-.action-view:hover {
-  color: #94c73d;
-}
-.delete:hover {
-  color: #ef4444;
-  background-color: rgba(239, 68, 68, 0.1);
-}
-
-.add-module-btn {
-  background: none;
-  border: 2px dashed rgba(128, 128, 128, 0.3);
-  color: inherit;
-  opacity: 0.7;
-  width: 100%;
-  padding: 1rem;
-  border-radius: 6px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-  margin-top: 0.5rem;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.add-module-btn:hover {
-  border-color: #94c73d;
-  color: #94c73d;
-  opacity: 1;
-  background: rgba(148, 199, 61, 0.05);
-}
-
-/* ==========================================================================
-   5. GRIDS, FORMS & INPUTS
-   ========================================================================== */
-
-.list-view,
-.edit-view {
-  width: 100%;
-  box-sizing: border-box;
+  /* background: var(--mlab-white);
+  border: 1px solid var(--mlab-border);
+  border-top: 3px solid var(--mlab-green);
+  padding: 1.75rem 2rem;
+  flex: 1; */
 }
 
 .edit-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 1.5rem;
-}
-
-.input-group {
   display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-}
-
-.input-group label {
-  font-size: 0.85rem;
-  font-weight: 600;
-  opacity: 0.8;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-input,
-select {
-  padding: 0.75rem;
-  border: 1px solid rgba(128, 128, 128, 0.3);
-  border-radius: 6px;
-  font-size: 0.95rem;
-  font-family: inherit;
-  color: inherit;
-  background-color: transparent;
-  transition: all 0.2s;
-  box-sizing: border-box;
-}
-
-input:focus,
-select:focus {
-  outline: none;
-  border-color: #94c73d;
-  box-shadow: 0 0 0 3px rgba(148, 199, 61, 0.15);
-  background-color: rgba(128, 128, 128, 0.02);
-}
-
-input::placeholder {
-  opacity: 0.4;
-}
-
-.disabled-input {
-  opacity: 0.6;
-  cursor: not-allowed;
-  background-color: rgba(128, 128, 128, 0.05) !important;
-}
-
-/* ==========================================================================
-   6. TABLES
-   ========================================================================== */
-
-.assessment-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.assessment-table th {
-  background-color: rgba(128, 128, 128, 0.05);
-  padding: 1rem;
-  text-align: left;
-  font-size: 0.85rem;
-  font-weight: 600;
-  opacity: 0.8;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  border-bottom: 2px solid rgba(128, 128, 128, 0.2);
-}
-
-.assessment-table td {
-  padding: 1rem;
-  border-bottom: 1px solid rgba(128, 128, 128, 0.15);
-  vertical-align: middle;
-}
-
-/* ==========================================================================
-   7. MODALS (Popups)
-   ========================================================================== */
-
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background-color: rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(4px);
-  z-index: 999;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  padding: 2rem;
-  animation: fadeIn 0.2s ease-out;
-}
-
-.modal-content {
-  /* Canvas and CanvasText automatically adapt to the user's Light/Dark mode! */
-  background-color: Canvas;
-  color: CanvasText;
-  border: 1px solid rgba(128, 128, 128, 0.2);
-  border-radius: 8px;
-  width: 100%;
-  max-width: 500px;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2);
-  animation: slideUp 0.3s ease-out;
-}
-
-.modal-content.large {
-  max-width: 800px;
-  max-height: 90vh; /* Prevents it from being taller than the screen */
-}
-
-/* This makes ONLY the inside of the form scrollable */
-.modal-body {
-  padding: 2rem;
-  overflow-y: auto;
-}
-
-.modal-header {
-  padding: 1.5rem 2rem;
-  border-bottom: 1px solid rgba(128, 128, 128, 0.2);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.modal-footer {
-  padding: 1.5rem 2rem;
-  border-top: 1px solid rgba(128, 128, 128, 0.2);
-  display: flex;
-  justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 1rem;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   RESPONSIVE (MOBILE DRAWER)
+══════════════════════════════════════════════════════════════════════════════ */
+@media (max-width: 1024px) {
+  .admin-layout {
+    flex-direction: column;
+  }
+
+  .admin-mobile-header {
+    display: flex;
+  }
+
+  /* Slide Sidebar off-screen */
+  .admin-sidebar-wrapper {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100%;
+    background: white;
+    transform: translateX(-100%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 4px 0 15px rgba(0, 0, 0, 0.1);
+  }
+
+  .admin-sidebar-wrapper.open {
+    transform: translateX(0);
+  }
+
+  .admin-sidebar-wrapper.open ~ .admin-sidebar-overlay,
+  .admin-sidebar-overlay {
+    display: block;
+  }
+
+  .admin-close-btn {
+    display: block;
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    background: transparent;
+    border: none;
+    color: var(--mlab-grey);
+    cursor: pointer;
+    z-index: 60;
+  }
+}
+
+@media (max-width: 900px) {
+  .admin-content {
+    padding: 1.25rem 1rem;
+  }
+  .dashboard-header {
+    padding: 1.25rem 0 1rem;
+    margin-bottom: 1.25rem;
+  }
+  .header-title h1 {
+    font-size: 1.3rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .admin-content {
+    padding: 1rem;
+    border-top: none;
+    border-left: none;
+    border-right: none;
+  }
+  .dashboard-header {
+    border-bottom-width: 2px;
+  }
+  .edit-grid {
+    gap: 0.75rem;
+  }
 }

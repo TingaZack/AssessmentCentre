@@ -33,20 +33,56 @@ export interface Qualification {
 }
 
 export interface DashboardLearner {
-  id: number;
+  id: string | number;
   fullName: string;
   idNumber: string;
   dateOfBirth: string;
   email: string;
   phone: string;
+
+  campusId?: string;
+
+  // Web3 / Blockchain properties
+  ipfsHash?: string;
+  blockchainFingerprint?: string;
+  isBlockchainVerified?: boolean;
+
+  certificates?: string;
+
+  // Existing Academic Fields
   qualification: Qualification;
   knowledgeModules: KnowledgeModule[];
   practicalModules: PracticalModule[];
   workExperienceModules: WorkExperienceModule[];
   eisaAdmission: boolean;
+  nextEisaDate?: string;
   verificationCode: string;
   issueDate: string | null;
-  status: "completed" | "in-progress" | "pending";
+
+  // Expanded Status to support both legacy and new Cohort logic
+  status:
+    | "completed"
+    | "in-progress"
+    | "pending"
+    | "active"
+    | "dropped"
+    | "archived";
+
+  // Fields used for Cohorts & Auth Routing
+  enrollmentId?: string;
+  learnerId?: string;
+  authStatus?: "pending" | "active";
+  cohortId?: string;
+  programmeId?: string;
+
+  // Fields used for Exits/Dropouts
+  exitReason?: string;
+  exitDate?: string;
+  isArchived?: boolean;
+
+  // Workplace Placements (The magic link!)
+  employerId?: string;
+  mentorId?: string;
 }
 
 export interface ProgrammeTemplate {

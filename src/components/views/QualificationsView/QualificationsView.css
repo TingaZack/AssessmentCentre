@@ -1,0 +1,335 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   QualificationsView.css
+   mLab Corporate Identity Brand Guide 2019
+   Consistent with LearnersView.css
+
+   Colours:
+     --mlab-blue:        #073f4e  (Midnight Blue)
+     --mlab-green:       #94c73d  (Green – primary accent)
+     --mlab-grey:        #6b6b6b  (Grey – secondary text)
+     --mlab-white:       #ffffff
+
+   Typefaces:
+     Oswald       – headings, labels, badges, buttons (uppercase)
+     Trebuchet MS – body, data, inputs
+───────────────────────────────────────────────────────────────────────────── */
+
+@import url("https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&display=swap");
+
+/* ── CSS Variables ─────────────────────────────────────────────────────────── */
+:root {
+  --mlab-blue: #073f4e;
+  --mlab-blue-dark: #052e3a;
+  --mlab-green: #94c73d;
+  --mlab-green-dark: #7aaa2e;
+  --mlab-grey: #6b6b6b;
+  --mlab-white: #ffffff;
+  --mlab-light-blue: #e8f0f3;
+  --mlab-light-green: #f0f7e1;
+  --mlab-amber: #d97706;
+  --mlab-red: #ef4444;
+  --mlab-border: #d1dde3;
+  --mlab-bg: #f4f7f9;
+
+  --font-heading: "Oswald", "Trebuchet MS", sans-serif;
+  --font-body:
+    "Trebuchet MS", "Lucida Grande", "Lucida Sans Unicode", Arial, sans-serif;
+
+  --radius-sm: 3px;
+  --radius-md: 6px;
+  --transition: 0.18s ease;
+}
+
+/* ── Wrapper ───────────────────────────────────────────────────────────────── */
+.mlab-qualifications {
+  font-family: var(--font-body);
+  color: var(--mlab-blue);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   HEADER ROW
+══════════════════════════════════════════════════════════════════════════════ */
+.mlab-qualifications__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.75rem;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding-bottom: 1.25rem;
+  border-bottom: 3px solid var(--mlab-blue);
+}
+
+.mlab-qualifications__title {
+  font-family: var(--font-heading);
+  font-size: 1.3rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--mlab-blue);
+  margin: 0;
+}
+
+.mlab-qualifications__actions {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   BUTTONS
+══════════════════════════════════════════════════════════════════════════════ */
+.mlab-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.6rem 1.25rem;
+  border: 2px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 0.8rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  transition:
+    background var(--transition),
+    border-color var(--transition),
+    color var(--transition),
+    opacity var(--transition);
+  outline: none;
+  white-space: nowrap;
+}
+.mlab-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.mlab-btn--green {
+  background: var(--mlab-green);
+  color: var(--mlab-white);
+  border-color: var(--mlab-green);
+}
+.mlab-btn--green:hover:not(:disabled) {
+  background: var(--mlab-green-dark);
+  border-color: var(--mlab-green-dark);
+}
+
+.mlab-btn--outline-blue {
+  background: transparent;
+  color: var(--mlab-blue);
+  border-color: var(--mlab-blue);
+}
+.mlab-btn--outline-blue:hover:not(:disabled) {
+  opacity: 0.75;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   TABLE
+══════════════════════════════════════════════════════════════════════════════ */
+.mlab-table-wrap {
+  overflow-x: auto;
+  border: 2px solid var(--mlab-blue);
+}
+
+.mlab-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-body);
+}
+
+.mlab-table thead {
+  background: var(--mlab-blue);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.mlab-table th {
+  padding: 0.85rem 1rem;
+  text-align: left;
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--mlab-white);
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  white-space: nowrap;
+}
+.mlab-table th:last-child {
+  border-right: none;
+}
+
+.mlab-table td {
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--mlab-light-blue);
+  vertical-align: middle;
+  transition: background var(--transition);
+}
+
+.mlab-table tbody tr {
+  transition: opacity var(--transition);
+}
+.mlab-table tbody tr:hover td {
+  background: #f0f6f9;
+}
+.mlab-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   CELL HELPERS
+══════════════════════════════════════════════════════════════════════════════ */
+.mlab-cell-name {
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--mlab-blue);
+  line-height: 1.4;
+}
+
+.mlab-cell-meta {
+  font-size: 0.85rem;
+  color: var(--mlab-grey);
+  font-family: var(--font-body);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   NQF LEVEL BADGE
+══════════════════════════════════════════════════════════════════════════════ */
+.mlab-nqf-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  font-family: var(--font-heading);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  background: var(--mlab-blue);
+  color: var(--mlab-white);
+  border-radius: var(--radius-sm);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   MODULE COUNT CHIPS  (K = Knowledge · P = Practical · W = Workplace)
+══════════════════════════════════════════════════════════════════════════════ */
+.mlab-module-chips {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.mlab-chip {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-heading);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 3px 9px;
+  border-radius: var(--radius-sm);
+}
+
+/* Knowledge — blue tones */
+.mlab-chip--k {
+  background: var(--mlab-light-blue);
+  color: var(--mlab-blue);
+  border: 1px solid #b0c4cc;
+}
+
+/* Practical — green tones */
+.mlab-chip--p {
+  background: var(--mlab-light-green);
+  color: var(--mlab-green-dark);
+  border: 1px solid #c2e08a;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   ICON BUTTONS
+══════════════════════════════════════════════════════════════════════════════ */
+.mlab-icon-btn-group {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+}
+
+.mlab-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  background: transparent;
+  border: 1.5px solid currentColor;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition:
+    opacity var(--transition),
+    transform var(--transition);
+  padding: 0;
+  outline: none;
+  flex-shrink: 0;
+}
+.mlab-icon-btn:hover {
+  opacity: 0.75;
+  transform: scale(1.1);
+}
+
+.mlab-icon-btn--blue {
+  color: var(--mlab-blue);
+}
+.mlab-icon-btn--amber {
+  color: var(--mlab-amber);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   EMPTY STATE
+══════════════════════════════════════════════════════════════════════════════ */
+.mlab-table-empty {
+  text-align: center;
+  padding: 4rem 2rem;
+  background: var(--mlab-light-blue);
+  border-top: 4px solid var(--mlab-green);
+}
+
+.mlab-table-empty__title {
+  display: block;
+  font-family: var(--font-heading);
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--mlab-blue);
+  margin: 1rem 0 0.4rem;
+}
+
+.mlab-table-empty__desc {
+  font-size: 0.86rem;
+  color: var(--mlab-grey);
+  margin: 0;
+  line-height: 1.6;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   RESPONSIVE
+══════════════════════════════════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+  .mlab-qualifications__header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .mlab-qualifications__actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+  .mlab-table th,
+  .mlab-table td {
+    padding: 0.65rem 0.75rem;
+  }
+  .mlab-module-chips {
+    gap: 0.3rem;
+  }
+}

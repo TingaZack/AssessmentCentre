@@ -1,0 +1,126 @@
+/* src/layouts/FacilitatorLayout/FacilitatorLayout.css */
+
+.fac-layout-container {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  background: #f8fafc;
+  position: relative;
+}
+
+/* --- MOBILE HEADER (Hidden on Desktop) --- */
+.fac-mobile-header {
+  display: none;
+  align-items: center;
+  padding: 1rem 1.5rem;
+  background: white;
+  border-bottom: 1px solid #e2e8f0;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  z-index: 40;
+}
+
+.fac-hamburger-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #0f172a;
+  margin-right: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem;
+}
+
+.fac-mobile-title {
+  font-weight: 600;
+  color: #0f172a;
+  font-size: 1.1rem;
+}
+
+/* --- SIDEBAR WRAPPER --- */
+.fac-sidebar-wrapper {
+  z-index: 50;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.fac-close-btn {
+  display: none; /* Hidden on desktop */
+}
+
+/* --- OVERLAY --- */
+.fac-sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 45;
+  backdrop-filter: blur(2px);
+}
+
+/* --- MAIN CONTENT --- */
+.fac-main-content {
+  flex: 1;
+  overflow-y: auto;
+  position: relative;
+}
+
+.fac-content-inner {
+  /* padding: 2rem; */
+  /* max-width: 1400px; */
+  margin: 0 auto;
+}
+
+/* =========================================
+   📱 RESPONSIVE MEDIA QUERIES (MOBILE)
+========================================= */
+@media (max-width: 1024px) {
+  .fac-layout-container {
+    flex-direction: column;
+  }
+
+  .fac-mobile-header {
+    display: flex;
+  }
+
+  .fac-content-inner {
+  }
+
+  /* Convert Sidebar to a sliding drawer */
+  .fac-sidebar-wrapper {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100%;
+    background: white;
+    transform: translateX(-100%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 4px 0 15px rgba(0, 0, 0, 0.1);
+  }
+
+  /* When state is true, slide it in */
+  .fac-sidebar-wrapper.open {
+    transform: translateX(0);
+  }
+
+  /* Show the overlay behind the open sidebar */
+  .fac-sidebar-wrapper.open ~ .fac-sidebar-overlay,
+  .fac-sidebar-overlay {
+    display: block;
+  }
+
+  /* Show the 'X' close button inside the sidebar on mobile */
+  .fac-close-btn {
+    display: block;
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    background: transparent;
+    border: none;
+    color: #64748b;
+    cursor: pointer;
+    z-index: 60;
+  }
+}

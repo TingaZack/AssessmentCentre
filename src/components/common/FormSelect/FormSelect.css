@@ -1,0 +1,336 @@
+.form-select-container {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  position: relative;
+  width: 100%;
+}
+
+.form-select-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--mlab-grey);
+}
+
+.form-select-trigger {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  min-height: 38px;
+  transition: all 0.2s;
+}
+
+.form-select-trigger:hover {
+  border-color: var(--mlab-blue);
+}
+.form-select-trigger.open {
+  border-color: var(--mlab-blue);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.placeholder-text {
+  color: #94a3b8;
+  font-size: 0.85rem;
+}
+.selected-text {
+  color: #1e293b;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.chevron {
+  color: #64748b;
+  transition: transform 0.2s;
+}
+.chevron.rotate {
+  transform: rotate(180deg);
+}
+
+.form-select-dropdown {
+  position: absolute;
+  top: calc(100% + 5px);
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  z-index: 1000;
+  overflow: hidden;
+  animation: fadeIn 0.1s ease-out;
+}
+
+.form-select-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.form-select-search input {
+  border: none;
+  outline: none;
+  font-size: 0.85rem;
+  width: 100%;
+}
+
+.form-select-options {
+  max-height: 250px;
+  overflow-y: auto;
+}
+
+.form-select-option {
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.form-select-option:hover {
+  background: #f8fafc;
+}
+.form-select-option.selected {
+  background: #eff6ff;
+  color: var(--mlab-blue);
+}
+
+.option-label {
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+.option-sublabel {
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+.no-results {
+  padding: 20px;
+  text-align: center;
+  color: #94a3b8;
+  font-size: 0.85rem;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* src/components/common/FormSelect/FormSelect.css */
+
+.form-select-container {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  position: relative;
+  width: 100%;
+}
+
+.form-select-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #475569;
+}
+
+/* ── THE CLICKABLE TRIGGER BOX ── */
+.form-select-trigger {
+  background: white;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  min-height: 42px; /* Matches your other inputs perfectly */
+  transition: all 0.2s ease;
+}
+
+.form-select-trigger:hover:not(.disabled) {
+  border-color: #94a3b8;
+}
+
+.form-select-trigger.open {
+  border-color: var(--mlab-blue, #2563eb);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.form-select-trigger.disabled {
+  background: #f8fafc;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.form-select-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-right: 10px;
+}
+
+.placeholder-text {
+  color: #94a3b8;
+  font-size: 0.85rem;
+}
+
+.selected-text {
+  color: #0f172a;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.chevron {
+  color: #64748b;
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+.chevron.rotate {
+  transform: rotate(180deg);
+}
+
+/* ── THE FLOATING DROPDOWN MENU ── */
+.form-select-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  box-shadow:
+    0 10px 25px -5px rgba(0, 0, 0, 0.1),
+    0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  z-index: 9999;
+  overflow: hidden;
+  animation: fs-fadeIn 0.15s ease-out;
+}
+
+/* THE SEARCH BAR */
+.form-select-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: #f8fafc; /* Light distinct background */
+  border-bottom: 1px solid #e2e8f0;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.form-select-search svg {
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+.form-select-search input {
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 0.85rem;
+  width: 100%;
+  color: #0f172a;
+}
+
+.form-select-search input::placeholder {
+  color: #94a3b8;
+}
+
+.clear-search {
+  cursor: pointer;
+  color: #94a3b8;
+  padding: 2px;
+  border-radius: 50%;
+  transition: all 0.2s;
+}
+
+.clear-search:hover {
+  background: #e2e8f0;
+  color: #ef4444; /* Soft red to clear */
+}
+
+/* ── THE OPTIONS LIST ── */
+.form-select-options {
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 6px 0;
+}
+
+/* Custom Scrollbar to keep it looking clean */
+.form-select-options::-webkit-scrollbar {
+  width: 6px;
+}
+.form-select-options::-webkit-scrollbar-track {
+  background: transparent;
+}
+.form-select-options::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 10px;
+}
+.form-select-options::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+.form-select-option {
+  padding: 10px 16px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.form-select-option:hover {
+  background: #f1f5f9;
+}
+
+.form-select-option.selected {
+  background: #eff6ff; /* Highlighted blue background */
+  border-left: 3px solid var(--mlab-blue, #2563eb);
+  padding-left: 13px; /* Adjust for the border */
+}
+
+.form-select-option.selected .option-label {
+  color: var(--mlab-blue, #2563eb);
+  font-weight: 600;
+}
+
+.option-label {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #334155;
+}
+
+.option-sublabel {
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+.no-results {
+  padding: 24px 20px;
+  text-align: center;
+  color: #64748b;
+  font-size: 0.85rem;
+}
+
+@keyframes fs-fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

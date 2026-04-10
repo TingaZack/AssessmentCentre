@@ -1,0 +1,1216 @@
+SECTION 3A: KNOWLEDGE MODULE SPECIFICATIONS,,
+KM-01,"251201-005-00-KM-01, Computers and Computing Systems, NQF Level 4, Credits 12",
+,KM-01-KT01 : Problem solving skills for IT Professionals 5%,
+,Topic elements to be covered include:,
+,• KT 0101 Identification of the problem,pg.6
+,• KT 0102 Establishing a probable cause,pg.13
+,• KT 0103 Testing to determine the cause,pg.16
+,• KT 0104 Establishing a plan to resolve the problem,pg.17
+,• KT 0105 Implementing your solution,pg.19
+,• KT 0106 Verifying functionality,pg.20
+,• KT 0107 Implementing preventative measures,pg.22
+,• KT 0108 Documenting results,pg.32
+,"KM-01-KT02 : Techniques for safety 5% 
+",pg.40
+,Topic elements to be covered include: ,
+,• KT 0201 Personal protective equipment,
+,"• KT 0202 Chemicals 
+• KT 0203 Cables 
+• KT 0204 Hazards (Tripping, electrical, fire, jewellery, etc.) 
+• KT 0205 Environmental risks","pg.42 
+pg.43 
+pg.49 
+pg.57"
+,"• KT 0206 Ergonomics and lifting techniques 
+KM-01-KT03 : System components 5% 
+","pg.60 
+pg.64"
+,"Topic elements to be covered include: 
+",
+,"• KT 0301 Storage devices such as hard drives, magnetic tapes, flash drives",
+,"• KT 0302 Solid-state drives such as IDE, SATA, and SCSI ","pg.70 
+pg.73"
+,"• KT 0303 Processors and CPUs, processing speeds, operating systems, and controls",
+,KM-01-KT04 : Motherboards 5%,
+,Topic elements to be covered include:,
+,• KT 0401 Function of motherboard,pg.80
+,• KT 0402 Location of primary components,pg.81
+,"• KT 0403 Motherboard chipsets, audio connections, drive activity light, the power light, on/off buttons, and USB connections",pg.84
+,KM-01-KT05 : Processors 5%,
+,Topic elements to be covered include:,
+,• KT 0501 Processors,pg.88
+,KT 0502 Terminology,pg.91
+,• KT 0503 Processor speeds in megahertz and gigahertz,pg.93
+,"• KT 0504 Architecture, including registers, cache memory, virtualization, graphics processing units, throttling, and overclocking",pg.96
+,KM-01-KT06 : Memory 5%,
+,Topic elements to be covered include:,.
+,"• KT 0601 Types of memory: RAM and ROM including DRAM, SRAM, CMOS RAM, and VRAM",pg.101
+,• KT 0602 Purpose of memory,pg.104
+,KM-01-KT07 : BIOS and CMOS 5%,
+,Topic elements to be covered include:,
+,• KT 0701 BIOS: Basic Input-Output System that runs a computer,pg.107
+,• KT 0702 Upgrade BIOS,pg.110
+,• KT 0703 Potential issues,pg.112
+,• KT 0704 CMOS: Complementary Metal Oxide Semiconductor,pg.116
+,"• KT 0705 CMOS setup, settings, and access",pg.117
+,KM-01-KT08 : Hard drives and storage devices 5%,
+,Topic elements to be covered include:,
+,• KT 0801 Hard drives and storage devices,pg.119
+,"• KT 0802 Installing discs, formatting discs, partitioning discs, troubleshooting disks, as well as IDE,",pg.120
+,"SCSI, and SATA",
+,"• KT 0803 Parts of a hard disk, such as platters, tracks, sectors, clusters, and cylinders",pg.122
+,• KT 0804 Installing IDE devices,pg.125
+,KM-01-KT09 : Power supplies and voltage,
+,Topic elements to be covered include:,
+,"• KT 0901 Power supply units, uninterruptible power supplies",pg.127
+,• KT 0902 Identifying power supplies,pg.131
+,"• KT 0903 Amps, ohms, volts, and watts",pg.137
+,• KT 0904 Affecting system hardware and components,pg.138
+,"KM-01-KT10 : Ports, cables, and connectors 2%",
+,Topic elements to be covered include:,
+,"• KT 1001 Ports, cables, and connectors",pg.140
+,"• KT 1002 Power supply units, uninterruptible power supplies, and identifying power supplies",pg.143
+,"• KT 1003 Conversion of voltage, overcurrent protection, input supply voltage, DC voltage regulation, input under-voltage, and Energy Star designation",pg.145
+,KM-01-KT11 : Networking and network operating systems 5%,
+,Topic elements to be covered include:,
+,• KT 1101 Connect to a LAN using WiFi,pg.154
+,• KT 1102 Connect to a Lan using Lan Cable,pg.156
+,• KT 1103 Checking Network Card for Connectivity,pg.157
+,• KT 1104 Connecting to WAN/Internet via Dongle,pg.158
+,• KT 1105 Connect to WAN/Internet via HotSpot,pg.159
+,• KT 1106 Sharing a Network Connection,pg.160
+,• KT 1107 Sharing a Folder across a network,pg.162
+,• KT 1108 Client/Server Environment,pg.164
+,• KT 1109 Domain vs Computer Authentication,pg.165
+,• KT 1110 Single Sign-On,pg.171
+,• KT 1111 Network File Shares,pg.174
+,• KT 1112 LAN vs WAN vs Cloud,pg.176
+,• KT 1113 Securing your identity,pg.178
+,KM-01-KT12 : Networking and wireless connections 3%,
+,Topic elements to be covered include:,
+,• KT 1201 Peer-to-peer networks and server networks,pg.183
+,• KT 1202 Common functionality of server networks,pg.186
+,"• KT 1203 Networking devices including network interface cards, repeaters, bridges, routers, gateways, hubs, and switches",pg.188
+,KM-01-KT13 : Input and output devices 3%,
+,Topic elements to be covered include:,
+,• KT 1301 Input devices and function,pg.192
+,• KT 1302 Output devices and function,pg.194
+,"• KT 1303 Keyboards, mouses, and touchscreens",pg.197
+,KM-01-KT14 : Installing and managing printers 2%,
+,Topic elements to be covered include:,
+,• KT 1401 Types of printers,pg.203
+,• KT 1402 Installing and managing printers,pg.204
+,"• KT 1403 Drivers, paper feed, networking, and user error",pg.205
+,"KM-01-KT15 : Mobile devices, multimedia, and laptop computers 2%",
+,Topic elements to be covered include:,
+,• KT 1501 Mobile devices,pg.211
+,• KT 1502 Multimedia,pg.212
+,• KT 1503 Laptop computers,pg.217
+,"• KT 1504 Troubleshooting common problems: battery or power supply issues, verifying connections, checking the wireless switch, and verifying software configuration",pg.219
+,KM-01-KT16 : Preventative maintenance 2%,
+,Topic elements to be covered include:,
+,• KT 1601 Purpose of preventive maintenance,pg.226
+,• KT 1602 Benefits,pg.228
+,• KT 1603 Prevent data loss,pg.229
+,• KT 1604 Improve performance,pg.231
+,"• KT 1605 Preventive tasks: e.g. Updating virus and malware detectors, backing up data, defragmenting drives, etc.",pg.232
+,KM-01-KT17 : Troubleshooting procedures 2%,
+,Topic elements to be covered include:,
+,• KT 1701 Troubleshooting process,pg.236
+,• KT 1702 Hardware tools required,pg.236
+,"• KT 1703 Software tools e.g. boot disks and system rescue, etc.",pg.240
+,KM-01-KT18 : Operating systems 5%,
+,Topic elements to be covered include:,
+,"• KT 1801 Functions of an operating system: e.g. managing hardware, resources, data, and making user interaction easy through the use of a graphical user interface (GUI)",pg.244
+,"• KT 1802 Big three operating systems: Windows, Linux, and Mac",pg.247
+,• KT 1803 Control panel,pg.251
+,• KT 1804 Remote assistance,pg.252
+,• KT 1805 OS command prompt,pg.256
+,• KT 1806 OS migration,pg.258
+,• KT 1807 OS configurations,pg.260
+,KM-01-KT19 : Managing files 2%,
+,Topic elements to be covered include:,
+,"• KT 1901 Files and directories, naming conventions, and the File Allocation Table (FAT)",pg.262
+,"• KT 1902 Common executable file extensions, such as batch files, command files, and power shell scripts and purpose",pg.265
+,"• KT 1903 Copying, moving, deleting and archiving (ZIP) files and folders",pg.270
+,"KM-01-KT20 : Applications utility, troubleshooting, and optimization 2%",
+,Topic elements to be covered include:,
+,• KT 2001 Upgrade and remove applications from computers,pg.276
+,• KT 2002 New installs through disc or internet download,pg.277
+,• KT 2003 Common processes for downloading and removing software,pg.280
+,• KT 2004 Troubleshooting,pg.289
+,• KT 2005 Optimisation,pg.292
+,KM-01-KT21 : Configuring device drivers 5%,
+,Topic elements to be covered include:,
+,• KT 2101 Configuring device drivers,pg.294
+,• KT 2102 Changing device settings,pg.297
+,• KT 2103 Updating drivers,pg.301
+,• KT 2104 Removing device drivers,pg.302
+,• KT 2105 Plug-and-play devices,pg.304
+,• KT 2106 Device failure,pg.306
+,• KT 2107 System restore points,pg.307
+,KM-01-KT22 : Recovery 5%,
+,Topic elements to be covered include:,
+,• KT 2201 Recovering systems and disaster recovery,pg.310
+,• KT 2202 Process for disaster recovery,pg.316
+,KT 2203 Expecting things to go wrong,pg.317
+,• KT 2204 Using boot logs to troubleshoot problems,pg.318
+,• KT 2205 Process for booting a system into safe mode,pg.319
+,• KT 2206 Emergency repair,pg.321
+,• KT 2207 Factory repair partitions,pg.322
+,• KT 2208 Startup repair,pg.324
+,• KT 2209 System image recovery,pg.325
+,KM-01-KT23 : Cloud computing 5%,
+,Topic elements to be covered include:,
+,• KT 2301 Network or internet connection,pg.330
+,"• KT 2302 Manipulate, collate, configure, and access applications online",pg.334
+,"• KT 2303 Providing support infrastructure, applications, and data storage",pg.337
+,• KT 2304 Benefits and risks to cloud computing as well as cloud characteristics,pg.339
+,• KT 2305 Cloud storage,pg.343
+,KM-01-KT24 : Security fundamentals 5%,
+,Topic elements to be covered include:,
+,• KT 2401 Business continuity,pg.345
+,• KT 2402 Disaster recovery planning,pg.349
+,• KT 2403 Application development security,pg.353
+,• KT 2404 Access control,pg.358
+,• KT 2405 Information security governance,pg.359
+,• KT 2406 Risk management,pg.360
+,• KT 2407 Operation security,pg.364
+,• KT 2408 Physical security,pg.365
+,• KT 2409 Network security,pg.366
+,KM-01-KT25 : Programming and development 5%,
+,Topic elements to be covered include:,
+,• KT 2501 Software development,pg.369
+,• KT 2502 Game development,Pg.372
+,KT 2503 Software tools,pg.378
+,• KT 2504 Mobile Apps,pg.379
+,• KT 2505 Internet of things,pg.381
+KM-02,"251201-005-00-KM-02, Desktop and Professional Software to Communicate and Visualise Information, NQF Level 4, Credits 8",
+,KM-02-KT01 : Electronic Communication 15%,
+,Topic elements to be covered include:,
+,• KT 0101 Internet,pg.6
+,• KT 0102 Web sites,pg.9
+,• KT 0103 Internet service providers,pg.10
+,• KT 0104 Electronic mail,pg.13
+,• KT 0105 Internet forums,pg.14
+,• KT 0106 Digital learning,pg.19
+,"• KT 0107 Virtual communication: virtual meetings, virtual workshops, conferencing, etc.",Pg.21
+,KM-02-KT02 : Software Apps for office use 15%,
+,Topic elements to be covered include:,
+,• KT 0201 Electronic text documents,pg.23
+,• KT 0202 Electronic spreadsheets,pg.24
+,• KT 0203 Electronic desktop databases,pg.25
+,• KT 0204 Electronic presentation tools,pg.25
+,• KT 0205 Internet access,pg.27
+,KT 0206 Electronic written communication,pg.28
+,• KT 0207 Electronic meetings,pg.33
+,• KT 0208 Electronic seminars,pg.35
+,KM-02-KT03 : Operating a software package 15%,
+,Topic elements to be covered include:,
+,• KT 0301 Create new folders,pg.39
+,• KT 0302 Move files,pg.42
+,• KT 0303 Format diskettes,pg.45
+,• KT 0304 Copy files,pg.46
+,• KT 0305 Open files and folders,pg.47
+,• KT 0306 Create folders and files,pg.50
+,• KT 0307 Undo commands,pg.51
+,• KT 0308 Find files,pg.52
+,• KT 0309 Recycle bin,pg.53
+,KM-02-KT04 : Text documents using an appropriate software package 40%,
+,Topic elements to be covered include:,
+,• KT 0401 Select text,pg.56
+,• KT 0402 Replace text,pg.57
+,• KT 0403 Insert text,pg.58
+,• KT 0404 Insert and format page numbers across sections,pg.59
+,• KT 0405 Format text,pg.60
+,• KT 0406 Format paragraphs,pg.61
+,• KT 0407 Format stylesheets,pg.66
+,• KT 0408 Format page layouts,pg.69
+,• KT 0409 Find and replace text,pg.70
+,• KT 0410 Align text,pg.71
+,• KT 0411 Use tabs,pg.73
+,• KT 0412 Insert special symbols,pg.73
+,"KT 0413 Move, cut and paste text",pg.74
+,• KT 0414 Format size and appearance of text,pg.80
+,• KT 0415 Create borders,pg.82
+,• KT 0416 Change background colours,pg.83
+,• KT 0417 Create and format tables,pg.84
+,• KT 0418 Print documents with different layouts,pg.85
+,• KT 0419 Mail merge documents from different data sources,pg.86
+,"• KT 0420 Insert tables of contents, citations, list of figures and list of tables",pg.88
+,• KT 0421 Insert bookmarks,pg.90
+,• KT 0422 Insert comments,pg.92
+,"• KT 0423 Track, accept/reject changes",pg.93
+,• KT 0424 Spell and grammar check document,pg.94
+,KM-02-KT05 : Presentations using and appropriate software package 15%,
+,Topic elements to be covered include:,
+,• KT 0501 Layout and design,pg.95
+,"• KT 0502 Shapes, smart art and charts",pg.97
+,• KT 0503 Text and text box,pg.100
+,• KT 0504 Illustrations and visuals,pg.101
+,• KT 0505 Smart texts,pg.103
+,• KT 0506 Transitions,pg.104
+,• KT 0507 Animation,pg.105
+,• KT 0508 Slide show,pg.107
+KM-03,"251201-005-00-KM-03, Automated Webscraping as a Data Source, NQF Level 4, Credits 8",
+,KM-03-KT01 : Sources of data 10%,
+,Topic elements to be covered include:,
+,• KT 0101 Sources and collection systems,pg.5
+,• KT 0102 Data capturing systems and processes,pg.8
+,• KT 0103 Parameters for data capturing systems and processes,pg.9
+,• KT 0104 Maintenance of data capturing systems and processes,pg.10
+,KM-03-KT02 : Webscraping and access to accurate data 10%,
+,Topic elements to be covered include:,
+,• KT 0201 Electronically identifying and classifying documents,pg.15
+,• KT 0202 Capturing data from documents,pg.16
+,• KT 0203 Ensuring users only see the information they need,pg.19
+,• KT 0204 Indexing data for ease of search and retrieval,pg.22
+,• KT 0205 Validating data,pg.26
+,• KT 0206 Web Scraping Fundamentals,pg.28
+,KM-03-KT03 : Big Data 10%,
+,Topic elements to be covered include:,
+,"• KT 0301 Volume, velocity variety and veracity",pg.40
+,• KT 0302 Sources,pg.43
+,• KT 0303 Applications,pg.45
+,• KT 0304 Benefits,pg.47
+,KM-03-KT04 : Data quality 10%,
+,Topic elements to be covered include:,
+,"• KT 0401 Ten quality traits: accuracy, accessibility, comprehensiveness, consistency, currency, definition, granularity, precision, relevancy and timeliness",pg.51
+,• KT 0402 Data quality best practices,pg.52
+,KM-03-KT05 : Best practices for data governance 10%,
+,Topic elements to be covered include:,
+,• KT 0501 Comprehensive security with multi-level access control and management,pg.58
+,• KT 0502 Data breaches,pg.60
+,• KT 0503 Data loss,pg.66
+,KM-03-KT06 : Legislation (e.g. POPI Act) 25%,
+,Topic elements to be covered include:,
+,• KT 0601 Lawful collection of data – transparency and accountability requirements,pg.76
+,• KT 0602 Data protection principles,pg.79
+,• KT 0603 Legal requirements and restrictions pertaining to:,pg.81
+,• KT 0604 The rights of individuals,pg.107
+,• KT 0605 Staff information and customer information,pg.108
+,• KT 0606 Data held by an organisation,pg.111
+,• KT 0607 Gathering information for marketing purposes,pg.112
+,"• KT 0608 Special categories of personal data ( e.g. Medical and health information, genetic data, information on sexual orientation, ethnicity data )",pg.114
+,• KT 0609 Restrictions on sending personal data abroad,pg.116
+,"• KT 0610 Outsourcing personal data processing operations, e.g. Payroll, call-centres, etc.",pg.119
+,• KT 0611 Transferring data to 3rd parties,pg.121
+,• KT 0612 Data retention,pg.122
+,• KT 0613 Disclosures required by law,pg.125
+,• KT 0614 Data protection impact assessment,pg.126
+,KM-03-KT07 : Wrangling 15%,
+,Topic elements to be covered include:,
+,• KT 0701 Importing data from different file formats,pg.131
+,• KT 0702 Web scraping,pg.134
+,• KT 0703 How to tidy data using suitable software packages to better facilitate analysis,pg.137
+,• KT 0704 String processing with regular expressions (regex),pg.143
+,• KT 0705 HTML parsing,pg.147
+,• KT 0706 Wrangle data using suitable software package,pg.148
+,• KT 0707 How to work with dates and times as file formats,pg.152
+,• KT 0708 Text mining,pg.155
+,KM-03-KT08 : Data structures 10%,
+,Topic elements to be covered include:,
+,• KT 0801 Introduction to data structures,pg.158
+,• KT 0802 Identifying data structures,pg.160
+,• KT 0803 Assigning values to data structures,pg.163
+,• KT 0804 Data manipulation,pg.164
+KM -04,"251201-005-00-KM-04, Logical Thinking and Basic Calculations, NQF Level 4, Credits 2",
+,KM-04-KT01 : Mathematical thinking skills for problem solving 15%,
+,Topic elements to be covered include:,
+,• KT 0101 Benefits of mathematics,pg.6
+,• KT 0102 Mathematical thinking steps for solving problems:,pg.9
+,KM-04-KT02 : Conversion between decimal and binary systems 5%,
+,Topic elements to be covered include:,
+,• KT 0201 Introduction to binary numbers,pg.21
+,• KT 0202 Performing addition and subtraction of positive whole numbers in binary,pg.28
+,• KT 0203 Binary arithmetic,pg.30
+,• KT 0204 Use of BODMAS,pg.31
+,KM-04-KT03 : Expressing size and magnitude 5%,
+,Topic elements to be covered include:,
+,• KT 0301 Use scientific notation for small and large numbers,pg.33
+,• KT 0302 Prefixes: From Giga to Pica (109 to 10 -12),pg.34
+,• KT 0303 Conversions: SI to Imperial: degrees F to degrees C,pg.37
+,KM-04-KT04 : Error in calculations 10%,
+,Topic elements to be covered include:,
+,• KT 0401 Rational and irrational numbers,pg.40
+,• KT 0402 Explore repeating decimals and convert them to fraction form,pg.43
+,• KT 0403 Symbols for irrational numbers,pg.46
+,• KT 0404 Rounding prematurely in calculations,pg.47
+,• KT 0405 Accuracy,pg.47
+,• KT 0406 Final value of a calculation expressed in terms of the required unit,pg.48
+,KM-04-KT05 : Cartesian coordinate system 10%,
+,Topic elements to be covered include:,
+,• KT 0501 Definition,pg.51
+,• KT 0502 Terminology,pg.51
+,• KT 0503 The coordinate plane,pg.52
+,• KT 0504 Intersecting x- and y-axes,pg.54
+,• KT 0505 Four quadrants,pg.55
+,• KT 0506 Naming using Roman numerals,pg.55
+,• KT 0507 Use and application – creating graphs and maps,pg.56
+,KM-04-KT06 : Pythagorean theorem for finding the distance between two points 5%,
+,Topic elements to be covered include:,
+,• KT 0601 Definition,pg.57
+,• KT 0602 Terminology,pg.58
+,• KT 0603 Purpose,pg.59
+,• KT 0604 Determine the distance between two points on the Cartesian grid,pg.60
+,KM-04-KT07 : Operator precedence 10%,
+,Topic elements to be covered include:,
+,• KT 0701 Definition and terminology,pg.62
+,• KT 0702 Purpose and use,pg.63
+,• KT 0703 Order of operations (left to right),pg.63
+,• KT 0704 Apply precedence:,pg.64
+,• KT 0705 Use of PEDMAS in programming,pg.65
+,KM-04-KT08 : Integer division 10%,.
+,Topic elements to be covered include:,
+,• KT 0801 Definition and terminology,pg.67
+,• KT 0802 Purpose and use,pg.68
+,• KT 0803 Rules on how to divide integers,pg.69
+,• KT 0804 Names and symbols for integer division,pg.71
+,• KT 0805 Software for integer division,pg.70
+,KM-04-KT09 : Modulus 10%,
+,Topic elements to be covered include:,
+,• KT 0901 Definition and terminology,pg.72
+,• KT 0902 Purpose and use,pg.72
+,• KT 0903 Modulus abbreviated as “mod”,pg.72
+,• KT 0904 % application,pg.73
+,• KT 0905 (==) application,pg.74
+,• KT 0906 Modulus in programming,pg.75
+,KM-04-KT10 : Increments 10%,
+,Topic elements to be covered include:,
+,• KT 1001 Definition and terminology,pg.76
+,• KT 1002 Purpose and use,pg.76
+,• KT 1003 Increment a variable,pg.76
+,• KT 1004 compound assignment operator,pg.77
+,• KT 1005 Increments in programming,pg.78
+,KM-04-KT11 : Mixing types 10%,
+,Topic elements to be covered include:,
+,• KT 1101 Definition and terminology,pg.79
+,KT 1102 Purpose and use,pg.80
+,• KT 1103 Apply an operator,pg.80
+,• KT 1104 Combination with the order of operations,pg.81
+,• KT 1105 The order in which an expression is written,pg.82
+,• KT 1106 How a computer would evaluate some expressions that combine types,pg.82
+KM-05,"251201-005-00-KM-05, Computing Theory, NQF Level 4, Credits 2",
+,KM-05-KT01 : Introduction to programming languages 30%,
+,Topic elements to be covered include:,pg.6
+,"• KT 0101 Concepts, principles and terminology",pg.10
+,• KT 0102 Developing structured and creative thinking skills through programming,pg.14
+,• KT 0103 The logic of programming,pg.16
+,• KT 0104 Choosing a programming language,pg.18
+,• KT 0105 Syntax,pg.19
+,• KT 0106 Learning code,pg.20
+,• KT 0107 Installation and set-up,pg.21
+,KM-05-KT02 : Programming basics 40%,
+,Topic elements to be covered include:,
+,• KT 0201 Programming environment,pg.25
+,• KT 0202 Algorithms,pg.30
+,• KT 0203 Data types,pg.31
+,• KT 0204 Variables,pg.38
+,• KT 0205 Keywords,pg.41
+,• KT 0206 Logical and arithmetical operators,pg.43
+,"• KT 0207 Logical operations: if-statements, where-statements, If else conditions",pg.46
+,• KT 0208 Loops,pg.49
+,"• KT 0209 Numbers, characters and arrays",pg.52
+,• KT 0210 Functions,pg.57
+,• KT 0211 Input and output operations,pg.61
+,KM-05-KT03 : Software applications 30%,
+,Topic elements to be covered include:,
+,"• KT 0301 Basic programming knowledge on HTML, JavaScript (or any scripting language)",pg.64
+,"• KT 0302 Software development, e.g. C#, C++, Java, .NET, Python, VB",pg.67
+,• KT 0303 Databases (SQL),pg.69
+,• KT 0304 Web development technologies,pg.71
+,• KT 0305 AI and Machine Learning concept and principles,pg.78
+,• KT 0306 Project management methodology (e.g. Agile),pg.80
+,• KT 0307 Tools and technologies including at least one: including SQL and a minimum of one additional language of choice e.g. Python or C# or Visual Basic VB or Java),pg.81
+KM-06,"251201-005-00-KM-06, Software Development with HTML5, Opensource Frameworks and Libraries, NQF Level 5, Credits 16",
+,KM-06-KT-01 : Core programming 10%,
+,Topic elements to be covered include:,
+,• KT 0101 Definition,pg.6
+,• KT 0102 Core programming concepts,pg.6
+,• KT 0103 Tools,pg.7
+,KM-06-KT-02 : Object-Oriented Programming 10%,
+,Topic elements to be covered include:,
+,• KT 0201 Definition and concepts,pg.9
+,"• KT 0202 four principles : encapsulation, abstraction, inheritance, and polymorphism",pg.14
+,• KT 0203 Objects and classes,pg.15
+,KM-06-KT-03 : General Software Development 15%,
+,Topic elements to be covered include:,
+,• KT 0301 Programming logic,pg.18
+,• KT 0302 Define and use variables,pg.19
+,• KT 0303 Perform looping and branching,pg.21
+,• KT 0304 Develop user interfaces,pg.25
+,• KT 0305 Capture and validate user input,pg.26
+,• KT 0306 Store data,pg.27
+,• KT 0307 Create well-structured application,pg.27
+,KM-06-KT-04 : Web applications 10%,
+,Topic elements to be covered include:,
+,• KT 0401 Aim and purpose,pg.29
+,• KT 0402 Visual requirements,pg.33
+,• KT 0403 Validation of input,pg.34
+,• KT 0404 Defining input forms,pg.36
+,• KT 0405 Providing feedback to users on incorrect input,pg.37
+,• KT 0406 Tools to create web applications,pg.38
+,KM-06-KT-05 : Applications development 10%,
+,Topic elements to be covered include:,
+,• KT 0501 Web applications,pg.42
+,• KT 0502 Desktop applications,pg.43
+,• KT 0503 Databases,pg.44
+,• KT 0504 Application life cycle,pg.45
+,KT 0505 User interfaces,pg.45
+,KM-06-KT-06 : HTML5 15%,
+,Topic elements to be covered include:,
+,• KT 0601 Overview,pg.46
+,• KT 0602 User Interfaces,pg.48
+,• KT 0603 Visually pleasing,pg.50
+,• KT 0604 Text,pg.50
+,• KT 0605 Graphics,pg.51
+,• KT 0606 Media,pg.51
+,• KT 0607 Organization,pg.51
+,• KT 0608 Input,pg.54
+,• KT 0609 Validation,pg.56
+,KM-06-KT-07 : CSS 15%,
+,Topic elements to be covered include:,
+,• KT 0701 Overview,pg.57
+,• KT 0702 Document object model (DOM),pg.59
+,• KT 0703 Content flow,pg.61
+,• KT 0704 Positioning,pg.62
+,KT 0705 Styling,pg.63
+,• KT 0706 Layouts,pg.63
+,• KT 0707 Text flow,pg.65
+,• KT 0708 Graphical interface,pg.66
+,"• KT 0709 Single aspects of presentation such as colour, text, box model, and animations",Pg.67
+,KM-06-KT-08 : JavaScript 15%,
+,Topic elements to be covered include:,
+,• KT 0801 Overview,pg.70
+,• KT 0802 Document object model,pg.73
+,• KT 0803 Using a browser,pg.74
+,• KT 0804 Coding essentials,pg.75
+,• KT 0805 Creating animations,pg.76
+,• KT 0806 Working with graphics,pg.77
+,• KT 0807 Accessing data touch interface,pg.79
+,• KT 0808 Device and operating system resources,pg.80
+KM-07,"251201-005-00-KM-07, UML as Standard Modelling Language for Software and Systems Development, NQF Level 5, Credits 4",
+,KM-07-KT01 : Introduction 5%,pg.6
+,Topic elements to be covered include:,pg.7
+,• KT 0101 Modelling language overview,pg.8
+,• KT 0102 UML 2.0,pg.9
+,• KT 0103 Models and diagrams,pg.12
+,• KT 0104 “Degrees” of UML,pg.13
+,• KT 0105 Using UML in the software development process,pg.14
+,• KT 0106 Views of your model,pg.15
+,KM-07-KT02 : Modelling requirements 5%,
+,Topic elements to be covered include:,
+,• KT 0201 System requirement capturing,pg.18
+,• KT 0202 Use case relationships,pg.19
+,• KT 0203 Use case overview diagrams,pg.21
+,KM-07-KT03 : Workflows: activity diagrams 10%,
+,Topic elements to be covered include:,
+,• KT 0301 Activity diagram essentials,pg.32
+,• KT 0302 Activities and actions,pg.36
+,• KT 0303 Decisions and merges,pg.37
+,• KT 0304 Simultaneous multiple tasks,pg.41
+,• KT 0305 Time events,pg.45
+,• KT 0306 Calling other activities,pg.48
+,• KT 0307 Objects,pg.52
+,• KT 0308 Sending and receiving signals,pg.54
+,• KT 0309 Starting an activity,pg.55
+,• KT 0310 Ending activities and flows,pg.61
+,• KT 0311 Partitions (or Swimlanes),pg.64
+,• KT 0312 Complex activity diagrams,pg.66
+,KM-07-KT04 : Classes and class diagrams 5%,
+,Topic elements to be covered include:,
+,• KT 0401 Definition of class,pg.69
+,• KT 0402 Classes in UML,pg.72
+,• KT 0403 Visibility,pg.76
+,• KT 0404 Class state: attributes,pg.78
+,• KT 0405 Class behaviours: operations,pg.79
+,• KT 0406 Static parts of a class,pg.82
+,KM-07-KT05 : Advanced class diagrams 5%,
+,Topic elements to be covered include:,
+,• KT 0501 Class relationships,pg.85
+,• KT 0502 Constrains,pg.92
+,• KT 0503 Abstract classes,pg.94
+,• KT 0504 Interfaces,pg.95
+,KT 0505 Templates,pg.97
+,KM-07-KT06 : Object diagrams 5%,
+,Topic elements to be covered include:,
+,• KT 0601 Object instances,Pg.99
+,• KT 0602 Links,pg.103
+,• KT 0603 Binding class templates,pg.108
+,KM-07-KT07 : Sequence diagrams 10%,
+,Topic elements to be covered include:,
+,• KT 0701 Participants in a sequence diagram,pg.110
+,• KT 0702 Time,pg.113
+,"• KT 0703 Events, signals and messages",pg.114
+,• KT 0704 Activation bars,pg.116
+,• KT 0705 Nested messages,pg.123
+,• KT 0706 Message arrows,pg.124
+,• KT 0707 Use cases and sequence diagrams,pg.126
+,• KT 0708 Managing complex interactions with sequence fragments,pg.138
+,KM-07-KT08 : Communication diagrams 5%,
+,Topic elements to be covered include:,
+,"• KT 0801 Participants, links and messages",pg.142
+,• KT 0802 Fleshing out an interaction with a communication diagram,pg.143
+,• KT 0803 Communication diagrams versus sequence diagrams,pg.148
+,KM-07-KT09 : Timing diagrams 15%,
+,Topic elements to be covered include:,
+,• KT 0901 Interaction timing,pg.151
+,• KT 0902 Appearance of timing diagrams,pg.154
+,• KT 0903 Building a timing diagram from a sequence diagram,pg.165
+,• KT 0904 Applying participants to a timing diagram,pg.170
+,• KT 0905 States,pg.172
+,• KT 0906 Time,pg.178
+,• KT 0907 A participant’s state-line,pg.179
+,• KT 0908 Events and messages,pg.181
+,• KT 0909 Timing constraints,pg.182
+,• KT 0910 Organizing participants on a timing diagram,pg.185
+,• KT 0911 An alternative notation,pg.187
+,KM-07-KT10 : Interaction overview diagrams 5%,
+,Topic elements to be covered include:,
+,• KT 1001 The parts of an interaction overview diagram,pg.192
+,• KT 1002 Modelling a use case using an interaction overview,pg.194
+,KM-07-KT11 : Classes internal structure: composite structures 5%,
+,Topic elements to be covered include:,
+,• KT 1101 Internal structure,pg.200
+,• KT 1102 Using a class,pg.203
+,• KT 1103 Patterns with collaborations,pg.204
+,KM-07-KT12 : Component diagrams 10%,
+,Topic elements to be covered include:,
+,• KT 1201 Definition of a component,pg.208
+,• KT 1202 A basic component in UML,pg.210
+,• KT 1203 Provided and required interfaces of a component,pg.212
+,• KT 1204 Showing components working together,pg.214
+,• KT 1205 Classes that realize a component,pg.217
+,• KT 1206 Ports and internal structure,pg.219
+,• KT 1207 Black-box and White-box component views,pg.223
+,• KT 1208 Managing and reusing system parts,pg.224
+,KM-07-KT13 : Packages 5%,
+,Topic elements to be covered include:,
+,• KT 1301 Packages,pg.226
+,• KT 1302 Namespaces and classes referring to each other,pg.227
+,• KT 1303 Element visibility,pg.131
+,• KT 1304 Package dependency,pg.233
+,• KT 1305 Importing and accessing packages,pg.235
+,• KT 1306 Managing package dependencies,pg.239
+,• KT 1307 Organize model and use cases,pg.242
+,KM-07-KT14 : State machine diagrams 5%,
+,Topic elements to be covered include:,
+,• KT 1401 Essentials,pg.244
+,• KT 1402 States,pg.245
+,• KT 1403 Transitions,pg.248
+,KT 1404 States in software,pg.249
+,• KT 1405 Advanced state behaviours,pg.250
+,• KT 1406 Composite states,pg.251
+,• KT 1407 Advanced pseudo states,pg.251
+,• KT 1408 Signals,pg.255
+,• KT 1409 Protocol state machines,pg.256
+,• KT 1410 Modelling an object’s state,pg.261
+,KM-07-KT15 : Deployed diagrams 5%,
+,Topic elements to be covered include:,
+,• KT 1501 Deploying a simple system,pg.264
+,• KT 1502 Deployment software: artefacts,pg.265
+,• KT 1503 Nodes,pg.266
+,• KT 1504 Hardware and execution environment nodes,pg.268
+,• KT 1505 Communication between nodes,pg.271
+,• KT 1506 Deployment specifications,pg.272
+,• KT 1507 When to use deployment diagram,pg.274
+KM-08,"251201-005-00-KM-08, Obtaining, Querying, Manipulating and Presenting Data with and without MVC, NQF Level 5, Credits 6
+
+",
+,KM-08-KT01 : Understanding core database concepts 10%,
+,Topic elements to be covered include:,
+,• KT 0101 Flat-type databases,pg.5
+,• KT 0102 Hierarchical databases,pg.6
+,• KT 0103 Relational databases,pg.8
+,• KT 0104 Database fundamentals,pg.9
+,• KT 0105 Relational database concepts,pg.10
+,• KT 0106 The SQL server management studio interface,pg.13
+,• KT 0107 Data Manipulation Language (DML),pg.15
+,• KT 0108 Data Definition Language (DDL),pg.16
+,KM-08-KT02 : Creating database 10%,
+,Topic elements to be covered include:,
+,• KT 0201 Defining data types,pg.20
+,• KT 0202 Built-in data types,pg.21
+,• KT 0203 Exact numeric data types,pg.24
+,• KT 0204 Approximate numeric data types,pg.26
+,• KT 0205 Creating and using tables,pg.26
+,• KT 0206 Creating views,pg.27
+,• KT 0207 Creating stored procedures,pg.32
+,• KT 0208 SQL Injections,pg.33
+,KM-08-KT03 : Manipulating data 25%,
+,Topic elements to be covered include:,
+,• KT 0301 Using Queries to Select Data,pg.35
+,• KT 0302 Combining Conditions,pg.37
+,• KT 0303 Using the BETWEEN Clause,pg.42
+,• KT 0304 Using the NOT Clause,pg.45
+,• KT 0305 Using the UNION Clause,pg.52
+,• KT 0306 Using the EXCEPT and INTERSECT Clauses,pg.58
+,• KT 0307 Using the JOIN Clause,pg.67
+,• KT 0308 Using Queries to Insert Data,pg.70
+,• KT 0309 Updating Data and Databases: Using the UPDATE Statement,pg.73
+,• KT 0310 Deleting Data,pg.77
+,• KT 0311 Using the DELETE Statement,pg.79
+,• KT 0312 Truncating a Table with TRUNCATE TABLE,pg.82
+,• KT 0313 Deleting a Table with DROP TABLE,pg.88
+,• KT 0314 Using Referential Integrity,pg.90
+,KM-08-KT04 : Understanding Data 27%,
+,Topic elements to be covered include:,
+,• KT 0401 Normalizing a database,pg.92
+,"• KT 0402 Understanding primary, foreign, and composite keys",pg.97
+,• KT 0403 Understanding clustered and non-clustered,pg.101
+,KM-08-KT05 : Administering a database 28%,
+,Topic elements to be covered include:,
+,KT 0501 Securing databases,pg.110
+,• KT 0502 Backing up and restoring databases,pg.116
+KM-09,"251201-005-00-KM-09, Software Development Life Cycle, Programming Languages, Algorithms and Security, NQF Level 5, Credits 3",
+,KM-09-KT01 : Introduction to software development 5%,
+,Topic elements to be covered include:,
+,"• KT 0101 History, evolution and future",pg.6
+,• KT 0102 The information age,pg.7
+,• KT 0103 Socio economic impact of IT,pg.8
+,• KT 0104 The role and contribution of the software developer,pg.10
+,• KT 0105 Software development:,pg.12
+,• KT 0106 Career opportunities and career progression,pg.6
+,KM-09-KT02 : Software Development Life Cycle 5%,
+,Topic elements to be covered include:,
+,"• KT 0201 Concept, definitions and terminology",pg.19
+,• KT 0202 Underlying principles,pg.23
+,• KT 0203 Estimations and planning,pg.24
+,• KT 0204 Purpose,pg.25
+,• KT 0205 Overview and explanation of phases,pg.26
+,"• KT 0206 Version control: importance, methods and tools",pg.28
+,KM-09-KT03 : The need for a solution 5%,
+,Topic elements to be covered include:,
+,• KT 0301 Stakeholders,pg.32
+,• KT 0302 What is a solution?,pg.33
+,• KT 0303 Main elements of a successful solution,pg.35
+,• KT 0304 Baseline information,pg.37
+,• KT 0305 Manage change,pg.38
+,• KT 0306 Scope of the project,pg.38
+,• KT 0307 Use case,pg.39
+,KM-09-KT04 : Popular SDLC models 5%,
+,Topic elements to be covered include:,
+,• KT 0401 Waterfall model,pg.41
+,• KT 0402 Incremental model,pg.43
+,• KT 0403 V-model,pg.45
+,• KT 0404 Agile model,pg.47
+,• KT 0405 Spiral model,pg.50
+,KT 0406 Big bang model,pg.52
+,KM-09-KT05 : Phase 1: Requirement collection and analysis 5%,
+,Topic elements to be covered include:,
+,• KT 0501 Main focus and aim,pg.55
+,• KT 0502 Role players and responsibilities,pg.58
+,"• KT 0503 Tools, procedures and checks",pg.59
+,• KT 0504 Process and deliverables,pg.62
+,• KT 0505 How it feeds into the next phase,pg.63
+,KM-09-KT06 : Phase 2: Feasibility study 5%,
+,Topic elements to be covered include:,
+,• KT 0601 Main focus and aim,pg.66
+,• KT 0602 Role players and responsibilities,pg.67
+,"• KT 0603 Tools, procedures and checks",pg.71
+,• KT 0604 Process and deliverables,pg.73
+,• KT 0605 How it feeds into the next phase,pg.74
+,KM-09-KT07 : Phase 3: Design 5%,
+,Topic elements to be covered include:,
+,KT 0701 Main focus and aim,pg.79
+,• KT 0702 Role players and responsibilities,pg.81
+,"• KT 0703 Tools, procedures and checks",pg.84
+,• KT 0704 Process and deliverables,pg.90
+,• KT 0705 How it feeds into the next phase,pg.91
+,KM-09-KT08 : Phase 4: Coding 5%,
+,Topic elements to be covered include:,
+,• KT 0801 Main focus and aim,pg.92
+,• KT 0802 Role players and responsibilities,pg.96
+,"• KT 0803 Tools, procedures and checks",pg.98
+,• KT 0804 Process and deliverables,pg.99
+,• KT 0805 How it feeds into the next phase,pg.100
+,KM-09-KT09 : Phase 5: Testing 5%,
+,Topic elements to be covered include:,
+,• KT 0901 Main focus and aim,pg.102
+,• KT 0902 Role players and responsibilities,pg.103
+,"• KT 0903 Tools, procedures and checks",pg.103
+,• KT 0904 Process and deliverables,pg.105
+,• KT 0905 How it feeds into the next phase,pg.106
+,KM-09-KT10 : Phase 6: Installation/Deployment 5%,
+,Topic elements to be covered include:,
+,• KT 1001 Main focus and aim,pg.109
+,• KT 1002 Role players and responsibilities,pg.110
+,"• KT 1003 Tools, procedures and checks",pg.112
+,• KT 1004 Process and deliverables,pg.113
+,• KT 1005 How it feeds into the next phase,pg.116
+,KM-09-KT11 : Phase 7: Maintenance 5%,
+,Topic elements to be covered include:,
+,• KT 1101 Main focus and aim,pg.118
+,• KT 1102 Role players and responsibilities,pg.121
+,"• KT 1103 Tools, procedures and checks",pg.121
+,• KT 1104 Process and deliverables,pg.122
+,• KT 1105 How it feeds into the next phase,pg.123
+,KM-09-KT12 : Software development logging and commenting 5%,
+,Topic elements to be covered include:,
+,• KT 1201 Commenting techniques,pg.125
+,• KT 1202 Software logging,pg.126
+,KT 1203 Importance and benefits of software logging,pg.126
+,• KT 1204 Logging best practices,pg.127
+,• KT 1205 Logging frameworks,pg.128
+,• KT 1206 Procedures and type of information,pg.128
+,• KT 1207 Using metrics,pg.130
+,• KT 1208 Lessons learnt,pg.133
+,KM-09-KT13 : Programming and programming languages 10%,
+,Topic elements to be covered include:,
+,• KT 1301 Five basic programming elements:,pg.135
+,"• KT 1302 Pseudo codes, mathematics and comments on concepts of programming languages",pg.138
+,• KT 1303 Best suited for the purpose,pg.140
+,• KT 1304 Back end programming languages,pg.141
+,• KT 1305 Front end programming languages,pg.142
+,• KT 1306 Middleware programming languages,pg.145
+,• KT 1307 Best programming languages for mobile programming,pg.147
+,• KT 1308 Best programming languages for computer programming,pg.151
+,• KT 1309 Machine learning languages,pg.152
+,KM-09-KT14 : Coding 5%,
+,Topic elements to be covered include:,
+,• KT 1401 Code defined,pg.154
+,• KT 1402 Difference between coding and programming,pg.155
+,• KT 1403 The process of coding defined,pg.157
+,• KT 1404 Script defined,pg.162
+,KT 1405 Basic coding skills,pg.177
+,• KT 1406 Readability of source code,pg.179
+,KM-09-KT15 : Overview of algorithms in information technology 5%,
+,Topic elements to be covered include:,
+,• KT 1501 Definitions and basic concepts of algorithms in a programming perspective,pg.183
+,"• KT 1502 The difference between algorithms, pseudocode and programming languages",pg.184
+,• KT 1503 Purpose,pg.186
+,• KT 1504 Characteristics of good algorithms,pg.187
+,• KT 1505 Advantages,pg.188
+,KM-09-KT16 : Algorithms 5%,
+,Topic elements to be covered include:,
+,• KT 1601 Best languages to write algorithms,pg.191
+,• KT 1602 Types,pg.196
+,• KT 1603 Where to use algorithms,pg.198
+,• KT 1604 Writing algorithms:,pg.199
+,• KT 1605 Algorithms and data structures,pg.202
+,• KT 1606 Algorithms and problem solving,pg.204
+,• KT 1607 Algorithms and cryptography,pg.205
+,• KT 1608 Mathematical formulas in texts,pg.207
+,• KT 1609 Tools for representing algorithms,pg.208
+,KM-09-KT17 : Programming language concepts and terminology 5%,
+,Topic elements to be covered include:,
+,• KT 1701 Programming environment,pg.212
+,• KT 1702 Basic language syntax rules,pg.213
+,"• KT 1703 Sequence, selection and iteration constructs",pg.214
+,• KT 1704 Operators and expressions,pg.215
+,"• KT 1705 Variables, constants and datatypes",pg.215
+,• KT 1706 Functions and procedures,pg.218
+,"• KT 1707 Conditions, nesting and loops",pg.220
+,• KT 1708 Control structures,pg.224
+,• KT 1709 Commands,pg.228
+,• KT 1710 String functions,pg.231
+,"• KT 1711 Numbers, characters and arrays",pg.232
+,KM-09-KT18 : Security topics every software developer must know 5%,
+,Topic elements to be covered include:,
+,• KT 1801 Input validation:,pg.238
+,• KT 1802 Syntactic and semantic validation,pg.240
+,• KT 1803 Blacklisting and whitelisting,pg.242
+,• KT 1804 Output encoding,pg.245
+,• KT 1805 Database access,pg.246
+,• KT 1806 Implementing cryptography,pg.247
+,• KT 1807 Secure error handling,pg.255
+,• KT 1808 Third-party libraries,pg.260
+,• KT 1809 Defense in depth: multiple layers of security,pg.261
+,KM-09-KT19 : Machine learning 5%,
+,Topic elements to be covered include:,
+,• KT 1901 Types of ML models,pg.264
+,• KT 1902 ML algorithm classification,pg.269
+,• KT 1903 Common ML algorithms,pg.270
+,• KT 1904 ML workflow process (framework),pg.272
+,• KT 1905 Business benefits of ML,pg.274
+KM-10,"251201-005-00-KM-10, Introduction to Software Developer Governance, Legislation and Ethics, NQF Level 4, Credits 2",
+,KM-10-KT01 : Governance 20%,
+,Topic elements to be covered include:,
+,• KT 0101 Definitions and the role of governance,pg.5
+,"• KT 0102 Rules, norms and actions are structured, sustained, regulated and held accountable",pg.7
+,• KT 0103 Structures and processes and industry codes of practices,pg.8
+,"• KT 0104 Transparent, participatory, inclusive and responsive",pg.9
+,• KT 0105 Domains of IT governance,pg.12
+,• KT 0106 Compliance vs non-compliance,pg.13
+,KM-10-KT02 : Legislation governing workplaces 15%,
+,Topic elements to be covered include:,
+,• KT 0201 LRA,pg.15
+,• KT 0202 POPI,pg.16
+,• KT 0203 B-BBEE,pg.16
+,• KT 0204 BCEA,pg.18
+,• KT 0205 SDA,pg.19
+,• KT 0206 Current trends,pg.21
+,KM-10-KT03 : Introduction to ethics and security 5%,
+,Topic elements to be covered include:,
+,• KT 0301 Principles and practices,pg.23
+,"• KT 0302 Concepts, definitions and terminology",pg.24
+,KM-10-KT04 : Ethics at work 14%,
+,Topic elements to be covered include:,
+,• KT 0401 Code of conduct and moral compass,pg.27
+,"• KT 0402 Components of ethical behaviour, including integrity, honesty, fair dealing, respecting diversity",pg.27
+,"• KT 0403 Unwritten but expected behaviours, including reliability, accountability, time keeping, respect for others",pg.33
+,"• KT 0404 Lapses in ethical behaviour, including sexual harassment, racism, bullying, theft, abuse of company property, rules, time and sick leave",pg.35
+,"• KT 0405 Conflicts of interest, including primary and secondary interests, the impact on individuals and organisations and the link to corruption",pg.37
+,• KT 0406 The need for ethical behaviour and the impact or consequences of lapses in ethical behaviour,pg.40
+,• KT 0407 Copyright and plagiarism,pg.42
+,• KT 0408 Intellectual property,pg.44
+,• KT 0409 Spamming,pg.45
+,• KT 0410 Contract management,pg.46
+,• KT 0411 Software licensing,pg.47
+,• KT 0412 Pricing,pg.47
+,KM-10-KT05 : Security 15%,
+,Topic elements to be covered include:,
+,"• KT 0501 Risks, threats and vulnerabilities",pg.51
+,• KT 0502 Mitigation tools and strategies,pg.54
+,• KT 0503 Digital forensics,pg.53
+,• KT 0504 Cloud,pg.61
+,• KT 0505 Commercial law,pg.61
+,• KT 0506 Cyber security,pg.62
+,• KT 0507 New trends,pg.63
+,KM-10-KT06 : Performance management 10%,
+,Topic elements to be covered include:,
+,"• KT 0601 Planning, organising and control",pg.64
+,• KT 0602 Work flow,pg.68
+,"• KT 0603 Cost, waste",pg.69
+,"• KT 0604 Productivity, efficiency",pg.70
+,• KT 0605 Housekeeping,pg.71
+,"• KT 0606 Risk, health, safety, environment and related systems",pg.72
+,• KT 0607 Quality and quality systems,pg.74
+,KT 0608 Continual improvement,pg.75
+,KM-10-KT07 : Business planning 7%,
+,Topic elements to be covered include:,
+,• KT 0701 Business sustainability,pg.78
+,• KT 0702 Concept of supply and demand,pg.79
+,"• KT 0703 Concept of profit, loss and breakeven",pg.79
+,• KT 0704 Accountability and responsibility,pg.80
+,• KT 0705 Competition,pg.81
+,• KT 0706 Customers,pg.82
+,• KT 0707 Contracts,pg.83
+,• KT 0708 Budgets,pg.83
+,KM-10-KT08 : Costing of products 7%,
+,Topic elements to be covered include:,
+,• KT 0801 Input cost,pg.84
+,• KT 0802 Overhead costs,pg.85
+,• KT 0803 Direct labour cost,pg.86
+,• KT 0804 Pricing a product (Under- or over-pricing),pg.87
+,KM-10-KT09 : Resources 7%,
+,Topic elements to be covered include:,
+,• KT 0901 Human resources,pg.88
+,• KT 0902 Financial resources,pg.89
+,"• KT 0903 Physical resources (infrastructure, machinery, equipment)",pg.93
+,• KT 0904 Communication and information technology,pg.94
+KM-11,"251201-005-00-KM-11, 4IR and Future Skills, NQF Level 4, Credits 2",
+,KM-11-KT01 : 4 IR emerging trends 10%,
+,Topic elements to be covered include:,
+,• KT 0101 Artificial intelligence,pg.6
+,• KT 0102 Cloud computing,pg.7
+,• KT 0103 Cyber security,pg.7
+,• KT 0104 Data science,pg.8
+,• KT 0105 Internet of things,pg.9
+,• KT 0106 Quality engineering automation,pg.10
+,• KT 0107 Robotic processing automation,pg.11
+,• KT 0108 Software programming,pg.12
+,• KT 0109 Design thinking and innovation,pg.13
+,• KT 0110 e-Waste,pg.16
+,KM-11-KT02 : Computing Knowledge 7%,
+,Topic elements to be covered include:,
+,• KT 0201 Introduction to programming language,pg.17
+,• KT 0202 Programming basics,pg.19
+,"• KT 0203 Basic programming knowledge on HTML, JavaScript (or any scripting language)",pg.27
+,"KT 0204 Software development, e.g. C#, C++, Java, .NET",pg.28
+,• KT 0205 Databases (SQL or NoSQL),pg.31
+,• KT 0206 Web development technologies,pg.32
+,KM-11-KT03 : Future skills and competencies (4IR) 10%,
+,Topic elements to be covered include:,
+,• KT 0301 Disruptive thinking (encourage this) (application to their own environment),pg.36
+,• KT 0302 Continuously searching for ideas,pg.37
+,• KT 0303 Think innovatively (analyse the current market and come up with solutions to the current,pg.37
+,problems),
+,• KT 0304 Soft skills,pg.38
+,• KT 0305 Programming languages,pg.38
+,• KT 0306 Operating systems,pg.39
+,• KT 0307 Open source,pg.40
+,"• KT 0308 Tools for a cloud environment (for configuration and management), tools for debugging, login and monitoring and tools for image",pg.41
+,• KT 0309 Familiarity with Office tools,pg.42
+,• KT 0310 Leadership and people management skills,pg.46
+,KM-11-KT04 : 4 IR trends affecting businesses 10%,
+,Topic elements to be covered include:,
+,• KT 0401 Afro-centric approach to African problems – taking the best from the existing products and coming up with own solutions and continental challenges and opportunities,pg.48
+,"• KT 0402 Using Google, Amazon and MS forms and tools to reduce development time (e.g. embed AI APIs)",pg.50
+,"• KT 0403 Business intelligence applications and availability of Big Data (collecting data, converting data into information and turning information into knowledge, knowledge into intelligence and intelligence into wisdom)",pg.53
+,• KT 0404 Collecting data on clients,pg.57
+,• KT 0405 Insight into different markets,pg.58
+,• KT 0406 Automated factories,pg.61
+,KT 0407 Exposure to the global world,pg.64
+,KM-11-KT05 : Interpersonal skills 5%,
+,Topic elements to be covered include:,
+,"• KT 0501 Concept, definition and terminology",pg.68
+,• KT 0502 Principles,pg.72
+,• KT 0503 Attributes:,pg.75
+,KM-11-KT06 : Intrapersonal skills 5%,
+,Topic elements to be covered include:,
+,"• KT 0601 Concept, definition and terminology",pg.80
+,• KT 0602 Principles,pg.81
+,• KT 0603 Attributes:,pg.83
+,KM-11-KT07 : Communication principles and methods 5%,
+,Topic elements to be covered include:,
+,"• KT 0701 Concept, definition and terminology",pg.87
+,• KT 0702 The different types and forms of communication and communication processes,pg.89
+,• KT 0703 Communication methods,pg.90
+,• KT 0704 Barriers to communication,pg.91
+,"• KT 0705 Communication network: Interdepartmental, Supply chain network, etc.",pg.92
+,• KT 0706 Advantages of good communication,pg.96
+,• KT 0707 Consequences of poor/no communication,pg.100
+,KM-11-KT08 : Written business communication 7%,
+,Topic elements to be covered include:,
+,• KT 0801 Business requirement specifications,pg.102
+,• KT 0802 Types,pg.103
+,• KT 0803 Conventions,pg.104
+,• KT 0804 Schedules,pg.105
+,"• KT 0805 Reports, reporting protocols and methods",pg.106
+,• KT 0806 Manuals and guidelines,pg.115
+,• KT 0807 Work instructions/briefs,pg.116
+,• KT 0808 Technical report writing,pg.118
+,• KT 0809 Extracting information from written texts,pg.120
+,• KT 0810 Policies aligned to standard (IEEE 829-2008 standards),pg.121
+,KM-11-KT09 : Presentation skills 7%,
+,Topic elements to be covered include:,
+,"• KT 0901 Concept, definition and terminology",pg.125
+,"• KT 0902 Types: visual, verbal, written",pg.126
+,• KT 0903 Conventions,pg.130
+,• KT 0904 Presenting options and solutions,pg.131
+,• KT 0905 Presenting technical details,pg.133
+,• KT 0906 Visualisation of business intelligence,pg.134
+,• KT 0907 Suitable APIs and storytelling using the right tools to:,pg.135
+,KM-11-KT10 : Teamwork in the workplace 10%,
+,Topic elements to be covered include:,
+,"• KT 1001 Concept, definition and terminology",pg.141
+,• KT 1002 Principles of teamwork,pg.142
+,• KT 1003 Advantages of teamwork,pg.142
+,• KT 1004 Team composition and members,pg.144
+,"• KT 1005 Roles, responsibilities and functions",pg.145
+,• KT 1006 Team dynamics,pg.147
+,• KT 1007 Common goals and collaboration,pg.150
+,• KT 1008 Nature of multidisciplinary teams and teamwork,pg.154
+,• KT 1009 Setting and achieving targets,pg.156
+,• KT 1010 Collaboration tools (electronic),pg.157
+,KM-11-KT11 : Committees and meetings 5%,
+,Topic elements to be covered include:,
+,• KT 1101 Procedures,pg.160
+,• KT 1102 Agendas and minutes,pg.164
+,• KT 1103 Roles and responsibilities,pg.165
+,• KT 1104 WSP committees,pg.166
+,• KT 1105 EE committees,pg.169
+,• KT 1106 Safety and health committees,pg.170
+,• KT 1107 Wellness committees,pg.172
+,KM-11-KT12 : Job descriptions and profiles 5%,
+,Topic elements to be covered include:,
+,• KT 1201 Purpose,pg.174
+,• KT 1202 Job and person specification,pg.177
+,• KT 1203 Content,pg.180
+,• KT 1204 Alignment to performance standards,pg.182
+,KM-11-KT13 : Customers and stakeholders 7%,pg.186
+,Topic elements to be covered include:,pg.187
+,"• KT 1301 Concept, definition and terminology",pg.189
+,• KT 1302 Types of customers,pg.191
+,• KT 1303 Customer profile,pg.193
+,• KT 1304 Typical customer behaviour: including habits and mannerisms,pg.195
+,• KT 1305 Difficult customers,pg.198
+,• KT 1306 Customer care,pg.199
+,• KT 1307 Stakeholder management and participation,pg.199
+,KM-11-KT14 : Customer service 7%,
+,Topic elements to be covered include:,
+,"• KT 1401 Concept, definition and terminology",pg.203
+,• KT 1402 Customer service principles,pg.204
+,• KT 1403 Customer centeredness,pg.206
+,• KT 1404 Handover and sign-off procedures and techniques,pg.211
+,KT 1405 Technical documentation,pg.212
+,• KT 1406 Training in the use of the system,pg.213
+KM-12,"251201-005-00-KM-12, Design Thinking Principles for Innovation, NQF Level 4, Credits 1",
+,KM-12-KT01 : Introduction to design thinking 15%,
+,Topic elements to be covered include:,
+,• KT 0101 Philosophy,pg.5
+,• KT 0102 Approach and concepts,pg.10
+,• KT 0103 Definitions and terminology,pg.14
+,• KT 0104 History,pg.17
+,KM-12-KT02 : The human element 10%,
+,Topic elements to be covered include:,
+,• KT 0201 Human centeredness,pg.20
+,• KT 0202 Human participation,pg.21
+,KM-12-KT03 : Creativity 20%,
+,Topic elements to be covered include,
+,KT 0301 Creativity: is unleashing the potential of the mind to conceive new ideas,pg.24
+,• KT 0302 Perceiving the world in new ways,pg.26
+,• KT 0303 Find hidden patterns,pg.28
+,• KT 0304 Make connections between seemingly unrelated phenomena,pg.30
+,• KT 0305 Generate solutions,pg.31
+,• KT 0306 Application in the workplace,pg.33
+,KM-12-KT04 : Innovation 20%,
+,Topic elements to be covered include:,
+,"• KT 0401 Innovation: is the action of putting things into practical reality, despite challenges and resistance",pg.36
+,• KT 0402 Different innovations:,pg.38
+,• KT 0403 Main types of innovation:,pg.40
+,• KT 0404 What innovation means to busi,pg.43
+,KM-12-KT05 : Design 10%,
+,Topic elements to be covered include:,
+,• KT 0501 Think outside the box,pg.48
+,• KT 0502 Push beyond the obvious solutions,pg.50
+,• KT 0503 Communication through shape and form,pg.52
+,KM-12-KT06 : Design thinking methodology 10%,
+,Topic elements to be covered include:,
+,• KT 0601 Design thinking phases,pg.55
+,• KT 0602 Design thinking tools and techniques,pg.59
+,KM-12-KT07 : Application of design thinking 15%,
+,Topic elements to be covered include:,
+,• KT 0701 Application in software development,pg.68
+,• KT 0702 Application in cyber security,pg.69
+,• KT 0703 Business innovation,pg.72
+,• KT 0704 Innovative problem solving,pg.73
+SECTION 3B: PRACTICAL SKILLS MODULE SPECIFICATIONS,,
+PM-01,"251201-005-00-PM-01, Use Software to Communicate and Visualise Information, NQF Level 4, Credits 3",pg.8-24
+,P M-01-PS01 : Use electronic communication,
+,• P M-01-PS02 : Use software packages for office use,
+,• P M-01-PS03 : Operate a software package,
+,• P M-01-PS04 : Use software functions to create and manage documents,
+,• P M-01-PS05 : Design and construct presentations,
+PM-02,"251201-005-00-PM-02, Use and Manage Spreadsheets and Workbooks, NQF Level 4, Credits 3",pg.8-27
+,P M-02-PS01 : Use workbooks,
+,• P M-02-PS02 : Manipulate data,
+,• P M-02-PS03 : Create and work with tables,
+,• P M-02-PS04 : Use references and formulas,
+,"• P M-02-PS05 : Apply functionalities for using macros, referencing, language, collaboration and formatting",
+,• P M-02-PS06 : Use formulas in a spreadsheet,
+,• P M-02-PS07 : Visualise data using charts,
+PM-03,"251201-005-00-PM-03, Use Desktop Applications to Analyse, Visualise and report on Data, NQF Level 5, Credits 3",pg.8-36
+,P M-03-PS01 : Report data using spreadsheets,
+,• P M-03-PS02 : Summarise and format data using spreadsheet tables,
+,"• P M-03-PS03 : Create, use and edit pivot tables and pivot charts",
+,"• P M-03-PS04 : Create, use and edit dashboards",
+,• P M-03-PS05 : Create and configure hierarchies and time data,
+,• P M-03-PS06 : Apply a spreadsheet data model,
+,• P M-03-PS07 : Import data from files,
+,• P M-03-PS08 : Import data from databases,
+,• P M-03-PS09 : Import data from reports,
+,• P M-03-PS10 : Visualize data,
+,• P M-03-PS11 : Scrape data from the web using an appropriate tool,
+PM-04,"251201-005-00-PM-04, Use a Visual Analytics Platform and Visualisation Tools to Analyse, Visualise and report on Data, NQF Level 5, Credits 3",pg.8-28
+,P M-04-PS01 : Use spreadsheet data with BI technologies,
+,• P M-04-PS02 : Self-service BI technology solutions,
+,• P M-04-PS03 : Shape and combine data,
+,• P M-04-PS04 : Model data,
+,• P M-04-PS05 : Use interactive data visualizations to represent data graphically,
+,• P M-04-PS06 : Access data,
+,• P M-04-PS07 : Use visualisation tools to present data as meaningful insights,
+PM-05,"251201-005-00-PM-05, Query and Massage Data, NQF Level 5, Credits 3",pg.8-29
+,P M-05-PS01 : Write queries,
+,• P M-05-PS02 : Write SELECT queries,
+,• P M-05-PS03 : Query multiple tables,
+,• P M-05-PS04 : Sort and filter data,
+,• P M-05-PS05 : Use SQL server data types,
+,• P M-05-PS06 : Use data manipulation language (DML) to modify data,
+,• P M-05-PS07 : Use built-in functions,
+,• P M-05-PS08 : Group and aggregate data,
+,• P M-05-PS09 : Use subqueries,
+,• P M-05-PS10 : Use table expressions,
+,• P M-05-PS11 : Use set operators,
+,"• P M-05-PS12 : Use ranking, offset, and aggregate functions",
+,• P M-05-PS13 : Write queries using pivoting and grouping sets,
+,• P M-05-PS14 : Execute stored procedures,
+,• P M-05-PS15 : Program with SQL,
+,• P M-05-PS16 : Implement error handling,
+PM-06,"251201-005-00-PM-06, Apply Logical Thinking and Maths, NQF Level 4, Credits 3",pg.8-34
+,P M-06-PS01 : Number bases and measurement units,
+,• P M-06-PS02 : Basic math,
+,• P M-06-PS03 : Operator precedence,
+,• P M-06-PS04 : Integer division,
+,"• P M-06-PS05 : Functions, limits and continuity",
+,• P M-06-PS06 : Differential calculus of single variable functions,
+,• P M-06-PS07 : Modulus,
+,• P M-06-PS08 : Increments,
+,• P M-06-PS09 : Mixing types,
+,• P M-06-PS10 : Casting (timing and contextualising),
+PM-07,"251201-005-00-PM-07, Apply Code to use a Software Toolkit/Platform in the Field of Study or Employment, NQF Level 5, Credits 3",pg.8-47
+,P M-07-PS01 : Source and compare at least three software toolkits/platforms/ languages used in your field of studies,
+,• P M-07-PS02 : Identify and contrast four (4) paradigms,
+,• P M-07-PS03 : Create a programming environment (tailored to a specific tool or platform),
+,• P M-07-PS04 : Write code using a programming language for giving instructions for use of a software toolkit/platform,
+,• P M-07-PS05 : Select and use correct data types (tailored to a specific tool or platform),
+,• P M-07-PS06 : Use complex types to organise data (tailored to a specific tool or platform),
+,• P M-07-PS07 : Add API’s (Application Programming Interface) to an application (tailored to a specific tool or platform),
+,• P M-07-PS08 : Define a function (tailored to a specific tool or platform),
+,• P M-07-PS09 : Use logical branch statements and comparison operators (tailored to a specific tool or platform),
+,• P M-07-PS10 : Code loops (tailored to a specific tool or platform),
+,• P M-07-PS11 : Use and apply variable scopes (tailored to a specific tool or platform),
+,• P M-07-PS12 : Create queries to pull desired data using a structured query language (SQL),
+,(applicable to data base) (tailored to a specific tool or platform),
+,• P M-07-PS13 : Handle errors and troubleshooting (tailored to a specific tool or platform),
+,• P M-07-PS14 : Identify the general steps for writing code (tailored to a specific tool or platform),
+,"• P M-07-PS15 : Execute practical exercises 1, 2 and 3 using the specified product set",
+PM-08,"251201-005-00-PM-08, Develop Software using HTML5, Opensource Frameworks and Libraries, NQF Level 5, Credits 16",pg.8-43
+,P M-08-PS01 : Creating and Styling HTML5 Pages,
+,• P M-08-PS02 : Display data and handle events by using JavaScript,
+,• P M-08-PS03 : Create forms to collect and validate user input,
+,• P M-08-PS04 : Communicate with a remote data source,
+,• P M-08-PS05 : Style text and block elements,
+,• P M-08-PS06 : Refine code for maintainability and extensibility,
+,• P M-08-PS07 : Create interactive pages by using HTML5 APIs,
+,• P M-08-PS08 : Add offline support to web applications,
+,• P M-08-PS09 : Implementing an adaptive user interface,
+,• P M-08-PS10 : Creating advanced graphics,
+,• P M-08-PS11 : Animate the user interface,
+,• P M-08-PS12 : Implementing real-time communication by using web sockets,
+,• P M-08-PS13 : Create a web worker process,
+,• P M-08-PS14 : Package JavaScript for production deployment,
+PM-09,"251201-005-00-PM-09, Design and Build Web Applications, Desktop Graphical UserInterfaces or Mobile Apps, NQF Level 5, Credits 8",pg.8-40
+,P M-09-PS01 : Plan a project to build a solution which effectively solve the customer’s business problems (project design phase),
+,• P M-09-PS02 : Configure middlewares and services,
+,• P M-09-PS03 : Develop controllers for processing web requests,
+,• P M-09-PS04 : Develop views to define the user interface for web applications,
+,• P M-09-PS05 : Create code to develop MVC models to interact and model various types of data or objects,
+,• P M-09-PS06 : Connect an application to a database to access and store data using an objectdatabase mapper to build a database-driven website in MVC,
+,• P M-09-PS07 : Build web applications apply a consistent look and feel to the application,
+,• P M-09-PS08 : Develop the client-side of a web application using applicable tools,
+,• P M-09-PS09 : Test and troubleshoot for bugs that results in exceptions or unexpected behaviour,
+,• P M-09-PS10 : Manage security aspects of a web application,
+,• P M-09-PS11 : Increase the speed of data access and communication to improve performance,
+,• P M-09-PS12 : Implement web APIs to enable and promote application interaction with external systems,
+,• P M-09-PS13 : Host and deploy an web application ensuring it is accessible by clients on a wide variety of machines,
+,,
+PM-10,"251201-005-00-PM-10, Use a Cloud Automation Platform to Create Solutions, NQF Level 4, Credits 8",pg.8-24
+,P M-10-PS01 : Leverage business intelligence technology to create business solutions,
+,• P M-10-PS02 : Model data using a cloud automation platform functionality,
+,• P M-10-PS03 : Apply the capabilities of Power Apps to build various Apps,
+,• P M-10-PS04 : Build an automated solution using Power Automate,
+,• P M-10-PS05 : Report and visually present data using a cloud automation platform,
+,• P M-10-PS06 : Build a chatbot,
+PM-11,"251201-005-00-PM-11, Develop Software using Python, NQF Level 5, Credits 12",pg.8-22
+,P M-11-PS01 : Perform operations using data types and operators,
+,• P M-11-PS02 : Control flow with decisions and loops,
+,• P M-11-PS03 : Perform input and output operations using files or from the console,
+,• P M-11-PS04 : Document and structure well-written code,
+,• P M-11-PS05 : Perform troubleshooting and error handling to detect and fix errors in code,
+,• P M-11-PS06 : Perform operations using built-in modules and tools,
+PM-12,"251201-005-00-PM-12, Apply the Development Cycle when Developing Software, NQF Level 5, Credits 16",pg.8-30
+,P M-12-PS01 : Collect and analyse information on the requirements for the solution,
+,• P M-12-PS02 : Conduct feasibility checks to define and document software needs,
+,"• P M-12-PS03 : Apply core business modelling and analysis skills to information systems development, and core skills in data modelling, database concepts, and design, to model a solution that meets organisational requirements",
+,• P M-12-PS04 : Create software design documents,
+,• P M-12-PS05 : Design a wireframe of the proposed amendments or new solution,
+,• P M-12-PS06 : Build the entire solution or component by writing code using the chosen programming language,
+,• P M-12-PS07 : Test and debug the solution during the development process,
+,• P M-12-PS08 : Deploy the build solution and,
+,• P M-12-PS09 : Maintain the deployed solution,
+PM-13,"251201-005-00-PM-13, Participate in a Design Thinking for Innovation Workshop, NQF Level 4, Credits 4",pg.8-20
+,P M-13-PS01 : Collaborate with team members to apply innovative and problem-solving strategies,
+,• P M-13-PS02 : Apply design thinking process to solve a problem creatively and innovatively,
+PM-14,"251201-005-00-PM-14, Function Ethically and Effectively in a Team, NQF Level 4, Credits 4",pg.8-19
+,P M-14-PS01 : Present information to an audience,
+,• P M-14-PS02 : Conduct basic research (gather and explore data and information) on 4IR skills and application opportunities in the workplace,
+,• P M-14-PS03 : Ensure compliance with the code of conduct and governance in the workplace,
+,• P M-14-PS04 : Collaborate with team members in the workplace,
+,• P M-14-PS05 : Attend and participate in meetings,
+SECTION 3C: WORK EXPERIENCE MODULE SPECIFICATIONS,,
+251201-005-00-WM-01,"Technical Requirement Analysis and Refinement, NQF Level 5, Credits 15",
+251201-005-00-WM-02,"Modelling Processes, NQF Level 5, Credits 15",
+251201-005-00-WM-03,"Programming for Software Solution Development, NQF Level 5, Credits 25",
+251201-005-00-WM-04,"Capstone Project, NQF Level 5, Credits 10",
