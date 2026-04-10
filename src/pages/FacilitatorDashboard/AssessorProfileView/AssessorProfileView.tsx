@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import {
     User, Mail, Phone, ShieldCheck, FileText, Edit3, Save, X,
     Fingerprint, GraduationCap, AlertCircle, Info, Loader2,
-    Camera, Award, Calendar, Briefcase, PenTool, Clock, MapPin, Plus,
+    Camera, Award, Calendar, Briefcase, PenTool, MapPin, Plus,
 } from 'lucide-react';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -21,8 +21,8 @@ const QCTO_PROVINCES = [
 ].map(p => ({ label: p, value: p }));
 
 interface ProfileProps {
-    profile: any; // The user object from Firestore
-    user: any;    // The current auth user (Admin/Manager viewing)
+    profile: any;
+    user: any;
     onUpdate: (id: string, updates: any) => Promise<void>;
 }
 
@@ -31,7 +31,6 @@ export const AssessorProfileView: React.FC<ProfileProps> = ({ profile, user, onU
     const [saving, setSaving] = useState(false);
     const [isSigModalOpen, setIsSigModalOpen] = useState(false);
 
-    // 🚀 NEW: The Single Source of Truth (Real-time DB State)
     const [liveProfile, setLiveProfile] = useState<any>(profile || user || {});
 
     // The Draft State (Only used when isEditing is true)
@@ -40,7 +39,6 @@ export const AssessorProfileView: React.FC<ProfileProps> = ({ profile, user, onU
     const [profilePhoto, setProfilePhoto] = useState<File | null>(null);
     const [photoPreview, setPhotoPreview] = useState<string | null>(null);
 
-    // Dynamic Document State
     const [docsList, setDocsList] = useState<DynamicDocument[]>([]);
 
     const targetId = profile?.uid || profile?.id || user?.uid;
@@ -406,7 +404,7 @@ export const AssessorProfileView: React.FC<ProfileProps> = ({ profile, user, onU
                             </div>
                         ) : (
                             <>
-                                {/* 🚀 READ-ONLY MODE NOW EXPLICITLY SHOWS POSTAL ADDRESS */}
+                                {/* READ-ONLY MODE NOW EXPLICITLY SHOWS POSTAL ADDRESS */}
                                 <div className="lpv-divider" style={{ marginTop: '1.5rem', marginBottom: '1rem', borderTop: '1px solid #e2e8f0' }} />
                                 <h4 style={{ fontSize: '0.8rem', color: '#64748b', textTransform: 'uppercase', marginBottom: '0.75rem', display: 'flex', alignItems: 'center' }}>
                                     Postal Address

@@ -55,7 +55,7 @@ export const RoleProtectedRoute: React.FC<Props> = ({
         return <SignatureSetupModal userUid={user.uid} onComplete={() => window.location.reload()} />;
     }
 
-    // 🚀 --- FRESH START COMPLIANCE CHECK ---
+    // --- FRESH START COMPLIANCE CHECK ---
     const rawUploadedDocs = (user as any).uploadedDocuments;
     const uploadedDocs = Array.isArray(rawUploadedDocs) ? rawUploadedDocs : [];
     const hasDoc = (docId: string) => uploadedDocs.some((doc: any) => doc.id === docId && typeof doc.url === 'string' && doc.url.trim() !== '');
@@ -90,7 +90,7 @@ export const RoleProtectedRoute: React.FC<Props> = ({
 
     const isStaffFullyCompliant = checkStaffCompliance();
 
-    // 🚀 --- REDIRECT GATES ---
+    // --- REDIRECT GATES ---
     if (user.role === "learner" && !isLearnerFullyCompliant && location.pathname !== "/setup-profile") {
         return <Navigate to="/setup-profile" replace />;
     }
@@ -108,7 +108,7 @@ export const RoleProtectedRoute: React.FC<Props> = ({
         return <Navigate to="/setup-admin" replace />;
     }
 
-    // 🚀 --- SUPER ADMIN LOCK ---
+    // --- SUPER ADMIN LOCK ---
     if (requireSuperAdmin && (user as any).isSuperAdmin !== true) {
         return (
             <div style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, background: "var(--mlab-bg)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "1rem", zIndex: 9999 }}>

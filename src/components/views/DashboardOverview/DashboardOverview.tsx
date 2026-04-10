@@ -10,8 +10,6 @@ import {
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
 import { useStore } from '../../../store/useStore';
-
-// 🚀 CRITICAL: Import WorkplacesManager CSS for the bespoke Header & Cards
 import '../../admin/WorkplacesManager/WorkplacesManager.css';
 import './DashboardOverview.css';
 

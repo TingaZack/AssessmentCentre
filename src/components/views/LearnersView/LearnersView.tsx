@@ -17,8 +17,6 @@ import { useStore } from '../../../store/useStore';
 import { CertificateGenerator } from '../../common/CertificateGenerator/CertificateGenerator';
 import { StatusModal } from '../../common/StatusModal/StatusModal';
 import { BulkResultsImportModal } from '../../admin/BulkResultsImportModal/BulkResultsImportModal';
-
-// 🚀 CRITICAL: Import WorkplacesManager CSS for the bespoke Header & Toolbar
 import '../../admin/WorkplacesManager/WorkplacesManager.css';
 import './LearnersView.css';
 

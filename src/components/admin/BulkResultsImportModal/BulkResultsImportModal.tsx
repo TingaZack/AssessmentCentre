@@ -279,7 +279,6 @@ export const BulkResultsImportModal: React.FC<BulkResultsImportModalProps> = ({
                                     >
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                             <span style={{ fontWeight: 600, color: 'var(--mlab-blue)', fontSize: '0.9rem' }}>{l.fullName}</span>
-                                            {/* 🚀 FIXED TS ERROR: Wrapped icons in a span with a title attribute */}
                                             {l.isUpdate ? (
                                                 <span title="Existing Learner Found" style={{ display: 'flex' }}>
                                                     <CheckCircle2 size={14} color="var(--mlab-green)" />

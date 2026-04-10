@@ -185,7 +185,7 @@ function App() {
 
             {/* LEGAL & COMPLIANCE ROUTES */}
             <Route path="/privacy-policy" element={<PrivacyPolicy />} />
-            <Route path="/terms" element={<PrivacyPolicy />} /> {/* Serving Privacy Policy temporarily as Terms */}
+            <Route path="/terms" element={<PrivacyPolicy />} />
 
             {/* ================= ONBOARDING GATES ================= */}
             <Route path="/setup-admin" element={
@@ -229,7 +229,7 @@ function App() {
             } />
 
             {/* STANDALONE ADMIN PAGES */}
-            {/* 🚀 SUPER ADMIN ONLY: ACCESS MANAGER */}
+            {/* SUPER ADMIN ONLY: ACCESS MANAGER */}
             <Route path="/admin/access" element={
               <RoleProtectedRoute allowedRoles={['admin']} requireSuperAdmin={true}>
                 <AccessManager />

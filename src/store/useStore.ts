@@ -172,6 +172,7 @@ interface StoreState extends CohortSlice {
   staffError: string | null;
   fetchStaff: (force?: boolean) => Promise<void>;
   addStaff: (staff: Omit<StaffMember, "id" | "createdAt">) => Promise<void>;
+  updateStaff: (id: string, updates: Partial<StaffMember>) => Promise<void>; // 🚀 Added missing interface
   deleteStaff: (id: string) => Promise<void>;
   updateStaffProfile: (uid: string, updates: any) => Promise<void>;
 
@@ -1227,6 +1228,24 @@ export const useStore = create<StoreState>()(
       }
     },
 
+    // 🚀 NEW FUNCTION: updateStaff
+    updateStaff: async (id: string, updates: Partial<StaffMember>) => {
+      try {
+        const payload = { ...updates, updatedAt: now() };
+        await updateDoc(doc(db, "users", id), payload);
+
+        set((state) => {
+          const index = state.staff.findIndex((s) => s.id === id);
+          if (index !== -1) {
+            state.staff[index] = { ...state.staff[index], ...payload };
+          }
+        });
+      } catch (error) {
+        console.error("Failed to update staff member", error);
+        throw error;
+      }
+    },
+
     deleteStaff: async (id) => {
       try {
         await deleteDoc(doc(db, "users", id));
@@ -1516,7 +1535,6 @@ export const useStore = create<StoreState>()(
 // } from "./slices/cohortSlice.ts/cohortSlice";
 // import { generateSorId } from "../pages/utils/validation";
 
-// const USER_ID = getAuth().currentUser?.uid || "UnknownUser";
 // const now = () => new Date().toISOString();
 
 // export interface EnrollmentRecord {
@@ -1581,6 +1599,8 @@ export const useStore = create<StoreState>()(
 //   learnersLoading: boolean;
 //   learnersError: string | null;
 //   learnersLastFetched: number | null;
+
+//   clearUser: () => void;
 
 //   fetchLearners: (force?: boolean) => Promise<void>;
 //   fetchStagingLearners: () => Promise<void>;
@@ -1706,6 +1726,8 @@ export const useStore = create<StoreState>()(
 //     setUser: (user) => set({ user }),
 //     setLoading: (loading) => set({ loading }),
 
+//     clearUser: () => set({ user: null }),
+
 //     refreshUser: async () => {
 //       const currentUser = get().user;
 //       if (!currentUser?.uid) return;
@@ -1730,7 +1752,7 @@ export const useStore = create<StoreState>()(
 //     adHocCertificates: [],
 //     fetchAdHocCertificates: async (force = false) => {
 //       const { adHocCertificates } = get();
-//       if (!force && adHocCertificates.length > 0) return; // Silent if data exists
+//       if (!force && adHocCertificates.length > 0) return;
 
 //       try {
 //         const q = query(
@@ -1773,7 +1795,7 @@ export const useStore = create<StoreState>()(
 //           createdBy: USER_ID,
 //           createdAt: new Date().toISOString(),
 //         });
-//         await get().fetchCertificateGroups(true); // Force refresh
+//         await get().fetchCertificateGroups(true);
 //       } catch (error) {
 //         console.error("Failed to create folder", error);
 //         throw error;
@@ -1785,7 +1807,7 @@ export const useStore = create<StoreState>()(
 //           name: newName,
 //           updatedAt: new Date().toISOString(),
 //         });
-//         await get().fetchCertificateGroups(true); // Force refresh to get new name
+//         await get().fetchCertificateGroups(true);
 //       } catch (error) {
 //         console.error("Failed to rename folder", error);
 //         throw error;
@@ -1919,6 +1941,7 @@ export const useStore = create<StoreState>()(
 //     },
 
 //     addLearner: async (payload) => {
+//       const USER_ID = getAuth().currentUser?.uid || "UnknownUser";
 //       try {
 //         const timestamp = now();
 //         const profileData: any = {};
@@ -1997,15 +2020,22 @@ export const useStore = create<StoreState>()(
 //     },
 
 //     updateLearner: async (id, updates) => {
+//       const CURRENT_USER_ID = getAuth().currentUser?.uid || "UnknownUser";
 //       try {
 //         const existingRow = get().learners.find((l) => l.id === id);
-//         if (!existingRow) throw new Error("Record not found in local state");
 
-//         const learnerId = existingRow.learnerId;
-//         const enrollmentId = existingRow.enrollmentId;
+//         // BYPASS: If no record in local array (e.g. Learner portal), default to provided id
+//         const learnerId = existingRow?.learnerId || id;
+//         const enrollmentId = existingRow?.enrollmentId || null;
 
-//         const profileUpdates: any = { updatedAt: now(), updatedBy: USER_ID };
-//         const enrollmentUpdates: any = { updatedAt: now(), updatedBy: USER_ID };
+//         const profileUpdates: any = {
+//           updatedAt: now(),
+//           updatedBy: CURRENT_USER_ID,
+//         };
+//         const enrollmentUpdates: any = {
+//           updatedAt: now(),
+//           updatedBy: CURRENT_USER_ID,
+//         };
 //         let hasProfileUpdate = false;
 //         let hasEnrollmentUpdate = false;
 
@@ -2025,12 +2055,17 @@ export const useStore = create<StoreState>()(
 //           batch.update(doc(db, "learners", learnerId), profileUpdates);
 //         }
 
-//         if (hasEnrollmentUpdate && enrollmentId) {
-//           const enrolRef = doc(db, "enrollments", enrollmentId);
-//           const enrolSnap = await getDoc(enrolRef);
-//           if (enrolSnap.exists()) {
-//             batch.update(enrolRef, enrollmentUpdates);
+//         if (hasEnrollmentUpdate) {
+//           if (enrollmentId) {
+//             const enrolRef = doc(db, "enrollments", enrollmentId);
+//             const enrolSnap = await getDoc(enrolRef);
+//             if (enrolSnap.exists()) {
+//               batch.update(enrolRef, enrollmentUpdates);
+//             } else {
+//               batch.update(doc(db, "learners", learnerId), enrollmentUpdates);
+//             }
 //           } else {
+//             // Fallback for learners updating their own profile without local enrollment mapping
 //             batch.update(doc(db, "learners", learnerId), enrollmentUpdates);
 //           }
 //         }
@@ -2038,9 +2073,14 @@ export const useStore = create<StoreState>()(
 //         await batch.commit();
 
 //         set((state) => {
+//           // Attempt to update the array if they exist in it
 //           const index = state.learners.findIndex((l) => l.id === id);
 //           if (index !== -1) {
 //             state.learners[index] = { ...state.learners[index], ...updates };
+//           }
+//           // Also update the global user object if the person editing is themselves
+//           if (state.user && state.user.uid === learnerId) {
+//             state.user = { ...state.user, ...updates };
 //           }
 //         });
 //       } catch (error) {
@@ -2346,6 +2386,7 @@ export const useStore = create<StoreState>()(
 //       set((state) => {
 //         state.learnersLoading = true;
 //       });
+//       const USER_ID = getAuth().currentUser?.uid || "UnknownUser";
 //       const functions = getFunctions();
 //       const createAccountFn = httpsCallable(functions, "createLearnerAccount");
 
@@ -2535,6 +2576,7 @@ export const useStore = create<StoreState>()(
 //     },
 
 //     addProgramme: async (programme) => {
+//       const USER_ID = getAuth().currentUser?.uid || "UnknownUser";
 //       try {
 //         const timestamp = now();
 //         const pAudit = {
@@ -2557,6 +2599,7 @@ export const useStore = create<StoreState>()(
 //     },
 
 //     updateProgramme: async (id, updates) => {
+//       const USER_ID = getAuth().currentUser?.uid || "UnknownUser";
 //       try {
 //         const updatePayload = {
 //           ...updates,
@@ -2578,6 +2621,7 @@ export const useStore = create<StoreState>()(
 //     },
 
 //     archiveProgramme: async (id) => {
+//       const USER_ID = getAuth().currentUser?.uid || "UnknownUser";
 //       try {
 //         await updateDoc(doc(db, "programmes", id), {
 //           isArchived: true,
@@ -2711,6 +2755,7 @@ export const useStore = create<StoreState>()(
 
 //     // ==================== IMPORTS ====================
 //     importUnifiedLearners: async (file: File) => {
+//       const USER_ID = getAuth().currentUser?.uid || "UnknownUser";
 //       return new Promise((resolve, reject) => {
 //         Papa.parse(file, {
 //           header: true,

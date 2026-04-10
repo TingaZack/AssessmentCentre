@@ -58,7 +58,7 @@
     margin: 0 !important;
   }
 
-  /* 🚀 Hide the "Back" and "Print Policy" buttons on the physical paper */
+  /* Hide the "Back" and "Print Policy" buttons on the physical paper */
   .mlab-privacy-wrapper > div:first-child {
     display: none !important;
   }

@@ -49,7 +49,7 @@ export const CohortFormModal: React.FC<Props> = ({ cohort, onClose, onSave }) =>
 
     // ── Filtered learner list ──
     const filteredLearners = useMemo(() => learners.filter(l => {
-        // 🚀 SAFEGUARD: ONLY SHOW AUTHENTICATED LEARNERS
+        // SAFEGUARD: ONLY SHOW AUTHENTICATED LEARNERS
         // Learner must not be archived, must be active, must NOT be offline (RPL), 
         // AND must have a fully registered Firebase Auth account ('active').
         if (l.isArchived || l.isOffline || l.status !== 'active' || l.authStatus !== 'active') {

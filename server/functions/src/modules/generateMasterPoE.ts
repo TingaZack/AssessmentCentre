@@ -276,7 +276,7 @@ const POE_STYLES = `
   .eval-box__value { padding: 8px 14px; font-size: 11px; color: #1a2e35; flex: 1; }
   .eval-box__divider { height: 1px; background: #dde4e8; margin: 0; }
 
-  /* 🚀 OFFICIAL QCTO INK COLORS */
+  /* OFFICIAL QCTO INK COLORS */
   .ink-fac { color: #1d4ed8 !important; } /* Facilitator — blue ink */
   .ink-ass { color: #b91c1c !important; } /* Assessor — red ink     */
   .ink-mod { color: #15803d !important; } /* Moderator — green ink  */
@@ -817,7 +817,6 @@ ${dividerPage("2", "Competence Record & Final Assessment Report", "Official syst
         const notionalHours = modInfo.notionalHours || "N/A";
         const credits = modInfo.credits ? `Cr ${modInfo.credits}` : "N/A";
 
-        // 🚀 DATES
         const learnerDate = fmt(
           sub.submittedAt || sub.learnerDeclaration?.timestamp,
         );
@@ -1027,7 +1026,7 @@ ${
           html += `<div class="empty-state">Assessment template is empty — evidence blocks not mapped.</div>`;
         }
 
-        // 🚀 SMART ARCHIVE LOGIC: Fixes the "No files found" bug by showing legacy message if PDF is absent.
+        // SMART ARCHIVE LOGIC: Fixes the "No files found" bug by showing legacy message if PDF is absent.
         try {
           const historySnap = await admin
             .firestore()

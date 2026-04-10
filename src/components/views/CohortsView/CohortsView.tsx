@@ -13,8 +13,6 @@ import type { Cohort } from '../../../types';
 import { db } from '../../../lib/firebase';
 import { useStore } from '../../../store/useStore';
 import { useToast } from '../../common/Toast/Toast';
-
-// 🚀 CRITICAL: Import WorkplacesManager CSS for the bespoke Header
 import '../../admin/WorkplacesManager/WorkplacesManager.css';
 import './CohortsView.css';
 

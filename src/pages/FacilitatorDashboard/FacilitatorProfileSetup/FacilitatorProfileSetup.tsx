@@ -65,8 +65,6 @@ export const FacilitatorProfileSetup: React.FC = () => {
     const [photoPreview, setPhotoPreview] = useState<string | null>(null);
 
     // ─── EFFECTS ─────────────────────────────────────────────────────────
-
-    // 🚀 NEW: Fetch Existing Data from Firestore to Pre-fill Form
     useEffect(() => {
         const fetchExistingData = async () => {
             if (!user?.uid) return;
@@ -104,7 +102,6 @@ export const FacilitatorProfileSetup: React.FC = () => {
 
                     if (data.profilePhotoUrl) setPhotoPreview(data.profilePhotoUrl);
 
-                    // 🚀 HYDRATE DOCUMENTS
                     const legacyDocs = data.complianceDocs || {};
                     const rawUploadedDocs = data.uploadedDocuments;
                     const uploadedDocsArray = Array.isArray(rawUploadedDocs) ? rawUploadedDocs : [];

@@ -6,24 +6,24 @@ import type { UserRole } from '../../types/auth.types';
 import { useStore } from '../../store/useStore';
 
 // Assuming LearnerFormModal.css handles the lfm- classes globally or is imported higher up.
-// If it's not loading globally, uncomment the line below and adjust the path:
 // import './LearnerFormModal/LearnerFormModal.css'; 
 
 interface StaffFormProps {
+    staff?: any;
     onClose: () => void;
     onSave: (staff: any) => Promise<void>;
 }
 
-export const StaffFormModal: React.FC<StaffFormProps> = ({ onClose, onSave }) => {
+export const StaffFormModal: React.FC<StaffFormProps> = ({ staff, onClose, onSave }) => {
     const { employers, fetchEmployers } = useStore();
 
     const [formData, setFormData] = useState({
-        fullName: '',
-        email: '',
-        role: 'facilitator' as UserRole | 'mentor',
-        phone: '',
-        assessorRegNumber: '',
-        employerId: ''
+        fullName: staff?.fullName || '',
+        email: staff?.email || '',
+        role: (staff?.role as UserRole | 'mentor') || 'facilitator',
+        phone: staff?.phone || '',
+        assessorRegNumber: staff?.assessorRegNumber || '',
+        employerId: staff?.employerId || ''
     });
 
     const [loading, setLoading] = useState(false);
@@ -70,7 +70,7 @@ export const StaffFormModal: React.FC<StaffFormProps> = ({ onClose, onSave }) =>
             <div className="lfm-modal animate-fade-in" onClick={e => e.stopPropagation()} style={{ maxWidth: '500px' }}>
 
                 <div className="lfm-header" style={{ background: 'var(--mlab-blue)' }}>
-                    <h2 className="lfm-header__title"><UserPlus size={16} /> Add Staff / Mentor</h2>
+                    <h2 className="lfm-header__title"><UserPlus size={16} /> {staff ? 'Edit Staff / Mentor' : 'Add Staff / Mentor'}</h2>
                     <button className="lfm-close-btn" type="button" onClick={onClose} disabled={loading}><X size={20} /></button>
                 </div>
 
@@ -102,6 +102,7 @@ export const StaffFormModal: React.FC<StaffFormProps> = ({ onClose, onSave }) =>
                                     placeholder="john@example.com"
                                     value={formData.email}
                                     onChange={e => setFormData({ ...formData, email: e.target.value })}
+                                    disabled={!!staff} // Prevent changing email on edit to avoid auth conflicts
                                 />
                             </div>
 
@@ -176,7 +177,7 @@ export const StaffFormModal: React.FC<StaffFormProps> = ({ onClose, onSave }) =>
                     <div className="lfm-footer">
                         <button type="button" className="lfm-btn lfm-btn--ghost" onClick={onClose} disabled={loading}>Cancel</button>
                         <button type="submit" className="lfm-btn lfm-btn--primary" disabled={loading} style={{ background: 'var(--mlab-blue)', borderColor: 'var(--mlab-blue)' }}>
-                            {loading ? <><Loader2 className="lfm-spin" size={13} /> Saving...</> : <><Save size={13} /> Save Staff</>}
+                            {loading ? <><Loader2 className="lfm-spin" size={13} /> Saving...</> : <><Save size={13} /> {staff ? 'Update Staff' : 'Save Staff'}</>}
                         </button>
                     </div>
                 </form>

@@ -7,11 +7,9 @@ import { useNavigate } from 'react-router-dom';
 import { db } from '../../../lib/firebase';
 import Loader from '../../../components/common/Loader/Loader';
 import moment from 'moment';
-
-// 🚀 Pulling in the unified LearnersView styles
 import '../../../components/views/LearnersView/LearnersView.css';
 
-// 🚀 MODULE-LEVEL CACHE
+// MODULE-LEVEL CACHE
 let cachedHistory: any[] | null = null;
 
 export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ facilitatorId }) => {
@@ -22,7 +20,6 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
     const [loading, setLoading] = useState<boolean>(() => cachedHistory === null);
     const [error, setError] = useState<string | null>(null);
 
-    // 🚀 Added search state
     const [searchTerm, setSearchTerm] = useState('');
 
     useEffect(() => {
@@ -57,7 +54,6 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
         fetchHistory();
     }, [facilitatorId]);
 
-    // 🚀 Added filtering logic
     const filteredHistory = useMemo(() => {
         if (!searchTerm) return history;
         const lower = searchTerm.toLowerCase();
@@ -85,7 +81,6 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
     return (
         <div className="mlab-learners animate-fade-in" style={{ paddingBottom: 16, margin: 0 }}>
 
-            {/* 🚀 Added the unified search toolbar */}
             <div className="mlab-toolbar">
                 <div className="mlab-search">
                     <Search size={18} color="var(--mlab-grey)" />
