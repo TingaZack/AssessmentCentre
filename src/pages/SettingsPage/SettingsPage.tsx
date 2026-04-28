@@ -43,41 +43,41 @@ const CORE_MAPPINGS = [
 ];
 
 const DEFAULT_SETTINGS: any = {
-    institutionName: "mLab Southern Africa",
-    companyRegistrationNumber: "2011/149875/08",
-    phone: "+27 012 844 0240",
-    email: "codetribe@mlab.co.za",
+    // Strings (Text fields) - Hollowed out safely
+    institutionName: "",
+    companyRegistrationNumber: "",
+    phone: "",
+    email: "",
     institutionAddress: "",
     institutionCity: "",
     institutionProvince: "",
     institutionPostalCode: "",
+    logoUrl: "",
+    signatureUrl: "",
+    contractAddress: "",
+    rpcUrl: "",
+
+    // Doubles (Coordinates) - Safe zero defaults
     institutionLat: 0,
     institutionLng: 0,
-    campuses: [
-        {
-            id: "campus-1",
-            name: "Kimberley Campus (Head Office)",
-            type: "physical",
-            address: "13 Corner Tyala &, Hulana, Galeshewe, Kimberley, 8345",
-            province: "Northern Cape",
-            city: "Kimberley",
-            postalCode: "8345",
-            lat: -28.7282,
-            lng: 24.7499,
-            siteAccreditationNumber: "SDP070824115131",
-            isDefault: true
-        }
-    ],
+
+    // Arrays - Empty brackets to prevent .map() crashes
+    campuses: [],
+    customCsvMappings: [],
+
+    // Int64 (Numbers) - Standard fallback logic
     passMarkThreshold: 50,
     attendanceRequirement: 80,
     defaultCohortMonths: 12,
+
+    // Booleans (Toggles)
     eisaLockEnabled: true,
-    contractAddress: "0x1234567890abcdef1234567890abcdef12345678",
+
+    // Generic System Defaults (Safe to keep as strings)
     blockchainNetwork: "polygon_amoy",
-    rpcUrl: "https://rpc-amoy.polygon.technology/",
     ipfsGateway: "https://gateway.pinata.cloud",
-    logoUrl: "",
-    signatureUrl: "",
+
+    // Maps (Objects) - Required to prevent undefined object crashes
     csvMappings: {
         fullName: "Learner Name",
         idNumber: "ID Number",
@@ -92,8 +92,7 @@ const DEFAULT_SETTINGS: any = {
         saqaId: "SAQA Qual ID",
         nqfLevel: "NQF Level",
         credits: "Credits"
-    },
-    customCsvMappings: []
+    }
 };
 
 export const SettingsPage: React.FC = () => {
@@ -137,14 +136,41 @@ export const SettingsPage: React.FC = () => {
                         }
                     });
 
+                    // 🚀 FIX: SELF-HEALING CAMPUS IDs 🚀
+                    // Scans the array. If it finds duplicate IDs (e.g., multiple "campus-1"s), 
+                    // it generates fresh, unique IDs for them.
+                    let loadedCampuses = data.campuses || DEFAULT_SETTINGS.campuses;
+                    const seenIds = new Set();
+                    let foundDuplicates = false;
+
+                    loadedCampuses = loadedCampuses.map((campus: any, index: number) => {
+                        let finalId = campus.id || `campus-${Date.now()}-${index}`;
+
+                        // If we already saw this ID, it's a duplicate! Fix it.
+                        if (seenIds.has(finalId)) {
+                            finalId = `campus-fixed-${Date.now()}-${index}`;
+                            foundDuplicates = true;
+                        }
+
+                        seenIds.add(finalId);
+                        return { ...campus, id: finalId };
+                    });
+
                     const mergedData = {
                         ...DEFAULT_SETTINGS,
                         ...data,
+                        campuses: loadedCampuses, // Inject the cleaned campuses
                         csvMappings: safeMappings,
                         customCsvMappings: data.customCsvMappings || []
                     };
+
                     setFormData(mergedData);
                     setOriginalData(mergedData);
+
+                    // 🚀 Trigger the "Save Changes" bar automatically if we fixed broken data
+                    if (foundDuplicates) {
+                        setIsDirty(true);
+                    }
                 }
             } catch (error) {
                 console.error("Error fetching system settings:", error);
@@ -367,7 +393,6 @@ export const SettingsPage: React.FC = () => {
         { id: 'org', label: 'Organization', icon: Building2 },
         { id: 'academic', label: 'Academic Rules', icon: GraduationCap },
         { id: 'data', label: 'Data & Imports', icon: Database },
-        // { id: 'web3', label: 'Web3 & Blockchain', icon: Link2 },
         { id: 'notifications', label: 'Notifications', icon: Bell },
         { id: 'audit', label: 'Security & Audit', icon: ShieldAlert },
         { id: 'profile', label: 'My Profile', icon: User },

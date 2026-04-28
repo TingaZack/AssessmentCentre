@@ -335,6 +335,7 @@ export interface Cohort {
 
   // The "Triangle of Support" (Staff IDs)
   facilitatorId: string;
+  supportFacilitatorId?: string;
   assessorId: string;
   moderatorId: string;
 

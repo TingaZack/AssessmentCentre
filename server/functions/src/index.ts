@@ -8,313 +8,638 @@
  */
 
 import { setGlobalOptions } from "firebase-functions";
-import { HttpsError, onCall, onRequest } from "firebase-functions/https";
+import {
+  CallableRequest,
+  HttpsError,
+  onCall,
+  onRequest,
+} from "firebase-functions/https";
 import * as logger from "firebase-functions/logger";
 
-// const { PDFDocument, StandardFonts, rgb } = require("pdf-lib");
-
-// const puppeteer = require("puppeteer-core");
-// const chromium = require("@sparticuz/chromium");
-
-// Start writing functions
-// https://firebase.google.com/docs/functions/typescript
-
-// For cost control, you can set the maximum number of containers that can be
-// running at the same time. This helps mitigate the impact of unexpected
-// traffic spikes by instead downgrading performance. This limit is a
-// per-function limit. You can override the limit for each function using the
-// `maxInstances` option in the function's options, e.g.
-// `onRequest({ maxInstances: 5 }, (req, res) => { ... })`.
-// NOTE: setGlobalOptions does not apply to functions using the v1 API. V1
-// functions should each use functions.runWith({ maxInstances: 10 }) instead.
-// In the v1 API, each function can only serve one request per container, so
-// this will be the maximum concurrent request count.
 setGlobalOptions({ maxInstances: 10 });
 
-export const helloTryWorld = onRequest((request, response) => {
-  logger.info("Hello logs!", { structuredData: true });
-  response.send("Hello from Firebase!");
-});
-
 import * as admin from "firebase-admin";
-import * as nodemailer from "nodemailer";
 import {
   onDocumentCreated,
   onDocumentUpdated,
 } from "firebase-functions/firestore";
+
 import {
   buildMlabEmailHtml,
   buildMlabEmailPlainText,
 } from "./utils/emailBuilder";
 
 import { ethers } from "ethers";
-
-const cors = require("cors")({ origin: true });
 import { defineSecret } from "firebase-functions/params";
 
-// 'axios' is used to make standard HTTP requests (to send the file to Pinata).
+const cors = require("cors")({ origin: true });
+
 import axios from "axios";
-// 'form-data' lets Node.js build a "file upload form" in the background to send to Pinata.
 import FormData from "form-data";
-// import { generateMasterPoE } from "./modules/generateMasterPoE";
 import { generateHistorySnapshot } from "./modules/generateHistorySnapshot";
-// import { generateMasterPoE } from "./modules/generateMasterPoE";
+
+import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
+const puppeteer = require("puppeteer-core");
+const chromium = require("@sparticuz/chromium");
 
 admin.initializeApp();
 
-// exports.generateMasterPoE = generateMasterPoE;
+// ================= CONFIGURATION & SECRETS =================
+// // ZARD
+// const ZARD_APP_URL = "https://assessmentcentr.web.app";
+// MLAB
+// const APP_URL = "https://mlabassessmentcenter.web.app";
+// const APP_URL = "http://localhost:5173";
+
+// Auto-detects if running locally or in production
+// firebase emulators:start (The Sandbox) and irebase deploy --only functions ( Live)
+const APP_URL =
+  process.env.FUNCTIONS_EMULATOR === "true"
+    ? "http://localhost:5173"
+    : "https://mlabassessmentcenter.web.app";
+
+const mailgunSecret = defineSecret("MAILGUN_API_KEY");
+const privateKeySecret = defineSecret("INSTITUTION_PRIVATE_KEY");
+
+// ============================================================================
+// REUSABLE MAILGUN EMAIL HELPER
+// ============================================================================
+
+const getMailgunConfig = () => {
+  let apiKey = "";
+  try {
+    const secretValue = mailgunSecret.value();
+    if (secretValue) apiKey = secretValue;
+  } catch (e) {}
+
+  if (!apiKey) {
+    apiKey = process.env.MAILGUN_API_KEY || "";
+  }
+
+  if (!apiKey) {
+    throw new Error(
+      "MAILGUN_API_KEY not found in Secret Manager or .env variables.",
+    );
+  }
+
+  const domain = process.env.MAILGUN_DOMAIN;
+  if (!domain) {
+    throw new Error("MAILGUN_DOMAIN not found in .env variables.");
+  }
+
+  return { apiKey, domain };
+};
+
+export const sendMailgunEmail = async ({
+  to,
+  subject,
+  text,
+  html,
+  attachment,
+}: {
+  to: string;
+  subject: string;
+  text?: string;
+  html?: string;
+  attachment?: any[];
+}) => {
+  const { apiKey, domain } = getMailgunConfig();
+
+  const form = new FormData();
+  form.append("from", `mLab Assessment Platform <noreply@${domain}>`);
+  form.append("to", to);
+  form.append("subject", subject);
+
+  if (text) form.append("text", text);
+  if (html) form.append("html", html);
+  if (html && !text)
+    form.append("text", "Please view this email in an HTML-compatible client.");
+
+  // Safely append file buffers to the form data
+  if (attachment && attachment.length > 0) {
+    attachment.forEach((file) => {
+      form.append("attachment", file.data, {
+        filename: file.filename,
+        contentType: file.contentType,
+      });
+    });
+  }
+
+  // 🚀 FIXED: Use Axios instead of Fetch to prevent silent hanging with form-data
+  try {
+    const res = await axios.post(
+      `https://api.mailgun.net/v3/${domain}/messages`,
+      form,
+      {
+        headers: {
+          Authorization:
+            "Basic " + Buffer.from(`api:${apiKey}`).toString("base64"),
+          ...form.getHeaders(),
+        },
+      },
+    );
+    return res.data;
+  } catch (error: any) {
+    throw new Error(
+      `Mailgun API Error: ${error.response?.data?.message || error.message}`,
+    );
+  }
+};
+
+// export const sendMailgunEmail = async ({
+//   to,
+//   subject,
+//   text,
+//   html,
+// }: {
+//   to: string;
+//   subject: string;
+//   text?: string;
+//   html?: string;
+// }) => {
+//   const { apiKey, domain } = getMailgunConfig();
+
+//   const params = new URLSearchParams();
+//   params.append("from", `mLab Assessment Platform <noreply@${domain}>`);
+//   params.append("to", to);
+//   params.append("subject", subject);
+
+//   if (text) params.append("text", text);
+//   if (html) params.append("html", html);
+//   if (html && !text)
+//     params.append(
+//       "text",
+//       "Please view this email in an HTML-compatible client.",
+//     );
+
+//   const res = await fetch(`https://api.mailgun.net/v3/${domain}/messages`, {
+//     method: "POST",
+//     headers: {
+//       Authorization: "Basic " + Buffer.from(`api:${apiKey}`).toString("base64"),
+//     },
+//     body: params,
+//   });
+
+//   const data = await res.json();
+
+//   if (!res.ok) {
+//     throw new Error(`Mailgun API Error: ${data.message || res.statusText}`);
+//   }
+
+//   return data;
+// };
+
+// ============================================================================
+// CLOUD FUNCTIONS
+// ============================================================================
+
 exports.generateHistorySnapshot = generateHistorySnapshot;
 
-// Configure the Transporter (using Gmail as an example)
-// Note: For Gmail, you MUST use an 'App Password', not your login password.
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: "brndkt@gmail.com",
-    pass: "gwjy wcin rdpl lovi", // Generated App Password
+export const helloTryrld = onRequest(
+  { secrets: [mailgunSecret] },
+  async (request, response) => {
+    try {
+      const emailParams = {
+        title: "Test Successful",
+        subtitle: "System Operational",
+        recipientName: "Zack",
+        bodyHtml: `
+          <p>You have successfully triggered the reusable Mailgun helper function with a secure domain.</p>
+          <div style="background-color: #f8fafc; padding: 15px; border-radius: 6px; border: 1px solid #dde4e8; border-left: 4px solid #94c73d; margin: 20px 0;">
+              <p style="margin: 0; color: #073f4e; font-size: 13px;"><strong>System Status:</strong> 100% Operational ✅</p>
+              <p style="margin: 6px 0 0; color: #475569; font-size: 12px;"><strong>Routing Domain:</strong> mg.mlab.co.za</p>
+          </div>
+          <p>This HTML template perfectly matches your corporate identity and is ready to be reused!</p>
+        `,
+        ctaText: "Return to Dashboard",
+        ctaLink: APP_URL,
+        showStepIndicator: false,
+      };
+
+      const data = await sendMailgunEmail({
+        to: "Zack <zakhele@mlab.co.za>",
+        subject: "✅ mLab System Test Successful",
+        text: buildMlabEmailPlainText(emailParams),
+        html: buildMlabEmailHtml(emailParams),
+      });
+
+      logger.info("Email sent successfully!", { data });
+      response.status(200).send(data);
+    } catch (error: any) {
+      logger.error("Failed to send email", error);
+      response
+        .status(500)
+        .send({ error: error.message || "Failed to send email" });
+    }
   },
-});
+);
 
-export const createStaffAccount = onCall(async (request) => {
-  const {
-    email,
-    fullName,
-    role,
-    phone,
-    employerId,
-    assessorRegNumber,
-    isSuperAdmin,
-    privileges,
-  } = request.data;
+export const createStaffAccount = onCall(
+  { secrets: [mailgunSecret] },
+  async (request) => {
+    const {
+      email,
+      fullName,
+      role,
+      phone,
+      employerId,
+      assessorRegNumber,
+      isSuperAdmin,
+      privileges,
+    } = request.data;
+    const auth = request.auth;
 
+    // Authorization Checks
+    if (!auth)
+      throw new HttpsError("unauthenticated", "Authentication required.");
+
+    const callerDoc = await admin
+      .firestore()
+      .collection("users")
+      .doc(auth.uid)
+      .get();
+
+    if (!callerDoc.exists || callerDoc.data()?.role !== "admin")
+      throw new HttpsError(
+        "permission-denied",
+        "Only Admins can provision staff accounts.",
+      );
+
+    if (role === "admin" && !email.toLowerCase().endsWith("@mlab.co.za")) {
+      throw new HttpsError(
+        "permission-denied",
+        "Security Policy Violation: Admin accounts can only be provisioned for official @mlab.co.za domains.",
+      );
+    }
+
+    try {
+      // Create User in Firebase Auth
+      const userRecord = await admin
+        .auth()
+        .createUser({ email, displayName: fullName, emailVerified: true });
+
+      // Set Custom Claims (Role-based access)
+      await admin.auth().setCustomUserClaims(userRecord.uid, {
+        role,
+        ...(role === "admin" && isSuperAdmin ? { isSuperAdmin: true } : {}),
+      });
+
+      const userData: any = {
+        uid: userRecord.uid,
+        fullName,
+        email,
+        role,
+        phone: phone || "",
+        status: "active",
+        createdAt: new Date().toISOString(),
+        signatureUrl: "",
+      };
+
+      if (role === "admin") {
+        userData.isSuperAdmin = !!isSuperAdmin;
+        if (!isSuperAdmin && privileges) userData.privileges = privileges;
+      } else if (role === "mentor" && employerId) {
+        userData.employerId = employerId;
+      } else if (
+        ["assessor", "moderator"].includes(role) &&
+        assessorRegNumber
+      ) {
+        userData.assessorRegNumber = assessorRegNumber;
+      }
+
+      await admin
+        .firestore()
+        .collection("users")
+        .doc(userRecord.uid)
+        .set(userData);
+
+      // Generate Secure Reset Link & Extract oobCode
+      const defaultFirebaseLink = await admin
+        .auth()
+        .generatePasswordResetLink(email);
+      const urlObj = new URL(defaultFirebaseLink);
+      const oobCode = urlObj.searchParams.get("oobCode");
+
+      // Construct the clean mLab React Link
+      const customReactLink = `${APP_URL}/reset-password?oobCode=${oobCode}`;
+
+      // Format Role for Email Display
+      const displayRole =
+        role === "admin" && isSuperAdmin
+          ? "Super Administrator"
+          : role.charAt(0).toUpperCase() + role.slice(1).replace("_", " ");
+
+      const emailParams = {
+        title: "Welcome to mLab",
+        subtitle: "Action Required: Activate your account",
+        recipientName: fullName,
+        bodyHtml: `
+          <p>Welcome to the <strong>mLab Assessment Platform</strong>! Your account has been successfully provisioned, and you have been granted access as a <strong>${displayRole}</strong>.</p>
+          
+          <p>For security reasons, we do not auto-generate passwords. To gain access to the platform and your dashboard, you must first create your own private password. Please follow these steps carefully:</p>
+          
+          <ol style="margin-top: 15px; margin-bottom: 25px; padding-left: 20px; color: #475569; line-height: 1.6;">
+              <li style="margin-bottom: 8px;">Click the <strong>Create My Password</strong> button below to open the secure setup page.</li>
+              <li style="margin-bottom: 8px;">Enter and confirm a strong password that you will remember.</li>
+              <li style="margin-bottom: 8px;">Once saved, you will be redirected to the main login screen. Use your email address and your new password to sign in.</li>
+          </ol>
+          
+          <div style="background-color: #f8fafc; padding: 15px; border-radius: 6px; border: 1px solid #dde4e8; border-left: 4px solid #0ea5e9; margin: 20px 0;">
+              <p style="margin: 0; color: #475569; font-size: 13px;"><strong>Bookmark Your Portal:</strong><br/> 
+              After your password is created, you can access your dashboard directly at any time by visiting:<br/>
+              <a href="${APP_URL}/login" style="color: #0ea5e9; font-weight: bold; text-decoration: none;">${APP_URL}/login</a></p>
+          </div>
+
+          <p>If you require any assistance getting started, please reach out to your mLab system administrator.</p>
+        `,
+        ctaText: "Create My Password",
+        ctaLink: customReactLink,
+        showStepIndicator: false,
+      };
+
+      await sendMailgunEmail({
+        to: email,
+        subject: `Action Required: Access Granted - ${displayRole}`,
+        text: buildMlabEmailPlainText(emailParams),
+        html: buildMlabEmailHtml(emailParams),
+      });
+
+      return {
+        success: true,
+        message: `Account created securely for ${email}`,
+        uid: userRecord.uid,
+      };
+    } catch (error: any) {
+      console.error("Error creating staff:", error);
+      throw new HttpsError(
+        "internal",
+        error.message || "Unable to create account.",
+      );
+    }
+  },
+);
+
+export const createLearnerAccount = onRequest(
+  { secrets: [mailgunSecret] },
+  (req, res) => {
+    return cors(req, res, async () => {
+      try {
+        if (req.method !== "POST")
+          return res.status(405).send("Method Not Allowed");
+
+        const { email, fullName, role } = req.body.data || req.body;
+
+        if (!email || !fullName)
+          return res.status(400).send({
+            data: { success: false, message: "Missing email or name" },
+          });
+
+        let uid: string;
+        let isNewUser = false;
+
+        // Create or Fetch the Auth User
+        try {
+          const existingUser = await admin.auth().getUserByEmail(email);
+          uid = existingUser.uid;
+        } catch (error: any) {
+          if (error.code === "auth/user-not-found") {
+            const newUser = await admin.auth().createUser({
+              email,
+              emailVerified: false,
+              displayName: fullName,
+            });
+            uid = newUser.uid;
+            isNewUser = true;
+          } else throw error;
+        }
+
+        // Set Custom User Claims
+        await admin
+          .auth()
+          .setCustomUserClaims(uid, { role: role || "learner" });
+
+        // 3. Create or Update the Global 'users' Document
+        const userRef = admin.firestore().collection("users").doc(uid);
+        const userDoc = await userRef.get();
+        if (!userDoc.exists)
+          await userRef.set({
+            email,
+            fullName,
+            role: role || "learner",
+            createdAt: new Date().toISOString(),
+          });
+
+        // Link Auth UID to the existing 'learners' collection document
+        const snapshot = await admin
+          .firestore()
+          .collection("learners")
+          .where("email", "==", email)
+          .get();
+
+        if (!snapshot.empty)
+          await snapshot.docs[0].ref.update({
+            authUid: uid,
+            status: "active",
+            lastSynced: new Date().toISOString(),
+          });
+
+        // Generate Secure Reset Link & Extract oobCode
+        const defaultFirebaseLink = await admin
+          .auth()
+          .generatePasswordResetLink(email);
+        const urlObj = new URL(defaultFirebaseLink);
+        const oobCode = urlObj.searchParams.get("oobCode");
+
+        // Construct the clean mLab React Link
+        const customReactLink = `${APP_URL}/reset-password?oobCode=${oobCode}`;
+
+        const emailParams = {
+          title: "Welcome to mLab",
+          subtitle: "Action Required: Activate your learner portal",
+          recipientName: fullName,
+          bodyHtml: `
+            <p>Welcome to the <strong>mLab Assessment Platform</strong>! You have been officially registered as a <strong>Learner</strong>.</p>
+            
+            <p>This platform is where you will access your learning materials, submit your Portfolios of Evidence (PoE), and track your academic progress.</p>
+            
+            <p>Before you can log in to see your enrolled modules, you need to set up your account credentials. Please follow these instructions:</p>
+            
+            <ol style="margin-top: 15px; margin-bottom: 25px; padding-left: 20px; color: #475569; line-height: 1.6;">
+                <li style="margin-bottom: 8px;">Click the <strong>Create My Password</strong> button below.</li>
+                <li style="margin-bottom: 8px;">Type in a secure password and save it.</li>
+                <li style="margin-bottom: 8px;">Return to the login screen and sign in using your email address and your newly created password.</li>
+            </ol>
+            
+            <div style="background-color: #f8fafc; padding: 15px; border-radius: 6px; border: 1px solid #dde4e8; border-left: 4px solid #0ea5e9; margin: 20px 0;">
+                <p style="margin: 0; color: #475569; font-size: 13px;"><strong>Bookmark Your Learner Portal:</strong><br/> 
+                Always use this official link to log in to your account moving forward:<br/>
+                <a href="${APP_URL}/login" style="color: #0ea5e9; font-weight: bold; text-decoration: none;">${APP_URL}/login</a></p>
+            </div>
+          `,
+          ctaText: "Create My Password",
+          ctaLink: customReactLink,
+          showStepIndicator: true,
+        };
+
+        await sendMailgunEmail({
+          to: email,
+          subject: "Welcome to mLab - Activate Your Account",
+          text: buildMlabEmailPlainText(emailParams),
+          html: buildMlabEmailHtml(emailParams),
+        });
+
+        return res.status(200).send({
+          data: { success: true, uid: uid, wasNewlyCreated: isNewUser },
+        });
+      } catch (error: any) {
+        console.error("Critical Error:", error);
+        return res
+          .status(500)
+          .send({ data: { success: false, message: error.message } });
+      }
+    });
+  },
+);
+
+export const deleteStaffAccount = onCall(async (request) => {
+  const { uid } = request.data;
   const auth = request.auth;
 
   if (!auth) {
     throw new HttpsError("unauthenticated", "Authentication required.");
   }
 
-  const callerUid = auth.uid;
   const callerDoc = await admin
     .firestore()
     .collection("users")
-    .doc(callerUid)
+    .doc(auth.uid)
     .get();
 
   if (!callerDoc.exists || callerDoc.data()?.role !== "admin") {
     throw new HttpsError(
       "permission-denied",
-      "Only Admins can provision staff accounts.",
+      "Only Admins can permanently delete staff accounts.",
     );
   }
 
-  // Strict Domain Enforcement for Admins
-  if (role === "admin" && !email.toLowerCase().endsWith("@mlab.co.za")) {
+  if (!uid) {
+    throw new HttpsError("invalid-argument", "Target UID is required.");
+  }
+
+  // Prevent accidental self-deletion
+  if (auth.uid === uid) {
     throw new HttpsError(
-      "permission-denied",
-      "Security Policy Violation: Admin accounts can only be provisioned for official @mlab.co.za domains.",
+      "invalid-argument",
+      "You cannot delete your own active session.",
     );
   }
 
   try {
-    const userRecord = await admin.auth().createUser({
-      email: email,
-      displayName: fullName,
-      emailVerified: true,
-    });
-
-    await admin.auth().setCustomUserClaims(userRecord.uid, {
-      role: role,
-      ...(role === "admin" && isSuperAdmin ? { isSuperAdmin: true } : {}),
-    });
-
-    const userData: any = {
-      uid: userRecord.uid,
-      fullName: fullName,
-      email: email,
-      role: role,
-      phone: phone || "",
-      status: "active",
-      createdAt: new Date().toISOString(),
-      signatureUrl: "",
-    };
-
-    if (role === "admin") {
-      userData.isSuperAdmin = !!isSuperAdmin;
-      if (!isSuperAdmin && privileges) {
-        userData.privileges = privileges;
-      }
-    } else if (role === "mentor" && employerId) {
-      userData.employerId = employerId;
-    } else if (["assessor", "moderator"].includes(role) && assessorRegNumber) {
-      userData.assessorRegNumber = assessorRegNumber;
+    // Delete from Firebase Authentication
+    try {
+      await admin.auth().deleteUser(uid);
+    } catch (authErr: any) {
+      // If they are already deleted from auth, just log it and proceed to clean up Firestore
+      if (authErr.code !== "auth/user-not-found") throw authErr;
     }
 
-    await admin
-      .firestore()
-      .collection("users")
-      .doc(userRecord.uid)
-      .set(userData);
+    // Delete from Firestore
+    await admin.firestore().collection("users").doc(uid).delete();
 
-    const link = await admin.auth().generatePasswordResetLink(email);
-
-    const displayRole =
-      role === "admin" && isSuperAdmin
-        ? "Super Administrator"
-        : role.charAt(0).toUpperCase() + role.slice(1).replace("_", " ");
-
-    // USING THE MODULAR BUILDER
-    // Include a link to the project in here
-    const emailParams = {
-      title: "Platform Access Granted",
-      subtitle: "Secure your account to access your dashboard",
-      recipientName: fullName,
-      bodyHtml: `You have been securely provisioned as a <strong>${displayRole}</strong> on the mLab platform. Please click the button below to set your private password and access your dashboard.`,
-      ctaText: "Set Password & Login",
-      ctaLink: link,
-      showStepIndicator: false, // Turn off the 3-step timeline for this specific email
-    };
-
-    const mailOptions = {
-      from: '"mLab Assessment Platform" <brndkt@gmail.com>',
-      to: email,
-      subject: `Action Required: Access Granted - ${displayRole}`,
-      text: buildMlabEmailPlainText(emailParams),
-      html: buildMlabEmailHtml(emailParams),
-    };
-
-    await transporter.sendMail(mailOptions);
-
-    return {
-      success: true,
-      message: `Account created securely for ${email}`,
-      uid: userRecord.uid,
-    };
+    return { success: true, message: "Staff member permanently deleted." };
   } catch (error: any) {
-    console.error("Error creating staff:", error);
+    console.error("Error deleting staff:", error);
     throw new HttpsError(
       "internal",
-      error.message || "Unable to create account.",
+      error.message || "Failed to fully delete staff account.",
     );
   }
 });
 
-// export const createStaffAccount = onCall(async (request) => {
-//   // 1. EXTRACT DATA & AUTH FROM THE SINGLE 'request' OBJECT
-//   const { email, fullName, role, phone } = request.data;
-//   const auth = request.auth;
+export const sendCustomPasswordReset = onCall(
+  { secrets: [mailgunSecret] },
+  async (request) => {
+    const { email } = request.data;
 
-//   // 2. Security Check: Ensure caller is Authenticated
-//   if (!auth) {
-//     throw new HttpsError("unauthenticated", "Authentication required.");
-//   }
+    if (!email) {
+      throw new HttpsError("invalid-argument", "Email address is required.");
+    }
 
-//   // 3. Security Check: Ensure caller is an Admin
-//   const callerUid = auth.uid;
-//   const callerDoc = await admin
-//     .firestore()
-//     .collection("users")
-//     .doc(callerUid)
-//     .get();
+    try {
+      // Check if user exists in Firebase Auth
+      const userRecord = await admin.auth().getUserByEmail(email);
 
-//   if (!callerDoc.exists || callerDoc.data()?.role !== "admin") {
-//     throw new HttpsError(
-//       "permission-denied",
-//       "Only Admins can create staff accounts.",
-//     );
-//   }
+      // Fetch the actual name from the Firestore 'users' collection
+      const userDoc = await admin
+        .firestore()
+        .collection("users")
+        .doc(userRecord.uid)
+        .get();
+      const userData = userDoc.data();
+      const actualName =
+        userData?.fullName || userRecord.displayName || "Member";
 
-//   try {
-//     // 4. Create the User in Firebase Auth
-//     const userRecord = await admin.auth().createUser({
-//       email: email,
-//       displayName: fullName,
-//       emailVerified: true,
-//     });
+      // Generate the standard Firebase link
+      // (We still need to generate this so Firebase creates the valid oobCode in the backend)
+      const defaultFirebaseLink = await admin
+        .auth()
+        .generatePasswordResetLink(email);
 
-//     // 5. Create Firestore Profile
-//     await admin.firestore().collection("users").doc(userRecord.uid).set({
-//       uid: userRecord.uid,
-//       fullName: fullName,
-//       email: email,
-//       role: role,
-//       phone: phone,
-//       createdAt: new Date().toISOString(),
-//       signatureUrl: "", // Empty until they log in
-//     });
+      // Extract the secret "oobCode" from the Firebase link
+      const urlObj = new URL(defaultFirebaseLink);
+      const oobCode = urlObj.searchParams.get("oobCode");
 
-//     // 6. Generate Password Reset Link
-//     const link = await admin.auth().generatePasswordResetLink(email);
+      // Construct your 100% Custom React Link pointing to your new ResetPassword.tsx page
+      const customReactLink = `${APP_URL}/reset-password?oobCode=${oobCode}`;
 
-//     // 7. Send Email via Nodemailer
-//     const mailOptions = {
-//       from: '"mLab Admin" <brndkt@gmail.com>',
-//       to: email,
-//       subject: "Welcome to mLab Assessment Platform",
-//       html: `
-//         <h3>Welcome, ${fullName}!</h3>
-//         <p>You have been registered as a <strong>${role}</strong>.</p>
-//         <p>Please click the link below to set your password and access the dashboard:</p>
-//         <a href="${link}" style="padding: 10px 20px; background-color: #94c73d; color: white; text-decoration: none; border-radius: 5px;">Set Password & Login</a>
-//         <br /><br />
-//         <p>Regards,<br/>mLab Admin Team</p>
-//       `,
-//     };
+      // Prepare the custom mLab branded email
+      const emailParams = {
+        title: "Password Reset Request",
+        subtitle: "Securely regain access to your account",
+        recipientName: actualName,
+        bodyHtml: `
+          <p>A request has been made to reset the password for your account on the <strong>mLab Assessment Platform</strong>.</p>
+          <p>To proceed with the reset, please click the secure button below.</p>
+          
+          <div style="background-color: #f8fafc; padding: 15px; border-radius: 6px; border: 1px solid #dde4e8; border-left: 4px solid #0ea5e9; margin: 20px 0;">
+              <p style="margin: 0; color: #475569; font-size: 13px;"><strong>Platform Access:</strong><br/> 
+              Once your password is reset, you can access your dashboard at any time by visiting:<br/>
+              <a href="${APP_URL}" style="color: #0ea5e9; font-weight: bold; text-decoration: none;">${APP_URL}</a></p>
+          </div>
 
-//     await transporter.sendMail(mailOptions);
+          <p>If you did not initiate this request, you can safely ignore this email. Your password will remain unchanged.</p>
+        `,
+        ctaText: "Reset My Password",
+        ctaLink: customReactLink,
+        showStepIndicator: false,
+      };
 
-//     return { success: true, message: `Account created for ${email}` };
-//   } catch (error: any) {
-//     console.error("Error creating staff:", error);
-//     // Return a structured error to the client
-//     throw new HttpsError(
-//       "internal",
-//       error.message || "Unable to create account.",
-//     );
-//   }
-// });
+      await sendMailgunEmail({
+        to: email,
+        subject: "Action Required: Reset Your Password",
+        text: buildMlabEmailPlainText(emailParams),
+        html: buildMlabEmailHtml(emailParams),
+      });
 
-// ================= CONFIGURATION =================
-// I will replace this with my actual deployed URL
-const APP_URL = "https://assessmentcentr.web.app/";
+      return { success: true, message: "Custom reset email sent." };
+    } catch (error: any) {
+      logger.error("Password Reset Error:", error);
 
-// Helper: Send Email with basic styling
-const sendEmail = async (to: string, subject: string, htmlContent: string) => {
-  const html = `
-    <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto;">
-      <div style="background-color: #073f4e; padding: 20px; text-align: center;">
-        <h1 style="color: white; margin: 0;">mLab Assessment Platform</h1>
-      </div>
-      <div style="padding: 20px; border: 1px solid #ddd; border-top: none;">
-        ${htmlContent}
-      </div>
-      <div style="text-align: center; padding: 10px; font-size: 12px; color: #777;">
-        &copy; ${new Date().getFullYear()} mLab. All rights reserved.
-      </div>
-    </div>
-  `;
+      if (error.code === "auth/user-not-found") {
+        throw new HttpsError("not-found", "No account found with that email.");
+      }
 
-  try {
-    await transporter.sendMail({
-      from: '"mLab Team" <your-admin-email@gmail.com>',
-      to,
-      subject,
-      html,
-    });
-    console.log(`Email sent to ${to}`);
-  } catch (e) {
-    console.error(`Failed to send email to ${to}`, e);
-  }
-};
+      throw new HttpsError("internal", "Unable to send reset email.");
+    }
+  },
+);
 
-// ================= TRIGGER: ON COHORT CREATED =================
 export const onCohortCreated = onDocumentCreated(
-  "cohorts/{cohortId}",
+  { document: "cohorts/{cohortId}", secrets: [mailgunSecret] },
   async (event) => {
-    const snapshot = event.data;
-    if (!snapshot) return;
+    const cohort = event.data?.data();
+    if (!cohort) return;
 
-    const cohort = snapshot.data();
-    const cohortId = event.params.cohortId;
     const {
       name,
       startDate,
@@ -325,10 +650,7 @@ export const onCohortCreated = onDocumentCreated(
       learnerIds,
     } = cohort;
 
-    console.log(`New Cohort Created: ${name} (${cohortId})`);
-
     try {
-      // 1. Fetch Staff Details
       const [facDoc, assDoc, modDoc] = await Promise.all([
         admin.firestore().collection("users").doc(facilitatorId).get(),
         admin.firestore().collection("users").doc(assessorId).get(),
@@ -339,80 +661,96 @@ export const onCohortCreated = onDocumentCreated(
       const assessor = assDoc.data();
       const moderator = modDoc.data();
 
-      // 2. Notify FACILITATOR
       if (facilitator?.email) {
-        await sendEmail(
-          facilitator.email,
-          `Assignment: Facilitator for ${name}`,
-          `<h3>Hello ${facilitator.fullName},</h3>
-         <p>You have been assigned as the <strong>Facilitator</strong> for the class <strong>${name}</strong>.</p>
-         <p><strong>Duration:</strong> ${startDate} to ${endDate}<br/>
-            <strong>Learners:</strong> ${learnerIds.length} enrolled</p>
-         <p>Please log in to view your class register and manage attendance.</p>
-         <div style="text-align: center; margin-top: 20px;">
-            <a href="${APP_URL}/login" style="background-color: #073f4e; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Login to Dashboard</a>
-         </div>`,
-        );
+        const params = {
+          title: `Assignment: Facilitator`,
+          subtitle: name,
+          recipientName: facilitator.fullName,
+          bodyHtml: `<p>You have been assigned as the <strong>Facilitator</strong> for the class <strong>${name}</strong>.</p>
+                     <div style="background-color: #f8fafc; padding: 15px; border-radius: 6px; border: 1px solid #dde4e8; border-left: 4px solid #0ea5e9; margin: 20px 0;">
+                        <p style="margin: 0; color: #475569;"><strong>Duration:</strong> ${startDate} to ${endDate}<br/><strong>Learners:</strong> ${learnerIds.length} enrolled</p>
+                     </div>
+                     <p>Please log in to view your class register and manage attendance.</p>`,
+          ctaText: "Login to Dashboard",
+          ctaLink: `${APP_URL}/login`,
+          showStepIndicator: false,
+        };
+        await sendMailgunEmail({
+          to: facilitator.email,
+          subject: `Assignment: Facilitator for ${name}`,
+          text: buildMlabEmailPlainText(params),
+          html: buildMlabEmailHtml(params),
+        });
       }
 
-      // 3. Notify ASSESSOR
       if (assessor?.email) {
-        await sendEmail(
-          assessor.email,
-          `Assignment: Assessor for ${name}`,
-          `<h3>Hello ${assessor.fullName},</h3>
-         <p>You have been assigned as the <strong>Assessor (Red Pen)</strong> for <strong>${name}</strong>.</p>
-         <p>You can now access learner Workbooks and POEs for grading.</p>
-         <div style="text-align: center; margin-top: 20px;">
-            <a href="${APP_URL}/login" style="background-color: #ef4444; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Login to Assess</a>
-         </div>`,
-        );
+        const params = {
+          title: `Assignment: Assessor`,
+          subtitle: name,
+          recipientName: assessor.fullName,
+          bodyHtml: `<p>You have been assigned as the <strong>Assessor (Red Pen)</strong> for <strong>${name}</strong>.</p>
+                     <p>You can now access learner Workbooks and POEs for grading.</p>`,
+          ctaText: "Login to Assess",
+          ctaLink: `${APP_URL}/login`,
+          showStepIndicator: false,
+        };
+        await sendMailgunEmail({
+          to: assessor.email,
+          subject: `Assignment: Assessor for ${name}`,
+          text: buildMlabEmailPlainText(params),
+          html: buildMlabEmailHtml(params),
+        });
       }
 
-      // 4. Notify MODERATOR
       if (moderator?.email) {
-        await sendEmail(
-          moderator.email,
-          `Assignment: Moderator for ${name}`,
-          `<h3>Hello ${moderator.fullName},</h3>
-         <p>You have been assigned as the <strong>Moderator (Green Pen)</strong> for <strong>${name}</strong>.</p>
-         <p>You will be notified when batches are ready for moderation.</p>
-         <div style="text-align: center; margin-top: 20px;">
-            <a href="${APP_URL}/login" style="background-color: #22c55e; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Login to Moderate</a>
-         </div>`,
-        );
+        const params = {
+          title: `Assignment: Moderator`,
+          subtitle: name,
+          recipientName: moderator.fullName,
+          bodyHtml: `<p>You have been assigned as the <strong>Moderator (Green Pen)</strong> for <strong>${name}</strong>.</p>
+                     <p>You will be notified when batches are ready for moderation.</p>`,
+          ctaText: "Login to Moderate",
+          ctaLink: `${APP_URL}/login`,
+          showStepIndicator: false,
+        };
+        await sendMailgunEmail({
+          to: moderator.email,
+          subject: `Assignment: Moderator for ${name}`,
+          text: buildMlabEmailPlainText(params),
+          html: buildMlabEmailHtml(params),
+        });
       }
 
-      // 5. Notify LEARNERS
       if (learnerIds && learnerIds.length > 0) {
-        // Fetch all learner documents
         const learnerDocs = await Promise.all(
           learnerIds.map((id: string) =>
             admin.firestore().collection("learners").doc(id).get(),
           ),
         );
-
         const emailPromises = learnerDocs.map((doc) => {
           const learner = doc.data();
           if (!learner?.email) return Promise.resolve();
 
-          return sendEmail(
-            learner.email,
-            `Enrolled: ${name}`,
-            `<h3>Hi ${learner.fullName},</h3>
-           <p>You have been successfully enrolled in the class: <strong>${name}</strong>.</p>
-           <p><strong>Your Team:</strong></p>
-           <ul>
-             <li>Facilitator: ${facilitator?.fullName || "TBD"}</li>
-             <li>Assessor: ${assessor?.fullName || "TBD"}</li>
-           </ul>
-           <p>You can access your learning materials and submit assessments via the portal.</p>
-           <div style="text-align: center; margin-top: 20px;">
-              <a href="${APP_URL}/portal" style="background-color: #0ea5e9; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Access Learner Portal</a>
-           </div>`,
-          );
+          const params = {
+            title: `Enrolled in Class`,
+            subtitle: name,
+            recipientName: learner.fullName,
+            bodyHtml: `<p>You have been successfully enrolled in the class: <strong>${name}</strong>.</p>
+                       <div style="background-color: #f8fafc; padding: 15px; border-radius: 6px; border: 1px solid #dde4e8; border-left: 4px solid #94c73d; margin: 20px 0;">
+                          <p style="margin: 0; color: #475569;"><strong>Your Team:</strong><br/>Facilitator: ${facilitator?.fullName || "TBD"}<br/>Assessor: ${assessor?.fullName || "TBD"}</p>
+                       </div>
+                       <p>You can access your learning materials and submit assessments via the portal.</p>`,
+            ctaText: "Access Learner Portal",
+            ctaLink: `${APP_URL}/portal`,
+            showStepIndicator: false,
+          };
+          return sendMailgunEmail({
+            to: learner.email,
+            subject: `Enrolled: ${name}`,
+            text: buildMlabEmailPlainText(params),
+            html: buildMlabEmailHtml(params),
+          });
         });
-
         await Promise.all(emailPromises);
       }
     } catch (error) {
@@ -421,120 +759,590 @@ export const onCohortCreated = onDocumentCreated(
   },
 );
 
-export const createLearnerAccount = onRequest((req, res) => {
-  // We return the execution of the cors middleware
-  return cors(req, res, async () => {
+export const sendAdHocCertificate = onCall(
+  { secrets: [mailgunSecret] },
+  async (request) => {
+    if (!request.auth)
+      throw new HttpsError("unauthenticated", "Authentication required.");
+    const { email, recipientName, pdfUrl, awardTitle, courseName } =
+      request.data;
+
+    const emailParams = {
+      title: `Your Certificate: ${awardTitle}`,
+      subtitle: courseName,
+      recipientName: recipientName,
+      bodyHtml: `<p>We are pleased to share your <strong>${awardTitle}</strong> for completing the <strong>${courseName}</strong>.</p>`,
+      ctaText: "Download Certificate (PDF)",
+      ctaLink: pdfUrl,
+      showStepIndicator: false,
+    };
+
     try {
-      // 1. Validation
-      if (req.method !== "POST") {
-        // Explicitly return the response call
-        return res.status(405).send("Method Not Allowed");
-      }
+      await sendMailgunEmail({
+        to: email,
+        subject: `Your Certificate: ${awardTitle} - ${courseName}`,
+        text: buildMlabEmailPlainText(emailParams),
+        html: buildMlabEmailHtml(emailParams),
+      });
+      return { success: true, message: "Email sent successfully" };
+    } catch (error) {
+      console.error("Email Error:", error);
+      throw new HttpsError("internal", "Failed to send email.");
+    }
+  },
+);
 
-      const { email, fullName, role } = req.body.data || req.body;
+export const onAssessmentCollaboratorAdded = onDocumentUpdated(
+  { document: "assessments/{assessmentId}", secrets: [mailgunSecret] },
+  async (event) => {
+    // Safety check to ensure data exists
+    if (!event.data) return;
 
-      if (!email || !fullName) {
-        return res
-          .status(400)
-          .send({ data: { success: false, message: "Missing email or name" } });
-      }
+    const beforeData = event.data.before.data();
+    const afterData = event.data.after.data();
 
-      let uid: string;
-      let isNewUser = false;
+    if (!beforeData || !afterData) return;
 
-      // 2. Auth Check logic
-      try {
-        const existingUser = await admin.auth().getUserByEmail(email);
-        uid = existingUser.uid;
-      } catch (error: any) {
-        if (error.code === "auth/user-not-found") {
-          const newUser = await admin.auth().createUser({
-            email,
-            emailVerified: false,
-            displayName: fullName,
-          });
-          uid = newUser.uid;
-          isNewUser = true;
-        } else {
-          // Re-throw to be caught by the outer catch block
-          throw error;
+    const beforeCollabs = beforeData.collaboratorIds || [];
+    const afterCollabs = afterData.collaboratorIds || [];
+
+    // Find newly added collaborators
+    const newCollabs = afterCollabs.filter(
+      (id: string) => !beforeCollabs.includes(id),
+    );
+
+    // If no new collaborators were added, stop running to save compute time
+    if (newCollabs.length === 0) return;
+
+    const db = admin.firestore();
+    const batch = db.batch();
+
+    // In v2, wildcards are accessed via event.params
+    const assessmentId = event.params.assessmentId;
+    const workbookTitle = afterData.title || "Untitled Workbook";
+    const workbookLink = `${APP_URL}/facilitator/assessments/builder/${assessmentId}`;
+
+    const emailPromises: Promise<any>[] = [];
+
+    for (const userId of newCollabs) {
+      // Fetch the INVITER (who made the change)
+      let inviterName = "A colleague";
+      if (afterData.lastUpdatedBy) {
+        const inviterDoc = await db
+          .collection("users")
+          .doc(afterData.lastUpdatedBy)
+          .get();
+        if (inviterDoc.exists) {
+          inviterName = inviterDoc.data()?.fullName || inviterName;
         }
       }
 
-      // 3. Set Claims & Firestore User Doc
-      await admin.auth().setCustomUserClaims(uid, { role: role || "learner" });
+      // Fetch the INVITED USER (to get their email and name)
+      const invitedDoc = await db.collection("users").doc(userId).get();
+      if (!invitedDoc.exists) continue; // Skip if user no longer exists
 
-      const userRef = admin.firestore().collection("users").doc(uid);
-      const userDoc = await userRef.get();
-      if (!userDoc.exists) {
-        await userRef.set({
-          email,
-          fullName,
-          role: role || "learner",
-          createdAt: new Date().toISOString(),
-        });
-      }
+      const invitedData = invitedDoc.data();
+      const invitedEmail = invitedData?.email;
+      const invitedName = invitedData?.fullName || "Staff Member";
 
-      // 4. Link the Learner Document (The "Bridge")
-      const learnersRef = admin.firestore().collection("learners");
-      const snapshot = await learnersRef.where("email", "==", email).get();
+      // Create the In-App Notification Document
+      const notifRef = db
+        .collection("users")
+        .doc(userId)
+        .collection("notifications")
+        .doc();
 
-      if (!snapshot.empty) {
-        const learnerDoc = snapshot.docs[0];
-        await learnerDoc.ref.update({
-          authUid: uid,
-          status: "active",
-          lastSynced: new Date().toISOString(),
-        });
-      }
+      batch.set(notifRef, {
+        id: notifRef.id,
+        title: "New Collaboration Invite",
+        message: `<strong>${inviterName}</strong> added you as a collaborator on: "${workbookTitle}"`,
+        type: "collaboration",
+        link: `/facilitator/assessments/builder/${assessmentId}`,
+        isRead: false,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
 
-      // 5. Email Logic
-      const link = await admin.auth().generatePasswordResetLink(email);
-
-      const mailOptions = {
-        from: '"mLab Admin" <brndkt@gmail.com>',
-        to: email,
-        subject: "Invitation to mLab Learner Portal",
-        // We inject the 'link' variable here
-        html: `
-            <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #eee;">
-                <h2 style="color: #0f172a;">Welcome, ${fullName}!</h2>
-                <p>You have been registered as a <strong>Learner</strong> on the mLab Assessment Platform.</p>
-                <p>Please click the button below to set your secure password and access your dashboard:</p>
-                
-                <div style="margin: 30px 0;">
-                    <a href="${link}" style="background-color: #6366f1; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">
-                        Set Password & Login
-                    </a>
-                </div>
-                
-                <p style="color: #64748b; font-size: 12px;">
-                    If the button above doesn't work, copy and paste this link into your browser:<br/>
-                    <a href="${link}">${link}</a>
-                </p>
-                <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
-                <p style="font-size: 12px; color: #94a3b8;">mLab Admin Team</p>
+      // Queue the Mailgun Email if they have an email address
+      if (invitedEmail) {
+        const emailParams = {
+          title: "Collaboration Invite",
+          subtitle: workbookTitle,
+          recipientName: invitedName,
+          bodyHtml: `
+            <p><strong>${inviterName}</strong> has invited you to collaborate on a curriculum workbook in the mLab Assessment Center.</p>
+            <div style="background-color: #f8fafc; padding: 15px; border-radius: 6px; border: 1px solid #dde4e8; border-left: 4px solid #94c73d; margin: 20px 0;">
+                <p style="margin: 0; color: #073f4e; font-size: 13px;"><strong>Role:</strong> Authorized Collaborator</p>
             </div>
-        `,
+            <p>You now have full access to view, edit, and update the criteria for this assessment block.</p>
+          `,
+          ctaText: "Open Workbook",
+          ctaLink: workbookLink,
+          showStepIndicator: false,
+        };
+
+        emailPromises.push(
+          sendMailgunEmail({
+            to: invitedEmail,
+            subject: `Collaboration Invite: ${workbookTitle}`,
+            text: buildMlabEmailPlainText(emailParams),
+            html: buildMlabEmailHtml(emailParams),
+          }),
+        );
+      }
+    }
+
+    // Commit notifications to DB, then send all queued emails
+    await batch.commit();
+    await Promise.all(emailPromises).catch((err) =>
+      logger.error("Failed to send collaborator invite emails", err),
+    );
+  },
+);
+
+export const onSubmissionStatusChange = onDocumentUpdated(
+  { document: "learner_submissions/{submissionId}", secrets: [mailgunSecret] },
+  async (event) => {
+    const beforeData = event.data?.before.data();
+    const afterData = event.data?.after.data();
+    const submissionId = event.params.submissionId;
+
+    if (!beforeData || !afterData) return;
+
+    const db = admin.firestore();
+    const learnerId = afterData.learnerId;
+    const cohortId = afterData.cohortId;
+    const moduleName =
+      afterData.title || afterData.moduleNumber || "Assessment";
+
+    const getUser = async (uid: string) =>
+      uid ? (await db.collection("users").doc(uid).get()).data() : null;
+    const getLearner = async (uid: string) =>
+      uid ? (await db.collection("learners").doc(uid).get()).data() : null;
+    const getCohortStaff = async () =>
+      cohortId
+        ? (await db.collection("cohorts").doc(cohortId).get()).data() || {}
+        : {};
+
+    try {
+      const cohortStaff = await getCohortStaff();
+
+      if (
+        beforeData.status !== "submitted" &&
+        afterData.status === "submitted"
+      ) {
+        const assessor = await getUser(
+          afterData.gradedBy || cohortStaff.assessorId,
+        );
+        const facilitator = await getUser(cohortStaff.facilitatorId);
+        const learner = await getLearner(learnerId);
+
+        if (assessor?.email) {
+          const params = {
+            title: `New PoE Submitted`,
+            subtitle: moduleName,
+            recipientName: assessor.fullName || "Assessor",
+            bodyHtml: `<p><strong>${learner?.fullName}</strong> has just submitted their Portfolio of Evidence for <strong>${moduleName}</strong>.</p>
+                       <p>The submission is now waiting in your queue to be graded.</p>`,
+            ctaText: "Review & Grade",
+            ctaLink: `${APP_URL}/assessments/grade/${submissionId}`,
+            showStepIndicator: false,
+          };
+          await sendMailgunEmail({
+            to: assessor.email,
+            subject: `Action Required: New PoE Submitted`,
+            text: buildMlabEmailPlainText(params),
+            html: buildMlabEmailHtml(params),
+          });
+        }
+
+        if (facilitator?.email) {
+          const params = {
+            title: `Learner Progress Update`,
+            subtitle: moduleName,
+            recipientName: facilitator.fullName || "Facilitator",
+            bodyHtml: `<p>Your learner, <strong>${learner?.fullName}</strong>, has successfully submitted their work for <strong>${moduleName}</strong>.</p>
+                       <p>The assessment has been routed to the cohort Assessor for grading.</p>`,
+            ctaText: "View Class Progress",
+            ctaLink: `${APP_URL}/cohorts/${cohortId}`,
+            showStepIndicator: false,
+          };
+          await sendMailgunEmail({
+            to: facilitator.email,
+            subject: `Progress Update: ${learner?.fullName}`,
+            text: buildMlabEmailPlainText(params),
+            html: buildMlabEmailHtml(params),
+          });
+        }
+      }
+
+      if (beforeData.status !== "graded" && afterData.status === "graded") {
+        const moderator = await getUser(
+          afterData.moderation?.moderatedBy || cohortStaff.moderatorId,
+        );
+        const learner = await getLearner(learnerId);
+        const marks = afterData.marks || 0;
+        const totalMarks = afterData.totalMarks || 100;
+        const competency =
+          afterData.competency === "C" ? "Competent" : "Not Yet Competent";
+
+        if (moderator?.email) {
+          const params = {
+            title: `Grading Finalized for Moderation`,
+            subtitle: moduleName,
+            recipientName: moderator.fullName || "Moderator",
+            bodyHtml: `<p>An Assessor has finalized the grading for <strong>${learner?.fullName}</strong> on <strong>${moduleName}</strong>.</p>
+                       <p>This submission is now available for your internal moderation and quality assurance review.</p>`,
+            ctaText: "Moderate Grade",
+            ctaLink: `${APP_URL}/assessments/moderate/${submissionId}`,
+            showStepIndicator: false,
+          };
+          await sendMailgunEmail({
+            to: moderator.email,
+            subject: `Grading Finalized: ${moduleName}`,
+            text: buildMlabEmailPlainText(params),
+            html: buildMlabEmailHtml(params),
+          });
+        }
+
+        if (learner?.email) {
+          const params = {
+            title: `Assessment Graded`,
+            subtitle: moduleName,
+            recipientName: learner.fullName || "Learner",
+            bodyHtml: `<p>Your assessment for <strong>${moduleName}</strong> has been graded!</p>
+                       <div style="background-color: #f8fafc; padding: 15px; border-radius: 6px; border: 1px solid #dde4e8; border-left: 4px solid #0ea5e9; margin: 20px 0;">
+                          <p style="margin: 0; color: #475569;"><strong>Score:</strong> ${marks} / ${totalMarks}<br/><strong>Outcome:</strong> ${competency}</p>
+                       </div>
+                       <p>Log in to your portal to read your Assessor's feedback.</p>`,
+            ctaText: "View Feedback",
+            ctaLink: `${APP_URL}/portal/assessments/${submissionId}`,
+            showStepIndicator: false,
+          };
+          await sendMailgunEmail({
+            to: learner.email,
+            subject: `Assessment Graded: ${moduleName}`,
+            text: buildMlabEmailPlainText(params),
+            html: buildMlabEmailHtml(params),
+          });
+        }
+      }
+
+      const wasRejected =
+        afterData.status === "rework" ||
+        (afterData.moderation?.status === "rejected" &&
+          beforeData.moderation?.status !== "rejected");
+
+      if (wasRejected) {
+        const assessor = await getUser(
+          afterData.gradedBy || cohortStaff.assessorId,
+        );
+        const moderatorName =
+          afterData.moderation?.moderatorName || "The Internal Moderator";
+
+        if (assessor?.email) {
+          const params = {
+            title: `Action Required: Moderation Rework`,
+            subtitle: moduleName,
+            recipientName: assessor.fullName || "Assessor",
+            bodyHtml: `<p>${moderatorName} has requested a rework on your grading for <strong>${moduleName}</strong>.</p>
+                       <div style="background-color: #fffbeb; padding: 15px; border-radius: 6px; border: 1px solid #fde68a; border-left: 4px solid #f59e0b; margin: 20px 0;">
+                          <p style="margin: 0; color: #92400e;"><strong>Moderator Notes:</strong><br/><i>"${afterData.moderation?.feedback || "Please review the assessment again."}"</i></p>
+                       </div>
+                       <p>Please log in immediately to apply the required corrective actions.</p>`,
+            ctaText: "Correct Assessment",
+            ctaLink: `${APP_URL}/assessments/grade/${submissionId}`,
+            showStepIndicator: false,
+          };
+          await sendMailgunEmail({
+            to: assessor.email,
+            subject: `Action Required: Moderation Rework`,
+            text: buildMlabEmailPlainText(params),
+            html: buildMlabEmailHtml(params),
+          });
+        }
+      }
+    } catch (error) {
+      console.error("Error processing submission notifications:", error);
+    }
+  },
+);
+
+export const onAssessmentCreated = onDocumentCreated(
+  { document: "assessments/{assessmentId}", secrets: [mailgunSecret] },
+  async (event) => {
+    const data = event.data?.data();
+    if (!data || !data.cohortId) return;
+
+    const { title, cohortId, availableFrom, dueDate } = data;
+    const db = admin.firestore();
+
+    try {
+      const cohortSnap = await db.collection("cohorts").doc(cohortId).get();
+      const cohortData = cohortSnap.data();
+      if (!cohortData || !cohortData.learnerIds) return;
+
+      const emailPromises = cohortData.learnerIds.map(async (uid: string) => {
+        const lSnap = await db.collection("learners").doc(uid).get();
+        const learner = lSnap.data();
+        if (!learner?.email) return;
+
+        const params = {
+          title: `New Assessment Available`,
+          subtitle: title,
+          recipientName: learner.fullName || "Learner",
+          bodyHtml: `<p>A new assessment <strong>${title}</strong> has been assigned to your class.</p>
+                     <div style="background-color: #f8fafc; padding: 15px; border-radius: 6px; border: 1px solid #e2e8f0; border-left: 4px solid #073f4e; margin: 20px 0;">
+                        <p style="margin: 0; color: #475569;">
+                          ${availableFrom ? `📅 <b>Scheduled Start:</b> ${availableFrom}<br/>` : ""}
+                          ${dueDate ? `⏰ <b>Submission Deadline:</b> ${dueDate}` : ""}
+                        </p>
+                     </div>
+                     <p>Please log in to your learner portal to review the requirements and start your submission.</p>`,
+          ctaText: "Go to Assessment",
+          ctaLink: `${APP_URL}/portal/assessments`,
+          showStepIndicator: false,
+        };
+
+        return sendMailgunEmail({
+          to: learner.email,
+          subject: `New Assessment: ${title}`,
+          text: buildMlabEmailPlainText(params),
+          html: buildMlabEmailHtml(params),
+        });
+      });
+
+      await Promise.all(emailPromises);
+    } catch (error) {
+      console.error("Error sending new assessment alerts:", error);
+    }
+  },
+);
+
+export const onLearnerBlockchainVerified = onDocumentUpdated(
+  { document: "learners/{learnerId}", secrets: [mailgunSecret] },
+  async (event) => {
+    const beforeData = event.data?.before.data();
+    const afterData = event.data?.after.data();
+
+    if (!beforeData || !afterData) return;
+
+    if (!beforeData.isBlockchainVerified && afterData.isBlockchainVerified) {
+      const { email, fullName, verificationCode } = afterData;
+      const qualName = afterData.qualification?.name || "Qualification";
+
+      if (email && verificationCode) {
+        const params = {
+          title: `Official Credential Minted`,
+          subtitle: qualName,
+          recipientName: fullName || "Learner",
+          bodyHtml: `<p>Your official Statement of Results for <strong>${qualName}</strong> has been successfully minted to the blockchain.</p>
+                     <p>This means your academic credential is now permanently secured, immutable, and instantly verifiable by future employers.</p>
+                     <div style="background-color: #f0fdf4; padding: 15px; border-radius: 6px; border: 1px solid #bbf7d0; border-left: 4px solid #16a34a; margin: 20px 0;">
+                        <p style="margin: 0; color: #166534;"><strong>Your Verification ID:</strong> ${verificationCode}</p>
+                     </div>
+                     <p>You can view, download, and share your official digital credential using your public verification link below:</p>`,
+          ctaText: "View Official Credential",
+          ctaLink: `${APP_URL}/sor/${verificationCode}`,
+          showStepIndicator: false,
+        };
+
+        try {
+          await sendMailgunEmail({
+            to: email,
+            subject: `🎉 Official Credential Minted: ${qualName}`,
+            text: buildMlabEmailPlainText(params),
+            html: buildMlabEmailHtml(params),
+          });
+        } catch (error) {
+          console.error("Error sending blockchain verification email:", error);
+        }
+      }
+    }
+  },
+);
+
+export const sendCustomVerificationEmail = onCall(
+  { secrets: [mailgunSecret] },
+  async (request) => {
+    const authCtx = request.auth;
+    if (!authCtx) throw new HttpsError("unauthenticated", "Must be logged in.");
+
+    const userEmail = authCtx.token.email;
+    const uid = authCtx.uid;
+    if (!userEmail)
+      throw new HttpsError("invalid-argument", "No email found for this user.");
+
+    try {
+      let userName = authCtx.token.name;
+      if (!userName) {
+        const userDoc = await admin
+          .firestore()
+          .collection("users")
+          .doc(uid)
+          .get();
+        if (userDoc.exists) userName = userDoc.data()?.fullName;
+      }
+      userName = userName || "there";
+
+      const verificationLink = await admin
+        .auth()
+        .generateEmailVerificationLink(userEmail);
+
+      const emailParams = {
+        title: "Verify Your Email",
+        subtitle: "Secure your account to access your platform dashboard",
+        recipientName: userName,
+        bodyHtml: `<p>Welcome to the mLab Assessment Platform. To secure your credentials and unlock your platform dashboard, please verify your email address by clicking the button below.</p>
+                   <div style="margin: 20px 0; padding: 14px 18px; background-color: #e4edf0; border: 1px solid #dde4e8; border-left: 4px solid #073f4e;">
+                      <p style="margin: 0; font-size: 9px; font-weight: bold; text-transform: uppercase; color: #9b9b9b;">Verification Recipient</p>
+                      <p style="margin: 0; font-size: 16px; font-weight: bold; color: #073f4e;">${userEmail}</p>
+                   </div>`,
+        ctaText: "Verify Email Address",
+        ctaLink: verificationLink,
+        showStepIndicator: true,
       };
 
-      await transporter.sendMail(mailOptions);
-      await transporter.sendMail(mailOptions);
-
-      // 6. Final Return for Success Path
-      return res.status(200).send({
-        data: { success: true, uid: uid, wasNewlyCreated: isNewUser },
+      await sendMailgunEmail({
+        to: userEmail,
+        subject: "Verify Your mLab Account",
+        text: buildMlabEmailPlainText(emailParams),
+        html: buildMlabEmailHtml(emailParams),
       });
+
+      return { success: true, message: "Verification email sent." };
     } catch (error: any) {
-      console.error("Critical Error:", error);
-      // 7. Final Return for Error Path
-      return res.status(500).send({
-        data: { success: false, message: error.message },
-      });
+      console.error("Email Error:", error);
+      throw new HttpsError("internal", error.message || "Failed to send email");
     }
-  });
-});
+  },
+);
 
+// ============================================================================
+// BLOCKCHAIN LOGIC
+// ============================================================================
+const RPC_URL =
+  process.env.RPC_URL || "https://ethereum-sepolia-rpc.publicnode.com";
+const CONTRACT_ADDRESS = process.env.CONTRACT_ADDRESS || "";
+const PINATA_JWT = process.env.PINATA_JWT || "";
+
+const contractABI = [
+  "function issueCertificate(string certId, bytes32 dataFingerprint) public",
+];
+
+export const issueBlockchainCertificate = onCall(
+  { secrets: [privateKeySecret] },
+  async (request) => {
+    const { data, auth } = request;
+
+    if (!auth) {
+      throw new HttpsError(
+        "unauthenticated",
+        "You must be logged in to mint documents.",
+      );
+    }
+
+    const {
+      verificationCode,
+      learnerName,
+      idNumber,
+      qualification,
+      issueDate,
+      eisaStatus,
+      pdfBase64,
+    } = data;
+
+    if (!verificationCode || !pdfBase64 || !CONTRACT_ADDRESS || !PINATA_JWT) {
+      throw new HttpsError(
+        "invalid-argument",
+        "Missing required data or environment variables.",
+      );
+    }
+
+    try {
+      console.log(`Uploading ${verificationCode}.pdf to Pinata...`);
+      const base64Data = pdfBase64.replace(
+        /^data:application\/pdf;base64,/,
+        "",
+      );
+      const pdfBuffer = Buffer.from(base64Data, "base64");
+
+      const formData = new FormData();
+      formData.append("file", pdfBuffer, {
+        filename: `${verificationCode}.pdf`,
+        contentType: "application/pdf",
+      });
+
+      const pinataResponse = await axios.post(
+        "https://api.pinata.cloud/pinning/pinFileToIPFS",
+        formData,
+        {
+          headers: {
+            Authorization: `Bearer ${PINATA_JWT}`,
+            ...formData.getHeaders(),
+          },
+        },
+      );
+
+      const ipfsHash = pinataResponse.data.IpfsHash;
+      console.log(`✅ Uploaded to IPFS! Hash: ${ipfsHash}`);
+      console.log(`Minting to Sepolia...`);
+
+      const provider = new ethers.JsonRpcProvider(RPC_URL);
+      const wallet = new ethers.Wallet(privateKeySecret.value(), provider);
+      const contract = new ethers.Contract(
+        CONTRACT_ADDRESS,
+        contractABI,
+        wallet,
+      );
+
+      const fingerprint = ethers.solidityPackedKeccak256(
+        ["string", "string", "string", "string", "string", "string"],
+        [
+          learnerName.trim(),
+          idNumber.trim(),
+          qualification.trim(),
+          issueDate.trim(),
+          eisaStatus.trim(),
+          ipfsHash.trim(),
+        ],
+      );
+
+      const tx = await contract.issueCertificate(verificationCode, fingerprint);
+      const receipt = await tx.wait();
+
+      console.log(`✅ Minted successfully! TX: ${receipt.hash}`);
+
+      return {
+        success: true,
+        ipfsHash: ipfsHash,
+        fingerprint: fingerprint,
+        transactionHash: receipt.hash,
+        timestamp: new Date().toISOString(),
+      };
+    } catch (error: any) {
+      console.error("Cloud Function Error:", error);
+      throw new HttpsError(
+        "internal",
+        error.message || "Failed to process certificate",
+      );
+    }
+  },
+);
+
+// // ============================================================================
+// // PDF GENERATION LOGIC (generateMasterPoE)
+// // ============================================================================
+
+// interface UploadedDoc {
+//   id: string;
+//   name: string;
+//   url: string;
+// }
+// interface EvidenceFile {
+//   index: number;
+//   url: string;
+//   label: string;
+// }
 // interface Submission {
 //   id: string;
 //   assessmentId: string;
@@ -545,61 +1353,302 @@ export const createLearnerAccount = onRequest((req, res) => {
 //   moduleNumber?: string;
 //   marks?: number;
 //   totalMarks?: number;
+//   attemptNumber?: number;
 //   answers?: Record<string, any>;
-
 //   facilitatorId?: string;
-//   gradedBy?: string;
-
+//   assessorId?: string;
+//   moderatorId?: string;
 //   facilitatorName?: string;
 //   facilitatorOverallFeedback?: string;
 //   facilitatorReviewedAt?: string;
-
 //   gradedAt?: string;
+//   assignedAt?: string;
+//   learnerDeclaration?: {
+//     learnerName?: string;
+//     learnerIdNumber?: string;
+//     learnerAuthUid?: string;
+//     timestamp?: string;
+//     signatureUrl?: string; // SNAPSHOT FIELD
+//   };
 //   grading?: {
 //     facilitatorName?: string;
 //     facilitatorOverallFeedback?: string;
 //     facilitatorReviewedAt?: string;
 //     facilitatorId?: string;
-
+//     facilitatorSignatureUrl?: string; // SNAPSHOT FIELD
 //     assessorName?: string;
 //     assessorOverallFeedback?: string;
 //     assessorRegNumber?: string;
+//     assessorId?: string;
+//     assessorSignatureUrl?: string; // SNAPSHOT FIELD
 //     gradedAt?: string;
 //     gradedBy?: string;
 //     facilitatorBreakdown?: Record<string, any>;
 //     assessorBreakdown?: Record<string, any>;
 //   };
-
 //   moderation?: {
+//     moderatorId?: string;
 //     moderatedBy?: string;
 //     moderatorName?: string;
 //     moderatorRegNumber?: string;
 //     moderatedAt?: string;
+//     moderatorSignatureUrl?: string; // SNAPSHOT FIELD
 //     feedback?: string;
 //     breakdown?: Record<string, any>;
 //   };
-//   assignedAt?: string;
-//   learnerDeclaration?: any;
+//   appeal?: {
+//     date?: string;
+//     reason?: string;
+//     status?: string;
+//     outcome?: string;
+//     reviewedBy?: string;
+//     reviewedByName?: string;
+//     reviewedAt?: string;
+//     resolvedBy?: string;
+//     resolvedByName?: string;
+//     resolvedBySignatureUrl?: string; // SNAPSHOT FIELD
+//     resolvedAt?: string;
+//     resolutionNotes?: string;
+//   };
+//   latestCoachingLog?: {
+//     date?: string;
+//     notes?: string;
+//     facilitatorId?: string;
+//     facilitatorName?: string;
+//     facilitatorSignatureUrl?: string; // SNAPSHOT FIELD
+//     acknowledged?: boolean;
+//     acknowledgedAt?: string;
+//     learnerSignatureUrl?: string; // SNAPSHOT FIELD
+//   };
 //   [key: string]: any;
 // }
 
-// const fetchFileBuffer = async (url: string) => {
+// const fetchFileBuffer = async (url: string): Promise<Buffer | null> => {
 //   try {
+//     // @ts-ignore - Bypasses ts(7016)
+//     const fetch = (await import("node-fetch")).default;
 //     const res = await fetch(url);
 //     if (!res.ok) throw new Error(`Failed to fetch ${url}`);
-//     return await res.arrayBuffer();
+//     return Buffer.from(await res.arrayBuffer());
 //   } catch (error) {
-//     console.error("Buffer fetch error: ", error);
+//     console.error("Buffer fetch error:", error);
 //     return null;
 //   }
 // };
 
-// exports.generateMasterPoE = onDocumentCreated(
+// const POE_STYLES = `
+//   @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@300;400;500;600;700&display=swap');
+//   @page { size: A4; margin: 15mm 16mm 22mm; }
+//   @page :first { margin-top: 0; }
+//   *, *::before, *::after { box-sizing: border-box; }
+//   body {
+//     font-family: 'Trebuchet MS', 'Lucida Grande', Arial, sans-serif;
+//     font-size: 11px;
+//     color: #1a2e35;
+//     line-height: 1.5;
+//     margin: 0; padding: 0;
+//     background: #ffffff;
+//     -webkit-print-color-adjust: exact;
+//     print-color-adjust: exact;
+//   }
+//   .pb { page-break-after: always; }
+//   .pbi { page-break-inside: avoid; }
+//   .cover { height: 100vh; display: flex; flex-direction: column; background: #073f4e; overflow: hidden; position: relative; }
+//   .cover__pattern { position: absolute; inset: 0; background-image: repeating-linear-gradient(-45deg, transparent, transparent 32px, rgba(148,199,61,0.05) 32px, rgba(148,199,61,0.05) 33px), repeating-linear-gradient(45deg, transparent, transparent 32px, rgba(255,255,255,0.02) 32px, rgba(255,255,255,0.02) 33px); pointer-events: none; }
+//   .cover__accent { display: flex; height: 8px; flex-shrink: 0; }
+//   .cover__accent-blue  { flex: 1; background: #052e3a; }
+//   .cover__accent-green { width: 100px; background: #94c73d; }
+//   .cover__header { display: flex; align-items: center; justify-content: space-between; padding: 28px 40px 20px; border-bottom: 1px solid rgba(255,255,255,0.08); flex-shrink: 0; position: relative; }
+//   .cover__logo { height: 52px; object-fit: contain; }
+//   .cover__org { text-align: right; }
+//   .cover__org-name { font-family: 'Oswald', sans-serif; font-size: 13px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: #ffffff; display: block; }
+//   .cover__org-tag { font-size: 9px; letter-spacing: 0.06em; text-transform: uppercase; color: rgba(255,255,255,0.4); display: block; margin-top: 3px; }
+//   .cover__body { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px; text-align: center; position: relative; }
+//   .cover__doc-type { font-family: 'Oswald', sans-serif; font-size: 10px; font-weight: 700; letter-spacing: 0.28em; text-transform: uppercase; color: #94c73d; margin: 0 0 16px; display: flex; align-items: center; justify-content: center; gap: 10px; }
+//   .cover__doc-type::before, .cover__doc-type::after { content: ''; display: block; height: 1px; width: 40px; background: rgba(148,199,61,0.4); }
+//   .cover__title { font-family: 'Oswald', sans-serif; font-size: 42px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #ffffff; margin: 0 0 8px; line-height: 1; }
+//   .cover__subtitle { font-family: 'Oswald', sans-serif; font-size: 14px; font-weight: 400; letter-spacing: 0.2em; text-transform: uppercase; color: rgba(255,255,255,0.45); margin: 0 0 48px; }
+//   .cover__id-card { width: 100%; max-width: 560px; border: 1px solid rgba(255,255,255,0.12); border-top: 3px solid #94c73d; background: rgba(255,255,255,0.05); padding: 0; text-align: left; }
+//   .cover__id-row { display: flex; align-items: stretch; border-bottom: 1px solid rgba(255,255,255,0.07); }
+//   .cover__id-row:last-child { border-bottom: none; }
+//   .cover__id-label { width: 160px; flex-shrink: 0; padding: 10px 14px; font-family: 'Oswald', sans-serif; font-size: 8.5px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: rgba(255,255,255,0.35); background: rgba(0,0,0,0.1); border-right: 1px solid rgba(255,255,255,0.06); display: flex; align-items: center; }
+//   .cover__id-value { padding: 10px 16px; font-size: 12px; font-weight: 600; color: #ffffff; display: flex; align-items: center; flex: 1; }
+//   .cover__footer { padding: 16px 40px; border-top: 1px solid rgba(255,255,255,0.06); display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; position: relative; }
+//   .cover__footer-ref { font-family: 'Oswald', sans-serif; font-size: 8px; letter-spacing: 0.1em; text-transform: uppercase; color: rgba(255,255,255,0.25); }
+//   .cover__footer-date { font-size: 9px; color: rgba(255,255,255,0.25); }
+//   .cover__accent-bottom { display: flex; height: 8px; flex-shrink: 0; }
+//   .cover__accent-bottom-green { width: 100px; background: #94c73d; }
+//   .cover__accent-bottom-blue  { flex: 1; background: #052e3a; }
+//   .divider { height: 100vh; background: #073f4e; display: flex; flex-direction: column; position: relative; overflow: hidden; }
+//   .divider__pattern { position: absolute; inset: 0; background-image: repeating-linear-gradient(-45deg, transparent, transparent 32px, rgba(255,255,255,0.02) 32px, rgba(255,255,255,0.02) 33px); pointer-events: none; }
+//   .divider__accent { display: flex; height: 6px; flex-shrink: 0; }
+//   .divider__accent-blue  { flex: 1; background: #052e3a; }
+//   .divider__accent-green { width: 80px; background: #94c73d; }
+//   .divider__body { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 80px; text-align: center; position: relative; }
+//   .divider__num { font-family: 'Oswald', sans-serif; font-size: 100px; font-weight: 700; color: rgba(255,255,255,0.06); line-height: 1; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -54%); user-select: none; pointer-events: none; }
+//   .divider__section-label { font-family: 'Oswald', sans-serif; font-size: 9px; font-weight: 700; letter-spacing: 0.28em; text-transform: uppercase; color: #94c73d; margin: 0 0 14px; }
+//   .divider__title { font-family: 'Oswald', sans-serif; font-size: 36px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: #ffffff; margin: 0 0 16px; line-height: 1.1; position: relative; }
+//   .divider__desc { font-size: 12px; color: rgba(255,255,255,0.4); max-width: 440px; line-height: 1.7; position: relative; }
+//   .divider__accent-bottom { display: flex; height: 6px; flex-shrink: 0; }
+//   .divider__accent-bottom-green { width: 80px; background: #94c73d; }
+//   .divider__accent-bottom-blue  { flex: 1; background: #052e3a; }
+//   .sec-header { display: flex; align-items: stretch; margin: 0 0 20px; border-top: 4px solid #073f4e; background: #073f4e; }
+//   .sec-header__num { width: 48px; flex-shrink: 0; background: #94c73d; display: flex; align-items: center; justify-content: center; font-family: 'Oswald', sans-serif; font-size: 18px; font-weight: 700; color: #073f4e; }
+//   .sec-header__text { padding: 10px 16px; flex: 1; }
+//   .sec-header__title { font-family: 'Oswald', sans-serif; font-size: 13px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #ffffff; margin: 0; line-height: 1.1; }
+//   .sec-header__sub { font-size: 9px; letter-spacing: 0.06em; text-transform: uppercase; color: rgba(255,255,255,0.4); margin: 3px 0 0; }
+//   .sub-heading { font-family: 'Oswald', sans-serif; font-size: 9.5px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: #073f4e; margin: 22px 0 8px; padding-bottom: 5px; border-bottom: 2px solid #073f4e; display: flex; align-items: center; gap: 6px; }
+//   .sub-heading::after { content: ''; display: block; height: 2px; flex: 1; background: #94c73d; margin-left: 6px; }
+//   .data-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: #dde4e8; border: 1px solid #dde4e8; margin-bottom: 18px; }
+//   .data-grid--1col { grid-template-columns: 1fr; }
+//   .data-cell { background: #ffffff; padding: 9px 12px; }
+//   .data-cell--span2 { grid-column: span 2; }
+//   .data-cell__label { font-family: 'Oswald', sans-serif; font-size: 8px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: #9b9b9b; display: block; margin-bottom: 3px; }
+//   .data-cell__value { font-size: 11.5px; font-weight: 600; color: #073f4e; }
+//   .poe-table { width: 100%; border-collapse: collapse; margin: 0 0 18px; font-size: 10.5px; }
+//   .poe-table thead tr { background: #073f4e; }
+//   .poe-table th { padding: 8px 10px; text-align: left; font-family: 'Oswald', sans-serif; font-size: 8.5px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(255,255,255,0.85); border-right: 1px solid rgba(255,255,255,0.08); }
+//   .poe-table td { padding: 7px 10px; border-bottom: 1px solid #e8eef1; border-right: 1px solid #e8eef1; color: #1a2e35; vertical-align: top; }
+//   .poe-table tbody tr:nth-child(even) td { background: #f8fafb; }
+//   .poe-table--accented td:first-child { border-left: 3px solid #94c73d; }
+//   .poe-table--checklist td:nth-child(3) { font-family: 'Oswald', sans-serif; font-size: 9px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+//   .badge { display: inline-block; padding: 2px 8px; font-family: 'Oswald', sans-serif; font-size: 8.5px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
+//   .badge--c   { background: rgba(148,199,61,0.15); color: #3d6b0f; border: 1px solid rgba(148,199,61,0.4); }
+//   .badge--nyc { background: rgba(239,68,68,0.1);   color: #b91c1c; border: 1px solid rgba(239,68,68,0.3); }
+//   .badge--p   { background: #f0f4f6; color: #6b6b6b; border: 1px solid #dde4e8; }
+//   .badge--attempt { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+//   .badge--attempt1 { background: #f0f4f6; color: #6b6b6b; border: 1px solid #dde4e8; }
+//   .module-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 12px 16px; background: #e4edf0; border-left: 5px solid #073f4e; margin-bottom: 12px; }
+//   .module-header__title { font-family: 'Oswald', sans-serif; font-size: 14px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: #073f4e; margin: 0; }
+//   .eval-box { border: 1px solid #dde4e8; border-top: 3px solid #073f4e; margin-bottom: 16px; page-break-inside: avoid; }
+//   .eval-box__row { display: flex; align-items: flex-start; border-bottom: 1px solid #eef0f2; min-height: 32px; }
+//   .eval-box__label { width: 150px; flex-shrink: 0; padding: 8px 12px; font-family: 'Oswald', sans-serif; font-size: 8.5px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: #9b9b9b; background: #f8fafb; border-right: 1px solid #eef0f2; }
+//   .eval-box__value { padding: 8px 14px; font-size: 11px; color: #1a2e35; flex: 1; }
+//   .eval-box__divider { height: 1px; background: #dde4e8; margin: 0; }
+//   .ink-fac { color: #1d4ed8 !important; }
+//   .ink-ass { color: #b91c1c !important; }
+//   .ink-mod { color: #15803d !important; }
+//   .q-block { margin-bottom: 16px; border-bottom: 1px solid #eef0f2; padding-bottom: 14px; page-break-inside: avoid; }
+//   .q-num { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; background: #073f4e; color: #ffffff; font-family: 'Oswald', sans-serif; font-size: 9px; font-weight: 700; flex-shrink: 0; margin-right: 8px; }
+//   .q-text { font-family: 'Oswald', sans-serif; font-size: 11px; font-weight: 600; letter-spacing: 0.02em; color: #073f4e; margin: 0 0 8px; display: flex; }
+//   .a-text { background: #f8fafb; border: 1px solid #e4edf0; border-left: 4px solid #9b9b9b; padding: 9px 12px; font-size: 11px; white-space: pre-wrap; overflow-wrap: break-word; color: #1a2e35; }
+//   .a-link { color: #0a5266; text-decoration: underline; font-weight: 600; }
+//   .a-annex { margin-top: 6px; padding: 7px 10px; background: #fffbeb; border: 1px solid #fde68a; border-left: 4px solid #d97706; font-size: 10px; }
+//   .f-block { margin-top: 7px; border: 1px solid #e4edf0; border-top: 2px solid #dde4e8; font-size: 10px; }
+//   .f-row { display: flex; align-items: flex-start; padding: 5px 10px; border-bottom: 1px solid #f0f4f6; gap: 6px; }
+//   .f-role { font-family: 'Oswald', sans-serif; font-size: 7.5px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; width: 90px; flex-shrink: 0; padding-top: 1px; }
+//   .f-comment { line-height: 1.5; flex: 1; }
+//   .openbook-notice { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; background: #f0f9ff; border: 1px solid #bae6fd; border-left: 4px solid #0ea5e9; margin-bottom: 14px; font-size: 11px; page-break-inside: avoid; }
+//   .openbook-notice__icon { font-family: 'Oswald', sans-serif; font-size: 8.5px; font-weight: 700; color: #0369a1; }
+//   .sig-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 16px; background: #f4f7f9; border: 1px solid #dde4e8; border-top: 3px solid #94c73d; margin: 16px 0 0; page-break-inside: avoid; }
+//   .sig-bar__label { font-family: 'Oswald', sans-serif; font-size: 8.5px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: #6b6b6b; }
+//   .sig-bar__img { max-height: 36px; max-width: 120px; object-fit: contain; mix-blend-mode: multiply; }
+//   .sig-bar__pending { font-size: 9px; color: #9b9b9b; font-style: italic; }
+//   .sig-bar__date { font-size: 9px; color: #6b6b6b; }
+//   .sig-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: #dde4e8; border: 1px solid #dde4e8; margin-top: 20px; page-break-inside: avoid; }
+//   .sig-cell { background: #ffffff; padding: 12px 10px; text-align: center; border-top: 3px solid #dde4e8; }
+//   .sig-cell--learner  { border-top-color: #073f4e; }
+//   .sig-cell--fac      { border-top-color: #1d4ed8; }
+//   .sig-cell--assessor { border-top-color: #b91c1c; }
+//   .sig-cell--mod      { border-top-color: #15803d; }
+//   .sig-cell__role { font-family: 'Oswald', sans-serif; font-size: 7.5px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: #9b9b9b; margin-bottom: 8px; }
+//   .sig-cell__img { max-height: 38px; max-width: 100%; object-fit: contain; mix-blend-mode: multiply; display: block; margin: 0 auto 6px; }
+//   .sig-cell__placeholder { height: 38px; display: flex; align-items: center; justify-content: center; font-size: 9px; color: #c0c8cc; font-style: italic; margin-bottom: 6px; border: 1px dashed #dde4e8; }
+//   .sig-cell__line { height: 1px; background: #dde4e8; margin: 0 0 5px; }
+//   .sig-cell__name { font-family: 'Oswald', sans-serif; font-size: 9px; font-weight: 700; letter-spacing: 0.04em; margin-bottom: 2px; }
+//   .sig-cell__detail { font-size: 8px; }
+//   .notice { padding: 12px 14px; margin: 0 0 14px; page-break-inside: avoid; }
+//   .notice--green { background: rgba(148,199,61,0.07); border: 1px solid rgba(148,199,61,0.3); border-left: 5px solid #94c73d; }
+//   .notice--grey { background: #f4f7f9; border: 1px solid #dde4e8; border-left: 5px solid #9b9b9b; }
+//   .notice__title { font-family: 'Oswald', sans-serif; font-size: 9px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; margin: 0 0 5px; }
+//   .coaching-card { border: 1px solid #dde4e8; border-left: 5px solid #d97706; background: #fffbeb; margin-bottom: 14px; page-break-inside: avoid; }
+//   .coaching-card__head { display: flex; justify-content: space-between; padding: 9px 14px; border-bottom: 1px solid #fde68a; background: rgba(217,119,6,0.06); }
+//   .coaching-card__title { font-family: 'Oswald', sans-serif; font-size: 10px; font-weight: 700; color: #92400e; margin: 0; }
+//   .coaching-card__body { padding: 12px 14px; }
+//   .appeal-card { border: 1px solid #fecaca; border-left: 5px solid #ef4444; background: #fef2f2; margin-bottom: 14px; page-break-inside: avoid; }
+//   .appeal-card__head { display: flex; justify-content: space-between; padding: 9px 14px; border-bottom: 1px solid #fecaca; background: rgba(239,68,68,0.06); }
+//   .appeal-card__title { font-family: 'Oswald', sans-serif; font-size: 10px; font-weight: 700; color: #b91c1c; margin: 0; }
+//   .appeal-card__body { padding: 12px 14px; }
+//   .history-box { border: 1px solid #fecaca; border-top: 3px solid #ef4444; margin-top: 18px; padding: 15px; background: #fef2f2; border-radius: 6px; page-break-inside: avoid; }
+//   .history-box__header { padding-bottom: 8px; border-bottom: 1px solid #fecaca; font-family: 'Oswald', sans-serif; font-size: 10px; font-weight: 700; color: #b91c1c; text-transform: uppercase; margin-bottom: 12px; }
+//   .history-attempt { padding-bottom: 10px; border-bottom: 1px dashed #fecaca; margin-bottom: 12px; }
+//   .history-attempt:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+//   .history-attempt__title { font-family: 'Oswald', sans-serif; font-size: 9px; font-weight: 700; color: #991b1b; margin: 0 0 4px; }
+//   .history-files { margin-top: 8px; padding: 8px; background: #ffffff; border: 1px solid #fecaca; border-radius: 4px; font-size: 10px; }
+//   .declaration { background: #f4f7f9; border: 1px solid #dde4e8; border-top: 3px solid #073f4e; padding: 16px; font-size: 11px; margin-bottom: 16px; }
+//   .letter-body { border: 1px solid #dde4e8; padding: 24px 28px; font-size: 11.5px; background: #ffffff; margin-bottom: 20px; }
+//   .text-center { text-align: center; }
+// `;
+
+// const sigCell = (
+//   role: string,
+//   cls: string,
+//   sigUrl: string | null,
+//   name: string,
+//   detail: string,
+//   date: string,
+// ) => {
+//   let ink = "";
+//   if (cls === "fac") ink = "ink-fac";
+//   if (cls === "assessor") ink = "ink-ass";
+//   if (cls === "mod") ink = "ink-mod";
+
+//   return `
+//   <div class="sig-cell sig-cell--${cls}">
+//     <div class="sig-cell__role">${role}</div>
+//     ${sigUrl ? `<img src="${sigUrl}" class="sig-cell__img" />` : `<div class="sig-cell__placeholder">No signature</div>`}
+//     <div class="sig-cell__line"></div>
+//     <div class="sig-cell__name ${ink}">${name}</div>
+//     ${detail ? `<div class="sig-cell__detail ${ink}">${detail}</div>` : ""}
+//     <div class="sig-cell__detail ${ink}">${date}</div>
+//   </div>`;
+// };
+
+// const dividerPage = (num: string, title: string, desc: string) => `
+//   <div class="divider">
+//     <div class="divider__pattern"></div>
+//     <div class="divider__accent">
+//       <div class="divider__accent-blue"></div>
+//       <div class="divider__accent-green"></div>
+//     </div>
+//     <div class="divider__body">
+//       <div class="divider__num">${num}</div>
+//       <div class="divider__section-label">Section ${num}</div>
+//       <h1 class="divider__title">${title}</h1>
+//       <p class="divider__desc">${desc}</p>
+//     </div>
+//     <div class="divider__accent-bottom">
+//       <div class="divider__accent-bottom-green"></div>
+//       <div class="divider__accent-bottom-blue"></div>
+//     </div>
+//   </div>`;
+
+// const sectionHeader = (num: string, title: string, sub?: string) => `
+//   <div class="sec-header">
+//     <div class="sec-header__num">${num}</div>
+//     <div class="sec-header__text">
+//       <div class="sec-header__title">${title}</div>
+//       ${sub ? `<div class="sec-header__sub">${sub}</div>` : ""}
+//     </div>
+//   </div>`;
+
+// const dc = (label: string, value: string, cls = "") =>
+//   `<div class="data-cell ${cls}"><span class="data-cell__label">${label}</span><span class="data-cell__value">${value || "N/A"}</span></div>`;
+
+// const outcomeBadge = (comp?: string) => {
+//   if (comp === "C") return `<span class="badge badge--c">Competent</span>`;
+//   if (comp === "NYC")
+//     return `<span class="badge badge--nyc">Not Yet Competent</span>`;
+//   return `<span class="badge badge--p">Pending</span>`;
+// };
+
+// export const generateMasterPoE = onDocumentCreated(
 //   {
 //     document: "poe_export_requests/{requestId}",
 //     timeoutSeconds: 540,
 //     memory: "2GiB",
 //     region: "us-central1",
+//     secrets: [mailgunSecret],
 //   },
 //   async (event) => {
 //     const snap = event.data;
@@ -611,29 +1660,26 @@ export const createLearnerAccount = onRequest((req, res) => {
 //     const requestedByUid = requestData.requestedBy;
 //     let requesterEmail: string | null = null;
 
-//     // Added types to parameters
-//     const updateProgress = async (percent: number, message: string) => {
-//       await snap.ref.update({ progress: percent, progressMessage: message });
-//     };
+//     const updateProgress = async (percent: number, message: string) =>
+//       snap.ref.update({ progress: percent, progressMessage: message });
 
-//     // Added types to dateString
-//     const safelyFormatDate = (dateString: string | Date | undefined | null) => {
-//       if (!dateString) return "N/A";
+//     const fmt = (d?: string | Date | null) => {
+//       if (!d) return "N/A";
 //       try {
-//         const d = new Date(dateString);
-//         return isNaN(d.getTime()) ? "N/A" : d.toLocaleDateString("en-ZA");
+//         const dt = new Date(d);
+//         return isNaN(dt.getTime()) ? "N/A" : dt.toLocaleDateString("en-ZA");
 //       } catch {
 //         return "N/A";
 //       }
 //     };
 
 //     try {
-//       await updateProgress(5, "Initializing compliance engine...");
+//       await updateProgress(5, "Initializing compliance engine…");
 
 //       if (requestedByUid) {
 //         try {
-//           const user = await admin.auth().getUser(requestedByUid);
-//           requesterEmail = user.email || null;
+//           requesterEmail =
+//             (await admin.auth().getUser(requestedByUid)).email || null;
 //         } catch (e) {
 //           console.error("Auth fetch failed", e);
 //         }
@@ -645,6 +1691,12 @@ export const createLearnerAccount = onRequest((req, res) => {
 //         .doc(learnerId)
 //         .get();
 //       const learner = learnerSnap.data() || {};
+//       const userDocSnap = await admin
+//         .firestore()
+//         .collection("users")
+//         .doc(learner.authUid || learnerId)
+//         .get();
+//       const learnerUserDoc = userDocSnap.data() || {};
 
 //       let enrollment: any = {};
 //       if (learner.enrollmentId) {
@@ -656,7 +1708,7 @@ export const createLearnerAccount = onRequest((req, res) => {
 //         if (enrolSnap.exists) enrollment = enrolSnap.data() || {};
 //       }
 
-//       await updateProgress(15, "Fetching all evidence modules...");
+//       await updateProgress(15, "Fetching all evidence modules…");
 //       const subsSnap = await admin
 //         .firestore()
 //         .collection("learner_submissions")
@@ -667,33 +1719,21 @@ export const createLearnerAccount = onRequest((req, res) => {
 //         const data = d.data();
 //         return {
 //           id: d.id,
-//           assessmentId: data.assessmentId || "",
-//           title: data.title || "",
-//           moduleType: data.moduleType || "",
-//           competency: data.competency || "",
-//           submittedAt: data.submittedAt || "",
-//           moduleNumber: data.moduleNumber || "",
-//           marks: data.marks,
-//           totalMarks: data.totalMarks,
-//           answers: data.answers || {},
 //           facilitatorId:
-//             data.grading?.facilitatorId ||
-//             data.facilitatorId ||
-//             data.latestCoachingLog?.facilitatorId ||
+//             data.grading?.facilitatorId || data.facilitatorId || "",
+//           assessorId:
+//             data.grading?.assessorId ||
+//             data.grading?.gradedBy ||
+//             data.gradedBy ||
+//             data.assessorId ||
 //             "",
-//           gradedBy: data.grading?.gradedBy || data.gradedBy || "",
-//           facilitatorName: data.facilitatorName || "",
-//           facilitatorOverallFeedback: data.facilitatorOverallFeedback || "",
-//           facilitatorReviewedAt:
-//             data.grading?.facilitatorReviewedAt ||
-//             data.facilitatorReviewedAt ||
+//           moderatorId:
+//             data.moderation?.moderatorId ||
+//             data.moderation?.moderatedBy ||
+//             data.moderatorId ||
 //             "",
-//           gradedAt: data.grading?.gradedAt || data.gradedAt || "",
-//           grading: data.grading || {},
-//           moderation: data.moderation || {},
-//           assignedAt: data.assignedAt || "",
-//           learnerDeclaration: data.learnerDeclaration || {},
-//           ...data, // Spreads all other fields so sub[block.id] works
+//           attemptNumber: data.attemptNumber || 1,
+//           ...data,
 //         } as Submission;
 //       });
 
@@ -716,302 +1756,264 @@ export const createLearnerAccount = onRequest((req, res) => {
 //       const primaryAssessor =
 //         submissions.find((s) => s.grading?.assessorName)?.grading
 //           ?.assessorName || "Pending Assessor";
+//       const primaryFacilitatorId = submissions.find(
+//         (s) => s.facilitatorId,
+//       )?.facilitatorId;
+//       const appealedSubs = submissions.filter((s) => s.appeal);
+//       const remediatedSubs = submissions.filter(
+//         (s) => (s.attemptNumber || 1) > 1,
+//       );
 
-//       await updateProgress(25, "Retrieving digital signatures & user docs...");
+//       await updateProgress(25, "Retrieving digital signatures…");
+//       const signaturesMap: Record<string, string> = {};
 //       const userIdsToFetch = new Set<string>();
 //       if (learner.authUid) userIdsToFetch.add(learner.authUid);
-
 //       submissions.forEach((sub) => {
 //         if (sub.facilitatorId) userIdsToFetch.add(sub.facilitatorId);
-//         if (sub.gradedBy) userIdsToFetch.add(sub.gradedBy);
-//         if (sub.moderation?.moderatedBy)
-//           userIdsToFetch.add(sub.moderation.moderatedBy);
+//         if (sub.assessorId) userIdsToFetch.add(sub.assessorId);
+//         if (sub.moderatorId) userIdsToFetch.add(sub.moderatorId);
+//         if (sub.appeal?.reviewedBy) userIdsToFetch.add(sub.appeal.reviewedBy);
+//         if (sub.appeal?.resolvedBy) userIdsToFetch.add(sub.appeal.resolvedBy);
+//         if (sub.latestCoachingLog?.facilitatorId)
+//           userIdsToFetch.add(sub.latestCoachingLog.facilitatorId);
 //       });
 
-//       // Explicit types for objects and arrays
-//       const signaturesMap: Record<string, string> = {};
-//       let learnerUserDoc: any = null;
-//       let assessorSigUrl: string | null = null;
-
 //       if (userIdsToFetch.size > 0) {
-//         const promises = Array.from(userIdsToFetch).map((uid) =>
-//           admin.firestore().collection("users").doc(uid).get(),
+//         const userSnaps = await Promise.all(
+//           Array.from(userIdsToFetch).map((uid) =>
+//             admin.firestore().collection("users").doc(uid).get(),
+//           ),
 //         );
-//         const userSnaps = await Promise.all(promises);
-//         userSnaps.forEach((userSnap) => {
-//           if (userSnap.exists) {
-//             const data = userSnap.data();
-//             if (data?.signatureUrl)
-//               signaturesMap[userSnap.id] = data.signatureUrl;
-//             if (userSnap.id === learner.authUid) learnerUserDoc = data;
-
-//             const gradedSub = submissions.find(
-//               (s) => s.gradedBy === userSnap.id,
-//             );
-//             if (gradedSub && data?.signatureUrl && !assessorSigUrl) {
-//               assessorSigUrl = data.signatureUrl;
-//             }
+//         userSnaps.forEach((uSnap) => {
+//           if (uSnap.exists) {
+//             const uData = uSnap.data();
+//             if (uData?.signatureUrl)
+//               signaturesMap[uSnap.id] = uData.signatureUrl;
 //           }
 //         });
 //       }
 
-//       const learnerSignatureUrl = learner.authUid
-//         ? signaturesMap[learner.authUid]
-//         : null;
+//       // =========================================================================================
+//       // GLOBAL SIGNATURE RESOLUTION
+//       // =========================================================================================
+//       const latestSub = submissions[submissions.length - 1];
+//       const primaryGradedSub = submissions.find((s) => s.assessorId);
 
-//       await updateProgress(30, "Generating QCTO Compliance Structure...");
+//       // 1. THE "DAY 1" SIGNATURE (For POPIA, Induction, and Commitment)
+//       let dayOneLearnerSigUrl = null;
+//       if (
+//         learnerUserDoc?.signatureHistory &&
+//         learnerUserDoc.signatureHistory.length > 0
+//       ) {
+//         // Sort history by date ascending to get the oldest one
+//         const sortedHistory = [...learnerUserDoc.signatureHistory].sort(
+//           (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
+//         );
+//         dayOneLearnerSigUrl = sortedHistory[0].url;
+//       } else {
+//         dayOneLearnerSigUrl = learner.authUid
+//           ? signaturesMap[learner.authUid]
+//           : null;
+//       }
+
+//       // 2. THE "LATEST" SIGNATURE (For the Progress Report cover)
+//       const latestLearnerSigUrl =
+//         latestSub?.learnerDeclaration?.signatureUrl ||
+//         (learner.authUid ? signaturesMap[learner.authUid] : null);
+
+//       const primaryFacSigUrl =
+//         submissions[0]?.grading?.facilitatorSignatureUrl ||
+//         (primaryFacilitatorId ? signaturesMap[primaryFacilitatorId] : null);
+
+//       const globalAssessorSigUrl =
+//         primaryGradedSub?.grading?.assessorSignatureUrl ||
+//         (primaryGradedSub?.assessorId
+//           ? signaturesMap[primaryGradedSub.assessorId]
+//           : null);
+
+//       await updateProgress(30, "Building QCTO compliance document…");
+
 //       const companyLogoUrl =
 //         "https://firebasestorage.googleapis.com/v0/b/testpro-8f08c.appspot.com/o/Mlab-Grey-variation-1.png?alt=media&token=e85e0473-97cc-431d-8c08-7a3445806983";
+//       const offlineEvidenceFiles: EvidenceFile[] = [];
 
-//       const offlineEvidenceFiles: {
-//         index: number;
-//         url: string;
-//         label: string;
-//       }[] = [];
-
-//       const renderProgressRows = (subs: Submission[]) => {
-//         if (subs.length === 0)
-//           return `<tr><td colspan="3" style="text-align:center; font-style:italic;">No modules mapped</td></tr>`;
-//         return subs
-//           .map(
-//             (s) => `
-//               <tr>
-//                   <td>${s.moduleNumber || "N/A"}</td>
-//                   <td>${s.title || "Untitled"}</td>
-//                   <td style="text-align:center; font-weight:bold;" class="${s.competency === "C" ? "outcome-C" : s.competency === "NYC" ? "outcome-NYC" : ""}">${s.competency || "-"}</td>
-//               </tr>
-//           `,
-//           )
-//           .join("");
-//       };
-
-//       const renderLearningPlanRows = (subs: Submission[]) => {
-//         if (subs.length === 0)
-//           return `<tr><td colspan="8" style="text-align:center; font-style:italic;">No modules mapped</td></tr>`;
+//       const progressRows = (subs: Submission[]) => {
+//         if (!subs.length)
+//           return `<tr><td colspan="4" class="empty-state">No modules mapped for this component.</td></tr>`;
 //         return subs
 //           .map((s) => {
-//             const facName =
-//               s.grading?.facilitatorName || s.facilitatorName || "Pending";
-//             const dateAssessed = safelyFormatDate(s.gradedAt);
-//             return `
-//               <tr>
-//                   <td style="font-size:10px;">${s.moduleNumber || "N/A"}</td>
-//                   <td style="font-size:10px;">${facName}</td>
-//                   <td style="font-size:10px;">${safelyFormatDate(s.assignedAt)} to ${dateAssessed}</td>
-//                   <td style="text-align:center; font-weight:bold;">${s.moduleType === "knowledge" ? "X" : ""}</td>
-//                   <td style="text-align:center; font-weight:bold;">${s.moduleType === "practical" ? "X" : ""}</td>
-//                   <td style="text-align:center; font-weight:bold;">${s.moduleType === "workplace" ? "X" : ""}</td>
-//                   <td style="text-align:center; font-weight:bold;" class="${s.competency === "C" ? "outcome-C" : ""}">${s.competency === "C" ? "C" : ""}</td>
-//                   <td style="text-align:center; font-weight:bold;" class="${s.competency === "NYC" ? "outcome-NYC" : ""}">${s.competency === "NYC" ? "NYC" : ""}</td>
-//               </tr>
-//           `;
+//             const att = s.attemptNumber || 1;
+//             const attBadge =
+//               att > 1
+//                 ? `<span class="badge badge--attempt">Attempt ${att}</span>`
+//                 : `<span class="badge badge--attempt1">1st</span>`;
+//             const compBadge = outcomeBadge(s.competency);
+//             return `<tr>
+//             <td style="font-family:'Oswald',sans-serif; font-weight:700; font-size:10px; color:#073f4e;">${s.moduleNumber || "N/A"}</td>
+//             <td>${s.title || "Untitled"}</td>
+//             <td class="text-center">${attBadge}</td>
+//             <td class="text-center">${compBadge}</td>
+//           </tr>`;
 //           })
 //           .join("");
 //       };
 
-//       let htmlContent = `
-//         <!DOCTYPE html>
-//         <html>
-//         <head>
-//             <meta charset="UTF-8">
-//             <style>
-//                 @page { size: A4; margin: 15mm; }
-//                 body { font-family: 'Helvetica', Arial, sans-serif; color: #1e293b; line-height: 1.4; }
-//                 .page-break { page-break-after: always; }
+//       const learningPlanRows = (subs: Submission[]) => {
+//         if (!subs.length)
+//           return `<tr><td colspan="8" class="empty-state">No modules mapped.</td></tr>`;
+//         return subs
+//           .map((s) => {
+//             const facName =
+//               s.grading?.facilitatorName || s.facilitatorName || "Pending";
+//             const dateRange = `${fmt(s.assignedAt)} – ${fmt(s.gradedAt)}`;
+//             const compBadge = outcomeBadge(s.competency);
+//             return `<tr>
+//             <td style="font-family:'Oswald',sans-serif; font-weight:700; font-size:9.5px; color:#073f4e;">${s.moduleNumber || "N/A"}</td>
+//             <td><span class="ink-fac">${facName}</span></td>
+//             <td style="font-size:10px;">${dateRange}</td>
+//             <td class="text-center font-bold">${s.moduleType === "knowledge" ? "✓" : ""}</td>
+//             <td class="text-center font-bold">${s.moduleType === "practical" ? "✓" : ""}</td>
+//             <td class="text-center font-bold">${s.moduleType === "workplace" ? "✓" : ""}</td>
+//             <td class="text-center">${s.competency === "C" ? compBadge : ""}</td>
+//             <td class="text-center">${s.competency === "NYC" ? compBadge : ""}</td>
+//           </tr>`;
+//           })
+//           .join("");
+//       };
 
-//                 .cover { height: 95vh; display: flex; flex-direction: column; justify-content: center; text-align: center; border: 10px solid #073f4e; padding: 40px; box-sizing: border-box; }
-//                 .cover-logo { max-width: 250px; margin: 0 auto 40px auto; display: block; }
-//                 .cover h1 { font-size: 32px; color: #073f4e; text-transform: uppercase; margin-bottom: 10px; }
-//                 .cover h2 { font-size: 20px; color: #0284c7; margin-bottom: 50px; }
-//                 .cover-details { font-size: 16px; margin: 0 auto; text-align: left; display: inline-block; background: #f8fafc; padding: 30px; border-radius: 8px; border: 1px solid #e2e8f0; width: 80%; }
-//                 .cover-details p { margin: 10px 0; border-bottom: 1px solid #cbd5e1; padding-bottom: 5px; }
+//       let html = `<!DOCTYPE html>
+// <html lang="en">
+// <head>
+//   <meta charset="UTF-8">
+//   <title>Master PoE — ${learner.fullName || "Learner"}</title>
+//   <style>${POE_STYLES}</style>
+// </head>
+// <body>
 
-//                 .section-title { background: #073f4e; color: white; padding: 10px; font-weight: bold; text-transform: uppercase; margin-top: 30px; margin-bottom: 15px; font-size: 14px; }
-//                 .sub-title { font-size: 12px; font-weight: bold; color: #073f4e; text-transform: uppercase; margin-top: 15px; border-bottom: 1px solid #073f4e; padding-bottom: 3px; }
+// <div class="cover">
+//   <div class="cover__pattern"></div>
+//   <div class="cover__accent">
+//     <div class="cover__accent-blue"></div>
+//     <div class="cover__accent-green"></div>
+//   </div>
+//   <div class="cover__header">
+//     <img src="${companyLogoUrl}" alt="mLab" class="cover__logo" />
+//     <div class="cover__org">
+//       <span class="cover__org-name">Mobile Applications Laboratory NPC</span>
+//       <span class="cover__org-tag">QCTO Accredited Training Provider</span>
+//     </div>
+//   </div>
+//   <div class="cover__body">
+//     <p class="cover__doc-type">QCTO Qualification Compliance Record</p>
+//     <h1 class="cover__title">Master Portfolio<br>of Evidence</h1>
+//     <p class="cover__subtitle">Official Assessment Archive</p>
+//     <div class="cover__id-card">
+//       <div class="cover__id-row">
+//         <div class="cover__id-label">Full Name</div>
+//         <div class="cover__id-value">${learner.fullName || "N/A"}</div>
+//       </div>
+//       <div class="cover__id-row">
+//         <div class="cover__id-label">Identity Number</div>
+//         <div class="cover__id-value">${learner.idNumber || "N/A"}</div>
+//       </div>
+//       <div class="cover__id-row">
+//         <div class="cover__id-label">Email Address</div>
+//         <div class="cover__id-value">${learner.email || "N/A"}</div>
+//       </div>
+//       <div class="cover__id-row">
+//         <div class="cover__id-label">Programme</div>
+//         <div class="cover__id-value">${learner.qualification?.name || enrollment.qualificationName || "N/A"}</div>
+//       </div>
+//       <div class="cover__id-row">
+//         <div class="cover__id-label">Date Generated</div>
+//         <div class="cover__id-value">${fmt(new Date())}</div>
+//       </div>
+//     </div>
+//   </div>
+//   <div class="cover__footer">
+//     <span class="cover__footer-ref">Ref: ${requestId}</span>
+//     <span class="cover__footer-date">Generated ${fmt(new Date())}</span>
+//   </div>
+//   <div class="cover__accent-bottom">
+//     <div class="cover__accent-bottom-green"></div>
+//     <div class="cover__accent-bottom-blue"></div>
+//   </div>
+// </div>
+// <div class="pb"></div>
 
-//                 table { width: 100%; border-collapse: collapse; margin: 15px 0; }
-//                 th, td { border: 1px solid #cbd5e1; padding: 8px; text-align: left; font-size: 11px; }
-//                 th { background: #f1f5f9; font-weight: bold; color: #0f172a; }
+// ${sectionHeader("✓", "Assessor PoE Checklist", "Document Completeness Verification")}
+// <table class="poe-table poe-table--checklist">
+//   <thead><tr><th width="30">#</th><th>Document / Section</th><th width="160">Inclusion Status</th></tr></thead>
+//   <tbody>
+//     <tr><td>1</td><td>Progress Report (all module components)</td><td><span class="badge badge--c">Included</span></td></tr>
+//     <tr><td>2</td><td>Competence Record and Final Assessment Report</td><td><span class="badge badge--c">Included</span></td></tr>
+//     <tr><td>3</td><td>Learner Registration & POPIA Consent Form</td><td><span class="badge badge--c">Included</span></td></tr>
+//     <tr><td>4</td><td>Letter of Commitment from Learner</td><td><span class="badge badge--c">Included</span></td></tr>
+//     <tr><td>5</td><td>Programme Induction Record</td><td><span class="badge badge--c">Included</span></td></tr>
+//     <tr><td>6</td><td>Appeals / Complaint Forms</td><td>${appealedSubs.length > 0 ? `<span class="badge badge--nyc">${appealedSubs.length} Appeal(s) — See Section 6</span>` : `<span class="badge badge--p">None Lodged</span>`}</td></tr>
+//     <tr><td>7</td><td>Actual Learning Plan and Evidence Control Sheet</td><td><span class="badge badge--c">Included</span></td></tr>
+//     <tr><td>8</td><td>Learner Coaching Record (Remediation)</td><td>${remediatedSubs.length > 0 ? `<span class="badge badge--nyc">${remediatedSubs.length} Session(s) — See Section 8</span>` : `<span class="badge badge--p">N/A — All First Attempt</span>`}</td></tr>
+//     <tr><td>9</td><td>Certified Identity Document and Supporting Annexures</td><td><span class="badge badge--c">See Annexures</span></td></tr>
+//   </tbody>
+// </table>
+// <div class="pb"></div>
 
-//                 .grid-info { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px; font-size: 12px; }
-//                 .grid-info div { background: #f8fafc; padding: 10px; border: 1px solid #e2e8f0; border-radius: 4px; }
-//                 .grid-info span { font-weight: bold; display: block; margin-bottom: 4px; color: #475569; font-size: 10px; text-transform: uppercase; }
+// ${dividerPage("1", "Progress Report", "Summary of all assessed module components including knowledge, practical skills, and workplace experience.")}
+// <div class="pb"></div>
 
-//                 .divider-page { height: 95vh; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; box-sizing: border-box; padding: 40px; border: 10px solid; }
-//                 .divider-page h1 { font-size: 36px; text-transform: uppercase; margin: 0; }
+// ${sectionHeader("1", "Progress Report", "Comprehensive Module Outcome Summary")}
 
-//                 .eval-box { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 15px; margin-bottom: 25px; font-size: 12px; page-break-inside: avoid; }
-//                 .eval-row { display: flex; margin-bottom: 8px; }
-//                 .eval-label { font-weight: bold; width: 140px; color: #0f172a; flex-shrink: 0; }
-//                 .eval-value { flex: 1; color: #475569; }
+// <div class="data-grid">
+//   ${dc("Learner Name", learner.fullName)}
+//   ${dc("Identity Number", learner.idNumber)}
+//   ${dc("Programme Title", learner.qualification?.name || enrollment.qualificationName || "N/A")}
+//   ${dc("Primary Assessor", primaryAssessor, "ink-ass")}
+//   ${dc("Training Start Date", fmt(enrollment.trainingStartDate || learner.trainingStartDate))}
+//   ${dc("Training End Date", fmt(enrollment.trainingEndDate || learner.trainingEndDate))}
+//   <div class="data-cell data-cell--span2">
+//     <span class="data-cell__label">Training Site / Workplace</span>
+//     <span class="data-cell__value">${enrollment.employerName || "mLab Default Training Campus"}</span>
+//   </div>
+// </div>
 
-//                 .text-blue { color: #0284c7 !important; }
-//                 .text-red { color: #dc2626 !important; }
-//                 .text-green { color: #16a34a !important; }
+// <div class="sub-heading">Knowledge Modules</div>
+// <table class="poe-table poe-table--accented">
+//   <thead><tr><th>Module Code</th><th>Module Title</th><th width="80">Attempts</th><th width="120">Outcome</th></tr></thead>
+//   <tbody>${progressRows(kmSubs)}</tbody>
+// </table>
 
-//                 .outcome-C { color: #16a34a; font-weight: bold; font-size: 12px; }
-//                 .outcome-NYC { color: #dc2626; font-weight: bold; font-size: 12px; }
+// <div class="sub-heading">Practical Skills Modules</div>
+// <table class="poe-table poe-table--accented">
+//   <thead><tr><th>Module Code</th><th>Module Title</th><th width="80">Attempts</th><th width="120">Outcome</th></tr></thead>
+//   <tbody>${progressRows(pmSubs)}</tbody>
+// </table>
 
-//                 .question-box { margin-bottom: 20px; border-bottom: 1px solid #f1f5f9; padding-bottom: 15px; page-break-inside: avoid; }
-//                 .q-text { font-weight: bold; font-size: 13px; margin-bottom: 5px; color: #0f172a; }
-//                 .a-text { background: #ffffff; padding: 10px; border: 1px solid #e2e8f0; border-left: 4px solid #94a3b8; font-size: 12px; white-space: pre-wrap; border-radius: 4px; overflow-wrap: break-word; }
-//                 .a-link { color: #0284c7; text-decoration: underline; font-weight: bold; }
+// <div class="sub-heading">Work Experience Modules</div>
+// <table class="poe-table poe-table--accented">
+//   <thead><tr><th>Module Code</th><th>Module Title</th><th width="80">Attempts</th><th width="120">Outcome</th></tr></thead>
+//   <tbody>${progressRows(wmSubs)}</tbody>
+// </table>
 
-//                 .f-text { margin-top: 8px; font-size: 11px; background: #f8fafc; padding: 8px; border-radius: 4px; border: 1px solid #e2e8f0; }
-//                 .f-item { margin-bottom: 4px; padding-bottom: 4px; border-bottom: 1px dashed #cbd5e1; }
-//                 .f-item:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+// <div class="sig-bar">
+//   <div>
+//     <div class="sig-bar__label">Assessor Sign-Off</div>
+//     <div style="font-size:9px; color:#9b9b9b; margin-top:2px;">I declare this progress report accurate and complete.</div>
+//   </div>
+//   ${globalAssessorSigUrl ? `<img src="${globalAssessorSigUrl}" class="sig-bar__img" />` : `<span class="sig-bar__pending">Pending digital signature</span>`}
+//   <div class="sig-bar__date">Date: ${fmt(new Date())}</div>
+// </div>
+// <div class="pb"></div>`;
 
-//                 .sig-inline { margin-top: 20px; border: 1px solid #cbd5e1; padding: 15px; background: #f8fafc; page-break-inside: avoid; display: flex; align-items: center; justify-content: space-between; }
-//                 .sig-inline img { max-height: 40px; mix-blend-mode: multiply; }
+//       html += `
+// ${dividerPage("2", "Competence Record & Final Assessment Report", "Official system-generated transcripts, grading evidence, and signed evaluations for every module assessed.")}
+// <div class="pb"></div>`;
 
-//                 .sig-wrapper { margin-top: 30px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; page-break-inside: avoid; }
-//                 .sig-box { border: 1px solid #cbd5e1; padding: 10px; text-align: center; font-size: 11px; background: #f8fafc; border-top: 3px solid #cbd5e1; border-radius: 4px; }
-//                 .sig-box h4 { margin: 0 0 5px 0; color: #0f172a; font-size: 11px; }
-//                 .sig-img { max-height: 40px; max-width: 100%; object-fit: contain; margin: 4px auto; display: block; mix-blend-mode: multiply; }
-//                 .sig-placeholder { height: 40px; display: flex; align-items: center; justify-content: center; font-style: italic; color: #cbd5e1; font-size: 10px; margin: 4px 0; }
-//                 .sig-name { font-weight: bold; font-size: 12px; margin: 8px 0; border-bottom: 1px dashed #cbd5e1; padding-bottom: 5px; }
-//                 .sig-date { color: #64748b; }
-//             </style>
-//         </head>
-//         <body>
-//             <div class="cover">
-//                 <img src="${companyLogoUrl}" alt="Logo" class="cover-logo" />
-//                 <h1>Master Portfolio of Evidence</h1>
-//                 <h2>QCTO QUALIFICATION COMPLIANCE RECORD</h2>
-//                 <div class="cover-details">
-//                     <p><strong>Learner Name:</strong> ${learner.fullName || "N/A"}</p>
-//                     <p><strong>Identity Number:</strong> ${learner.idNumber || "N/A"}</p>
-//                     <p><strong>Email Address:</strong> ${learner.email || "N/A"}</p>
-//                     <p><strong>Date Generated:</strong> ${safelyFormatDate(new Date())}</p>
-//                     <p><strong>System Reference:</strong> ${requestId}</p>
-//                 </div>
-//             </div>
-//             <div class="page-break"></div>
-
-//             <div class="section-title">Assessor PoE Checklist</div>
-//             <table>
-//                 <thead>
-//                     <tr><th>#</th><th>Contents</th><th>Status</th></tr>
-//                 </thead>
-//                 <tbody>
-//                     <tr><td>1</td><td>Progress Report</td><td><strong>Yes</strong></td></tr>
-//                     <tr><td>2</td><td>Competence Record and Final Assessment Report</td><td><strong>Yes</strong></td></tr>
-//                     <tr><td>3</td><td>Learner Registration Form</td><td><strong>Yes</strong></td></tr>
-//                     <tr><td>4</td><td>Letter of Commitment from Learner</td><td><strong>Yes</strong></td></tr>
-//                     <tr><td>5</td><td>Programme Induction</td><td><strong>Yes</strong></td></tr>
-//                     <tr><td>6</td><td>Appeals / Complaint Forms</td><td><strong>Available on request</strong></td></tr>
-//                     <tr><td>7</td><td>Actual Learning Plan and Evidence Control Sheet</td><td><strong>Yes</strong></td></tr>
-//                     <tr><td>8</td><td>Learner Coaching Record (Remediation)</td><td><strong>Yes</strong> (If applicable)</td></tr>
-//                     <tr><td>9</td><td>Certified ID Document & CV</td><td><strong>Yes</strong> (See Annexures)</td></tr>
-//                 </tbody>
-//             </table>
-//             <div class="page-break"></div>
-
-//             <div class="section-title">Progress Report</div>
-//             <div class="grid-info">
-//                 <div><span>Learner Name</span>${learner.fullName || "N/A"}</div>
-//                 <div><span>Learner ID Number</span>${learner.idNumber || "N/A"}</div>
-//                 <div><span>Programme Title</span>${learner.qualification?.name || submissions[0]?.qualificationName || "Software Developer"}</div>
-//                 <div><span>Assessor Name</span>${primaryAssessor}</div>
-//                 <div><span>Start Date</span>${safelyFormatDate(enrollment.trainingStartDate || learner.trainingStartDate)}</div>
-//                 <div><span>End Date</span>${safelyFormatDate(enrollment.trainingEndDate || learner.trainingEndDate)}</div>
-//                 <div style="grid-column: span 2;"><span>Workplace / Practical Site</span>${enrollment.employerName || "mLab Default Training Campus"}</div>
-//             </div>
-
-//             <div class="sub-title">Knowledge Modules</div>
-//             <table>
-//                 <thead><tr><th>Module Number</th><th>Title</th><th>C/NYC</th></tr></thead>
-//                 <tbody>${renderProgressRows(kmSubs)}</tbody>
-//             </table>
-
-//             <div class="sub-title">Practical Skills Modules</div>
-//             <table>
-//                 <thead><tr><th>Module Number</th><th>Title</th><th>C/NYC</th></tr></thead>
-//                 <tbody>${renderProgressRows(pmSubs)}</tbody>
-//             </table>
-
-//             <div class="sub-title">Work Experience Modules</div>
-//             <table>
-//                 <thead><tr><th>Module Number</th><th>Title</th><th>C/NYC</th></tr></thead>
-//                 <tbody>${renderProgressRows(wmSubs)}</tbody>
-//             </table>
-
-//             <div class="sig-inline">
-//                 <div>
-//                     <strong>Assessor Sign-Off:</strong><br/>
-//                     <span style="font-size:10px; color:#64748b;">I declare this progress report accurate.</span>
-//                 </div>
-//                 ${assessorSigUrl ? `<img src="${assessorSigUrl}" />` : `<i>Pending Digital Signature</i>`}
-//                 <div><strong>Date:</strong> ${safelyFormatDate(new Date())}</div>
-//             </div>
-//             <div class="page-break"></div>
-
-//             <div class="section-title">Actual Learning Plan & Evidence Control Sheet</div>
-//             <table>
-//                 <thead>
-//                     <tr>
-//                         <th rowspan="2">Module Code</th>
-//                         <th rowspan="2">Facilitator</th>
-//                         <th rowspan="2">Dates Active</th>
-//                         <th colspan="3" style="text-align:center;">Evidence Type</th>
-//                         <th colspan="2" style="text-align:center;">Outcome</th>
-//                     </tr>
-//                     <tr>
-//                         <th style="font-size:9px; text-align:center;">Knowledge</th>
-//                         <th style="font-size:9px; text-align:center;">Practical</th>
-//                         <th style="font-size:9px; text-align:center;">Workplace</th>
-//                         <th style="font-size:9px; text-align:center;">C</th>
-//                         <th style="font-size:9px; text-align:center;">NYC</th>
-//                     </tr>
-//                 </thead>
-//                 <tbody>
-//                     ${renderLearningPlanRows(submissions)}
-//                 </tbody>
-//             </table>
-//             <div class="page-break"></div>
-
-//             <div class="section-title">Judging Evidence Principles</div>
-//             <p style="font-size:12px; margin-bottom: 10px;">The Assessor confirms the following principles were met during the evaluation of the learner's evidence:</p>
-//             <table>
-//                 <thead><tr><th>Assessment Principles</th><th>Knowledge</th><th>Practical / Workplace</th></tr></thead>
-//                 <tbody>
-//                     <tr><td><strong>Relevant:</strong> Relates to specific programme components.</td><td>Yes</td><td>Yes</td></tr>
-//                     <tr><td><strong>Valid:</strong> Shows the candidate can perform the function.</td><td>Yes</td><td>Yes</td></tr>
-//                     <tr><td><strong>Authentic:</strong> Evidence is the candidate's own work.</td><td>Yes</td><td>Yes</td></tr>
-//                     <tr><td><strong>Consistent:</strong> Shows repeatable performance to standard.</td><td>Yes</td><td>Yes</td></tr>
-//                     <tr><td><strong>Current:</strong> Evidence relates to current competence.</td><td>Yes</td><td>Yes</td></tr>
-//                     <tr><td><strong>Sufficient:</strong> Enough evidence collected to make judgement.</td><td>Yes</td><td>Yes</td></tr>
-//                 </tbody>
-//             </table>
-
-//             <div class="section-title" style="margin-top:40px;">Letter of Commitment</div>
-//             <div style="background:#f8fafc; padding:15px; border:1px solid #cbd5e1; font-size:12px; border-radius:6px; margin-bottom:20px;">
-//                 <p>I undertake to fulfil all the requirements of the assessment and training practices as specified by the assessor and service provider.</p>
-//                 <p>I also declare that all the work handed in including assignments and case studies is authentic (my own work) and current.</p>
-//                 <p>I am aware that in order to graduate from this programme I need to meet all compulsory requirements including being declared competent on all components that form the basis of this programme.</p>
-//             </div>
-
-//             <div class="sig-inline" style="margin-top:0;">
-//                 <div>
-//                     <strong>Learner Sign-Off:</strong>
-//                 </div>
-//                 ${learnerSignatureUrl ? `<img src="${learnerSignatureUrl}" />` : `<i>Pending Digital Signature</i>`}
-//                 <div><strong>Date:</strong> ${safelyFormatDate(submissions[0]?.assignedAt || new Date())}</div>
-//             </div>
-
-//             <div class="divider-page" style="margin-top: 40px; height: auto; padding: 20px; border-color: #073f4e;">
-//                 <h1 style="font-size:24px;">Assessment Evidence Records</h1>
-//                 <p>The following pages contain the official system transcripts, grading feedback, and evidence links for every module assessed.</p>
-//             </div>
-//             <div class="page-break"></div>
-//         `;
-
-//       let index = 0;
+//       let moduleIndex = 0;
 //       for (const sub of submissions) {
-//         index++;
+//         moduleIndex++;
 //         await updateProgress(
-//           30 + Math.floor((index / submissions.length) * 40),
-//           `Compiling: ${sub.title || "Module"}...`,
+//           30 + Math.floor((moduleIndex / submissions.length) * 35),
+//           `Compiling transcript: ${sub.title || "Module"}…`,
 //         );
 
 //         const assessmentSnap = await admin
@@ -1021,91 +2023,145 @@ export const createLearnerAccount = onRequest((req, res) => {
 //           .get();
 //         const assessmentData = assessmentSnap.data() || {};
 //         const blocks = assessmentData.blocks || [];
-
 //         const grading = sub.grading || {};
 //         const moderation = sub.moderation || {};
 //         const answers = sub.answers || {};
 
+//         const att = sub.attemptNumber || 1;
+//         const isReassess = att > 1;
 //         const facFeedback =
 //           sub.facilitatorOverallFeedback ||
 //           grading.facilitatorOverallFeedback ||
-//           "<i>No facilitator comments.</i>";
+//           "<em>No facilitator comments recorded.</em>";
 //         const assFeedback =
-//           grading.assessorOverallFeedback || "<i>No assessor feedback.</i>";
+//           grading.assessorOverallFeedback ||
+//           "<em>No assessor feedback recorded.</em>";
 //         const modFeedback =
-//           moderation.feedback || "<i>No moderation comments.</i>";
+//           moderation.feedback || "<em>No moderation comments recorded.</em>";
 
-//         const compClass =
-//           sub.competency === "C"
-//             ? "outcome-C"
-//             : sub.competency === "NYC"
-//               ? "outcome-NYC"
-//               : "outcome-Pending";
-//         const compText =
-//           sub.competency === "C"
-//             ? "COMPETENT (C)"
-//             : sub.competency === "NYC"
-//               ? "NOT YET COMPETENT (NYC)"
-//               : "PENDING";
+//         // =========================================================================================
+//         // SIGNATURE SNAPSHOT RESOLUTION (PER MODULE)
+//         // =========================================================================================
+//         const learnerSigUrl =
+//           sub.learnerDeclaration?.signatureUrl ||
+//           (learner.authUid ? signaturesMap[learner.authUid] : null);
+//         const facSigUrl =
+//           sub.grading?.facilitatorSignatureUrl ||
+//           (sub.facilitatorId ? signaturesMap[sub.facilitatorId] : null);
+//         const assSigUrl =
+//           sub.grading?.assessorSignatureUrl ||
+//           (sub.assessorId ? signaturesMap[sub.assessorId] : null);
+//         const modSigUrl =
+//           sub.moderation?.moderatorSignatureUrl ||
+//           (sub.moderatorId ? signaturesMap[sub.moderatorId] : null);
 
-//         const moduleBreadcrumb = sub.moduleNumber || sub.title || "Module";
+//         const facName =
+//           sub.facilitatorName || grading.facilitatorName || "Pending";
+//         const assessorName = grading.assessorName || "Pending";
+//         const assessorReg = grading.assessorRegNumber
+//           ? `Reg: ${grading.assessorRegNumber}`
+//           : "";
+//         const modName = moderation.moderatorName || "Pending";
+//         const modReg = moderation.moderatorRegNumber
+//           ? `Reg: ${moderation.moderatorRegNumber}`
+//           : "";
+//         const moduleBc = sub.moduleNumber || sub.title || "Module";
 
-//         // INJECT OPEN BOOK DECLARATION IF APPLICABLE
-//         let openBookHtml = "";
-//         if (assessmentData.isOpenBook && assessmentData.referenceManualUrl) {
-//           openBookHtml = `
-//             <div style="background: #f0f9ff; border: 1px solid #bae6fd; border-left: 4px solid #0ea5e9; padding: 12px; margin-bottom: 20px; border-radius: 4px; font-size: 11px;">
-//                 <strong style="color: #0369a1; display: block; margin-bottom: 6px; font-size: 12px; text-transform: uppercase;">📖 Open Book Assessment Conditions</strong>
-//                 <span style="color: #0c4a6e; display: block; margin-bottom: 6px;">The learner was provided with an official reference manual during this assessment. The reference manual used is archived and verifiable via the link below:</span>
-//                 <a href="${assessmentData.referenceManualUrl}" style="color: #0284c7; text-decoration: underline; font-weight: bold; word-break: break-all;">${assessmentData.referenceManualUrl}</a>
-//             </div>
-//             `;
-//         }
+//         const modInfo = assessmentData.moduleInfo || assessmentData || {};
+//         const nqfLevel = modInfo.nqfLevel ? `Level ${modInfo.nqfLevel}` : "N/A";
+//         const notionalHours = modInfo.notionalHours || "N/A";
+//         const credits = modInfo.credits ? `Cr ${modInfo.credits}` : "N/A";
 
-//         htmlContent += `
-//                 <div class="module-header">
-//                     <h2 style="margin:0; color:#073f4e;">${sub.moduleNumber ? sub.moduleNumber + ": " : ""}${sub.title || "Untitled"}</h2>
-//                 </div>
+//         const learnerDate = fmt(
+//           sub.submittedAt || sub.learnerDeclaration?.timestamp,
+//         );
+//         const facDate = fmt(
+//           sub.facilitatorReviewedAt || grading.facilitatorReviewedAt,
+//         );
+//         const assDate = fmt(sub.gradedAt || grading.gradedAt);
+//         const modDate = fmt(moderation.moderatedAt);
 
-//                 ${openBookHtml}
+//         html += `
+// <div class="module-header pbi">
+//   <div>
+//     <h2 class="module-header__title">${sub.title || "Untitled Module"}</h2>
+//   </div>
+//   <div class="module-header__badges">
+//     ${outcomeBadge(sub.competency)}
+//     ${isReassess ? `<span class="badge badge--attempt">Attempt ${att}</span>` : `<span class="badge badge--attempt1">Attempt 1</span>`}
+//   </div>
+// </div>
 
-//                 <div class="eval-box">
-//                     <div class="eval-row">
-//                         <div class="eval-label">Final Outcome:</div>
-//                         <div class="eval-value"><span class="${compClass}">${compText}</span></div>
-//                     </div>
-//                     <div class="eval-row">
-//                         <div class="eval-label">Assessment Score:</div>
-//                         <div class="eval-value"><strong>${sub.marks !== undefined ? sub.marks : "-"} / ${sub.totalMarks || "-"}</strong></div>
-//                     </div>
-//                     <hr style="border:0; border-top:1px solid #e2e8f0; margin:10px 0;" />
-//                     <div class="eval-row text-blue">
-//                         <div class="eval-label">Facilitator Note:</div>
-//                         <div class="eval-value">${facFeedback}</div>
-//                     </div>
-//                     <div class="eval-row text-red">
-//                         <div class="eval-label">Assessor Feedback:</div>
-//                         <div class="eval-value">${assFeedback}</div>
-//                     </div>
-//                     <div class="eval-row text-green">
-//                         <div class="eval-label">Moderator Review:</div>
-//                         <div class="eval-value">${modFeedback}</div>
-//                     </div>
-//                 </div>
+// <table class="poe-table" style="margin-top:-12px; margin-bottom:16px;">
+//   <thead>
+//     <tr>
+//       <th>Module #</th>
+//       <th>NQF Level</th>
+//       <th>Notional hours</th>
+//       <th>Credit(s)</th>
+//     </tr>
+//   </thead>
+//   <tbody>
+//     <tr>
+//       <td style="font-weight:bold; color:#073f4e;">${sub.moduleNumber || modInfo.moduleNumber || "N/A"}</td>
+//       <td>${nqfLevel}</td>
+//       <td>${notionalHours}</td>
+//       <td>${credits}</td>
+//     </tr>
+//   </tbody>
+// </table>
 
-//                 <div class="evidence-list">
-//             `;
+// ${
+//   assessmentData.isOpenBook && assessmentData.referenceManualUrl
+//     ? `
+// <div class="openbook-notice pbi">
+//   <span class="openbook-notice__icon">Open Book</span>
+//   <div>
+//     Learner was provided an official reference manual during this assessment.
+//     Archived reference: <a href="${assessmentData.referenceManualUrl}" class="a-link">${assessmentData.referenceManualUrl}</a>
+//   </div>
+// </div>`
+//     : ""
+// }
+
+// <div class="eval-box pbi">
+//   <div class="eval-box__row">
+//     <div class="eval-box__label">Final Outcome</div>
+//     <div class="eval-box__value">${outcomeBadge(sub.competency)}</div>
+//   </div>
+//   <div class="eval-box__row">
+//     <div class="eval-box__label">Assessment Score</div>
+//     <div class="eval-box__value"><strong>${sub.marks !== undefined ? sub.marks : "–"} / ${sub.totalMarks || "–"}</strong></div>
+//   </div>
+//   <div class="eval-box__row">
+//     <div class="eval-box__label">Submission Attempt</div>
+//     <div class="eval-box__value">${att}${isReassess ? ' <span class="badge badge--attempt" style="margin-left:8px;">Reassessment</span>' : ""}</div>
+//   </div>
+//   <div class="eval-box__divider"></div>
+//   <div class="eval-box__row">
+//     <div class="eval-box__label">Facilitator Note</div>
+//     <div class="eval-box__value ink-fac">${facFeedback}</div>
+//   </div>
+//   <div class="eval-box__row">
+//     <div class="eval-box__label">Assessor Feedback</div>
+//     <div class="eval-box__value ink-ass">${assFeedback}</div>
+//   </div>
+//   <div class="eval-box__row">
+//     <div class="eval-box__label">Moderator Review</div>
+//     <div class="eval-box__value ink-mod">${modFeedback}</div>
+//   </div>
+// </div>`;
 
 //         if (blocks.length > 0) {
 //           let qNum = 1;
 //           blocks.forEach((block: any) => {
 //             if (block.type === "section") {
-//               htmlContent += `<h3 style="margin-top: 25px; padding-bottom: 5px; border-bottom: 2px solid #cbd5e1;">${block.title}</h3>`;
+//               html += `<div class="sub-heading">${block.title}</div>`;
 //               return;
 //             }
 //             if (block.type === "info") return;
 
-//             const blockBreadcrumb =
+//             const blockBc =
 //               block.weCode || block.code || block.title || `Q${qNum}`;
 //             const ans =
 //               answers[block.id] !== undefined
@@ -1128,22 +2184,19 @@ export const createLearnerAccount = onRequest((req, res) => {
 //                 if (ans.text && ans.text !== "<p></p>")
 //                   formattedAnswer += `<div>${ans.text}</div>`;
 //                 if (ans.url)
-//                   formattedAnswer += `<div>🔗 <a class="a-link" href="${ans.url}">External Link</a></div>`;
+//                   formattedAnswer += `<div>&#x1F517; <a class="a-link" href="${ans.url}">External Link</a></div>`;
 //                 if (ans.code)
-//                   formattedAnswer += `<pre style="background:#f8fafc; padding:10px; border:1px solid #e2e8f0;">${ans.code}</pre>`;
+//                   formattedAnswer += `<pre style="background:#f4f7f9; padding:10px; border:1px solid #dde4e8; font-size:10px; overflow-wrap:break-word;">${ans.code}</pre>`;
 
 //                 if (ans.uploadUrl) {
-//                   const annIndex = offlineEvidenceFiles.length + 1;
-//                   const detailedLabel = `${moduleBreadcrumb} | ${blockBreadcrumb}`;
-
+//                   const annIdx = offlineEvidenceFiles.length + 1;
+//                   const annLabel = `${moduleBc} | ${blockBc}`;
 //                   offlineEvidenceFiles.push({
-//                     index: annIndex,
+//                     index: annIdx,
 //                     url: ans.uploadUrl,
-//                     label: detailedLabel,
+//                     label: annLabel,
 //                   });
-//                   formattedAnswer += `<div style="margin-top:5px; padding:8px; background:#fffbeb; border:1px solid #fde68a; border-radius:4px; font-size:11px;">
-//                         📎 <a class="a-link" href="${ans.uploadUrl}"><strong>Appended as Annexure ${annIndex}</strong> (${detailedLabel})</a>
-//                     </div>`;
+//                   formattedAnswer += `<div class="a-annex">&#x1F4CE; <a class="a-link" href="${ans.uploadUrl}"><strong>Appended as Annexure ${annIdx}</strong></a> — ${annLabel}</div>`;
 //                 }
 
 //                 Object.keys(ans).forEach((k) => {
@@ -1153,30 +2206,24 @@ export const createLearnerAccount = onRequest((req, res) => {
 //                     if (subAns.text && subAns.text !== "<p></p>")
 //                       subHtml += `<div>${subAns.text}</div>`;
 //                     if (subAns.url)
-//                       subHtml += `<div>🔗 <a class="a-link" href="${subAns.url}">External Link</a></div>`;
+//                       subHtml += `<div><a class="a-link" href="${subAns.url}">External Link</a></div>`;
 //                     if (subAns.code)
-//                       subHtml += `<pre style="background:#f8fafc; padding:10px;">${subAns.code}</pre>`;
-
+//                       subHtml += `<pre style="background:#f4f7f9; padding:8px;">${subAns.code}</pre>`;
 //                     if (subAns.uploadUrl) {
-//                       const annIndex = offlineEvidenceFiles.length + 1;
-//                       const nestedLabel = `${moduleBreadcrumb} | ${blockBreadcrumb} | ${k.replace(/_/g, " ").toUpperCase()}`;
-
+//                       const annIdx = offlineEvidenceFiles.length + 1;
+//                       const annLabel = `${moduleBc} | ${blockBc} | ${k.replace(/_/g, " ").toUpperCase()}`;
 //                       offlineEvidenceFiles.push({
-//                         index: annIndex,
+//                         index: annIdx,
 //                         url: subAns.uploadUrl,
-//                         label: nestedLabel,
+//                         label: annLabel,
 //                       });
-//                       subHtml += `<div style="margin-top:5px; padding:8px; background:#fffbeb; border:1px solid #fde68a; border-radius:4px; font-size:11px;">
-//                             📎 <a class="a-link" href="${subAns.uploadUrl}"><strong>Appended as Annexure ${annIndex}</strong> (${nestedLabel})</a>
-//                         </div>`;
+//                       subHtml += `<div class="a-annex">&#x1F4CE; <a class="a-link" href="${subAns.uploadUrl}"><strong>Annexure ${annIdx}</strong></a> — ${annLabel}</div>`;
 //                     }
-
-//                     if (subHtml) {
-//                       formattedAnswer += `<div style="margin-top:10px; padding:10px; border-left:3px solid #cbd5e1; background:#f8fafc;"><strong>Item: ${k.replace(/_/g, " ")}</strong>${subHtml}</div>`;
-//                     }
+//                     if (subHtml)
+//                       formattedAnswer += `<div style="margin-top:8px; padding:8px; border-left:3px solid #dde4e8; background:#f4f7f9;"><strong style="font-family:'Oswald',sans-serif;font-size:9px;letter-spacing:0.1em;text-transform:uppercase;">${k.replace(/_/g, " ")}</strong>${subHtml}</div>`;
 //                   } else if (
 //                     typeof subAns === "string" &&
-//                     subAns.trim() !== "" &&
+//                     subAns.trim() &&
 //                     !["text", "url", "uploadUrl", "code"].includes(k)
 //                   ) {
 //                     formattedAnswer += `<div><strong>${k.replace(/_/g, " ")}:</strong> ${subAns}</div>`;
@@ -1184,149 +2231,368 @@ export const createLearnerAccount = onRequest((req, res) => {
 //                 });
 //               }
 //             }
-//             if (formattedAnswer === "")
-//               formattedAnswer = "<i>No evidence provided.</i>";
-
-//             let specificFeedback = "";
-//             const seenComments = new Set<string>();
-
-//             const addFeedback = (
-//               role: string,
-//               text: string,
-//               colorClass: string,
-//             ) => {
-//               if (!text || text.trim() === "") return;
-//               const cleanText = text.trim();
-//               const key = `${role}:${cleanText}`;
-//               if (!seenComments.has(key)) {
-//                 seenComments.add(key);
-//                 specificFeedback += `<div class="f-item ${colorClass}"><strong>${role} Note:</strong> ${cleanText}</div>`;
-//               }
-//             };
+//             if (!formattedAnswer)
+//               formattedAnswer =
+//                 '<em class="text-muted">No evidence provided for this item.</em>';
 
 //             const fLayer = grading.facilitatorBreakdown?.[block.id] || {};
 //             const aLayer = grading.assessorBreakdown?.[block.id] || {};
 //             const mLayer = moderation.breakdown?.[block.id] || {};
 
-//             addFeedback("Facilitator", fLayer.feedback, "text-blue");
-//             addFeedback("Assessor", aLayer.feedback, "text-red");
-//             addFeedback("Moderator", mLayer.feedback, "text-green");
+//             const feedbackRows: string[] = [];
+//             const seenComments = new Set<string>();
+//             const addFb = (role: string, inkClass: string, text: string) => {
+//               const clean = text?.trim();
+//               if (!clean) return;
+//               const key = `${role}:${clean}`;
+//               if (!seenComments.has(key)) {
+//                 seenComments.add(key);
+//                 feedbackRows.push(
+//                   `<div class="f-row"><span class="f-role ${inkClass}">${role}</span><span class="f-comment ${inkClass}">${clean}</span></div>`,
+//                 );
+//               }
+//             };
+//             addFb("Facilitator", "ink-fac", fLayer.feedback);
+//             addFb("Assessor", "ink-ass", aLayer.feedback);
+//             addFb("Moderator", "ink-mod", mLayer.feedback);
+//             if (Array.isArray(fLayer.criteriaResults))
+//               fLayer.criteriaResults.forEach((c: any) =>
+//                 addFb("Facilitator", "ink-fac", c.comment),
+//               );
+//             if (Array.isArray(aLayer.criteriaResults))
+//               aLayer.criteriaResults.forEach((c: any) =>
+//                 addFb("Assessor", "ink-ass", c.comment),
+//               );
+//             if (Array.isArray(mLayer.criteriaResults))
+//               mLayer.criteriaResults.forEach((c: any) =>
+//                 addFb("Moderator", "ink-mod", c.comment),
+//               );
 
-//             if (Array.isArray(fLayer.criteriaResults)) {
-//               fLayer.criteriaResults.forEach((crit: any) =>
-//                 addFeedback("Facilitator", crit.comment, "text-blue"),
-//               );
-//             }
-//             if (Array.isArray(aLayer.criteriaResults)) {
-//               aLayer.criteriaResults.forEach((crit: any) =>
-//                 addFeedback("Assessor", crit.comment, "text-red"),
-//               );
-//             }
-//             if (Array.isArray(mLayer.criteriaResults)) {
-//               mLayer.criteriaResults.forEach((crit: any) =>
-//                 addFeedback("Moderator", crit.comment, "text-green"),
-//               );
-//             }
-
-//             htmlContent += `
-//                         <div class="question-box">
-//                             <div class="q-text">Q${qNum++}. ${block.question || block.title || "Checkpoint"}</div>
-//                             <div class="a-text">${formattedAnswer}</div>
-//                             ${specificFeedback ? `<div class="f-text">${specificFeedback}</div>` : ""}
-//                         </div>
-//                     `;
+//             html += `
+// <div class="q-block">
+//   <div class="q-text"><span class="q-num">${qNum++}</span>${block.question || block.title || "Checkpoint"}</div>
+//   <div class="a-text">${formattedAnswer}</div>
+//   ${feedbackRows.length ? `<div class="f-block">${feedbackRows.join("")}</div>` : ""}
+// </div>`;
 //           });
 //         } else {
-//           htmlContent += `<p style="color:#94a3b8; font-style:italic; padding: 20px; text-align: center; border: 1px dashed #cbd5e1;">Cannot map evidence: Assessment Template is empty.</p>`;
+//           html += `<div class="empty-state">Assessment template is empty — evidence blocks not mapped.</div>`;
 //         }
 
-//         htmlContent += `</div>`;
+//         try {
+//           const historySnap = await admin
+//             .firestore()
+//             .collection("learner_submissions")
+//             .doc(sub.id)
+//             .collection("history")
+//             .get();
+//           if (!historySnap.empty) {
+//             const pastAttempts = historySnap.docs
+//               .map((d) => d.data())
+//               .sort((a, b) => (a.attemptNumber || 1) - (b.attemptNumber || 1));
 
-//         const facSigUrl = sub.facilitatorId
-//           ? signaturesMap[sub.facilitatorId]
-//           : null;
-//         const assSigUrl = sub.gradedBy ? signaturesMap[sub.gradedBy] : null;
-//         const modSigUrl = sub.moderation?.moderatedBy
-//           ? signaturesMap[sub.moderation.moderatedBy]
-//           : null;
+//             html += `
+// <div class="history-box pbi">
+//   <div class="history-box__header">NYC Audit Trail — Previous Attempt Archive (${pastAttempts.length} attempt${pastAttempts.length !== 1 ? "s" : ""})</div>
+// `;
+//             pastAttempts.forEach((past, hi) => {
+//               const pastAtt = past.attemptNumber || hi + 1;
+//               const pastDate = fmt(past.submittedAt || past.assignedAt);
+//               const pastFeedback =
+//                 past.grading?.assessorOverallFeedback ||
+//                 past.facilitatorOverallFeedback ||
+//                 "No feedback recorded.";
 
-//         const learnerDate = safelyFormatDate(
-//           sub.submittedAt || sub.learnerDeclaration?.timestamp,
-//         );
-//         const facName =
-//           sub.facilitatorName || grading.facilitatorName || "Pending";
-//         const facDate = safelyFormatDate(
-//           sub.facilitatorReviewedAt || grading.facilitatorReviewedAt,
-//         );
-//         const assessorName = grading.assessorName || "Pending";
-//         const assessorReg = grading.assessorRegNumber
-//           ? `Reg: ${grading.assessorRegNumber}`
-//           : "";
-//         const assessorDate = safelyFormatDate(sub.gradedAt || grading.gradedAt);
-//         const modName = moderation.moderatorName || "Pending";
-//         const modReg = moderation.moderatorRegNumber
-//           ? `Reg: ${moderation.moderatorRegNumber}`
-//           : "";
-//         const modDate = safelyFormatDate(moderation.moderatedAt);
+//               let archiveLinkHtml = "";
 
-//         htmlContent += `
-//                 <div class="sig-wrapper">
-//                     <div class="sig-box">
-//                         <h4>Learner Declaration</h4>
-//                         ${learnerSignatureUrl ? `<img src="${learnerSignatureUrl}" class="sig-img" />` : `<div class="sig-placeholder">No signature on file</div>`}
-//                         <div class="sig-name">${learner.fullName || "Unknown Learner"}</div>
-//                         <span class="sig-date">Signed: ${learnerDate}</span>
-//                     </div>
-//                     <div class="sig-box sig-box-fac">
-//                         <h4>Facilitator Review</h4>
-//                         ${facSigUrl ? `<img src="${facSigUrl}" class="sig-img sig-img-fac" />` : `<div class="sig-placeholder">No signature on file</div>`}
-//                         <div class="sig-name">${facName}</div>
-//                         <span class="sig-date">Signed: ${facDate}</span>
-//                     </div>
-//                     <div class="sig-box sig-box-ass">
-//                         <h4>Assessor Endorsement</h4>
-//                         ${assSigUrl ? `<img src="${assSigUrl}" class="sig-img sig-img-ass" />` : `<div class="sig-placeholder">No signature on file</div>`}
-//                         <div class="sig-name">${assessorName}</div>
-//                         ${assessorReg ? `<div class="sig-reg">${assessorReg}</div>` : ""}
-//                         <span class="sig-date">Signed: ${assessorDate}</span>
-//                     </div>
-//                     <div class="sig-box sig-box-mod">
-//                         <h4>Moderator Verification</h4>
-//                         ${modSigUrl ? `<img src="${modSigUrl}" class="sig-img sig-img-mod" />` : `<div class="sig-placeholder">No signature on file</div>`}
-//                         <div class="sig-name">${modName}</div>
-//                         ${modReg ? `<div class="sig-reg">${modReg}</div>` : ""}
-//                         <span class="sig-date">Signed: ${modDate}</span>
-//                     </div>
-//                 </div>
-//                 <div class="page-break"></div>
-//             `;
+//               if (past.historyPdfUrl) {
+//                 archiveLinkHtml = `
+//                   <div style="margin-top:10px; padding:10px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:4px;">
+//                     <a href="${past.historyPdfUrl}" target="_blank" style="color:#1d4ed8; text-decoration:none; font-weight:bold; font-family:'Oswald',sans-serif; font-size:12px;">
+//                       📄 DOWNLOAD FULL ARCHIVED ATTEMPT PDF
+//                     </a>
+//                     <div style="font-size:9px; color:#64748b; margin-top:3px;">Contains all learner answers, rich text, and feedback for this attempt.</div>
+//                   </div>
+//                 `;
+//               } else {
+//                 archiveLinkHtml = `
+//                   <div style="margin-top:10px; padding:10px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:4px;">
+//                     <div style="font-size:11px; color:#475569; font-style:italic;">Legacy attempt. Full PDF snapshot is not available for this record.</div>
+//                   </div>
+//                 `;
+//               }
+
+//               html += `<div class="history-attempt">
+//       <div class="history-attempt__title">Attempt ${pastAtt} — Submitted ${pastDate}</div>
+//       <div style="font-size:10.5px; margin:4px 0 6px; display:flex; gap:16px;">
+//         <span><strong>Outcome:</strong> <span class="ink-ass">${past.competency || "NYC"}</span></span>
+//         <span><strong>Score:</strong> ${past.marks !== undefined ? past.marks : 0} / ${past.totalMarks || 0}</span>
+//       </div>
+//       <div style="font-size:10.5px;"><strong>Assessor Feedback:</strong> <span class="ink-ass">${pastFeedback}</span></div>
+//       ${archiveLinkHtml}
+//     </div>`;
+//             });
+//             html += `</div>`;
+//           }
+//         } catch (err) {
+//           console.error(`History fetch failed for ${sub.id}`, err);
+//         }
+
+//         html += `
+// <div class="sig-row">
+//   ${sigCell("Learner Declaration", "learner", learnerSigUrl, learner.fullName || "Unknown", "", learnerDate)}
+//   ${sigCell("Facilitator Review", "fac", facSigUrl, facName, "", facDate)}
+//   ${sigCell("Assessor Endorsement", "assessor", assSigUrl, assessorName, assessorReg, assDate)}
+//   ${sigCell("Moderator Verification", "mod", modSigUrl, modName, modReg, modDate)}
+// </div>
+// <div class="pb"></div>`;
 //       }
 
-//       if (offlineEvidenceFiles.length > 0) {
-//         htmlContent += `
-//              <div class="divider-page" style="border-color: #94a3b8; color: #475569; background-color: #f8fafc;">
-//                  <h1>Annexures</h1>
-//                  <h2>Offline Evidence Documents</h2>
-//                  <p>The following pages contain the exact files uploaded by the learner, mapped directly to their respective assessment items.</p>
-//              </div>
-//           `;
+//       const d = learnerUserDoc.demographics || learner.demographics || {};
+
+//       html += `
+// ${dividerPage("3", "Learner Registration & POPIA Consent Form", "Official enrolment, demographic data, and data processing consent.")}
+// <div class="pb"></div>
+// ${sectionHeader("3", "Learner Registration Form", "Enrolment and Demographic Record")}
+// <div class="data-grid">
+//   ${dc("Full Name", learner.fullName)}
+//   ${dc("Identity Number", learner.idNumber)}
+//   ${dc("Email Address", learner.email)}
+//   ${dc("Contact Number", learner.phone || d.phone)}
+//   ${dc("Equity / Race", d.equityCode)}
+//   ${dc("Gender", d.gender)}
+//   ${dc("Home Language", d.homeLanguage)}
+//   ${dc("Province", d.provinceCode)}
+// </div>
+
+// <h3 class="sub-heading" style="margin-top: 25px;">POPIA Consent Declaration</h3>
+// <div class="declaration">
+//   <p>In accordance with the <strong>Protection of Personal Information Act, 4 of 2013 (POPIA)</strong>, I hereby grant <strong>Mobile Applications Laboratory NPC</strong> and its authorized representatives consent to collect, process, and store my personal information.</p>
+//   <p>I understand and agree that:</p>
+//   <ol style="margin-top:0; padding-left:20px;">
+//     <li style="margin-bottom:8px;">My personal information will be processed solely for the purposes of enrollment, assessment, moderation, certification, and reporting to relevant statutory bodies (e.g., QCTO, SETAs, SAQA).</li>
+//     <li style="margin-bottom:8px;">My data will be stored securely and will not be shared with unauthorized third parties without my explicit consent.</li>
+//     <li style="margin-bottom:8px;">I have the right to access, update, or request the deletion of my personal information, subject to statutory record-keeping requirements.</li>
+//   </ol>
+//   <p style="margin-bottom:0;">By signing this document, I acknowledge that I have read, understood, and accept the terms regarding the processing of my personal data.</p>
+// </div>
+
+// <div class="sig-bar">
+//   <div class="sig-bar__label">Learner Signature (Registration & POPIA)</div>
+//   ${dayOneLearnerSigUrl ? `<img src="${dayOneLearnerSigUrl}" class="sig-bar__img" />` : `<span class="sig-bar__pending">Pending digital signature</span>`}
+//   <div class="sig-bar__date">Date: ${fmt(learner.createdAt || new Date())}</div>
+// </div>
+// <div class="pb"></div>
+
+// ${dividerPage("4", "Letter of Commitment", "Learner declaration of authenticity and commitment to programme requirements.")}
+// <div class="pb"></div>
+// ${sectionHeader("4", "Letter of Commitment from Learner", "Declaration of Authenticity and Programme Commitment")}
+// <div class="letter-body">
+//   <p>I, <strong>${learner.fullName || "___________________"}</strong>, hereby undertake to fulfil all the requirements of the assessment and training practices as specified by the assessor and the service provider, Mobile Applications Laboratory NPC.</p>
+//   <p>I declare that all work submitted — including assignments, assessments, and case studies — is authentic and represents my own current work. I understand that submission of work that is not my own constitutes academic misconduct and may result in disqualification.</p>
+//   <p>I am aware that in order to graduate from this programme I need to meet all compulsory requirements, including being declared Competent on all components that form the basis of this qualification.</p>
+//   <p>I understand and accept the appeals and grievance procedures available to me, and commit to engaging with the process constructively and professionally.</p>
+// </div>
+// <div class="sig-bar">
+//   <div class="sig-bar__label">Learner Sign-Off</div>
+//   ${dayOneLearnerSigUrl ? `<img src="${dayOneLearnerSigUrl}" class="sig-bar__img" />` : `<span class="sig-bar__pending">Pending digital signature</span>`}
+//   <div class="sig-bar__date">Date: ${fmt(submissions[0]?.assignedAt || new Date())}</div>
+// </div>
+// <div class="pb"></div>
+
+// ${dividerPage("5", "Programme Induction", "Confirmation that the learner received a comprehensive induction prior to assessment commencement.")}
+// <div class="pb"></div>
+// ${sectionHeader("5", "Programme Induction", "Formal Acknowledgement of Induction Completion")}
+// <div class="declaration">
+//   <p>This confirms that the learner named herein received a comprehensive induction into the programme, covering:</p>
+//   <p><strong>1. Curriculum Overview</strong> — Programme structure, module breakdown, notional hours, and credit values.</p>
+//   <p><strong>2. Assessment Methodology</strong> — QCTO assessment types (Knowledge, Practical, Workplace), submission formats, and grading criteria.</p>
+//   <p><strong>3. Appeals and Grievance Procedures</strong> — Learner rights, remediation pathways, and formal appeals process.</p>
+//   <p><strong>4. Workplace and Ethical Expectations</strong> — Professional conduct, attendance requirements, and submission authenticity standards.</p>
+// </div>
+// <div class="sig-row" style="grid-template-columns: 1fr 1fr;">
+//   ${sigCell("Learner Acknowledgement", "learner", dayOneLearnerSigUrl, learner.fullName || "Learner", "", fmt(submissions[0]?.assignedAt || new Date()))}
+//   ${sigCell("Facilitator Sign-Off", "fac", primaryFacSigUrl, "Programme Facilitator", "", fmt(submissions[0]?.assignedAt || new Date()))}
+// </div>
+// <div class="pb"></div>
+
+// ${dividerPage("6", "Appeals & Complaint Records", "Formal records of any grievances, disputes, or appeal proceedings lodged during this programme.")}
+// <div class="pb"></div>
+// ${sectionHeader("6", "Appeals & Complaint Records", "Formal Grievance and Appeal Log")}
+// `;
+
+//       if (appealedSubs.length > 0) {
+//         appealedSubs.forEach((s) => {
+//           const revBy =
+//             s.appeal?.resolvedBy || s.appeal?.reviewedBy || s.moderatorId;
+
+//           // Prefer snapshot saved on appeal, fallback to live profile map
+//           const revSig =
+//             s.appeal?.resolvedBySignatureUrl ||
+//             (revBy ? signaturesMap[revBy] : null);
+
+//           const revName =
+//             s.appeal?.resolvedByName ||
+//             s.appeal?.reviewedByName ||
+//             s.moderation?.moderatorName ||
+//             "Pending";
+//           const revDate = fmt(
+//             s.appeal?.resolvedAt || s.appeal?.reviewedAt || s.appeal?.date,
+//           );
+
+//           html += `
+// <div class="appeal-card pbi">
+//   <div class="appeal-card__head">
+//     <h4 class="appeal-card__title">Appeal: ${s.moduleNumber || ""} ${s.title}</h4>
+//     <span class="badge badge--nyc">${(s.appeal?.status || "Pending").toUpperCase()}</span>
+//   </div>
+//   <div class="appeal-card__body">
+//     <div class="data-grid data-grid--1col" style="margin-bottom:10px;">
+//       ${dc("Date of Appeal", fmt(s.appeal?.date))}
+//       ${dc("Reason for Appeal", s.appeal?.reason || "Not specified")}
+//       ${dc("Appeal Status", (s.appeal?.status || "Pending").toUpperCase())}
+//       ${s.appeal?.resolutionNotes ? dc("Board Resolution", s.appeal.resolutionNotes) : ""}
+//     </div>
+//     <div style="border-top: 1px dashed #fecaca; padding-top: 10px; margin-top: 10px;">
+//       <div class="data-cell__label" style="color: #b91c1c;">Resolved By / Signature</div>
+//       ${revSig ? `<img src="${revSig}" style="max-height: 35px; mix-blend-mode: multiply; margin: 4px 0;" />` : `<div style="height:35px; font-style:italic; font-size:10px; color:#b91c1c; display:flex; align-items:center;">Pending Signature</div>`}
+//       <div class="ink-mod" style="font-weight: 700; font-size: 11px; font-family: 'Oswald', sans-serif;">${revName}</div>
+//       <div class="ink-mod" style="font-size: 9px;">Date: ${revDate}</div>
+//     </div>
+//   </div>
+// </div>`;
+//         });
+//       } else {
+//         html += `
+// <div class="notice notice--grey pbi">
+//   <div class="notice__title">Status: No Appeals Lodged</div>
+//   <div class="notice__body">No formal appeals or complaints were registered by the learner for any module in this programme.</div>
+// </div>`;
 //       }
 
-//       htmlContent += `</body></html>`;
+//       html += `
+// <div class="pb"></div>
 
-//       await updateProgress(70, "Finalizing Assessment Layout...");
+// ${dividerPage("7", "Actual Learning Plan & Evidence Control Sheet", "Full audit trail mapping all modules to facilitators, date ranges, evidence types, and competency outcomes.")}
+// <div class="pb"></div>
+// ${sectionHeader("7", "Actual Learning Plan & Evidence Control Sheet", "Evidence Type Matrix and Outcome Register")}
+
+// <table class="poe-table">
+//   <thead>
+//     <tr>
+//       <th rowspan="2">Module Code</th>
+//       <th rowspan="2">Facilitator</th>
+//       <th rowspan="2">Assessment Period</th>
+//       <th colspan="3" style="text-align:center; border-bottom:1px solid rgba(255,255,255,0.15);">Evidence Type</th>
+//       <th colspan="2" style="text-align:center; border-bottom:1px solid rgba(255,255,255,0.15);">Outcome</th>
+//     </tr>
+//     <tr>
+//       <th style="text-align:center; font-size:8px;">Knowledge</th>
+//       <th style="text-align:center; font-size:8px;">Practical</th>
+//       <th style="text-align:center; font-size:8px;">Workplace</th>
+//       <th style="text-align:center; font-size:8px; color:#94c73d;">C</th>
+//       <th style="text-align:center; font-size:8px; color:#fca5a5;">NYC</th>
+//     </tr>
+//   </thead>
+//   <tbody>${learningPlanRows(submissions)}</tbody>
+// </table>
+
+// <div class="sub-heading mt-8">Evidence Judging Principles</div>
+// <table class="poe-table">
+//   <thead><tr><th>Assessment Principle</th><th width="90" style="text-align:center;">Knowledge</th><th width="120" style="text-align:center;">Practical / Workplace</th></tr></thead>
+//   <tbody>
+//     <tr><td><strong>Relevant</strong> — Evidence relates directly to specific programme learning outcomes.</td><td class="text-center"><span class="badge badge--c">Met</span></td><td class="text-center"><span class="badge badge--c">Met</span></td></tr>
+//     <tr><td><strong>Valid</strong> — Evidence demonstrates the learner can perform the required function.</td><td class="text-center"><span class="badge badge--c">Met</span></td><td class="text-center"><span class="badge badge--c">Met</span></td></tr>
+//     <tr><td><strong>Authentic</strong> — Evidence is confirmed as the learner's own work.</td><td class="text-center"><span class="badge badge--c">Met</span></td><td class="text-center"><span class="badge badge--c">Met</span></td></tr>
+//     <tr><td><strong>Consistent</strong> — Evidence demonstrates repeatable performance to the required standard.</td><td class="text-center"><span class="badge badge--c">Met</span></td><td class="text-center"><span class="badge badge--c">Met</span></td></tr>
+//     <tr><td><strong>Current</strong> — Evidence reflects learner's current level of competence.</td><td class="text-center"><span class="badge badge--c">Met</span></td><td class="text-center"><span class="badge badge--c">Met</span></td></tr>
+//     <tr><td><strong>Sufficient</strong> — Adequate evidence has been collected to support a judgement.</td><td class="text-center"><span class="badge badge--c">Met</span></td><td class="text-center"><span class="badge badge--c">Met</span></td></tr>
+//   </tbody>
+// </table>
+
+// <div class="sig-row" style="grid-template-columns: 1fr;">
+//   ${sigCell("Assessor Endorsement", "assessor", globalAssessorSigUrl, primaryAssessor, "", fmt(new Date()))}
+// </div>
+// <div class="pb"></div>
+
+// ${dividerPage("8", "Learner Coaching Record", "Formal documentation of all coaching, remediation sessions, and intervention records for Not Yet Competent modules.")}
+// <div class="pb"></div>
+// ${sectionHeader("8", "Learner Coaching Record (Remediation)", "Intervention Log for NYC Modules")}
+// `;
+
+//       if (remediatedSubs.length > 0) {
+//         remediatedSubs.forEach((s) => {
+//           const log = s.latestCoachingLog || {};
+//           const facId =
+//             log.facilitatorId || s.grading?.facilitatorId || s.facilitatorId;
+
+//           // Prefer snapshot, fallback to live profile map
+//           const facSig =
+//             log.facilitatorSignatureUrl ||
+//             (facId ? signaturesMap[facId] : null);
+
+//           // Using the latestLearnerSigUrl instead of globalLearnerSigUrl
+//           const learnerAckSig =
+//             log.learnerSignatureUrl ||
+//             (log.acknowledged ? latestLearnerSigUrl : null);
+
+//           const facName =
+//             log.facilitatorName ||
+//             s.grading?.facilitatorName ||
+//             s.facilitatorName ||
+//             "Assigned Facilitator";
+//           const facDate = fmt(log.date || s.assignedAt);
+//           const learnerAckDate = fmt(log.acknowledgedAt);
+
+//           html += `
+// <div class="coaching-card pbi">
+//   <div class="coaching-card__head">
+//     <h4 class="coaching-card__title">Remediation Log: ${s.moduleNumber || ""} ${s.title}</h4>
+//     <span class="badge badge--attempt">Attempt ${s.attemptNumber}</span>
+//   </div>
+//   <div class="coaching-card__body">
+//     <div class="data-grid">
+//       ${dc("Max Attempts Allowed", "3")}
+//       ${dc("Current Attempt", `Attempt ${s.attemptNumber}`)}
+//       ${dc("Coaching Facilitator", facName)}
+//       ${dc("Date of Intervention", fmt(log.date || s.assignedAt))}
+//     </div>
+//     <div class="data-cell" style="background:#fffbeb; border:1px solid #fde68a; padding:10px 12px; margin-bottom: 10px;">
+//       <span class="data-cell__label">Academic Intervention Notes</span>
+//       <span class="data-cell__value ink-fac" style="display:block; margin-top:4px; font-weight:400; font-size:11px; line-height:1.6;">${log.notes || "Coaching session conducted to address NYC competency gaps and unlock learner for reassessment."}</span>
+//     </div>
+
+//     <div class="sig-row" style="grid-template-columns: 1fr 1fr; margin-top: 15px;">
+//       ${sigCell("Facilitator Signature", "fac", facSig, facName, "", facDate)}
+//       ${sigCell("Learner Acknowledgement", "learner", learnerAckSig, learner.fullName || "Learner", log.acknowledged ? "Acknowledged" : "Pending", learnerAckDate)}
+//     </div>
+//   </div>
+// </div>`;
+//         });
+//       } else {
+//         html += `
+// <div class="notice notice--green pbi">
+//   <div class="notice__title">No Remediation Required</div>
+//   <div class="notice__body">No coaching or remediation sessions were required during this programme. All modules were completed competently on the first attempt.</div>
+// </div>`;
+//       }
+
+//       html += `
+// <div class="pb"></div>
+// ${dividerPage("9", "Annexures", "Identity documents, supporting compliance files, and evidence submissions uploaded by the learner — appended on the following pages.")}
+// </body></html>`;
+
+//       await updateProgress(70, "Rendering assessment layout…");
 //       const browser = await puppeteer.launch({
 //         args: chromium.args,
 //         defaultViewport: chromium.defaultViewport,
 //         executablePath: await chromium.executablePath(),
 //         headless: chromium.headless,
 //       });
-
 //       const page = await browser.newPage();
 //       page.setDefaultNavigationTimeout(120000);
 //       page.setDefaultTimeout(120000);
-
-//       await page.setContent(htmlContent, {
+//       await page.setContent(html, {
 //         waitUntil: ["load", "networkidle2"],
 //         timeout: 120000,
 //       });
@@ -1337,161 +2603,102 @@ export const createLearnerAccount = onRequest((req, res) => {
 //         displayHeaderFooter: true,
 //         headerTemplate: "<span></span>",
 //         footerTemplate: `
-//           <div style="font-size: 9px; font-family: Helvetica, Arial, sans-serif; color: #64748b; padding: 0 15mm; width: 100%; display: flex; justify-content: space-between; box-sizing: border-box;">
-//             <span>CodeTribe Academy Compliance</span>
+//           <div style="font-size:8px; font-family:'Trebuchet MS',sans-serif; color:#9b9b9b; padding:0 16mm; width:100%; display:flex; justify-content:space-between; box-sizing:border-box;">
+//             <span>Mobile Applications Laboratory NPC — Master Portfolio of Evidence</span>
 //             <span>Page <span class="pageNumber"></span> of <span class="totalPages"></span></span>
-//           </div>
-//         `,
-//         margin: { top: "15mm", right: "15mm", bottom: "25mm", left: "15mm" },
+//           </div>`,
+//         margin: { top: "15mm", right: "16mm", bottom: "22mm", left: "16mm" },
 //         timeout: 120000,
 //       });
-
 //       await browser.close();
 
-//       await updateProgress(
-//         85,
-//         "Merging Compliance Documents inside Cover Page...",
-//       );
-
+//       await updateProgress(85, "Merging annexures (identity & evidence)…");
 //       const masterPdf = await PDFDocument.create();
 //       const fontBold = await masterPdf.embedFont(StandardFonts.HelveticaBold);
+//       const basePdfDoc = await PDFDocument.load(puppeteerPdfBuffer);
+//       const basePages = await masterPdf.copyPages(
+//         basePdfDoc,
+//         basePdfDoc.getPageIndices(),
+//       );
+//       basePages.forEach((p) => masterPdf.addPage(p));
 
-//       const assessmentPdfDoc = await PDFDocument.load(puppeteerPdfBuffer);
-//       const totalAssessmentPages = assessmentPdfDoc.getPageCount();
+//       const uploadedDocs: UploadedDoc[] =
+//         learnerUserDoc?.uploadedDocuments || learner?.uploadedDocuments || [];
+//       uploadedDocs.forEach((d) => {
+//         offlineEvidenceFiles.push({
+//           index: offlineEvidenceFiles.length + 1,
+//           url: d.url,
+//           label: `9. Annexure: ${d.name || "Compliance Document"}`,
+//         });
+//       });
 
-//       // 1. EXTRACT & APPEND PAGE 1 (THE COVER PAGE)
-//       if (totalAssessmentPages > 0) {
-//         const [coverPage] = await masterPdf.copyPages(assessmentPdfDoc, [0]);
-//         masterPdf.addPage(coverPage);
-//       }
-
-//       // 2. FETCH & APPEND COMPLIANCE DOCS
-//       const docsSource = learnerUserDoc?.documents || learner?.documents || {};
-//       const frontMatterUrls = [
-//         docsSource.idUrl,
-//         docsSource.cvUrl,
-//         docsSource.qualUrl,
-//       ].filter((url) => url && typeof url === "string");
-
-//       for (const url of frontMatterUrls) {
-//         try {
-//           const fileBuffer = await fetchFileBuffer(url);
-//           if (fileBuffer) {
-//             const externalPdf = await PDFDocument.load(fileBuffer);
-//             const copiedPages = await masterPdf.copyPages(
-//               externalPdf,
-//               externalPdf.getPageIndices(),
-//             );
-//             copiedPages.forEach((p: any) => masterPdf.addPage(p));
-//           }
-//         } catch (err) {
-//           console.warn(
-//             `Could not merge front-matter document from URL: ${url}. Skipping it.`,
-//             err,
-//           );
-//         }
-//       }
-
-//       // 3. EXTRACT & APPEND PAGES 2 TO END (THE ASSESSMENTS + QCTO FORMS)
-//       if (totalAssessmentPages > 1) {
-//         const remainingIndices = Array.from(
-//           { length: totalAssessmentPages - 1 },
-//           (_, i) => i + 1,
-//         );
-//         const remainingPages = await masterPdf.copyPages(
-//           assessmentPdfDoc,
-//           remainingIndices,
-//         );
-//         remainingPages.forEach((p: any) => masterPdf.addPage(p));
-//       }
-
-//       // 4. FETCH & APPEND OFFLINE EVIDENCE (ANNEXURES) WITH DETAILED STAMPS
 //       if (offlineEvidenceFiles.length > 0) {
-//         await updateProgress(90, "Merging Offline Evidence (Annexures)...");
+//         await updateProgress(90, "Stamping and merging annexures…");
 //         for (const evidence of offlineEvidenceFiles) {
 //           try {
 //             const buffer = await fetchFileBuffer(evidence.url);
 //             if (!buffer) continue;
-
 //             const stampText = `Annexure ${evidence.index}: ${evidence.label}`;
-
 //             try {
 //               const extPdf = await PDFDocument.load(buffer);
-//               const copiedPages = await masterPdf.copyPages(
+//               const copPages = await masterPdf.copyPages(
 //                 extPdf,
 //                 extPdf.getPageIndices(),
 //               );
-
-//               if (copiedPages.length > 0) {
-//                 const firstPage = copiedPages[0];
-//                 const { height } = firstPage.getSize();
-//                 firstPage.drawText(stampText, {
+//               if (copPages.length > 0) {
+//                 const fp = copPages[0];
+//                 fp.drawText(stampText, {
 //                   x: 20,
-//                   y: height - 20,
-//                   size: 10,
+//                   y: fp.getSize().height - 20,
+//                   size: 9,
 //                   color: rgb(0.86, 0.15, 0.15),
 //                   font: fontBold,
 //                 });
 //               }
-//               copiedPages.forEach((p: any) => masterPdf.addPage(p));
-//             } catch (pdfErr) {
+//               copPages.forEach((p: any) => masterPdf.addPage(p));
+//             } catch {
 //               let image;
 //               try {
 //                 image = await masterPdf.embedPng(buffer);
 //               } catch {
 //                 try {
 //                   image = await masterPdf.embedJpg(buffer);
-//                 } catch (e) {}
+//                 } catch {}
 //               }
-
 //               if (image) {
-//                 const page = masterPdf.addPage();
-//                 const { width, height } = page.getSize();
-
-//                 page.drawText(stampText, {
+//                 const pg = masterPdf.addPage();
+//                 const { width, height } = pg.getSize();
+//                 pg.drawText(stampText, {
 //                   x: 20,
 //                   y: height - 30,
-//                   size: 10,
+//                   size: 9,
 //                   color: rgb(0.86, 0.15, 0.15),
 //                   font: fontBold,
 //                 });
-
 //                 const dims = image.scaleToFit(width - 40, height - 80);
-//                 page.drawImage(image, {
+//                 pg.drawImage(image, {
 //                   x: width / 2 - dims.width / 2,
 //                   y: height / 2 - dims.height / 2 - 20,
-//                   width: dims.width,
-//                   height: dims.height,
+//                   ...dims,
 //                 });
 //               }
 //             }
 //           } catch (err) {
-//             console.warn(
-//               `Failed to process evidence annexure: ${evidence.url}`,
-//               err,
-//             );
+//             console.warn(`Annexure failed: ${evidence.url}`, err);
 //           }
 //         }
 //       }
 
-//       const finalPdfBytes = await masterPdf.save();
-//       const finalPdfBuffer = Buffer.from(finalPdfBytes);
-
-//       // STORAGE HOUSEKEEPING
-//       await updateProgress(
-//         95,
-//         "Cleaning up old records and saving to vault...",
-//       );
+//       await updateProgress(95, "Uploading to secure vault…");
+//       const finalPdfBuffer = Buffer.from(await masterPdf.save());
 //       const bucket = admin.storage().bucket();
 //       const dirPrefix = `poe_exports/${learnerId}/`;
-
 //       try {
 //         await bucket.deleteFiles({ prefix: dirPrefix });
-//       } catch (cleanupErr) {}
+//       } catch {}
 
 //       const filePath = `${dirPrefix}Master_PoE_${requestId}.pdf`;
 //       const file = bucket.file(filePath);
-
 //       await file.save(finalPdfBuffer, {
 //         metadata: { contentType: "application/pdf" },
 //       });
@@ -1500,7 +2707,6 @@ export const createLearnerAccount = onRequest((req, res) => {
 //         action: "read",
 //         expires: "01-01-2100",
 //       });
-
 //       await snap.ref.update({
 //         status: "completed",
 //         progress: 100,
@@ -1509,12 +2715,25 @@ export const createLearnerAccount = onRequest((req, res) => {
 //       });
 
 //       if (requesterEmail) {
-//         await transporter.sendMail({
-//           from: '"mLab Compliance" <noreply@mlab.co.za>',
+//         const emailParams = {
+//           title: "Master PoE Ready",
+//           subtitle: learner.fullName,
+//           recipientName: "Admin",
+//           bodyHtml: `<p>The Master Portfolio of Evidence for <strong>${learner.fullName}</strong> has been generated successfully.</p>
+//                      <p>All sections, transcripts, and annexures have been compiled into a single QCTO-compliant PDF.</p>
+//                      <p style="font-size:11px; color:#9b9b9b;">Reference: ${requestId}</p>`,
+//           ctaText: "Download Master PoE PDF",
+//           ctaLink: downloadUrl,
+//           showStepIndicator: false,
+//         };
+
+//         await sendMailgunEmail({
 //           to: requesterEmail,
-//           subject: `✅ Master PoE Ready: ${learner.fullName}`,
-//           html: `<p>The full Master Portfolio for <b>${learner.fullName}</b> has been successfully generated.</p>
-//                  <p><a href="${downloadUrl}" style="padding:10px 20px; background:#16a34a; color:white; text-decoration:none; border-radius:5px;">Download Master PoE PDF</a></p>`,
+//           subject: `Master PoE Ready — ${learner.fullName}`,
+//           text: buildMlabEmailPlainText(emailParams),
+//           html: buildMlabEmailHtml(emailParams),
+//         }).catch((err) => {
+//           console.warn("Email failed to send, but PoE was generated.", err);
 //         });
 //       }
 //     } catch (error: any) {
@@ -1528,998 +2747,9 @@ export const createLearnerAccount = onRequest((req, res) => {
 //   },
 // );
 
-exports.sendAdHocCertificate = onCall(async (request) => {
-  // 1. V2 Security Check
-  if (!request.auth) {
-    throw new HttpsError(
-      "unauthenticated",
-      "The function must be called while authenticated.",
-    );
-  }
-
-  // 2. Destructure from request.data
-  const { email, recipientName, pdfUrl, awardTitle, courseName } = request.data;
-
-  const mailOptions = {
-    // from: '"mLab Southern Africa" <noreply@mlab.co.za>',
-    from: '"mLab Admin" <brndkt@gmail.com>',
-    to: email,
-    subject: `Your Certificate: ${awardTitle} - ${courseName}`,
-    html: `
-            <div style="font-family: sans-serif; max-width: 600px; color: #073f4e;">
-                <h2>Congratulations, ${recipientName}!</h2>
-                <p>We are pleased to share your <strong>${awardTitle}</strong> for completing the <strong>${courseName}</strong>.</p>
-                <div style="margin: 25px 0;">
-                    <a href="${pdfUrl}" style="background: #94c73d; color: #073f4e; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: bold;">
-                        Download Certificate (PDF)
-                    </a>
-                </div>
-                <p>Best Regards,<br/>mLab Academic Management</p>
-            </div>
-        `,
-  };
-
-  try {
-    await transporter.sendMail(mailOptions);
-    return { success: true, message: "Email sent successfully" };
-  } catch (error) {
-    console.error("Email Error:", error);
-    throw new HttpsError("internal", "Failed to send email.");
-  }
-});
-
-// ================= TRIGGER: ON SUBMISSION STATUS CHANGE =================
-// Handles Alerts for Assessors, Moderators, and Learners during the grading lifecycle
-export const onSubmissionStatusChange = onDocumentUpdated(
-  "learner_submissions/{submissionId}",
-  async (event) => {
-    const beforeData = event.data?.before.data();
-    const afterData = event.data?.after.data();
-    const submissionId = event.params.submissionId;
-
-    if (!beforeData || !afterData) return;
-
-    const db = admin.firestore();
-    const learnerId = afterData.learnerId;
-    const cohortId = afterData.cohortId;
-    const moduleName =
-      afterData.title || afterData.moduleNumber || "Assessment";
-
-    // Helper to fetch user email by ID
-    const getUserEmailAndName = async (uid: string) => {
-      if (!uid) return null;
-      const doc = await db.collection("users").doc(uid).get();
-      if (!doc.exists) return null;
-      return { email: doc.data()?.email, name: doc.data()?.fullName || "User" };
-    };
-
-    // Helper to fetch Learner email by ID
-    const getLearnerEmailAndName = async (uid: string) => {
-      if (!uid) return null;
-      const doc = await db.collection("learners").doc(uid).get();
-      if (!doc.exists) return null;
-      return {
-        email: doc.data()?.email,
-        name: doc.data()?.fullName || "Learner",
-      };
-    };
-
-    // Helper to get cohort staff IDs if not explicitly attached to the submission
-    const getCohortStaff = async () => {
-      if (!cohortId) return {};
-      const cohortDoc = await db.collection("cohorts").doc(cohortId).get();
-      return cohortDoc.data() || {};
-    };
-
-    try {
-      const cohortStaff = await getCohortStaff();
-
-      // 1. ASSESSOR & FACILITATOR ALERT: Learner uploads a new PoE
-      if (
-        beforeData.status !== "submitted" &&
-        afterData.status === "submitted"
-      ) {
-        const assessorId = afterData.gradedBy || cohortStaff.assessorId;
-        const facilitatorId = cohortStaff.facilitatorId;
-
-        const assessor = await getUserEmailAndName(assessorId);
-        const facilitator = await getUserEmailAndName(facilitatorId);
-        const learner = await getLearnerEmailAndName(learnerId);
-
-        // Alert the Assessor to grade it
-        if (assessor?.email) {
-          await sendEmail(
-            assessor.email,
-            `Action Required: New PoE Submitted for ${moduleName}`,
-            `<h3>Hello ${assessor.name},</h3>
-             <p><strong>${learner?.name}</strong> has just submitted their Portfolio of Evidence for <strong>${moduleName}</strong>.</p>
-             <p>The submission is now waiting in your queue to be graded.</p>
-             <div style="text-align: center; margin-top: 20px;">
-                <a href="${APP_URL}/assessments/grade/${submissionId}" style="background-color: #ef4444; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Review & Grade</a>
-             </div>`,
-          );
-        }
-
-        // Alert the Facilitator of progress
-        if (facilitator?.email) {
-          await sendEmail(
-            facilitator.email,
-            `Progress Update: ${learner?.name} finished ${moduleName}`,
-            `<h3>Hi ${facilitator.name},</h3>
-             <p>Your learner, <strong>${learner?.name}</strong>, has successfully submitted their work for <strong>${moduleName}</strong>.</p>
-             <p>The assessment has been routed to the cohort Assessor for grading. You can track the result on your class dashboard.</p>`,
-          );
-        }
-      }
-
-      // 2. MODERATOR ALERT & LEARNER ALERT: Assessor finalizes a grade
-      if (beforeData.status !== "graded" && afterData.status === "graded") {
-        const moderatorId =
-          afterData.moderation?.moderatedBy || cohortStaff.moderatorId;
-        const moderator = await getUserEmailAndName(moderatorId);
-        const learner = await getLearnerEmailAndName(learnerId);
-        const marks = afterData.marks || 0;
-        const totalMarks = afterData.totalMarks || 100;
-        const competency =
-          afterData.competency === "C" ? "Competent" : "Not Yet Competent";
-
-        // Alert Moderator to sample the grade
-        if (moderator?.email) {
-          await sendEmail(
-            moderator.email,
-            `Grading Finalized for Moderation: ${moduleName}`,
-            `<h3>Hello ${moderator.name},</h3>
-             <p>An Assessor has finalized the grading for <strong>${learner?.name}</strong> on <strong>${moduleName}</strong>.</p>
-             <p>This submission is now available for your internal moderation and quality assurance review.</p>
-             <div style="text-align: center; margin-top: 20px;">
-                <a href="${APP_URL}/assessments/moderate/${submissionId}" style="background-color: #22c55e; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Moderate Grade</a>
-             </div>`,
-          );
-        }
-
-        // Alert Learner that their grade is published
-        if (learner?.email) {
-          await sendEmail(
-            learner.email,
-            `Assessment Graded: ${moduleName}`,
-            `<h3>Hello ${learner.name},</h3>
-             <p>Your assessment for <strong>${moduleName}</strong> has been graded!</p>
-             <p><strong>Score:</strong> ${marks} / ${totalMarks}<br/>
-                <strong>Outcome:</strong> ${competency}</p>
-             <p>Log in to your portal to read your Assessor's feedback.</p>
-             <div style="text-align: center; margin-top: 20px;">
-                <a href="${APP_URL}/portal/assessments/${submissionId}" style="background-color: #0ea5e9; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">View Feedback</a>
-             </div>`,
-          );
-        }
-      }
-
-      // 3. REWORK / REJECTION ALERT: Moderator rejects a grade back to Assessor
-      const wasRejected =
-        afterData.status === "rework" ||
-        (afterData.moderation?.status === "rejected" &&
-          beforeData.moderation?.status !== "rejected");
-
-      if (wasRejected) {
-        const assessorId = afterData.gradedBy || cohortStaff.assessorId;
-        const assessor = await getUserEmailAndName(assessorId);
-        const moderatorName =
-          afterData.moderation?.moderatorName || "The Internal Moderator";
-
-        if (assessor?.email) {
-          await sendEmail(
-            assessor.email,
-            `Action Required: Moderation Rework on ${moduleName}`,
-            `<h3>Hello ${assessor.name},</h3>
-             <p>${moderatorName} has requested a rework on your grading for <strong>${moduleName}</strong>.</p>
-             <p><strong>Moderator Notes:</strong><br/>
-             <i>"${afterData.moderation?.feedback || "Please review the assessment again."}"</i></p>
-             <p>Please log in immediately to apply the required corrective actions.</p>
-             <div style="text-align: center; margin-top: 20px;">
-                <a href="${APP_URL}/assessments/grade/${submissionId}" style="background-color: #f59e0b; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Correct Assessment</a>
-             </div>`,
-          );
-        }
-      }
-    } catch (error) {
-      console.error("Error processing submission notifications:", error);
-    }
-  },
-);
-
-// ================= TRIGGER: ON ASSESSMENT CREATED =================
-// Notifies learners immediately when a new task is released or scheduled
-export const onAssessmentCreated = onDocumentCreated(
-  "assessments/{assessmentId}",
-  async (event) => {
-    const data = event.data?.data();
-    if (!data) return;
-
-    const { title, cohortId, availableFrom, dueDate } = data;
-    if (!cohortId) return;
-
-    const db = admin.firestore();
-
-    try {
-      // Fetch the Cohort to get the list of enrolled learners
-      const cohortSnap = await db.collection("cohorts").doc(cohortId).get();
-      const cohortData = cohortSnap.data();
-      if (!cohortData || !cohortData.learnerIds) return;
-
-      const learnerIds = cohortData.learnerIds;
-
-      // Loop through learners and send notifications
-      const emailPromises = learnerIds.map(async (uid: string) => {
-        const lSnap = await db.collection("learners").doc(uid).get();
-        const learner = lSnap.data();
-        if (!learner?.email) return;
-
-        return sendEmail(
-          learner.email,
-          `New Assessment Available: ${title}`,
-          `<h3>Hi ${learner.fullName},</h3>
-           <p>A new assessment <strong>${title}</strong> has been assigned to your class.</p>
-           
-           <div style="background-color: #f8fafc; padding: 15px; border-radius: 6px; border: 1px solid #e2e8f0; margin: 20px 0;">
-              <p style="margin: 0; color: #475569;">
-                ${availableFrom ? `📅 <b>Scheduled Start:</b> ${availableFrom}<br/>` : ""}
-                ${dueDate ? `⏰ <b>Submission Deadline:</b> ${dueDate}` : ""}
-              </p>
-           </div>
-
-           <p>Please log in to your learner portal to review the requirements and start your submission.</p>
-           <div style="text-align: center; margin-top: 20px;">
-              <a href="${APP_URL}/portal/assessments" style="background-color: #073f4e; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold;">Go to Assessment</a>
-           </div>`,
-        );
-      });
-
-      await Promise.all(emailPromises);
-      console.log(
-        `Notifications sent to ${learnerIds.length} learners for assessment: ${title}`,
-      );
-    } catch (error) {
-      console.error("Error sending new assessment alerts:", error);
-    }
-  },
-);
-
-// ================= TRIGGER: ON BLOCKCHAIN CERTIFICATION =================
-// Handles Learner Alerts when their SoR is officially minted
-export const onLearnerBlockchainVerified = onDocumentUpdated(
-  "learners/{learnerId}",
-  async (event) => {
-    const beforeData = event.data?.before.data();
-    const afterData = event.data?.after.data();
-
-    if (!beforeData || !afterData) return;
-
-    // Check if isBlockchainVerified flipped from false to true
-    if (!beforeData.isBlockchainVerified && afterData.isBlockchainVerified) {
-      const email = afterData.email;
-      const fullName = afterData.fullName || "Learner";
-      const verificationCode = afterData.verificationCode;
-      const qualName = afterData.qualification?.name || "Qualification";
-
-      if (email && verificationCode) {
-        try {
-          await sendEmail(
-            email,
-            `🎉 Official Statement of Results Minted: ${qualName}`,
-            `<h3>Congratulations ${fullName}!</h3>
-             <p>Your official Statement of Results for <strong>${qualName}</strong> has been successfully minted to the blockchain.</p>
-             <p>This means your academic credential is now permanently secured, immutable, and instantly verifiable by future employers.</p>
-             
-             <div style="background-color: #f0fdf4; padding: 15px; border-radius: 6px; border: 1px solid #bbf7d0; margin: 20px 0;">
-                <p style="margin: 0; color: #166534;"><strong>Your Verification ID:</strong> ${verificationCode}</p>
-             </div>
-
-             <p>You can view, download, and share your official digital credential using your public verification link below:</p>
-             
-             <div style="text-align: center; margin-top: 30px; margin-bottom: 30px;">
-                <a href="${APP_URL}/sor/${verificationCode}" style="background-color: #073f4e; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold;">View Official Credential</a>
-             </div>
-             
-             <p>Best Regards,<br/>mLab Academic Management Team</p>`,
-          );
-          console.log(`Blockchain verification email sent to ${email}`);
-        } catch (error) {
-          console.error("Error sending blockchain verification email:", error);
-        }
-      }
-    }
-  },
-);
-
-export const sendCustomVerificationEmail = onCall(async (request) => {
-  const authCtx = request.auth;
-  if (!authCtx) {
-    throw new HttpsError(
-      "unauthenticated",
-      "Must be logged in to request a verification link.",
-    );
-  }
-
-  const userEmail = authCtx.token.email;
-  const uid = authCtx.uid;
-
-  if (!userEmail) {
-    throw new HttpsError("invalid-argument", "No email found for this user.");
-  }
-
-  try {
-    // 1. DYNAMICALLY FETCH THE USER'S REAL NAME FROM FIRESTORE
-    let userName = authCtx.token.name;
-
-    if (!userName) {
-      const userDoc = await admin
-        .firestore()
-        .collection("users")
-        .doc(uid)
-        .get();
-      if (userDoc.exists) {
-        userName = userDoc.data()?.fullName;
-      }
-    }
-
-    // Ultimate fallback if no name exists anywhere yet
-    userName = userName || "there"; // Results in "Hi there,"
-
-    const verificationLink = await admin
-      .auth()
-      .generateEmailVerificationLink(userEmail);
-    const currentYear = new Date().getFullYear();
-
-    /* ─────────────────────────────────────────────────────────────────────
-       PLAIN TEXT FALLBACK
-    ───────────────────────────────────────────────────────────────────── */
-    const plainText = `
-mLab — Email Verification
-
-Hi ${userName},
-
-Please verify your email address to secure your account and access the mLab Assessment Platform.
-
-Verify here: ${verificationLink}
-
-This link expires in 24 hours.
-If you didn't create this account, you can safely ignore this email.
-
-Privacy Policy: ${APP_URL}/privacy-policy
-Terms of Service: ${APP_URL}/terms
-
-© ${currentYear} Mobile Applications Laboratory NPC
-Empowering the next generation of African tech talent.
-    `.trim();
-
-    /* ─────────────────────────────────────────────────────────────────────
-       HTML EMAIL
-    ───────────────────────────────────────────────────────────────────── */
-    const htmlContent = `
-<!DOCTYPE html>
-<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-  <title>Verify Your Email — Mobile Applications Laboratory NPC</title>
-  <style type="text/css">
-    @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&display=swap');
-
-    /* CLIENT RESETS */
-    body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
-    table, td           { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
-    img                 { -ms-interpolation-mode: bicubic; border: 0; outline: none; text-decoration: none; }
-    body                { margin: 0 !important; padding: 0 !important; width: 100% !important; }
-
-    /* CTA HOVER */
-    .ve-cta:hover {
-      background-color: #0a5266 !important;
-    }
-
-    /* RESPONSIVE */
-    @media only screen and (max-width: 600px) {
-      .wrapper    { width: 100% !important; max-width: 100% !important; }
-      .col-2      { display: block !important; width: 100% !important; }
-      .hide-sm    { display: none !important; }
-      .pad-sm     { padding: 28px 20px !important; }
-      .title-sm   { font-size: 22px !important; }
-      .heading-sm { font-size: 26px !important; }
-      .cta-sm     { padding: 14px 24px !important; font-size: 13px !important; }
-    }
-  </style>
-</head>
-<body style="margin:0; padding:0; background-color:#e4edf0; font-family:'Trebuchet MS','Lucida Grande',Arial,sans-serif;">
-
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-         style="background-color:#e4edf0; min-height:100vh;">
-    <tr>
-      <td align="center" style="padding:40px 16px;">
-
-        <table class="wrapper" role="presentation" cellpadding="0" cellspacing="0" border="0"
-               style="width:580px; max-width:580px; background-color:#ffffff;
-                      box-shadow:0 8px 32px rgba(7,63,78,0.18), 0 2px 8px rgba(7,63,78,0.08);">
-
-          <tr>
-            <td height="5" style="padding:0; line-height:5px; font-size:5px;">
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                <tr>
-                  <td width="508" height="5" bgcolor="#073f4e" style="font-size:1px; line-height:1px;">&nbsp;</td>
-                  <td width="72"  height="5" bgcolor="#94c73d" style="font-size:1px; line-height:1px;">&nbsp;</td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-
-          <tr>
-            <td class="pad-sm" align="center"
-                style="background-color:#073f4e; padding:44px 40px 36px;
-                       background-image:repeating-linear-gradient(-45deg,transparent,transparent 28px,rgba(255,255,255,0.02) 28px,rgba(255,255,255,0.02) 29px);">
-
-              <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto 22px;">
-                <tr>
-                  <td style="background:rgba(148,199,61,0.15); border:1px solid rgba(148,199,61,0.4); padding:5px 14px;">
-                    <span style="color:#94c73d; font-family:'Oswald',sans-serif; font-size:10px; font-weight:700;
-                                 letter-spacing:0.2em; text-transform:uppercase;">
-                      &#x1F512;&nbsp; Secure Verification
-                    </span>
-                  </td>
-                </tr>
-              </table>
-
-              <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto 18px;">
-                <tr>
-                  <td width="72" height="72" bgcolor="#0a5266" align="center" valign="middle"
-                      style="border:2px solid rgba(148,199,61,0.45);">
-                    <img src="https://img.icons8.com/ios-glyphs/48/94c73d/new-post.png"
-                         alt="Email" width="36" height="36"
-                         style="display:block; margin:auto;" />
-                  </td>
-                </tr>
-              </table>
-
-              <h1 class="title-sm"
-                  style="color:#ffffff; margin:0 0 6px; font-family:'Oswald',sans-serif;
-                         font-size:26px; font-weight:700; letter-spacing:0.12em; text-transform:uppercase;
-                         line-height:1.1;">
-                Mobile Applications Laboratory NPC 
-              </h1>
-              <p style="color:rgba(255,255,255,0.45); margin:0; font-size:11px; font-family:'Trebuchet MS',sans-serif;
-                        letter-spacing:0.08em; text-transform:uppercase;">
-                Assessment &amp; Credentialing Platform
-              </p>
-            </td>
-          </tr>
-
-          <tr>
-            <td align="center"
-                style="background-color:#052e3a; padding:18px 40px; border-bottom:3px solid #94c73d;">
-              <h2 class="heading-sm"
-                  style="color:#ffffff; margin:0; font-family:'Oswald',sans-serif;
-                         font-size:28px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase;">
-                Verify Your Email
-              </h2>
-              <p style="color:rgba(255,255,255,0.45); margin:6px 0 0; font-size:12px;
-                        font-family:'Trebuchet MS',sans-serif; letter-spacing:0.05em;">
-                Secure your account to access your platform dashboard
-              </p>
-            </td>
-          </tr>
-
-          <tr>
-            <td style="background-color:#f0f4f6; padding:16px 40px; border-bottom:1px solid #dde4e8;">
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                <tr>
-                  <td align="center" width="33%" style="padding:0 4px;">
-                    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;">
-                      <tr>
-                        <td width="26" height="26" bgcolor="#94c73d" align="center" valign="middle"
-                            style="border:2px solid #7aaa2e; font-family:'Oswald',sans-serif;
-                                   font-size:10px; font-weight:700; color:#ffffff; letter-spacing:0;">
-                          &#10003;
-                        </td>
-                      </tr>
-                    </table>
-                    <p style="margin:5px 0 0; font-family:'Oswald',sans-serif; font-size:9px; font-weight:700;
-                               letter-spacing:0.12em; text-transform:uppercase; color:#7aaa2e;">
-                      Account Created
-                    </p>
-                  </td>
-
-                  <td align="center" valign="middle" style="padding-bottom:18px;">
-                    <div style="height:2px; background:#dde4e8; min-width:20px;">&nbsp;</div>
-                  </td>
-
-                  <td align="center" width="33%" style="padding:0 4px;">
-                    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;">
-                      <tr>
-                        <td width="26" height="26" bgcolor="#073f4e" align="center" valign="middle"
-                            style="border:2px solid #073f4e; font-family:'Oswald',sans-serif;
-                                   font-size:10px; font-weight:700; color:#94c73d;">
-                          &#9993;
-                        </td>
-                      </tr>
-                    </table>
-                    <p style="margin:5px 0 0; font-family:'Oswald',sans-serif; font-size:9px; font-weight:700;
-                               letter-spacing:0.12em; text-transform:uppercase; color:#073f4e;">
-                      Verify Email
-                    </p>
-                  </td>
-
-                  <td align="center" valign="middle" style="padding-bottom:18px;">
-                    <div style="height:2px; background:#dde4e8; min-width:20px;">&nbsp;</div>
-                  </td>
-
-                  <td align="center" width="33%" style="padding:0 4px;">
-                    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;">
-                      <tr>
-                        <td width="26" height="26" bgcolor="#ffffff" align="center" valign="middle"
-                            style="border:2px solid #dde4e8; font-family:'Oswald',sans-serif;
-                                   font-size:10px; font-weight:700; color:#9b9b9b;">
-                          3
-                        </td>
-                      </tr>
-                    </table>
-                    <p style="margin:5px 0 0; font-family:'Oswald',sans-serif; font-size:9px; font-weight:700;
-                               letter-spacing:0.12em; text-transform:uppercase; color:#9b9b9b;">
-                      Access Dashboard
-                    </p>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-
-          <tr>
-            <td class="pad-sm" style="padding:36px 40px; background-color:#ffffff;">
-
-              <p style="color:#6b6b6b; font-size:15px; line-height:1.7; margin:0 0 22px;
-                        font-family:'Trebuchet MS',sans-serif;">
-                Hi <strong style="color:#073f4e;">${userName}</strong>,
-              </p>
-              <p style="color:#6b6b6b; font-size:15px; line-height:1.7; margin:0 0 28px;
-                        font-family:'Trebuchet MS',sans-serif;">
-                Welcome to the mLab Assessment Platform. To secure your credentials and unlock
-                your platform dashboard, please verify your email address by clicking the button below.
-              </p>
-
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-                     style="margin-bottom:28px; border:1px solid #dde4e8; border-left:4px solid #073f4e;">
-                <tr>
-                  <td style="padding:14px 18px; background-color:#e4edf0;">
-                    <p style="margin:0 0 3px; font-family:'Oswald',sans-serif; font-size:9px; font-weight:700;
-                               letter-spacing:0.18em; text-transform:uppercase; color:#9b9b9b;">
-                      Verification Recipient
-                    </p>
-                    <p style="margin:0; color:#073f4e; font-size:16px; font-weight:700;
-                               font-family:'Trebuchet MS',sans-serif; word-break:break-all;">
-                      ${userEmail}
-                    </p>
-                  </td>
-                </tr>
-              </table>
-
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-                     style="margin:0 0 28px;">
-                <tr>
-                  <td align="center">
-                    <a href="${verificationLink}" class="ve-cta cta-sm"
-                       style="display:inline-block; background-color:#073f4e; color:#ffffff;
-                              padding:16px 40px; text-decoration:none;
-                              font-family:'Oswald',sans-serif; font-weight:700; font-size:14px;
-                              letter-spacing:0.14em; text-transform:uppercase;
-                              border:2px solid #052e3a;
-                              box-shadow:0 4px 12px rgba(7,63,78,0.25);">
-                      &#x2192;&nbsp; Verify Email Address
-                    </a>
-                  </td>
-                </tr>
-              </table>
-
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-                     style="margin-bottom:28px; background-color:#fffbeb;
-                            border:1px solid #fde68a; border-left:4px solid #d97706;">
-                <tr>
-                  <td style="padding:14px 18px;">
-                    <p style="color:#92400e; font-size:13px; line-height:1.6; margin:0 0 6px;
-                               font-family:'Oswald',sans-serif; font-weight:700;
-                               letter-spacing:0.06em; text-transform:uppercase;">
-                      Button not working?
-                    </p>
-                    <p style="color:#78350f; font-size:12px; line-height:1.6; margin:0;
-                               font-family:'Trebuchet MS',sans-serif;">
-                      Copy and paste this link into your browser:<br />
-                      <a href="${verificationLink}"
-                         style="color:#0a5266; word-break:break-all; text-decoration:underline;">
-                        ${verificationLink}
-                      </a>
-                    </p>
-                  </td>
-                </tr>
-              </table>
-
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-                     style="border-top:1px solid #dde4e8; padding-top:20px;">
-                <tr>
-                  <td align="center" style="padding-top:20px;">
-                    <p style="color:#9b9b9b; font-size:12px; line-height:1.6; margin:0;
-                               font-family:'Trebuchet MS',sans-serif; text-align:center;">
-                      This verification link expires in
-                      <strong style="color:#073f4e;">24 hours</strong>.
-                    </p>
-                  </td>
-                </tr>
-              </table>
-
-            </td>
-          </tr>
-
-          <tr>
-            <td style="background-color:#f0f4f6; padding:24px 40px; border-top:1px solid #dde4e8;">
-
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-                     style="margin-bottom:20px;">
-                <tr>
-                  <td width="72" height="3" bgcolor="#94c73d" style="font-size:1px; line-height:1px;">&nbsp;</td>
-                  <td height="3" bgcolor="#073f4e" style="font-size:1px; line-height:1px;">&nbsp;</td>
-                </tr>
-              </table>
-
-              <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto 16px;">
-                <tr>
-                  <td style="padding:0 10px;">
-                    <a href="${APP_URL}"
-                       style="color:#073f4e; text-decoration:none; font-family:'Oswald',sans-serif;
-                              font-size:11px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase;">
-                      Website
-                    </a>
-                  </td>
-                  <td style="color:#dde4e8; padding:0 4px;">|</td>
-                  <td style="padding:0 10px;">
-                    <a href="mailto:support@mlab.co.za"
-                       style="color:#073f4e; text-decoration:none; font-family:'Oswald',sans-serif;
-                              font-size:11px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase;">
-                      Support
-                    </a>
-                  </td>
-                  <td style="color:#dde4e8; padding:0 4px;">|</td>
-                  <td style="padding:0 10px;">
-                    <a href="${APP_URL}/privacy-policy"
-                       style="color:#073f4e; text-decoration:none; font-family:'Oswald',sans-serif;
-                              font-size:11px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase;">
-                      Privacy
-                    </a>
-                  </td>
-                  <td style="color:#dde4e8; padding:0 4px;">|</td>
-                  <td style="padding:0 10px;">
-                    <a href="${APP_URL}/terms"
-                       style="color:#073f4e; text-decoration:none; font-family:'Oswald',sans-serif;
-                              font-size:11px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase;">
-                      Terms
-                    </a>
-                  </td>
-                </tr>
-              </table>
-
-              <p style="color:#9b9b9b; font-size:11px; line-height:1.65; margin:0 0 6px;
-                        font-family:'Trebuchet MS',sans-serif; text-align:center;">
-                &copy; ${currentYear} Mobile Applications Laboratory NPC. All rights reserved.
-              </p>
-              <p style="color:#9b9b9b; font-size:11px; line-height:1.55; margin:0;
-                        font-family:'Trebuchet MS',sans-serif; text-align:center;">
-                If you didn&rsquo;t create this account, you can safely ignore this email.
-              </p>
-              <p style="margin:10px 0 0; text-align:center; font-size:11px;
-                        font-family:'Trebuchet MS',sans-serif; color:#9b9b9b;">
-                <span style="color:#94c73d;">&#9632;</span>
-                Empowering the next generation of African tech talent.
-              </p>
-
-            </td>
-          </tr>
-
-        </table>
-        <table role="presentation" width="580" cellpadding="0" cellspacing="0" border="0"
-               style="max-width:580px; width:100%; margin-top:16px;">
-          <tr>
-            <td align="center">
-              <p style="color:rgba(7,63,78,0.45); font-size:10px; margin:0;
-                        font-family:'Trebuchet MS',sans-serif; letter-spacing:0.04em;">
-                Automated message from the mLab Assessment Platform &middot; Do not reply to this email
-              </p>
-            </td>
-          </tr>
-        </table>
-
-      </td>
-    </tr>
-  </table>
-
-</body>
-</html>
-    `.trim();
-
-    /* ─── SEND ─────────────────────────────────────────────────────────── */
-    const mailOptions = {
-      from: '"mLab Assessment Platform" <brndkt@gmail.com>',
-      to: userEmail,
-      subject: "Verify Your mLab Account",
-      text: plainText,
-      html: htmlContent,
-    };
-
-    await transporter.sendMail(mailOptions);
-    return { success: true, message: "Verification email sent." };
-  } catch (error: any) {
-    console.error("Email Error:", error);
-    throw new HttpsError("internal", error.message || "Failed to send email");
-  }
-});
-
-// const privateKeySecret = defineSecret("INSTITUTION_PRIVATE_KEY");
-
-// const RPC_URL =
-//   process.env.RPC_URL || "https://ethereum-sepolia-rpc.publicnode.com";
-// const CONTRACT_ADDRESS = process.env.CONTRACT_ADDRESS || "";
-
-// const contractABI = [
-//   "function issueCertificate(string certId, bytes32 dataFingerprint) public",
-// ];
-
-// export const issueBlockchainCertificate = onCall(
-//   { secrets: [privateKeySecret] },
-//   async (request) => {
-//     const { data, auth } = request;
-
-//     if (!auth) {
-//       throw new HttpsError(
-//         "unauthenticated",
-//         "You must be logged in to mint documents.",
-//       );
-//     }
-
-//     const {
-//       verificationCode,
-//       learnerName,
-//       idNumber,
-//       qualification,
-//       issueDate,
-//       eisaStatus,
-//       ipfsHash,
-//     } = data;
-
-//     if (!verificationCode || !ipfsHash || !CONTRACT_ADDRESS) {
-//       throw new HttpsError(
-//         "invalid-argument",
-//         "Missing required certificate data or contract address.",
-//       );
-//     }
-
-//     try {
-//       const provider = new ethers.JsonRpcProvider(RPC_URL);
-//       const wallet = new ethers.Wallet(privateKeySecret.value(), provider);
-//       const contract = new ethers.Contract(
-//         CONTRACT_ADDRESS,
-//         contractABI,
-//         wallet,
-//       );
-
-//       // Hash the data identically to how our frontend did it
-//       const fingerprint = ethers.solidityPackedKeccak256(
-//         ["string", "string", "string", "string", "string", "string"],
-//         [
-//           learnerName.trim(),
-//           idNumber.trim(),
-//           qualification.trim(),
-//           issueDate.trim(),
-//           eisaStatus.trim(),
-//           ipfsHash.trim(),
-//         ],
-//       );
-
-//       console.log(`Sending to blockchain. Cert ID: ${verificationCode}`);
-//       console.log(`Fingerprint: ${fingerprint}`);
-
-//       // Call the correct contract method 'issueCertificate' with 2 params
-//       const tx = await contract.issueCertificate(verificationCode, fingerprint);
-
-//       // Wait for the transaction to be mined
-//       const receipt = await tx.wait();
-
-//       return {
-//         success: true,
-//         fingerprint: fingerprint,
-//         transactionHash: receipt.hash,
-//         timestamp: new Date().toISOString(),
-//       };
-//     } catch (error: any) {
-//       console.error("Blockchain Minting Error:", error);
-//       throw new HttpsError(
-//         "internal",
-//         error.message || "Failed to mint to blockchain",
-//       );
-//     }
-//   },
-// );
-
 // ============================================================================
-// FIREBASE CLOUD FUNCTION: issueBlockchainCertificate
-// Description: Securely uploads a learner's Statement of Results (PDF) to IPFS
-// via Pinata, generates a cryptographic hash of their data, and mints that
-// hash permanently onto the Ethereum Sepolia blockchain.
+// PDF GENERATION LOGIC (generateMasterPoE)
 // ============================================================================
-
-// --- 2. SECRETS & ENVIRONMENT VARIABLES ---
-// Tell Firebase to securely inject the institution's MetaMask Private Key at runtime.
-const privateKeySecret = defineSecret("INSTITUTION_PRIVATE_KEY");
-
-// Pull the public configurations from the 'functions/.env' file.
-// We include fallbacks (|| "") just in case the .env file is missing something.
-const RPC_URL =
-  process.env.RPC_URL || "https://ethereum-sepolia-rpc.publicnode.com";
-const CONTRACT_ADDRESS = process.env.CONTRACT_ADDRESS || "";
-const PINATA_JWT = process.env.PINATA_JWT || "";
-
-// --- 3. SMART CONTRACT ABI ---
-// This tells ethers.js exactly what the 'issueCertificate' function looks like
-// inside your deployed Solidity contract, so it knows how to communicate with it.
-const contractABI = [
-  "function issueCertificate(string certId, bytes32 dataFingerprint) public",
-];
-
-// --- 4. MAIN FUNCTION LOGIC ---
-export const issueBlockchainCertificate = onCall(
-  // Attach the secret key so the function has permission to use it.
-  { secrets: [privateKeySecret] },
-  async (request) => {
-    // Extract the payload ('data') and the user's authentication state ('auth') sent from React.
-    const { data, auth } = request;
-
-    // SECURITY GATE: Prevent random internet users from triggering this function and spending your gas money.
-    // Only users who are actively logged into your Firebase app can pass this line.
-    if (!auth) {
-      throw new HttpsError(
-        "unauthenticated",
-        "You must be logged in to mint documents.",
-      );
-    }
-
-    // Unpack the learner data sent from the StatementOfResults component.
-    const {
-      verificationCode,
-      learnerName,
-      idNumber,
-      qualification,
-      issueDate,
-      eisaStatus,
-      pdfBase64, // The PDF file, encoded as a long text string.
-    } = data;
-
-    // VALIDATION: Ensure no critical data is missing before we start paying for uploads/transactions.
-    if (!verificationCode || !pdfBase64 || !CONTRACT_ADDRESS || !PINATA_JWT) {
-      throw new HttpsError(
-        "invalid-argument",
-        "Missing required data or environment variables.",
-      );
-    }
-
-    try {
-      // ==========================================
-      // PHASE 1: UPLOAD PDF TO PINATA (IPFS)
-      // ==========================================
-      console.log(`Uploading ${verificationCode}.pdf to Pinata...`);
-
-      // The frontend sends the PDF as a "Data URL" (e.g., "data:application/pdf;base64,JVBERi...").
-      // Pinata doesn't want the "data:application/pdf;base64," prefix, so we strip it out.
-      const base64Data = pdfBase64.replace(
-        /^data:application\/pdf;base64,/,
-        "",
-      );
-
-      // Node.js converts the raw base64 string back into a physical file format (a Buffer) in the server's memory.
-      const pdfBuffer = Buffer.from(base64Data, "base64");
-
-      // We create a virtual form (just like an HTML <form>) to hold the file.
-      const formData = new FormData();
-      formData.append("file", pdfBuffer, {
-        filename: `${verificationCode}.pdf`,
-        contentType: "application/pdf",
-      });
-
-      // We "submit" the form to Pinata's API.
-      const pinataResponse = await axios.post(
-        "https://api.pinata.cloud/pinning/pinFileToIPFS",
-        formData,
-        {
-          headers: {
-            // We use your Pinata JWT as a VIP pass to prove you own the Pinata account.
-            Authorization: `Bearer ${PINATA_JWT}`,
-            ...formData.getHeaders(), // Automatically adds the correct multipart boundary headers.
-          },
-        },
-      );
-
-      // Pinata returns the unique Content Identifier (CID) for the uploaded file.
-      const ipfsHash = pinataResponse.data.IpfsHash;
-      console.log(`✅ Uploaded to IPFS! Hash: ${ipfsHash}`);
-
-      // ==========================================
-      // PHASE 2: MINT RECORD TO THE BLOCKCHAIN
-      // ==========================================
-      console.log(`Minting to Sepolia...`);
-
-      // Create a "tunnel" connecting this backend to the Ethereum Sepolia network.
-      const provider = new ethers.JsonRpcProvider(RPC_URL);
-
-      // Create a virtual wallet inside the backend using your secure private key.
-      const wallet = new ethers.Wallet(privateKeySecret.value(), provider);
-
-      // Link the network, your wallet, and your specific smart contract together.
-      const contract = new ethers.Contract(
-        CONTRACT_ADDRESS,
-        contractABI,
-        wallet,
-      );
-
-      // CRYPTOGRAPHY: Combine all the learner's details (INCLUDING the new IPFS hash) and smash them
-      // together into a 32-byte cryptographic hash. If any of this data is ever altered in Firebase,
-      // recalculating this hash will produce a completely different result, exposing the tampering.
-      const fingerprint = ethers.solidityPackedKeccak256(
-        ["string", "string", "string", "string", "string", "string"],
-        [
-          learnerName.trim(),
-          idNumber.trim(),
-          qualification.trim(),
-          issueDate.trim(),
-          eisaStatus.trim(),
-          ipfsHash.trim(),
-        ],
-      );
-
-      // Execute the actual transaction on the blockchain. The wallet pays the gas fee automatically.
-      const tx = await contract.issueCertificate(verificationCode, fingerprint);
-
-      // Pause the code and wait for the Ethereum network to officially mine and confirm the block.
-      const receipt = await tx.wait();
-
-      console.log(`✅ Minted successfully! TX: ${receipt.hash}`);
-
-      // ==========================================
-      // PHASE 3: RETURN RESULTS TO FRONTEND
-      // ==========================================
-      // Send all the generated permanent identifiers back to the React app so it can save them to Firestore.
-      return {
-        success: true,
-        ipfsHash: ipfsHash,
-        fingerprint: fingerprint,
-        transactionHash: receipt.hash,
-        timestamp: new Date().toISOString(),
-      };
-    } catch (error: any) {
-      // If anything fails (Pinata is down, wallet is out of funds, etc.), log the error
-      // in the Firebase Console and send a clean failure message back to the React UI.
-      console.error("Cloud Function Error:", error);
-      throw new HttpsError(
-        "internal",
-        error.message || "Failed to process certificate",
-      );
-    }
-  },
-);
-
-// functions/src/generateMasterPoE.ts
-// mLab Assessment Platform — Master Portfolio of Evidence Generator
-// Brand: mLab Corporate Identity 2019
-//   Midnight Blue #073f4e · Green #94c73d · Trebuchet MS / Oswald
-
-// import { onDocumentCreated } from "firebase-functions/v2/firestore";
-// import * as admin from "firebase-admin";
-import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
-const puppeteer = require("puppeteer-core");
-const chromium = require("@sparticuz/chromium");
-// import * as nodemailer from "nodemailer";
-
-// ─── TYPES & INTERFACES ──────────────────────────────────────────────────────
 
 interface UploadedDoc {
   id: string;
@@ -2531,11 +2761,11 @@ interface EvidenceFile {
   url: string;
   label: string;
 }
-
 interface Submission {
   id: string;
   assessmentId: string;
   title?: string;
+  type?: string; // e.g. Formative, Summative, Practice Set
   moduleType?: string;
   competency?: string;
   submittedAt?: string;
@@ -2552,16 +2782,24 @@ interface Submission {
   facilitatorReviewedAt?: string;
   gradedAt?: string;
   assignedAt?: string;
-  learnerDeclaration?: any;
+  learnerDeclaration?: {
+    learnerName?: string;
+    learnerIdNumber?: string;
+    learnerAuthUid?: string;
+    timestamp?: string;
+    signatureUrl?: string; // SNAPSHOT FIELD
+  };
   grading?: {
     facilitatorName?: string;
     facilitatorOverallFeedback?: string;
     facilitatorReviewedAt?: string;
     facilitatorId?: string;
+    facilitatorSignatureUrl?: string; // SNAPSHOT FIELD
     assessorName?: string;
     assessorOverallFeedback?: string;
     assessorRegNumber?: string;
     assessorId?: string;
+    assessorSignatureUrl?: string; // SNAPSHOT FIELD
     gradedAt?: string;
     gradedBy?: string;
     facilitatorBreakdown?: Record<string, any>;
@@ -2573,6 +2811,7 @@ interface Submission {
     moderatorName?: string;
     moderatorRegNumber?: string;
     moderatedAt?: string;
+    moderatorSignatureUrl?: string; // SNAPSHOT FIELD
     feedback?: string;
     breakdown?: Record<string, any>;
   };
@@ -2586,6 +2825,7 @@ interface Submission {
     reviewedAt?: string;
     resolvedBy?: string;
     resolvedByName?: string;
+    resolvedBySignatureUrl?: string; // SNAPSHOT FIELD
     resolvedAt?: string;
     resolutionNotes?: string;
   };
@@ -2594,13 +2834,13 @@ interface Submission {
     notes?: string;
     facilitatorId?: string;
     facilitatorName?: string;
+    facilitatorSignatureUrl?: string; // SNAPSHOT FIELD
     acknowledged?: boolean;
     acknowledgedAt?: string;
+    learnerSignatureUrl?: string; // SNAPSHOT FIELD
   };
-  [key: string]: any; // Fixes ts(7053)
+  [key: string]: any;
 }
-
-// ─── UTILITIES ────────────────────────────────────────────────────────────────
 
 const fetchFileBuffer = async (url: string): Promise<Buffer | null> => {
   try {
@@ -2615,25 +2855,17 @@ const fetchFileBuffer = async (url: string): Promise<Buffer | null> => {
   }
 };
 
-// const transporter = nodemailer.createTransport({
-//   service: "gmail",
-//   auth: {
-//     user: "brndkt@gmail.com",
-//     pass: "gwjy wcin rdpl lovi", // Generated App Password
-//   },
-// });
-
-// ─── HTML DESIGN SYSTEM & STYLES ──────────────────────────────────────────────
+// ─── HELPER: CLEAN RICH TEXT (FIXES THE WORD-BREAK BUG IN PDF) ───────────────
+const cleanRichText = (html?: string) => {
+  if (!html) return "";
+  return html.replace(/&nbsp;/g, " ");
+};
 
 const POE_STYLES = `
   @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@300;400;500;600;700&display=swap');
-
-  /* ── PAGE SETUP ── */
   @page { size: A4; margin: 15mm 16mm 22mm; }
   @page :first { margin-top: 0; }
-
   *, *::before, *::after { box-sizing: border-box; }
-
   body {
     font-family: 'Trebuchet MS', 'Lucida Grande', Arial, sans-serif;
     font-size: 11px;
@@ -2644,78 +2876,34 @@ const POE_STYLES = `
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
-
-  /* ── PAGE BREAK ── */
   .pb { page-break-after: always; }
   .pbi { page-break-inside: avoid; }
-
-  /* ═══════════════════════════════
-     COVER PAGE
-  ═══════════════════════════════ */
-  .cover {
-    height: 100vh;
-    display: flex;
-    flex-direction: column;
-    background: #073f4e;
-    overflow: hidden;
-    position: relative;
-  }
-  .cover__pattern {
-    position: absolute; inset: 0;
-    background-image:
-      repeating-linear-gradient(-45deg, transparent, transparent 32px, rgba(148,199,61,0.05) 32px, rgba(148,199,61,0.05) 33px),
-      repeating-linear-gradient(45deg, transparent, transparent 32px, rgba(255,255,255,0.02) 32px, rgba(255,255,255,0.02) 33px);
-    pointer-events: none;
-  }
+  .cover { height: 100vh; display: flex; flex-direction: column; background: #073f4e; overflow: hidden; position: relative; }
+  .cover__pattern { position: absolute; inset: 0; background-image: repeating-linear-gradient(-45deg, transparent, transparent 32px, rgba(148,199,61,0.05) 32px, rgba(148,199,61,0.05) 33px), repeating-linear-gradient(45deg, transparent, transparent 32px, rgba(255,255,255,0.02) 32px, rgba(255,255,255,0.02) 33px); pointer-events: none; }
   .cover__accent { display: flex; height: 8px; flex-shrink: 0; }
   .cover__accent-blue  { flex: 1; background: #052e3a; }
   .cover__accent-green { width: 100px; background: #94c73d; }
-
-  .cover__header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 28px 40px 20px;
-    border-bottom: 1px solid rgba(255,255,255,0.08);
-    flex-shrink: 0;
-    position: relative;
-  }
+  .cover__header { display: flex; align-items: center; justify-content: space-between; padding: 28px 40px 20px; border-bottom: 1px solid rgba(255,255,255,0.08); flex-shrink: 0; position: relative; }
   .cover__logo { height: 52px; object-fit: contain; }
   .cover__org { text-align: right; }
-  .cover__org-name {
-    font-family: 'Oswald', sans-serif;
-    font-size: 13px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: #ffffff; display: block;
-  }
+  .cover__org-name { font-family: 'Oswald', sans-serif; font-size: 13px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: #ffffff; display: block; }
   .cover__org-tag { font-size: 9px; letter-spacing: 0.06em; text-transform: uppercase; color: rgba(255,255,255,0.4); display: block; margin-top: 3px; }
-
-  .cover__body {
-    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px; text-align: center; position: relative;
-  }
-
-  .cover__doc-type {
-    font-family: 'Oswald', sans-serif; font-size: 10px; font-weight: 700; letter-spacing: 0.28em; text-transform: uppercase; color: #94c73d; margin: 0 0 16px; display: flex; align-items: center; justify-content: center; gap: 10px;
-  }
+  .cover__body { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px; text-align: center; position: relative; }
+  .cover__doc-type { font-family: 'Oswald', sans-serif; font-size: 10px; font-weight: 700; letter-spacing: 0.28em; text-transform: uppercase; color: #94c73d; margin: 0 0 16px; display: flex; align-items: center; justify-content: center; gap: 10px; }
   .cover__doc-type::before, .cover__doc-type::after { content: ''; display: block; height: 1px; width: 40px; background: rgba(148,199,61,0.4); }
   .cover__title { font-family: 'Oswald', sans-serif; font-size: 42px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #ffffff; margin: 0 0 8px; line-height: 1; }
   .cover__subtitle { font-family: 'Oswald', sans-serif; font-size: 14px; font-weight: 400; letter-spacing: 0.2em; text-transform: uppercase; color: rgba(255,255,255,0.45); margin: 0 0 48px; }
-
   .cover__id-card { width: 100%; max-width: 560px; border: 1px solid rgba(255,255,255,0.12); border-top: 3px solid #94c73d; background: rgba(255,255,255,0.05); padding: 0; text-align: left; }
   .cover__id-row { display: flex; align-items: stretch; border-bottom: 1px solid rgba(255,255,255,0.07); }
   .cover__id-row:last-child { border-bottom: none; }
   .cover__id-label { width: 160px; flex-shrink: 0; padding: 10px 14px; font-family: 'Oswald', sans-serif; font-size: 8.5px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: rgba(255,255,255,0.35); background: rgba(0,0,0,0.1); border-right: 1px solid rgba(255,255,255,0.06); display: flex; align-items: center; }
   .cover__id-value { padding: 10px 16px; font-size: 12px; font-weight: 600; color: #ffffff; display: flex; align-items: center; flex: 1; }
-
   .cover__footer { padding: 16px 40px; border-top: 1px solid rgba(255,255,255,0.06); display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; position: relative; }
   .cover__footer-ref { font-family: 'Oswald', sans-serif; font-size: 8px; letter-spacing: 0.1em; text-transform: uppercase; color: rgba(255,255,255,0.25); }
   .cover__footer-date { font-size: 9px; color: rgba(255,255,255,0.25); }
-
   .cover__accent-bottom { display: flex; height: 8px; flex-shrink: 0; }
   .cover__accent-bottom-green { width: 100px; background: #94c73d; }
   .cover__accent-bottom-blue  { flex: 1; background: #052e3a; }
-
-  /* ═══════════════════════════════
-     DIVIDER PAGE
-  ═══════════════════════════════ */
   .divider { height: 100vh; background: #073f4e; display: flex; flex-direction: column; position: relative; overflow: hidden; }
   .divider__pattern { position: absolute; inset: 0; background-image: repeating-linear-gradient(-45deg, transparent, transparent 32px, rgba(255,255,255,0.02) 32px, rgba(255,255,255,0.02) 33px); pointer-events: none; }
   .divider__accent { display: flex; height: 6px; flex-shrink: 0; }
@@ -2729,32 +2917,19 @@ const POE_STYLES = `
   .divider__accent-bottom { display: flex; height: 6px; flex-shrink: 0; }
   .divider__accent-bottom-green { width: 80px; background: #94c73d; }
   .divider__accent-bottom-blue  { flex: 1; background: #052e3a; }
-
-  /* ═══════════════════════════════
-     SECTION HEADER
-  ═══════════════════════════════ */
   .sec-header { display: flex; align-items: stretch; margin: 0 0 20px; border-top: 4px solid #073f4e; background: #073f4e; }
   .sec-header__num { width: 48px; flex-shrink: 0; background: #94c73d; display: flex; align-items: center; justify-content: center; font-family: 'Oswald', sans-serif; font-size: 18px; font-weight: 700; color: #073f4e; }
   .sec-header__text { padding: 10px 16px; flex: 1; }
   .sec-header__title { font-family: 'Oswald', sans-serif; font-size: 13px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #ffffff; margin: 0; line-height: 1.1; }
   .sec-header__sub { font-size: 9px; letter-spacing: 0.06em; text-transform: uppercase; color: rgba(255,255,255,0.4); margin: 3px 0 0; }
-  
   .sub-heading { font-family: 'Oswald', sans-serif; font-size: 9.5px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: #073f4e; margin: 22px 0 8px; padding-bottom: 5px; border-bottom: 2px solid #073f4e; display: flex; align-items: center; gap: 6px; }
   .sub-heading::after { content: ''; display: block; height: 2px; flex: 1; background: #94c73d; margin-left: 6px; }
-
-  /* ═══════════════════════════════
-     DATA GRID
-  ═══════════════════════════════ */
   .data-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: #dde4e8; border: 1px solid #dde4e8; margin-bottom: 18px; }
   .data-grid--1col { grid-template-columns: 1fr; }
   .data-cell { background: #ffffff; padding: 9px 12px; }
   .data-cell--span2 { grid-column: span 2; }
   .data-cell__label { font-family: 'Oswald', sans-serif; font-size: 8px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: #9b9b9b; display: block; margin-bottom: 3px; }
   .data-cell__value { font-size: 11.5px; font-weight: 600; color: #073f4e; }
-
-  /* ═══════════════════════════════
-     TABLES
-  ═══════════════════════════════ */
   .poe-table { width: 100%; border-collapse: collapse; margin: 0 0 18px; font-size: 10.5px; }
   .poe-table thead tr { background: #073f4e; }
   .poe-table th { padding: 8px 10px; text-align: left; font-family: 'Oswald', sans-serif; font-size: 8.5px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(255,255,255,0.85); border-right: 1px solid rgba(255,255,255,0.08); }
@@ -2762,104 +2937,76 @@ const POE_STYLES = `
   .poe-table tbody tr:nth-child(even) td { background: #f8fafb; }
   .poe-table--accented td:first-child { border-left: 3px solid #94c73d; }
   .poe-table--checklist td:nth-child(3) { font-family: 'Oswald', sans-serif; font-size: 9px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
-
-  /* ═══════════════════════════════
-     BADGES
-  ═══════════════════════════════ */
   .badge { display: inline-block; padding: 2px 8px; font-family: 'Oswald', sans-serif; font-size: 8.5px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
+  .badge--type { display: inline-block; padding: 2px 5px; background: #e2e8f0; color: #475569; border-radius: 3px; font-size: 7px; text-transform: uppercase; margin-right: 6px; vertical-align: middle; }
   .badge--c   { background: rgba(148,199,61,0.15); color: #3d6b0f; border: 1px solid rgba(148,199,61,0.4); }
   .badge--nyc { background: rgba(239,68,68,0.1);   color: #b91c1c; border: 1px solid rgba(239,68,68,0.3); }
   .badge--p   { background: #f0f4f6; color: #6b6b6b; border: 1px solid #dde4e8; }
   .badge--attempt { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
   .badge--attempt1 { background: #f0f4f6; color: #6b6b6b; border: 1px solid #dde4e8; }
-
-  /* ═══════════════════════════════
-     MODULE TRANSCRIPT 
-  ═══════════════════════════════ */
+  .mod-header-row td { background-color: #f1f5f9 !important; border-top: 2px solid #cbd5e1 !important; border-bottom: 1px solid #cbd5e1 !important; }
+  .mod-header-text { font-family: 'Oswald', sans-serif; font-size: 10px; color: #073f4e; letter-spacing: 0.05em; text-transform: uppercase; font-weight: 700; }
   .module-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 12px 16px; background: #e4edf0; border-left: 5px solid #073f4e; margin-bottom: 12px; }
   .module-header__title { font-family: 'Oswald', sans-serif; font-size: 14px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: #073f4e; margin: 0; }
-  
   .eval-box { border: 1px solid #dde4e8; border-top: 3px solid #073f4e; margin-bottom: 16px; page-break-inside: avoid; }
   .eval-box__row { display: flex; align-items: flex-start; border-bottom: 1px solid #eef0f2; min-height: 32px; }
   .eval-box__label { width: 150px; flex-shrink: 0; padding: 8px 12px; font-family: 'Oswald', sans-serif; font-size: 8.5px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: #9b9b9b; background: #f8fafb; border-right: 1px solid #eef0f2; }
   .eval-box__value { padding: 8px 14px; font-size: 11px; color: #1a2e35; flex: 1; }
   .eval-box__divider { height: 1px; background: #dde4e8; margin: 0; }
-
-  /* OFFICIAL QCTO INK COLORS */
-  .ink-fac { color: #1d4ed8 !important; } /* Facilitator — blue ink */
-  .ink-ass { color: #b91c1c !important; } /* Assessor — red ink     */
-  .ink-mod { color: #15803d !important; } /* Moderator — green ink  */
-
+  .ink-fac { color: #1d4ed8 !important; }
+  .ink-ass { color: #b91c1c !important; }
+  .ink-mod { color: #15803d !important; }
   .q-block { margin-bottom: 16px; border-bottom: 1px solid #eef0f2; padding-bottom: 14px; page-break-inside: avoid; }
   .q-num { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; background: #073f4e; color: #ffffff; font-family: 'Oswald', sans-serif; font-size: 9px; font-weight: 700; flex-shrink: 0; margin-right: 8px; }
   .q-text { font-family: 'Oswald', sans-serif; font-size: 11px; font-weight: 600; letter-spacing: 0.02em; color: #073f4e; margin: 0 0 8px; display: flex; }
-  .a-text { background: #f8fafb; border: 1px solid #e4edf0; border-left: 4px solid #9b9b9b; padding: 9px 12px; font-size: 11px; white-space: pre-wrap; overflow-wrap: break-word; color: #1a2e35; }
+  .a-text { background: #f8fafb; border: 1px solid #e4edf0; border-left: 4px solid #9b9b9b; padding: 9px 12px; font-size: 11px; white-space: normal; overflow-wrap: break-word; color: #1a2e35; }
   .a-link { color: #0a5266; text-decoration: underline; font-weight: 600; }
   .a-annex { margin-top: 6px; padding: 7px 10px; background: #fffbeb; border: 1px solid #fde68a; border-left: 4px solid #d97706; font-size: 10px; }
-  
   .f-block { margin-top: 7px; border: 1px solid #e4edf0; border-top: 2px solid #dde4e8; font-size: 10px; }
   .f-row { display: flex; align-items: flex-start; padding: 5px 10px; border-bottom: 1px solid #f0f4f6; gap: 6px; }
   .f-role { font-family: 'Oswald', sans-serif; font-size: 7.5px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; width: 90px; flex-shrink: 0; padding-top: 1px; }
   .f-comment { line-height: 1.5; flex: 1; }
-
   .openbook-notice { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; background: #f0f9ff; border: 1px solid #bae6fd; border-left: 4px solid #0ea5e9; margin-bottom: 14px; font-size: 11px; page-break-inside: avoid; }
   .openbook-notice__icon { font-family: 'Oswald', sans-serif; font-size: 8.5px; font-weight: 700; color: #0369a1; }
-
-  /* ═══════════════════════════════
-     SIGNATURE BLOCKS
-  ═══════════════════════════════ */
   .sig-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 16px; background: #f4f7f9; border: 1px solid #dde4e8; border-top: 3px solid #94c73d; margin: 16px 0 0; page-break-inside: avoid; }
   .sig-bar__label { font-family: 'Oswald', sans-serif; font-size: 8.5px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: #6b6b6b; }
   .sig-bar__img { max-height: 36px; max-width: 120px; object-fit: contain; mix-blend-mode: multiply; }
   .sig-bar__pending { font-size: 9px; color: #9b9b9b; font-style: italic; }
   .sig-bar__date { font-size: 9px; color: #6b6b6b; }
-
   .sig-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: #dde4e8; border: 1px solid #dde4e8; margin-top: 20px; page-break-inside: avoid; }
   .sig-cell { background: #ffffff; padding: 12px 10px; text-align: center; border-top: 3px solid #dde4e8; }
   .sig-cell--learner  { border-top-color: #073f4e; }
   .sig-cell--fac      { border-top-color: #1d4ed8; }
   .sig-cell--assessor { border-top-color: #b91c1c; }
   .sig-cell--mod      { border-top-color: #15803d; }
-
   .sig-cell__role { font-family: 'Oswald', sans-serif; font-size: 7.5px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: #9b9b9b; margin-bottom: 8px; }
   .sig-cell__img { max-height: 38px; max-width: 100%; object-fit: contain; mix-blend-mode: multiply; display: block; margin: 0 auto 6px; }
   .sig-cell__placeholder { height: 38px; display: flex; align-items: center; justify-content: center; font-size: 9px; color: #c0c8cc; font-style: italic; margin-bottom: 6px; border: 1px dashed #dde4e8; }
   .sig-cell__line { height: 1px; background: #dde4e8; margin: 0 0 5px; }
   .sig-cell__name { font-family: 'Oswald', sans-serif; font-size: 9px; font-weight: 700; letter-spacing: 0.04em; margin-bottom: 2px; }
   .sig-cell__detail { font-size: 8px; }
-
-  /* ═══════════════════════════════
-     CARDS & NOTICES
-  ═══════════════════════════════ */
   .notice { padding: 12px 14px; margin: 0 0 14px; page-break-inside: avoid; }
   .notice--green { background: rgba(148,199,61,0.07); border: 1px solid rgba(148,199,61,0.3); border-left: 5px solid #94c73d; }
   .notice--grey { background: #f4f7f9; border: 1px solid #dde4e8; border-left: 5px solid #9b9b9b; }
   .notice__title { font-family: 'Oswald', sans-serif; font-size: 9px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; margin: 0 0 5px; }
-  
   .coaching-card { border: 1px solid #dde4e8; border-left: 5px solid #d97706; background: #fffbeb; margin-bottom: 14px; page-break-inside: avoid; }
   .coaching-card__head { display: flex; justify-content: space-between; padding: 9px 14px; border-bottom: 1px solid #fde68a; background: rgba(217,119,6,0.06); }
   .coaching-card__title { font-family: 'Oswald', sans-serif; font-size: 10px; font-weight: 700; color: #92400e; margin: 0; }
   .coaching-card__body { padding: 12px 14px; }
-
   .appeal-card { border: 1px solid #fecaca; border-left: 5px solid #ef4444; background: #fef2f2; margin-bottom: 14px; page-break-inside: avoid; }
   .appeal-card__head { display: flex; justify-content: space-between; padding: 9px 14px; border-bottom: 1px solid #fecaca; background: rgba(239,68,68,0.06); }
   .appeal-card__title { font-family: 'Oswald', sans-serif; font-size: 10px; font-weight: 700; color: #b91c1c; margin: 0; }
   .appeal-card__body { padding: 12px 14px; }
-
   .history-box { border: 1px solid #fecaca; border-top: 3px solid #ef4444; margin-top: 18px; padding: 15px; background: #fef2f2; border-radius: 6px; page-break-inside: avoid; }
   .history-box__header { padding-bottom: 8px; border-bottom: 1px solid #fecaca; font-family: 'Oswald', sans-serif; font-size: 10px; font-weight: 700; color: #b91c1c; text-transform: uppercase; margin-bottom: 12px; }
   .history-attempt { padding-bottom: 10px; border-bottom: 1px dashed #fecaca; margin-bottom: 12px; }
   .history-attempt:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
   .history-attempt__title { font-family: 'Oswald', sans-serif; font-size: 9px; font-weight: 700; color: #991b1b; margin: 0 0 4px; }
   .history-files { margin-top: 8px; padding: 8px; background: #ffffff; border: 1px solid #fecaca; border-radius: 4px; font-size: 10px; }
-
   .declaration { background: #f4f7f9; border: 1px solid #dde4e8; border-top: 3px solid #073f4e; padding: 16px; font-size: 11px; margin-bottom: 16px; }
   .letter-body { border: 1px solid #dde4e8; padding: 24px 28px; font-size: 11.5px; background: #ffffff; margin-bottom: 20px; }
-  
   .text-center { text-align: center; }
 `;
-
-// ─── HTML GENERATION HELPERS ──────────────────────────────────────────────────
 
 const sigCell = (
   role: string,
@@ -2923,14 +3070,13 @@ const outcomeBadge = (comp?: string) => {
   return `<span class="badge badge--p">Pending</span>`;
 };
 
-// ─── MAIN EXPORT ──────────────────────────────────────────────────────────────
-
 export const generateMasterPoE = onDocumentCreated(
   {
     document: "poe_export_requests/{requestId}",
     timeoutSeconds: 540,
     memory: "2GiB",
     region: "us-central1",
+    secrets: [mailgunSecret],
   },
   async (event) => {
     const snap = event.data;
@@ -3075,16 +3221,43 @@ export const generateMasterPoE = onDocumentCreated(
         });
       }
 
-      const learnerSigUrl = learner.authUid
-        ? signaturesMap[learner.authUid]
-        : null;
-      const primaryFacSigUrl = primaryFacilitatorId
-        ? signaturesMap[primaryFacilitatorId]
-        : null;
+      // =========================================================================================
+      // GLOBAL SIGNATURE RESOLUTION
+      // =========================================================================================
+      const latestSub = submissions[submissions.length - 1];
       const primaryGradedSub = submissions.find((s) => s.assessorId);
-      const assessorSigUrl = primaryGradedSub?.assessorId
-        ? signaturesMap[primaryGradedSub.assessorId]
-        : null;
+
+      // 1. THE "DAY 1" SIGNATURE (For POPIA, Induction, and Commitment)
+      let dayOneLearnerSigUrl = null;
+      if (
+        learnerUserDoc?.signatureHistory &&
+        learnerUserDoc.signatureHistory.length > 0
+      ) {
+        // Sort history by date ascending to get the oldest one
+        const sortedHistory = [...learnerUserDoc.signatureHistory].sort(
+          (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
+        );
+        dayOneLearnerSigUrl = sortedHistory[0].url;
+      } else {
+        dayOneLearnerSigUrl = learner.authUid
+          ? signaturesMap[learner.authUid]
+          : null;
+      }
+
+      // 2. THE "LATEST" SIGNATURE (For the Progress Report cover)
+      const latestLearnerSigUrl =
+        latestSub?.learnerDeclaration?.signatureUrl ||
+        (learner.authUid ? signaturesMap[learner.authUid] : null);
+
+      const primaryFacSigUrl =
+        submissions[0]?.grading?.facilitatorSignatureUrl ||
+        (primaryFacilitatorId ? signaturesMap[primaryFacilitatorId] : null);
+
+      const globalAssessorSigUrl =
+        primaryGradedSub?.grading?.assessorSignatureUrl ||
+        (primaryGradedSub?.assessorId
+          ? signaturesMap[primaryGradedSub.assessorId]
+          : null);
 
       await updateProgress(30, "Building QCTO compliance document…");
 
@@ -3092,53 +3265,108 @@ export const generateMasterPoE = onDocumentCreated(
         "https://firebasestorage.googleapis.com/v0/b/testpro-8f08c.appspot.com/o/Mlab-Grey-variation-1.png?alt=media&token=e85e0473-97cc-431d-8c08-7a3445806983";
       const offlineEvidenceFiles: EvidenceFile[] = [];
 
+      // 🚀 UPDATED: Groups assessments logically under their module header!
       const progressRows = (subs: Submission[]) => {
         if (!subs.length)
           return `<tr><td colspan="4" class="empty-state">No modules mapped for this component.</td></tr>`;
-        return subs
-          .map((s) => {
-            const att = s.attemptNumber || 1;
-            const attBadge =
-              att > 1
-                ? `<span class="badge badge--attempt">Attempt ${att}</span>`
-                : `<span class="badge badge--attempt1">1st</span>`;
-            const compBadge = outcomeBadge(s.competency);
-            return `<tr>
-            <td style="font-family:'Oswald',sans-serif; font-weight:700; font-size:10px; color:#073f4e;">${s.moduleNumber || "N/A"}</td>
-            <td>${s.title || "Untitled"}</td>
-            <td class="text-center">${attBadge}</td>
-            <td class="text-center">${compBadge}</td>
-          </tr>`;
-          })
-          .join("");
+
+        const groups: Record<string, Submission[]> = {};
+        subs.forEach((s) => {
+          const mod = s.moduleNumber || "Unlinked Assessments";
+          if (!groups[mod]) groups[mod] = [];
+          groups[mod].push(s);
+        });
+
+        let html = "";
+        Object.keys(groups)
+          .sort()
+          .forEach((mod) => {
+            html += `<tr class="mod-header-row">
+                <td colspan="4">
+                    <span class="mod-header-text">MODULE: ${mod}</span>
+                </td>
+            </tr>`;
+
+            groups[mod]
+              .sort(
+                (a, b) =>
+                  new Date(a.assignedAt || 0).getTime() -
+                  new Date(b.assignedAt || 0).getTime(),
+              )
+              .forEach((s) => {
+                const att = s.attemptNumber || 1;
+                const attBadge =
+                  att > 1
+                    ? `<span class="badge badge--attempt">Attempt ${att}</span>`
+                    : `<span class="badge badge--attempt1">1st</span>`;
+                const compBadge = outcomeBadge(s.competency);
+                const typeLabel = s.type
+                  ? `<span class="badge--type">${s.type}</span>`
+                  : "";
+
+                html += `<tr>
+                  <td></td>
+                  <td style="padding-top:6px; padding-bottom:6px;">${typeLabel}<span style="vertical-align:middle;">${s.title || "Untitled"}</span></td>
+                  <td class="text-center" style="vertical-align:middle;">${attBadge}</td>
+                  <td class="text-center" style="vertical-align:middle;">${compBadge}</td>
+                </tr>`;
+              });
+          });
+        return html;
       };
 
+      // 🚀 UPDATED: Learning Plan Rows also grouped by Module Code!
       const learningPlanRows = (subs: Submission[]) => {
         if (!subs.length)
           return `<tr><td colspan="8" class="empty-state">No modules mapped.</td></tr>`;
-        return subs
-          .map((s) => {
-            const facName =
-              s.grading?.facilitatorName || s.facilitatorName || "Pending";
-            const dateRange = `${fmt(s.assignedAt)} – ${fmt(s.gradedAt)}`;
-            const compBadge = outcomeBadge(s.competency);
-            return `<tr>
-            <td style="font-family:'Oswald',sans-serif; font-weight:700; font-size:9.5px; color:#073f4e;">${s.moduleNumber || "N/A"}</td>
-            <td><span class="ink-fac">${facName}</span></td>
-            <td style="font-size:10px;">${dateRange}</td>
-            <td class="text-center font-bold">${s.moduleType === "knowledge" ? "✓" : ""}</td>
-            <td class="text-center font-bold">${s.moduleType === "practical" ? "✓" : ""}</td>
-            <td class="text-center font-bold">${s.moduleType === "workplace" ? "✓" : ""}</td>
-            <td class="text-center">${s.competency === "C" ? compBadge : ""}</td>
-            <td class="text-center">${s.competency === "NYC" ? compBadge : ""}</td>
-          </tr>`;
-          })
-          .join("");
+
+        const groups: Record<string, Submission[]> = {};
+        subs.forEach((s) => {
+          const mod = s.moduleNumber || "Unlinked Assessments";
+          if (!groups[mod]) groups[mod] = [];
+          groups[mod].push(s);
+        });
+
+        let html = "";
+        Object.keys(groups)
+          .sort()
+          .forEach((mod) => {
+            html += `<tr class="mod-header-row">
+                <td colspan="8">
+                    <span class="mod-header-text">MODULE: ${mod}</span>
+                </td>
+            </tr>`;
+
+            groups[mod]
+              .sort(
+                (a, b) =>
+                  new Date(a.assignedAt || 0).getTime() -
+                  new Date(b.assignedAt || 0).getTime(),
+              )
+              .forEach((s) => {
+                const facName =
+                  s.grading?.facilitatorName || s.facilitatorName || "Pending";
+                const dateRange = `${fmt(s.assignedAt)} – ${fmt(s.gradedAt)}`;
+                const compBadge = outcomeBadge(s.competency);
+                const typeLabel = s.type
+                  ? `<span class="badge--type">${s.type}</span>`
+                  : "";
+
+                html += `<tr>
+                  <td class="nested-cell">${typeLabel}<span style="vertical-align:middle;">${s.title || "Untitled"}</span></td>
+                  <td><span class="ink-fac">${facName}</span></td>
+                  <td style="font-size:10px;">${dateRange}</td>
+                  <td class="text-center font-bold">${s.moduleType === "knowledge" ? "✓" : ""}</td>
+                  <td class="text-center font-bold">${s.moduleType === "practical" ? "✓" : ""}</td>
+                  <td class="text-center font-bold">${s.moduleType === "workplace" ? "✓" : ""}</td>
+                  <td class="text-center">${s.competency === "C" ? compBadge : ""}</td>
+                  <td class="text-center">${s.competency === "NYC" ? compBadge : ""}</td>
+                </tr>`;
+              });
+          });
+        return html;
       };
 
-      // ══════════════════════════════════════════════════════════════════
-      //   BUILD HTML DOCUMENT
-      // ══════════════════════════════════════════════════════════════════
       let html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -3257,14 +3485,11 @@ ${sectionHeader("1", "Progress Report", "Comprehensive Module Outcome Summary")}
     <div class="sig-bar__label">Assessor Sign-Off</div>
     <div style="font-size:9px; color:#9b9b9b; margin-top:2px;">I declare this progress report accurate and complete.</div>
   </div>
-  ${assessorSigUrl ? `<img src="${assessorSigUrl}" class="sig-bar__img" />` : `<span class="sig-bar__pending">Pending digital signature</span>`}
+  ${globalAssessorSigUrl ? `<img src="${globalAssessorSigUrl}" class="sig-bar__img" />` : `<span class="sig-bar__pending">Pending digital signature</span>`}
   <div class="sig-bar__date">Date: ${fmt(new Date())}</div>
 </div>
 <div class="pb"></div>`;
 
-      // ══════════════════════════════════════════════════════════════════
-      //   SECTION 2: ASSESSMENT TRANSCRIPTS (per module)
-      // ══════════════════════════════════════════════════════════════════
       html += `
 ${dividerPage("2", "Competence Record & Final Assessment Report", "Official system-generated transcripts, grading evidence, and signed evaluations for every module assessed.")}
 <div class="pb"></div>`;
@@ -3300,13 +3525,21 @@ ${dividerPage("2", "Competence Record & Final Assessment Report", "Official syst
         const modFeedback =
           moderation.feedback || "<em>No moderation comments recorded.</em>";
 
-        const facSigUrl = sub.facilitatorId
-          ? signaturesMap[sub.facilitatorId]
-          : null;
-        const assSigUrl = sub.assessorId ? signaturesMap[sub.assessorId] : null;
-        const modSigUrl = sub.moderatorId
-          ? signaturesMap[sub.moderatorId]
-          : null;
+        // =========================================================================================
+        // SIGNATURE SNAPSHOT RESOLUTION (PER MODULE)
+        // =========================================================================================
+        const learnerSigUrl =
+          sub.learnerDeclaration?.signatureUrl ||
+          (learner.authUid ? signaturesMap[learner.authUid] : null);
+        const facSigUrl =
+          sub.grading?.facilitatorSignatureUrl ||
+          (sub.facilitatorId ? signaturesMap[sub.facilitatorId] : null);
+        const assSigUrl =
+          sub.grading?.assessorSignatureUrl ||
+          (sub.assessorId ? signaturesMap[sub.assessorId] : null);
+        const modSigUrl =
+          sub.moderation?.moderatorSignatureUrl ||
+          (sub.moderatorId ? signaturesMap[sub.moderatorId] : null);
 
         const facName =
           sub.facilitatorName || grading.facilitatorName || "Pending";
@@ -3320,7 +3553,6 @@ ${dividerPage("2", "Competence Record & Final Assessment Report", "Official syst
           : "";
         const moduleBc = sub.moduleNumber || sub.title || "Module";
 
-        // Extract metadata cleanly
         const modInfo = assessmentData.moduleInfo || assessmentData || {};
         const nqfLevel = modInfo.nqfLevel ? `Level ${modInfo.nqfLevel}` : "N/A";
         const notionalHours = modInfo.notionalHours || "N/A";
@@ -3335,10 +3567,14 @@ ${dividerPage("2", "Competence Record & Final Assessment Report", "Official syst
         const assDate = fmt(sub.gradedAt || grading.gradedAt);
         const modDate = fmt(moderation.moderatedAt);
 
+        // 🚀 PROMINENTLY DISPLAY THE TYPE OF ASSESSMENT
         html += `
 <div class="module-header pbi">
   <div>
     <h2 class="module-header__title">${sub.title || "Untitled Module"}</h2>
+    <div style="font-size:9px; color:#64748b; text-transform:uppercase; margin-top:3px; letter-spacing:0.05em; font-family:'Oswald', sans-serif;">
+      ${sub.type || "Assessment Component"}
+    </div>
   </div>
   <div class="module-header__badges">
     ${outcomeBadge(sub.competency)}
@@ -3394,19 +3630,18 @@ ${
   <div class="eval-box__divider"></div>
   <div class="eval-box__row">
     <div class="eval-box__label">Facilitator Note</div>
-    <div class="eval-box__value ink-fac">${facFeedback}</div>
+    <div class="eval-box__value ink-fac">${cleanRichText(facFeedback)}</div>
   </div>
   <div class="eval-box__row">
     <div class="eval-box__label">Assessor Feedback</div>
-    <div class="eval-box__value ink-ass">${assFeedback}</div>
+    <div class="eval-box__value ink-ass">${cleanRichText(assFeedback)}</div>
   </div>
   <div class="eval-box__row">
     <div class="eval-box__label">Moderator Review</div>
-    <div class="eval-box__value ink-mod">${modFeedback}</div>
+    <div class="eval-box__value ink-mod">${cleanRichText(modFeedback)}</div>
   </div>
 </div>`;
 
-        // Evidence blocks
         if (blocks.length > 0) {
           let qNum = 1;
           blocks.forEach((block: any) => {
@@ -3433,11 +3668,12 @@ ${
                 ) {
                   formattedAnswer = block.options[ans] || String(ans);
                 } else {
-                  formattedAnswer = String(ans);
+                  // 🚀 CLEAN HTML 🚀
+                  formattedAnswer = cleanRichText(String(ans));
                 }
               } else if (typeof ans === "object") {
                 if (ans.text && ans.text !== "<p></p>")
-                  formattedAnswer += `<div>${ans.text}</div>`;
+                  formattedAnswer += `<div>${cleanRichText(ans.text)}</div>`;
                 if (ans.url)
                   formattedAnswer += `<div>&#x1F517; <a class="a-link" href="${ans.url}">External Link</a></div>`;
                 if (ans.code)
@@ -3459,7 +3695,7 @@ ${
                   if (subAns && typeof subAns === "object") {
                     let subHtml = "";
                     if (subAns.text && subAns.text !== "<p></p>")
-                      subHtml += `<div>${subAns.text}</div>`;
+                      subHtml += `<div>${cleanRichText(subAns.text)}</div>`;
                     if (subAns.url)
                       subHtml += `<div><a class="a-link" href="${subAns.url}">External Link</a></div>`;
                     if (subAns.code)
@@ -3481,7 +3717,7 @@ ${
                     subAns.trim() &&
                     !["text", "url", "uploadUrl", "code"].includes(k)
                   ) {
-                    formattedAnswer += `<div><strong>${k.replace(/_/g, " ")}:</strong> ${subAns}</div>`;
+                    formattedAnswer += `<div><strong>${k.replace(/_/g, " ")}:</strong> ${cleanRichText(subAns)}</div>`;
                   }
                 });
               }
@@ -3490,7 +3726,6 @@ ${
               formattedAnswer =
                 '<em class="text-muted">No evidence provided for this item.</em>';
 
-            // Per-item feedback
             const fLayer = grading.facilitatorBreakdown?.[block.id] || {};
             const aLayer = grading.assessorBreakdown?.[block.id] || {};
             const mLayer = moderation.breakdown?.[block.id] || {};
@@ -3498,7 +3733,7 @@ ${
             const feedbackRows: string[] = [];
             const seenComments = new Set<string>();
             const addFb = (role: string, inkClass: string, text: string) => {
-              const clean = text?.trim();
+              const clean = cleanRichText(text?.trim());
               if (!clean) return;
               const key = `${role}:${clean}`;
               if (!seenComments.has(key)) {
@@ -3526,7 +3761,7 @@ ${
 
             html += `
 <div class="q-block">
-  <div class="q-text"><span class="q-num">${qNum++}</span>${block.question || block.title || "Checkpoint"}</div>
+  <div class="q-text"><span class="q-num">${qNum++}</span>${cleanRichText(block.question || block.title || "Checkpoint")}</div>
   <div class="a-text">${formattedAnswer}</div>
   ${feedbackRows.length ? `<div class="f-block">${feedbackRows.join("")}</div>` : ""}
 </div>`;
@@ -3535,7 +3770,6 @@ ${
           html += `<div class="empty-state">Assessment template is empty — evidence blocks not mapped.</div>`;
         }
 
-        // SMART ARCHIVE LOGIC: Fixes the "No files found" bug by showing legacy message if PDF is absent.
         try {
           const historySnap = await admin
             .firestore()
@@ -3572,7 +3806,6 @@ ${
                   </div>
                 `;
               } else {
-                // If it's an old record without a PDF
                 archiveLinkHtml = `
                   <div style="margin-top:10px; padding:10px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:4px;">
                     <div style="font-size:11px; color:#475569; font-style:italic;">Legacy attempt. Full PDF snapshot is not available for this record.</div>
@@ -3586,7 +3819,7 @@ ${
         <span><strong>Outcome:</strong> <span class="ink-ass">${past.competency || "NYC"}</span></span>
         <span><strong>Score:</strong> ${past.marks !== undefined ? past.marks : 0} / ${past.totalMarks || 0}</span>
       </div>
-      <div style="font-size:10.5px;"><strong>Assessor Feedback:</strong> <span class="ink-ass">${pastFeedback}</span></div>
+      <div style="font-size:10.5px;"><strong>Assessor Feedback:</strong> <span class="ink-ass">${cleanRichText(pastFeedback)}</span></div>
       ${archiveLinkHtml}
     </div>`;
             });
@@ -3596,7 +3829,6 @@ ${
           console.error(`History fetch failed for ${sub.id}`, err);
         }
 
-        // Signature row
         html += `
 <div class="sig-row">
   ${sigCell("Learner Declaration", "learner", learnerSigUrl, learner.fullName || "Unknown", "", learnerDate)}
@@ -3605,11 +3837,8 @@ ${
   ${sigCell("Moderator Verification", "mod", modSigUrl, modName, modReg, modDate)}
 </div>
 <div class="pb"></div>`;
-      } // end for each submission
+      }
 
-      // ══════════════════════════════════════════════════════════════════
-      //   SECTIONS 3–8
-      // ══════════════════════════════════════════════════════════════════
       const d = learnerUserDoc.demographics || learner.demographics || {};
 
       html += `
@@ -3641,7 +3870,7 @@ ${sectionHeader("3", "Learner Registration Form", "Enrolment and Demographic Rec
 
 <div class="sig-bar">
   <div class="sig-bar__label">Learner Signature (Registration & POPIA)</div>
-  ${learnerSigUrl ? `<img src="${learnerSigUrl}" class="sig-bar__img" />` : `<span class="sig-bar__pending">Pending digital signature</span>`}
+  ${dayOneLearnerSigUrl ? `<img src="${dayOneLearnerSigUrl}" class="sig-bar__img" />` : `<span class="sig-bar__pending">Pending digital signature</span>`}
   <div class="sig-bar__date">Date: ${fmt(learner.createdAt || new Date())}</div>
 </div>
 <div class="pb"></div>
@@ -3657,7 +3886,7 @@ ${sectionHeader("4", "Letter of Commitment from Learner", "Declaration of Authen
 </div>
 <div class="sig-bar">
   <div class="sig-bar__label">Learner Sign-Off</div>
-  ${learnerSigUrl ? `<img src="${learnerSigUrl}" class="sig-bar__img" />` : `<span class="sig-bar__pending">Pending digital signature</span>`}
+  ${dayOneLearnerSigUrl ? `<img src="${dayOneLearnerSigUrl}" class="sig-bar__img" />` : `<span class="sig-bar__pending">Pending digital signature</span>`}
   <div class="sig-bar__date">Date: ${fmt(submissions[0]?.assignedAt || new Date())}</div>
 </div>
 <div class="pb"></div>
@@ -3673,7 +3902,7 @@ ${sectionHeader("5", "Programme Induction", "Formal Acknowledgement of Induction
   <p><strong>4. Workplace and Ethical Expectations</strong> — Professional conduct, attendance requirements, and submission authenticity standards.</p>
 </div>
 <div class="sig-row" style="grid-template-columns: 1fr 1fr;">
-  ${sigCell("Learner Acknowledgement", "learner", learnerSigUrl, learner.fullName || "Learner", "", fmt(submissions[0]?.assignedAt || new Date()))}
+  ${sigCell("Learner Acknowledgement", "learner", dayOneLearnerSigUrl, learner.fullName || "Learner", "", fmt(submissions[0]?.assignedAt || new Date()))}
   ${sigCell("Facilitator Sign-Off", "fac", primaryFacSigUrl, "Programme Facilitator", "", fmt(submissions[0]?.assignedAt || new Date()))}
 </div>
 <div class="pb"></div>
@@ -3687,7 +3916,12 @@ ${sectionHeader("6", "Appeals & Complaint Records", "Formal Grievance and Appeal
         appealedSubs.forEach((s) => {
           const revBy =
             s.appeal?.resolvedBy || s.appeal?.reviewedBy || s.moderatorId;
-          const revSig = revBy ? signaturesMap[revBy] : null;
+
+          // Prefer snapshot saved on appeal, fallback to live profile map
+          const revSig =
+            s.appeal?.resolvedBySignatureUrl ||
+            (revBy ? signaturesMap[revBy] : null);
+
           const revName =
             s.appeal?.resolvedByName ||
             s.appeal?.reviewedByName ||
@@ -3706,9 +3940,9 @@ ${sectionHeader("6", "Appeals & Complaint Records", "Formal Grievance and Appeal
   <div class="appeal-card__body">
     <div class="data-grid data-grid--1col" style="margin-bottom:10px;">
       ${dc("Date of Appeal", fmt(s.appeal?.date))}
-      ${dc("Reason for Appeal", s.appeal?.reason || "Not specified")}
+      ${dc("Reason for Appeal", cleanRichText(s.appeal?.reason || "Not specified"))}
       ${dc("Appeal Status", (s.appeal?.status || "Pending").toUpperCase())}
-      ${s.appeal?.resolutionNotes ? dc("Board Resolution", s.appeal.resolutionNotes) : ""}
+      ${s.appeal?.resolutionNotes ? dc("Board Resolution", cleanRichText(s.appeal.resolutionNotes)) : ""}
     </div>
     <div style="border-top: 1px dashed #fecaca; padding-top: 10px; margin-top: 10px;">
       <div class="data-cell__label" style="color: #b91c1c;">Resolved By / Signature</div>
@@ -3768,7 +4002,7 @@ ${sectionHeader("7", "Actual Learning Plan & Evidence Control Sheet", "Evidence 
 </table>
 
 <div class="sig-row" style="grid-template-columns: 1fr;">
-  ${sigCell("Assessor Endorsement", "assessor", assessorSigUrl, primaryAssessor, "", fmt(new Date()))}
+  ${sigCell("Assessor Endorsement", "assessor", globalAssessorSigUrl, primaryAssessor, "", fmt(new Date()))}
 </div>
 <div class="pb"></div>
 
@@ -3782,15 +4016,23 @@ ${sectionHeader("8", "Learner Coaching Record (Remediation)", "Intervention Log 
           const log = s.latestCoachingLog || {};
           const facId =
             log.facilitatorId || s.grading?.facilitatorId || s.facilitatorId;
-          const facSig = facId ? signaturesMap[facId] : null;
+
+          // Prefer snapshot, fallback to live profile map
+          const facSig =
+            log.facilitatorSignatureUrl ||
+            (facId ? signaturesMap[facId] : null);
+
+          // Using the latestLearnerSigUrl instead of globalLearnerSigUrl
+          const learnerAckSig =
+            log.learnerSignatureUrl ||
+            (log.acknowledged ? latestLearnerSigUrl : null);
+
           const facName =
             log.facilitatorName ||
             s.grading?.facilitatorName ||
             s.facilitatorName ||
             "Assigned Facilitator";
           const facDate = fmt(log.date || s.assignedAt);
-
-          const learnerAckSig = log.acknowledged ? learnerSigUrl : null;
           const learnerAckDate = fmt(log.acknowledgedAt);
 
           html += `
@@ -3808,9 +4050,9 @@ ${sectionHeader("8", "Learner Coaching Record (Remediation)", "Intervention Log 
     </div>
     <div class="data-cell" style="background:#fffbeb; border:1px solid #fde68a; padding:10px 12px; margin-bottom: 10px;">
       <span class="data-cell__label">Academic Intervention Notes</span>
-      <span class="data-cell__value ink-fac" style="display:block; margin-top:4px; font-weight:400; font-size:11px; line-height:1.6;">${log.notes || "Coaching session conducted to address NYC competency gaps and unlock learner for reassessment."}</span>
+      <span class="data-cell__value ink-fac" style="display:block; margin-top:4px; font-weight:400; font-size:11px; line-height:1.6;">${cleanRichText(log.notes) || "Coaching session conducted to address NYC competency gaps and unlock learner for reassessment."}</span>
     </div>
-    
+   
     <div class="sig-row" style="grid-template-columns: 1fr 1fr; margin-top: 15px;">
       ${sigCell("Facilitator Signature", "fac", facSig, facName, "", facDate)}
       ${sigCell("Learner Acknowledgement", "learner", learnerAckSig, learner.fullName || "Learner", log.acknowledged ? "Acknowledged" : "Pending", learnerAckDate)}
@@ -3826,15 +4068,11 @@ ${sectionHeader("8", "Learner Coaching Record (Remediation)", "Intervention Log 
 </div>`;
       }
 
-      // SECTION 9 DIVIDER (Annexures appended via pdf-lib after render)
       html += `
 <div class="pb"></div>
 ${dividerPage("9", "Annexures", "Identity documents, supporting compliance files, and evidence submissions uploaded by the learner — appended on the following pages.")}
 </body></html>`;
 
-      // ══════════════════════════════════════════════════════════════════
-      //   RENDER WITH PUPPETEER
-      // ══════════════════════════════════════════════════════════════════
       await updateProgress(70, "Rendering assessment layout…");
       const browser = await puppeteer.launch({
         args: chromium.args,
@@ -3865,9 +4103,6 @@ ${dividerPage("9", "Annexures", "Identity documents, supporting compliance files
       });
       await browser.close();
 
-      // ══════════════════════════════════════════════════════════════════
-      //   MERGE ANNEXURES WITH PDF-LIB
-      // ══════════════════════════════════════════════════════════════════
       await updateProgress(85, "Merging annexures (identity & evidence)…");
       const masterPdf = await PDFDocument.create();
       const fontBold = await masterPdf.embedFont(StandardFonts.HelveticaBold);
@@ -3878,7 +4113,6 @@ ${dividerPage("9", "Annexures", "Identity documents, supporting compliance files
       );
       basePages.forEach((p) => masterPdf.addPage(p));
 
-      // Collect uploaded docs as annexures
       const uploadedDocs: UploadedDoc[] =
         learnerUserDoc?.uploadedDocuments || learner?.uploadedDocuments || [];
       uploadedDocs.forEach((d) => {
@@ -3946,9 +4180,6 @@ ${dividerPage("9", "Annexures", "Identity documents, supporting compliance files
         }
       }
 
-      // ══════════════════════════════════════════════════════════════════
-      //   SAVE & NOTIFY
-      // ══════════════════════════════════════════════════════════════════
       await updateProgress(95, "Uploading to secure vault…");
       const finalPdfBuffer = Buffer.from(await masterPdf.save());
       const bucket = admin.storage().bucket();
@@ -3975,37 +4206,26 @@ ${dividerPage("9", "Annexures", "Identity documents, supporting compliance files
       });
 
       if (requesterEmail) {
-        await transporter
-          .sendMail({
-            from: '"mLab Compliance" <noreply@mlab.co.za>',
-            to: requesterEmail,
-            subject: `Master PoE Ready — ${learner.fullName}`,
-            html: `
-            <div style="font-family:'Trebuchet MS',sans-serif; max-width:560px; margin:0 auto; border-top:4px solid #073f4e;">
-              <div style="background:#073f4e; padding:20px 24px;">
-                <span style="font-family:'Oswald',sans-serif; font-size:18px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#ffffff;">Mobile Applications Laboratory NPC</span>
-              </div>
-              <div style="padding:28px 24px; background:#ffffff;">
-                <p style="font-size:15px; color:#1a2e35;">The Master Portfolio of Evidence for <strong>${learner.fullName}</strong> has been generated successfully.</p>
-                <p style="font-size:13px; color:#6b6b6b;">All sections, transcripts, and annexures have been compiled into a single QCTO-compliant PDF.</p>
-                <div style="margin:24px 0;">
-                  <a href="${downloadUrl}" style="display:inline-block; background:#073f4e; color:#ffffff; padding:13px 32px; text-decoration:none; font-family:'Oswald',sans-serif; font-weight:700; font-size:13px; letter-spacing:0.1em; text-transform:uppercase;">
-                    &#x2193;&nbsp; Download Master PoE PDF
-                  </a>
-                </div>
-                <p style="font-size:11px; color:#9b9b9b;">Reference: ${requestId}</p>
-              </div>
-              <div style="background:#f4f7f9; padding:14px 24px; border-top:1px solid #dde4e8;">
-                <p style="font-size:10px; color:#9b9b9b; margin:0;">&#169; ${new Date().getFullYear()} Mobile Applications Laboratory NPC. Automated message — do not reply.</p>
-              </div>
-            </div>`,
-          })
-          .catch((err) => {
-            console.warn(
-              "Email failed to send, but PoE was generated. Check your secrets.",
-              err,
-            );
-          });
+        const emailParams = {
+          title: "Master PoE Ready",
+          subtitle: learner.fullName,
+          recipientName: "Admin",
+          bodyHtml: `<p>The Master Portfolio of Evidence for <strong>${learner.fullName}</strong> has been generated successfully.</p>
+                     <p>All sections, transcripts, and annexures have been compiled into a single QCTO-compliant PDF.</p>
+                     <p style="font-size:11px; color:#9b9b9b;">Reference: ${requestId}</p>`,
+          ctaText: "Download Master PoE PDF",
+          ctaLink: downloadUrl,
+          showStepIndicator: false,
+        };
+
+        await sendMailgunEmail({
+          to: requesterEmail,
+          subject: `Master PoE Ready — ${learner.fullName}`,
+          text: buildMlabEmailPlainText(emailParams),
+          html: buildMlabEmailHtml(emailParams),
+        }).catch((err) => {
+          console.warn("Email failed to send, but PoE was generated.", err);
+        });
       }
     } catch (error: any) {
       console.error("Master PoE Generation Failed:", error);
@@ -4014,6 +4234,685 @@ ${dividerPage("9", "Annexures", "Identity documents, supporting compliance files
         progressMessage: "Generation failed",
         errorMessage: error.message,
       });
+    }
+  },
+);
+
+// // 1. Define exactly what data to expect from the frontend
+// interface InvitePayload {
+//   assessmentId: string;
+//   title: string;
+//   scheduledDate: string;
+//   timeLimit: number;
+//   cohortIds: string[];
+//   platformLink: string;
+// }
+
+// export const sendAssessmentCalendarInvites = onCall(
+//   { secrets: [mailgunSecret] },
+//   async (request: CallableRequest<InvitePayload>) => {
+//     logger.info("BACKEND: sendAssessmentCalendarInvites triggered.");
+
+//     const auth = request.auth;
+//     if (!auth) {
+//       logger.error("BACKEND: Unauthenticated request.");
+//       throw new HttpsError("unauthenticated", "Authentication required.");
+//     }
+
+//     const {
+//       assessmentId,
+//       title,
+//       scheduledDate,
+//       timeLimit,
+//       cohortIds,
+//       platformLink,
+//     } = request.data;
+
+//     logger.info(
+//       `BACKEND: Processing notifications for Assessment ID: ${assessmentId}`,
+//     );
+//     logger.info("BACKEND: Payload received:", JSON.stringify(request.data));
+
+//     // 🚀 FIX 1: Removed `!scheduledDate` from the validation block.
+//     // It is no longer required to be present to send an email!
+//     if (!cohortIds || !Array.isArray(cohortIds) || cohortIds.length === 0) {
+//       logger.error(
+//         "BACKEND: Validation Failed. Missing required parameters.",
+//         request.data,
+//       );
+//       throw new HttpsError("invalid-argument", "Missing required parameters.");
+//     }
+
+//     try {
+//       const db = admin.firestore();
+//       const learnersMap = new Map<
+//         string,
+//         { email: string; fullName: string }
+//       >();
+
+//       logger.info(
+//         `BACKEND: Fetching learners for cohorts: ${cohortIds.join(", ")}`,
+//       );
+
+//       for (const cohortId of cohortIds) {
+//         const enrollmentsSnap = await db
+//           .collection("enrollments")
+//           .where("cohortId", "==", cohortId)
+//           .get();
+
+//         for (const doc of enrollmentsSnap.docs) {
+//           const learnerId = doc.data().learnerId;
+//           const learnerSnap = await db
+//             .collection("learners")
+//             .doc(learnerId)
+//             .get();
+//           if (learnerSnap.exists) {
+//             const data = learnerSnap.data();
+//             if (data?.email) {
+//               learnersMap.set(data.email, {
+//                 email: data.email,
+//                 fullName: data.fullName || "Learner",
+//               });
+//             }
+//           }
+//         }
+//       }
+
+//       logger.info(
+//         `BACKEND: Found ${learnersMap.size} unique learner emails to notify.`,
+//       );
+
+//       if (learnersMap.size === 0) {
+//         return {
+//           success: true,
+//           message: "No learner emails found for the selected cohorts.",
+//         };
+//       }
+
+//       // 🚀 FIX 2: DYNAMIC SCENARIO HANDLING 🚀
+//       const isScheduled = !!scheduledDate;
+//       let googleCalendarLink = "";
+//       let startDate: Date | null = null;
+
+//       if (isScheduled) {
+//         // SCENARIO A: It is scheduled, build the calendar invite
+//         startDate = new Date(scheduledDate);
+//         const endDate = new Date(
+//           startDate.getTime() + (timeLimit || 60) * 60000,
+//         );
+
+//         const formatGoogleDate = (date: Date) => {
+//           return date.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
+//         };
+
+//         const dtStart = formatGoogleDate(startDate);
+//         const dtEnd = formatGoogleDate(endDate);
+
+//         const eventTitle = encodeURIComponent(`Assessment: ${title}`);
+//         const eventDetails = encodeURIComponent(
+//           `Your assessment has been scheduled. Access Link: ${platformLink}`,
+//         );
+
+//         googleCalendarLink = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${eventTitle}&dates=${dtStart}/${dtEnd}&details=${eventDetails}`;
+
+//         logger.info(
+//           "BACKEND: Scheduled Assessment detected. Google Calendar link generated.",
+//         );
+//       } else {
+//         // SCENARIO B: Immediate publish
+//         logger.info(
+//           "BACKEND: Immediate assignment detected. Skipping calendar invite generation.",
+//         );
+//       }
+
+//       // Send individual emails to each learner
+//       const emailPromises = Array.from(learnersMap.values()).map((learner) => {
+//         // DYNAMIC EMAIL TEMPLATES 🚀
+//         const emailParams = {
+//           title: isScheduled ? "Assessment Scheduled" : "New Workbook Assigned",
+//           subtitle: title,
+//           recipientName: learner.fullName,
+//           bodyHtml: isScheduled
+//             ? `
+//               <p>You have been scheduled for a new assessment: <strong>${title}</strong>.</p>
+//               <div style="background-color: #f8fafc; padding: 15px; border-radius: 6px; border: 1px solid #dde4e8; border-left: 4px solid #0ea5e9; margin: 20px 0;">
+//                   <p style="margin: 0; color: #073f4e; font-size: 13px;"><strong>Scheduled Start:</strong> ${startDate?.toLocaleString("en-ZA")}</p>
+//               </div>
+//               <p><strong>Add to your calendar:</strong> Click the link below to instantly add this assessment to your Google Calendar.</p>
+//               <p><a href="${googleCalendarLink}" target="_blank" style="color: #0ea5e9; font-weight: bold; text-decoration: underline;">&#128197; Add to Google Calendar</a></p>
+//               <p style="margin-top: 15px;">When the time comes, click the link inside the calendar event or use the button below to access the platform.</p>
+//             `
+//             : `
+//               <p>A new workbook has been assigned to your class: <strong>${title}</strong>.</p>
+//               <p>It is now available in your portal. Please log in at your earliest convenience to review the requirements and begin.</p>
+//             `,
+//           ctaText: isScheduled
+//             ? "Go to Assessment Portal"
+//             : "Start Workbook Now",
+//           ctaLink: platformLink,
+//           showStepIndicator: false,
+//         };
+
+//         const emailSubject = isScheduled
+//           ? `Action Required: Scheduled Assessment - ${title}`
+//           : `📚 New Workbook Assigned: ${title}`;
+
+//         logger.info(`BACKEND: Sending Mailgun request for ${learner.email}...`);
+
+//         return sendMailgunEmail({
+//           to: learner.email,
+//           // to: "codetribe@mlab.co.za",
+//           subject: emailSubject,
+//           text: buildMlabEmailPlainText(emailParams),
+//           html: buildMlabEmailHtml(emailParams),
+//         })
+//           .then((res) => {
+//             logger.info(`BACKEND: Mailgun Success for ${learner.email}`);
+//             return res;
+//           })
+//           .catch((err) => {
+//             logger.error(`BACKEND: Mailgun FAILED for ${learner.email}:`, err);
+//             throw err;
+//           });
+//       });
+
+//       await Promise.all(emailPromises);
+
+//       logger.info(
+//         `BACKEND: Fully completed! Notifications sent to ${learnersMap.size} learners.`,
+//       );
+//       return {
+//         success: true,
+//         message: `Notifications sent to ${learnersMap.size} learners.`,
+//       };
+//     } catch (error: any) {
+//       logger.error(
+//         "BACKEND: Critical error in sendAssessmentCalendarInvites:",
+//         error,
+//       );
+//       throw new HttpsError("internal", "Failed to process and send invites.");
+//     }
+//   },
+// );
+
+// 1. Define exactly what data to expect from the frontend
+interface InvitePayload {
+  assessmentId: string;
+  title: string;
+  scheduledDate: string;
+  timeLimit: number;
+  cohortIds: string[];
+  platformLink: string;
+  moduleType?: string;
+  assessmentType?: string;
+  moduleNumber?: string;
+  qualificationTitle?: string;
+}
+
+export const sendAssessmentCalendarInvites = onCall(
+  { secrets: [mailgunSecret] },
+  async (request: CallableRequest<InvitePayload>) => {
+    logger.info("BACKEND: sendAssessmentCalendarInvites triggered.");
+
+    const auth = request.auth;
+    if (!auth) {
+      logger.error("BACKEND: Unauthenticated request.");
+      throw new HttpsError("unauthenticated", "Authentication required.");
+    }
+
+    const {
+      assessmentId,
+      title,
+      scheduledDate,
+      timeLimit,
+      cohortIds,
+      platformLink,
+      moduleType,
+      assessmentType,
+      moduleNumber,
+      qualificationTitle,
+    } = request.data;
+
+    logger.info(
+      `BACKEND: Processing notifications for Assessment ID: ${assessmentId}`,
+    );
+
+    if (!cohortIds || !Array.isArray(cohortIds) || cohortIds.length === 0) {
+      throw new HttpsError("invalid-argument", "Missing required parameters.");
+    }
+
+    try {
+      const db = admin.firestore();
+      const learnersMap = new Map<
+        string,
+        { email: string; fullName: string }
+      >();
+
+      for (const cohortId of cohortIds) {
+        const enrollmentsSnap = await db
+          .collection("enrollments")
+          .where("cohortId", "==", cohortId)
+          .get();
+        for (const doc of enrollmentsSnap.docs) {
+          const learnerId = doc.data().learnerId;
+          const learnerSnap = await db
+            .collection("learners")
+            .doc(learnerId)
+            .get();
+          if (learnerSnap.exists) {
+            const data = learnerSnap.data();
+            if (data?.email) {
+              learnersMap.set(data.email, {
+                email: data.email,
+                fullName: data.fullName || "Learner",
+              });
+            }
+          }
+        }
+      }
+
+      if (learnersMap.size === 0) {
+        return { success: true, message: "No learner emails found." };
+      }
+
+      // 🚀 DYNAMIC TERMINOLOGY BUILDER
+      const formatLabel = (str?: string) =>
+        str ? str.charAt(0).toUpperCase() + str.slice(1).toLowerCase() : "";
+      let assessmentDescriptor = "Assessment / Activity";
+
+      if (assessmentType && moduleType) {
+        assessmentDescriptor = `${formatLabel(assessmentType)} ${formatLabel(moduleType)} Assessment`;
+      } else if (assessmentType) {
+        assessmentDescriptor = `${formatLabel(assessmentType)} Assessment`;
+      } else if (moduleType) {
+        assessmentDescriptor =
+          moduleType.toLowerCase() === "workplace"
+            ? "Workplace Logbook"
+            : `${formatLabel(moduleType)} Module`;
+      } else {
+        assessmentDescriptor = "Practice Set / Activity";
+      }
+
+      const moduleMetaHtml =
+        moduleNumber || qualificationTitle
+          ? `
+          <div style="margin-top: 10px; color: #475569; font-size: 13px;">
+              ${moduleNumber ? `<strong>Module Code:</strong> ${moduleNumber} <br/>` : ""}
+              ${qualificationTitle ? `<strong>Programme:</strong> ${qualificationTitle}` : ""}
+          </div>
+      `
+          : "";
+
+      const isScheduled = !!scheduledDate;
+      let googleCalendarLink = "";
+      let icsAttachment: any = null;
+      let startDate: Date | null = null;
+      let saastFormattedDate = "";
+
+      if (isScheduled) {
+        startDate = new Date(scheduledDate);
+        const endDate = new Date(
+          startDate.getTime() + (timeLimit || 60) * 60000,
+        );
+
+        // 🚀 FIX 1: FORCE SERVER TO FORMAT DATE IN SOUTH AFRICAN TIME (SAST)
+        saastFormattedDate = new Intl.DateTimeFormat("en-ZA", {
+          timeZone: "Africa/Johannesburg",
+          dateStyle: "full",
+          timeStyle: "short",
+        }).format(startDate);
+
+        // UTC ISO string format required by Calendar/ICS: YYYYMMDDTHHmmSSZ
+        const formatICSDate = (date: Date) =>
+          date.toISOString().replace(/-|:|\.\d\d\d/g, "");
+        const dtStart = formatICSDate(startDate);
+        const dtEnd = formatICSDate(endDate);
+        const dtStamp = formatICSDate(new Date());
+
+        // Web Link Fallback (Only supports default notifications)
+        const eventTitle = encodeURIComponent(`mLab: ${title}`);
+        const eventDetails = encodeURIComponent(
+          `Your secure assessment module is scheduled.\n\nAccess Link: ${platformLink}`,
+        );
+        googleCalendarLink = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${eventTitle}&dates=${dtStart}/${dtEnd}&details=${eventDetails}`;
+
+        // 🚀 FIX 2: STRICT .ICS FILE WITH 3 ALARMS
+        const icsString = [
+          "BEGIN:VCALENDAR",
+          "VERSION:2.0",
+          "PRODID:-//mLab//AssessmentPortal//EN",
+          "CALSCALE:GREGORIAN",
+          "METHOD:REQUEST",
+          "BEGIN:VEVENT",
+          `UID:assmnt-${assessmentId}-${Date.now()}@mlab.co.za`,
+          `DTSTAMP:${dtStamp}`,
+          `DTSTART:${dtStart}`,
+          `DTEND:${dtEnd}`,
+          `SUMMARY:mLab ${assessmentDescriptor}: ${title}`,
+          `DESCRIPTION:Your assessment module is scheduled.\\n\\nAccess Link: ${platformLink}`,
+          `URL:${platformLink}`,
+          "BEGIN:VALARM",
+          "ACTION:DISPLAY",
+          "DESCRIPTION:mLab Assessment in 1 Day",
+          "TRIGGER:-PT1440M", // 1440 mins = 1 day (More universally accepted than -P1D)
+          "END:VALARM",
+          "BEGIN:VALARM",
+          "ACTION:DISPLAY",
+          "DESCRIPTION:mLab Assessment in 1 Hour",
+          "TRIGGER:-PT60M", // 60 mins = 1 hour
+          "END:VALARM",
+          "BEGIN:VALARM",
+          "ACTION:DISPLAY",
+          "DESCRIPTION:mLab Assessment starting soon!",
+          "TRIGGER:-PT10M", // 10 mins
+          "END:VALARM",
+          "END:VEVENT",
+          "END:VCALENDAR",
+        ].join("\r\n");
+
+        icsAttachment = {
+          filename: `mLab_Assessment_${assessmentId}.ics`,
+          data: Buffer.from(icsString, "utf-8"),
+          contentType: "text/calendar",
+        };
+      }
+
+      const emailPromises = Array.from(learnersMap.values()).map((learner) => {
+        const emailParams = {
+          title: isScheduled
+            ? `${assessmentDescriptor} Scheduled`
+            : `New ${assessmentDescriptor} Assigned`,
+          subtitle: title,
+          recipientName: learner.fullName,
+          bodyHtml: isScheduled
+            ? `
+              <p>You have been scheduled for a new <strong>${assessmentDescriptor}</strong>: <em>${title}</em>.</p>
+              ${moduleMetaHtml}
+              <div style="background-color: #f8fafc; padding: 15px; border-radius: 6px; border: 1px solid #dde4e8; border-left: 4px solid #0ea5e9; margin: 20px 0;">
+                  <p style="margin: 0; color: #073f4e; font-size: 13px;"><strong>Scheduled Start:</strong> ${saastFormattedDate}</p>
+              </div>
+              <p><strong>Add to your calendar:</strong> For accurate reminders (1 day, 1 hour, and 10 minutes before), please open and save the attached <strong>.ics calendar file</strong>.</p>
+              <p>Alternatively, click here to add it manually: <a href="${googleCalendarLink}" target="_blank" style="color: #0ea5e9; text-decoration: underline;">Google Calendar Web Link</a> <em>(Note: Web link only sets default reminders)</em></p>
+              <p style="margin-top: 15px;">When the time comes, use the button below to access the platform.</p>
+            `
+            : `
+              <p>A new <strong>${assessmentDescriptor}</strong> has been assigned to your class: <em>${title}</em>.</p>
+              ${moduleMetaHtml}
+              <p>It is now available in your portal. Please log in at your earliest convenience to review the requirements and begin.</p>
+            `,
+          ctaText: isScheduled
+            ? "Go to Assessment Portal"
+            : `Start ${assessmentDescriptor} Now`,
+          ctaLink: platformLink,
+          showStepIndicator: false,
+        };
+
+        const emailSubject = isScheduled
+          ? `Action Required: Scheduled ${assessmentDescriptor} - ${title}`
+          : `📚 New ${assessmentDescriptor} Assigned: ${title}`;
+
+        const mailgunPayload: any = {
+          to: learner.email,
+          // to: "codetribe@mlab.co.za",
+          subject: emailSubject,
+          text: buildMlabEmailPlainText(emailParams),
+          html: buildMlabEmailHtml(emailParams),
+        };
+
+        // Inject the attachment into the Mailgun payload if scheduled
+        if (icsAttachment) {
+          mailgunPayload.attachment = [icsAttachment];
+        }
+
+        return sendMailgunEmail(mailgunPayload)
+          .then((res) => res)
+          .catch((err) => {
+            logger.error(`BACKEND: Mailgun FAILED for ${learner.email}:`, err);
+            throw err;
+          });
+      });
+
+      await Promise.all(emailPromises);
+
+      return {
+        success: true,
+        message: `Notifications sent to ${learnersMap.size} learners.`,
+      };
+    } catch (error: any) {
+      logger.error(
+        "BACKEND: Critical error in sendAssessmentCalendarInvites:",
+        error,
+      );
+      throw new HttpsError("internal", "Failed to process and send invites.");
+    }
+  },
+);
+
+// ============================================================================
+// AUTOMATED ASSESSMENT SWEEPER (GOOGLE CLOUD TASKS)
+// ============================================================================
+import { CloudTasksClient } from "@google-cloud/tasks";
+
+// This is an internal callable function your frontend will hit when publishing a scheduled exam
+export const scheduleAssessmentSweep = onCall(
+  async (
+    request: CallableRequest<{
+      assessmentId: string;
+      scheduledEndTimeISO: string;
+    }>,
+  ) => {
+    const auth = request.auth;
+    if (!auth || auth.token.role === "learner") {
+      throw new HttpsError(
+        "permission-denied",
+        "Unauthorized scheduling request.",
+      );
+    }
+
+    const { assessmentId, scheduledEndTimeISO } = request.data;
+    if (!assessmentId || !scheduledEndTimeISO) {
+      throw new HttpsError("invalid-argument", "Missing required parameters.");
+    }
+
+    const scheduledEndTime = new Date(scheduledEndTimeISO);
+
+    // Safety check: Don't schedule tasks in the past
+    if (scheduledEndTime.getTime() <= Date.now()) {
+      throw new HttpsError(
+        "invalid-argument",
+        "Cannot schedule an automated sweep in the past.",
+      );
+    }
+
+    try {
+      const client = new CloudTasksClient();
+
+      // Safely extract the Google Cloud Project ID (works in both emulators and production)
+      const project =
+        process.env.GCLOUD_PROJECT ||
+        JSON.parse(process.env.FIREBASE_CONFIG || "{}").projectId;
+      const location = "us-central1"; // MUST match your Cloud Tasks Queue location
+      const queue = "exam-sweeper-queue"; // MUST create this queue in GCP Console
+
+      if (!project)
+        throw new Error("Could not extract Firebase Project ID from config.");
+
+      // The URL Google Cloud will call when the timer hits zero
+      const targetUrl = `https://${location}-${project}.cloudfunctions.net/executeAssessmentSweep`;
+
+      const parent = client.queuePath(project, location, queue);
+
+      const task = {
+        httpRequest: {
+          httpMethod: "POST" as const,
+          url: targetUrl,
+          body: Buffer.from(JSON.stringify({ assessmentId })).toString(
+            "base64",
+          ),
+          headers: { "Content-Type": "application/json" },
+        },
+        // Google Cloud Tasks expects seconds, not milliseconds
+        scheduleTime: {
+          seconds: Math.floor(scheduledEndTime.getTime() / 1000),
+        },
+      };
+
+      const [response] = await client.createTask({ parent, task });
+      logger.info(
+        `✅ Successfully scheduled auto-sweep task for assessment ${assessmentId}`,
+      );
+
+      return { success: true, taskId: response.name };
+    } catch (error: any) {
+      logger.error(
+        "❌ Failed to schedule Assessment Sweep to Google Cloud Tasks:",
+        error,
+      );
+      throw new HttpsError(
+        "internal",
+        "Failed to schedule automated assessment closure.",
+      );
+    }
+  },
+);
+
+// This is the safety-net HTTP endpoint that Google Cloud Tasks calls when the clock runs out
+export const executeAssessmentSweep = onRequest((req, res) => {
+  // Wrap in your existing CORS setup to ensure Cloud Run Health Checks pass
+  return cors(req, res, async () => {
+    if (req.method !== "POST") {
+      res.status(405).send("Method Not Allowed");
+      return;
+    }
+
+    const { assessmentId } = req.body;
+    if (!assessmentId) {
+      logger.error("Sweep Failed: Missing assessmentId in payload.");
+      res.status(400).send("Bad Request: Missing assessmentId");
+      return;
+    }
+
+    const db = admin.firestore();
+
+    try {
+      logger.info(`⏳ Executing Assessment Auto-Sweep for ${assessmentId}...`);
+
+      // 1. THE SAFETY NET: Check the Master Assessment
+      const assessmentSnap = await db
+        .collection("assessments")
+        .doc(assessmentId)
+        .get();
+      if (!assessmentSnap.exists) {
+        logger.warn(
+          `Sweep Aborted: Assessment ${assessmentId} no longer exists.`,
+        );
+        res.status(200).send("Aborted: Assessment not found.");
+        return;
+      }
+
+      const assessmentData = assessmentSnap.data();
+
+      // If the assessment was cancelled, unpublished, or paused, DO NOT execute the sweep!
+      if (
+        assessmentData?.status !== "active" &&
+        assessmentData?.status !== "completed" &&
+        assessmentData?.status !== "scheduled"
+      ) {
+        logger.warn(
+          `Sweep Aborted: Assessment ${assessmentId} is not active (Current status: ${assessmentData?.status}).`,
+        );
+        res.status(200).send("Aborted: Assessment is not active.");
+        return;
+      }
+
+      // 2. THE SWEEP: Find ghost learners
+      const submissionsSnap = await db
+        .collection("learner_submissions")
+        .where("assessmentId", "==", assessmentId)
+        .where("status", "==", "not_started")
+        .get();
+
+      if (submissionsSnap.empty) {
+        logger.info(
+          `✅ Sweep Complete: No absent learners found for ${assessmentId}.`,
+        );
+        res.status(200).send("Complete: No missed submissions.");
+        return;
+      }
+
+      // 3. THE EXECUTION: Mark them as missed
+      const batch = db.batch();
+      let sweptCount = 0;
+
+      submissionsSnap.docs.forEach((docSnap) => {
+        const subData = docSnap.data();
+
+        // Double-check the overrideUnlock flag for deferred access
+        if (subData.overrideUnlock === true) {
+          logger.info(
+            `Skipping Learner ${subData.learnerId} - They have deferred access granted.`,
+          );
+          return;
+        }
+
+        batch.update(docSnap.ref, {
+          status: "missed",
+          lastStaffEditAt: new Date().toISOString(),
+          systemNote:
+            "Auto-swept: Learner failed to start assessment within the scheduled window.",
+        });
+        sweptCount++;
+      });
+
+      if (sweptCount > 0) {
+        await batch.commit();
+        logger.info(
+          `🚨 Successfully swept ${sweptCount} ghost submissions to 'missed' for assessment ${assessmentId}`,
+        );
+      } else {
+        logger.info(
+          `✅ Sweep Complete: All pending learners had deferred access overrides.`,
+        );
+      }
+
+      res.status(200).send(`Swept ${sweptCount} submissions.`);
+    } catch (error) {
+      logger.error(
+        `❌ Critical error during assessment sweep for ${assessmentId}:`,
+        error,
+      );
+      res.status(500).send("Internal Server Error during sweep.");
+    }
+  });
+});
+
+export const cancelAssessmentSweep = onCall(
+  async (request: CallableRequest<{ taskId: string }>) => {
+    const auth = request.auth;
+    if (!auth || auth.token.role === "learner") {
+      throw new HttpsError(
+        "permission-denied",
+        "Unauthorized cancellation request.",
+      );
+    }
+
+    const { taskId } = request.data;
+    if (!taskId) return { success: true, message: "No task ID provided." };
+
+    try {
+      const client = new CloudTasksClient();
+      await client.deleteTask({ name: taskId });
+      logger.info(`✅ Successfully cancelled Google Cloud Task: ${taskId}`);
+      return { success: true, message: "Scheduled sweep cancelled." };
+    } catch (error: any) {
+      if (error.code === 5) {
+        logger.info(
+          `Task ${taskId} not found. Likely already executed or deleted.`,
+        );
+        return { success: true, message: "Task already executed or deleted." };
+      }
+      logger.error(`❌ Failed to cancel task ${taskId}:`, error);
+      throw new HttpsError("internal", "Failed to cancel scheduled task.");
     }
   },
 );

@@ -1,5 +1,8 @@
 {
   "projects": {
-    "default": "assessmentcentr"
-  }
+    "default": "mlabassessmentcenter",
+    "mlabassessmentcentre": "mlabassessmentcenter"
+  },
+  "targets": {},
+  "etags": {}
 }

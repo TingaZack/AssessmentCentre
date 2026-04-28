@@ -69,7 +69,7 @@
 
 .fac-content-inner {
   /* padding: 2rem; */
-  max-width: 1400px;
+  /* max-width: 1400px; */
   margin: 0 auto;
 }
 
@@ -86,7 +86,6 @@
   }
 
   .fac-content-inner {
-    padding: 1rem; /* Smaller padding on mobile */
   }
 
   /* Convert Sidebar to a sliding drawer */

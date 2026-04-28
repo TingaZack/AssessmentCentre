@@ -1,20 +1,15 @@
+// src/components/auth/Login.tsx
+
 import React, { useEffect, useState } from 'react';
-import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { signInWithEmailAndPassword } from 'firebase/auth';
+import { doc, getDoc, updateDoc } from 'firebase/firestore'; // 🚀 ADDED updateDoc
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { auth, db } from '../../lib/firebase';
 import { useNavigate } from 'react-router-dom';
 import {
-    Lock,
-    AlertCircle,
-    Loader2,
-    KeyRound,
-    CheckCircle2,
-    ArrowLeft,
-    Mail,
-    Shield,
-    Fingerprint,
-    ShieldCheck,
-    Server
+    Lock, AlertCircle, Loader2, KeyRound, CheckCircle2,
+    ArrowLeft, Mail, Shield, Eye, EyeOff, ArrowRight,
+    Hexagon, Server, ShieldCheck
 } from 'lucide-react';
 import mLabLogo from '../../assets/logo/mlab_logo.png';
 import './Login.css';
@@ -27,14 +22,12 @@ const Login: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [isResetFlow, setIsResetFlow] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
-    const navigate = useNavigate();
-
-    // --- SECURITY BADGE STATE ---
     const [isSecureContext, setIsSecureContext] = useState(true);
     const [showSecurityTooltip, setShowSecurityTooltip] = useState(false);
 
+    const navigate = useNavigate();
+
     useEffect(() => {
-        // Check if the connection is actually HTTPS or Localhost
         if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
             setIsSecureContext(false);
         }
@@ -47,6 +40,7 @@ const Login: React.FC = () => {
         setSuccessMessage('');
 
         try {
+            // 1. Authenticate with Firebase Auth
             const userCredential = await signInWithEmailAndPassword(auth, email, password);
             const uid = userCredential.user.uid;
             const docRef = doc(db, 'users', uid);
@@ -56,6 +50,18 @@ const Login: React.FC = () => {
                 const userData = docSnap.data();
                 const role = userData.role || 'learner';
 
+                // 🚀 ENGAGEMENT TRACKER: Update the lastLoginAt timestamp
+                try {
+                    await updateDoc(docRef, {
+                        lastLoginAt: new Date().toISOString()
+                    });
+                } catch (timestampErr) {
+                    console.warn("Non-fatal: Failed to update lastLoginAt timestamp", timestampErr);
+                    // We don't throw here because they are already authenticated.
+                    // We don't want to block their login just because a timestamp failed to save.
+                }
+
+                // 3. Route them to their correct dashboard
                 const routes: Record<string, string> = {
                     admin: '/admin',
                     learner: '/portal',
@@ -68,14 +74,17 @@ const Login: React.FC = () => {
                 navigate(routes[role] || '/portal');
             } else {
                 setError("No user profile found. Please contact support.");
+                // Note: We don't auto-signout here in case they are midway through a setup flow,
+                // but usually, a missing profile means data corruption.
             }
         } catch (err: any) {
+            console.error("Login Error:", err);
             if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
                 setError("Invalid email or password.");
             } else if (err.code === 'auth/too-many-requests') {
-                setError("Account temporarily locked. Please try again later.");
+                setError("Account temporarily locked due to many failed attempts. Please try again later.");
             } else {
-                setError("Authentication failed. Please try again.");
+                setError("Authentication failed. Please check your connection and try again.");
             }
         } finally {
             setLoading(false);
@@ -91,17 +100,19 @@ const Login: React.FC = () => {
 
         setLoading(true);
         setError('');
+        setSuccessMessage('');
 
         try {
-            await sendPasswordResetEmail(auth, email);
-            setSuccessMessage("Password reset link sent! Check your inbox.");
+            const functions = getFunctions();
+            const sendReset = httpsCallable(functions, 'sendCustomPasswordReset');
+            await sendReset({ email });
+            setSuccessMessage("Secure mLab reset link sent! Check your inbox.");
         } catch (err: any) {
-            if (err.code === 'auth/invalid-email') {
-                setError("Please enter a valid email address.");
-            } else if (err.code === 'auth/user-not-found') {
+            console.error("Reset error:", err);
+            if (err.message?.includes('not-found') || err.code === 'not-found') {
                 setError("No account found with this email.");
             } else {
-                setError("Failed to send reset link. Please try again.");
+                setError("Failed to send custom reset link. Please try again.");
             }
         } finally {
             setLoading(false);
@@ -109,81 +120,62 @@ const Login: React.FC = () => {
     };
 
     return (
-        <div className="login-container">
+        <div className="auth-container" style={{ borderRadius: 0, position: 'absolute', right: 0, left: 0, top: 0, bottom: 0 }}>
             {/* Animated Background Elements */}
-            <div className="login-bg-pattern" />
-            <div className="login-bg-glow" />
+            <div className="auth-bg-hexagons">
+                {[...Array(6)].map((_, i) => (
+                    <Hexagon
+                        key={i}
+                        className={`auth-hex auth-hex--${i + 1}`}
+                        size={60 + i * 20}
+                        strokeWidth={1}
+                    />
+                ))}
+            </div>
+            <div className="auth-bg-glow auth-bg-glow--green" />
+            <div className="auth-bg-glow auth-bg-glow--blue" />
 
-            <div className="login-card">
-                {/* Security Badge */}
-                {/* <div className="login-security-badge">
-                    <Shield size={12} />
-                    <span>Secure Connection</span>
-                </div> */}
+            {/* Security Badge */}
+            <div
+                className={`auth-security-badge ${!isSecureContext ? 'auth-security-badge--warning' : ''}`}
+                onMouseEnter={() => setShowSecurityTooltip(true)}
+                onMouseLeave={() => setShowSecurityTooltip(false)}
+                onClick={() => setShowSecurityTooltip(!showSecurityTooltip)}
+            >
+                <Shield size={12} />
+                <span>{isSecureContext ? 'Secure Connection' : 'Unsecured Network'}</span>
 
-                <div
-                    className="login-security-badge"
-                    style={{
-                        // position: 'relative',
-                        // cursor: 'help',
-                        // background: isSecureContext ? 'rgba(22, 163, 74, 0.1)' : 'rgba(239, 68, 68, 0.1)',
-                        // color: isSecureContext ? '#4ade80' : '#ef4444',
-                        // border: `1px solid ${isSecureContext ? 'rgba(74, 222, 128, 0.2)' : 'rgba(239, 68, 68, 0.2)'}`
-                    }}
-                    onMouseEnter={() => setShowSecurityTooltip(true)}
-                    onMouseLeave={() => setShowSecurityTooltip(false)}
-                    onClick={() => setShowSecurityTooltip(!showSecurityTooltip)}
-                >
-                    <Shield size={12} />
-                    <span>{isSecureContext ? 'Secure Connection' : 'Unsecured Network'}</span>
-
-                    {/* Popover Tooltip */}
-                    {showSecurityTooltip && (
-                        <div style={{
-                            // position: 'absolute',
-                            // top: '120%',
-                            // left: '50%',
-                            // transform: 'translateX(-50%)',
-                            // background: '#0f172a',
-                            // border: '1px solid #1e293b',
-                            // boxShadow: '0 10px 25px rgba(0,0,0,0.5)',
-                            // borderRadius: '8px',
-                            // padding: '1rem',
-                            // width: '240px',
-                            // zIndex: 50,
-                            // textAlign: 'left',
-                            // color: '#f8fafc',
-                            // textTransform: 'none',
-                            // letterSpacing: 'normal'
-                        }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 600, fontSize: '0.85rem', marginBottom: '0.75rem', color: isSecureContext ? '#4ade80' : '#ef4444' }}>
-                                {isSecureContext ? <ShieldCheck size={16} /> : <AlertCircle size={16} />}
-                                {isSecureContext ? 'Connection Encrypted' : 'Warning: Not Private'}
+                {showSecurityTooltip && (
+                    <div className="auth-security-tooltip">
+                        <div className={`auth-security-tooltip-header ${!isSecureContext ? 'warning' : ''}`}>
+                            {isSecureContext ? <ShieldCheck size={16} /> : <AlertCircle size={16} />}
+                            {isSecureContext ? 'Connection Encrypted' : 'Warning: Not Private'}
+                        </div>
+                        <div className="auth-security-tooltip-body">
+                            <div className="auth-security-item">
+                                <Lock size={14} />
+                                <span><strong>TLS 1.2+ SSL</strong><br />Data in transit is fully encrypted.</span>
                             </div>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.8rem', color: '#94a3b8' }}>
-                                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
-                                    <Lock size={14} style={{ marginTop: '2px', color: '#0ea5e9' }} />
-                                    <span><strong>TLS 1.2+ SSL</strong><br />Data in transit is fully encrypted.</span>
-                                </div>
-                                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
-                                    <Server size={14} style={{ marginTop: '2px', color: '#0ea5e9' }} />
-                                    <span><strong>POPIA Compliant</strong><br />Stored via GCP Secure Cloud.</span>
-                                </div>
+                            <div className="auth-security-item">
+                                <Server size={14} />
+                                <span><strong>POPIA Compliant</strong><br />Stored via GCP Secure Cloud.</span>
                             </div>
                         </div>
-                    )}
-                </div>
-
-
-                {/* Brand Header */}
-                <div className="login-brand">
-                    <div className="login-logo-wrappr" style={{ margin: 16 }}>
-                        <img src={mLabLogo} alt="mLab Southern Africa" className="login-logo" />
                     </div>
-                    <h1 className="login-title">
-                        {isResetFlow ? 'Reset Password' : 'Login'}
+                )}
+            </div>
+
+            <div className={`auth-card ${successMessage ? 'auth-card--success' : ''}`}>
+                {/* Brand Header */}
+                <div className="auth-brand">
+                    <div className="auth-logo-wrapper">
+                        <img src={mLabLogo} alt="mLab Southern Africa" className="auth-logo" />
+                        {/* <div className="auth-logo-ring" /> */}
+                    </div>
+                    <h1 className="auth-title">
+                        {isResetFlow ? 'Reset Password' : 'Welcome Back'}
                     </h1>
-                    <p className="login-subtitle">
+                    <p className="auth-subtitle">
                         {isResetFlow
                             ? 'Enter your email to receive a secure reset link'
                             : 'Sign in to access your learning dashboard'}
@@ -192,29 +184,29 @@ const Login: React.FC = () => {
 
                 <form
                     onSubmit={isResetFlow ? handleResetPassword : handleLogin}
-                    className="login-form"
+                    className="auth-form"
                 >
                     {/* Email Field */}
-                    <div className="login-field">
-                        <label className="login-label">Email Address</label>
-                        <div className="login-input-wrapper">
-                            <Mail className="login-input-icon" size={18} />
+                    <div className="auth-field">
+                        <label className="auth-label">Email Address</label>
+                        <div className="auth-input-wrapper">
+                            <Mail className="auth-input-icon" size={18} />
                             <input
                                 type="email"
                                 placeholder="name@mlab.co.za"
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
                                 required
-                                className="login-input"
+                                className="auth-input"
                             />
                         </div>
                     </div>
 
                     {/* Password Field */}
                     {!isResetFlow && (
-                        <div className="login-field">
-                            <div className="login-label-row">
-                                <label className="login-label">Password</label>
+                        <div className="auth-field">
+                            <div className="auth-label-row">
+                                <label className="auth-label">Password</label>
                                 <button
                                     type="button"
                                     onClick={() => {
@@ -222,28 +214,28 @@ const Login: React.FC = () => {
                                         setError('');
                                         setSuccessMessage('');
                                     }}
-                                    className="login-link-sm"
+                                    className="auth-link-sm"
                                 >
                                     Forgot password?
                                 </button>
                             </div>
-                            <div className="login-input-wrapper">
-                                <Lock className="login-input-icon" size={18} />
+                            <div className="auth-input-wrapper">
+                                <Lock className="auth-input-icon" size={18} />
                                 <input
                                     type={showPassword ? "text" : "password"}
-                                    placeholder="••••••••"
+                                    placeholder="Enter your password"
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
                                     required
-                                    className="login-input"
+                                    className="auth-input"
                                 />
                                 <button
                                     type="button"
-                                    className="login-toggle-password"
+                                    className="auth-toggle-btn"
                                     onClick={() => setShowPassword(!showPassword)}
                                     tabIndex={-1}
                                 >
-                                    {showPassword ? 'Hide' : 'Show'}
+                                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                 </button>
                             </div>
                         </div>
@@ -251,14 +243,14 @@ const Login: React.FC = () => {
 
                     {/* Alert Messages */}
                     {error && (
-                        <div className="login-alert login-alert--error">
+                        <div className="auth-alert auth-alert--error">
                             <AlertCircle size={18} />
                             <span>{error}</span>
                         </div>
                     )}
 
                     {successMessage && (
-                        <div className="login-alert login-alert--success">
+                        <div className="auth-alert auth-alert--success">
                             <CheckCircle2 size={18} />
                             <span>{successMessage}</span>
                         </div>
@@ -268,10 +260,10 @@ const Login: React.FC = () => {
                     <button
                         type="submit"
                         disabled={loading}
-                        className="login-submit-btn"
+                        className={`auth-btn ${loading ? 'auth-btn--loading' : ''}`}
                     >
                         {loading ? (
-                            <Loader2 className="spin" size={20} />
+                            <Loader2 className="auth-spin" size={20} />
                         ) : isResetFlow ? (
                             <>
                                 <KeyRound size={18} />
@@ -279,8 +271,8 @@ const Login: React.FC = () => {
                             </>
                         ) : (
                             <>
-                                <Fingerprint size={18} />
                                 <span>Sign In Securely</span>
+                                <ArrowRight size={16} className="auth-btn-icon" />
                             </>
                         )}
                     </button>
@@ -294,7 +286,7 @@ const Login: React.FC = () => {
                                 setError('');
                                 setSuccessMessage('');
                             }}
-                            className="login-back-btn"
+                            className="auth-btn auth-btn--secondary"
                         >
                             <ArrowLeft size={16} />
                             <span>Back to Sign In</span>
@@ -304,17 +296,17 @@ const Login: React.FC = () => {
 
                 {/* Footer Links */}
                 {!isResetFlow && (
-                    <div className="login-footer">
-                        <div className="login-footer-section">
-                            <span className="login-footer-text">Need help?</span>
-                            <a href="mailto:support@mlab.co.za" className="login-footer-link">
+                    <div className="auth-footer">
+                        <div className="auth-footer-item">
+                            <span>Need help?</span>
+                            <a href="mailto:support@mlab.co.za" className="auth-link">
                                 Contact Support
                             </a>
                         </div>
-                        <div className="login-divider" />
-                        <div className="login-footer-section">
-                            <span className="login-footer-text">Verify credentials?</span>
-                            <a href="/verify" className="login-footer-link login-footer-link--highlight">
+                        <div className="auth-divider" />
+                        <div className="auth-footer-item">
+                            <span>Verify credentials?</span>
+                            <a href="/verify" className="auth-link auth-link--highlight">
                                 Check Results
                             </a>
                         </div>
@@ -323,7 +315,7 @@ const Login: React.FC = () => {
             </div>
 
             {/* Copyright */}
-            <div className="login-copyright">
+            <div className="auth-copyright">
                 © {new Date().getFullYear()} Mobile Applications Laboratory NPC. All rights reserved.
             </div>
         </div>
@@ -331,3 +323,312 @@ const Login: React.FC = () => {
 };
 
 export default Login;
+
+
+// import React, { useEffect, useState } from 'react';
+// import { signInWithEmailAndPassword } from 'firebase/auth';
+// import { doc, getDoc } from 'firebase/firestore';
+// import { getFunctions, httpsCallable } from 'firebase/functions';
+// import { auth, db } from '../../lib/firebase';
+// import { useNavigate } from 'react-router-dom';
+// import {
+//     Lock, AlertCircle, Loader2, KeyRound, CheckCircle2,
+//     ArrowLeft, Mail, Shield, Eye, EyeOff, ArrowRight,
+//     Hexagon, Server, ShieldCheck, Fingerprint
+// } from 'lucide-react';
+// import mLabLogo from '../../assets/logo/mlab_logo.png';
+// import './Login.css';
+
+// const Login: React.FC = () => {
+//     const [email, setEmail] = useState('');
+//     const [password, setPassword] = useState('');
+//     const [error, setError] = useState('');
+//     const [successMessage, setSuccessMessage] = useState('');
+//     const [loading, setLoading] = useState(false);
+//     const [isResetFlow, setIsResetFlow] = useState(false);
+//     const [showPassword, setShowPassword] = useState(false);
+//     const [isSecureContext, setIsSecureContext] = useState(true);
+//     const [showSecurityTooltip, setShowSecurityTooltip] = useState(false);
+
+//     const navigate = useNavigate();
+
+//     useEffect(() => {
+//         if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
+//             setIsSecureContext(false);
+//         }
+//     }, []);
+
+//     const handleLogin = async (e: React.FormEvent) => {
+//         e.preventDefault();
+//         setLoading(true);
+//         setError('');
+//         setSuccessMessage('');
+
+//         try {
+//             const userCredential = await signInWithEmailAndPassword(auth, email, password);
+//             const uid = userCredential.user.uid;
+//             const docRef = doc(db, 'users', uid);
+//             const docSnap = await getDoc(docRef);
+
+//             if (docSnap.exists()) {
+//                 const userData = docSnap.data();
+//                 const role = userData.role || 'learner';
+
+//                 const routes: Record<string, string> = {
+//                     admin: '/admin',
+//                     learner: '/portal',
+//                     facilitator: '/facilitator',
+//                     assessor: '/marking',
+//                     moderator: '/moderation',
+//                     mentor: '/mentor'
+//                 };
+
+//                 navigate(routes[role] || '/portal');
+//             } else {
+//                 setError("No user profile found. Please contact support.");
+//             }
+//         } catch (err: any) {
+//             if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
+//                 setError("Invalid email or password.");
+//             } else if (err.code === 'auth/too-many-requests') {
+//                 setError("Account temporarily locked. Please try again later.");
+//             } else {
+//                 setError("Authentication failed. Please try again.");
+//             }
+//         } finally {
+//             setLoading(false);
+//         }
+//     };
+
+//     const handleResetPassword = async (e: React.FormEvent) => {
+//         e.preventDefault();
+//         if (!email) {
+//             setError("Please enter your email address.");
+//             return;
+//         }
+
+//         setLoading(true);
+//         setError('');
+//         setSuccessMessage('');
+
+//         try {
+//             const functions = getFunctions();
+//             const sendReset = httpsCallable(functions, 'sendCustomPasswordReset');
+//             await sendReset({ email });
+//             setSuccessMessage("Secure mLab reset link sent! Check your inbox.");
+//         } catch (err: any) {
+//             console.error("Reset error:", err);
+//             if (err.message?.includes('not-found') || err.code === 'not-found') {
+//                 setError("No account found with this email.");
+//             } else {
+//                 setError("Failed to send custom reset link. Please try again.");
+//             }
+//         } finally {
+//             setLoading(false);
+//         }
+//     };
+
+//     return (
+//         <div className="auth-container" style={{ borderRadius: 0, position: 'absolute', right: 0, left: 0, top: 0, bottom: 0 }}>
+//             {/* Animated Background Elements */}
+//             <div className="auth-bg-hexagons">
+//                 {[...Array(6)].map((_, i) => (
+//                     <Hexagon
+//                         key={i}
+//                         className={`auth-hex auth-hex--${i + 1}`}
+//                         size={60 + i * 20}
+//                         strokeWidth={1}
+//                     />
+//                 ))}
+//             </div>
+//             <div className="auth-bg-glow auth-bg-glow--green" />
+//             <div className="auth-bg-glow auth-bg-glow--blue" />
+
+//             {/* Security Badge */}
+//             <div
+//                 className={`auth-security-badge ${!isSecureContext ? 'auth-security-badge--warning' : ''}`}
+//                 onMouseEnter={() => setShowSecurityTooltip(true)}
+//                 onMouseLeave={() => setShowSecurityTooltip(false)}
+//                 onClick={() => setShowSecurityTooltip(!showSecurityTooltip)}
+//             >
+//                 <Shield size={12} />
+//                 <span>{isSecureContext ? 'Secure Connection' : 'Unsecured Network'}</span>
+
+//                 {showSecurityTooltip && (
+//                     <div className="auth-security-tooltip">
+//                         <div className={`auth-security-tooltip-header ${!isSecureContext ? 'warning' : ''}`}>
+//                             {isSecureContext ? <ShieldCheck size={16} /> : <AlertCircle size={16} />}
+//                             {isSecureContext ? 'Connection Encrypted' : 'Warning: Not Private'}
+//                         </div>
+//                         <div className="auth-security-tooltip-body">
+//                             <div className="auth-security-item">
+//                                 <Lock size={14} />
+//                                 <span><strong>TLS 1.2+ SSL</strong><br />Data in transit is fully encrypted.</span>
+//                             </div>
+//                             <div className="auth-security-item">
+//                                 <Server size={14} />
+//                                 <span><strong>POPIA Compliant</strong><br />Stored via GCP Secure Cloud.</span>
+//                             </div>
+//                         </div>
+//                     </div>
+//                 )}
+//             </div>
+
+//             <div className={`auth-card ${successMessage ? 'auth-card--success' : ''}`}>
+//                 {/* Brand Header */}
+//                 <div className="auth-brand">
+//                     <div className="auth-logo-wrapper">
+//                         <img src={mLabLogo} alt="mLab Southern Africa" className="auth-logo" />
+//                         {/* <div className="auth-logo-ring" /> */}
+//                     </div>
+//                     <h1 className="auth-title">
+//                         {isResetFlow ? 'Reset Password' : 'Welcome Back'}
+//                     </h1>
+//                     <p className="auth-subtitle">
+//                         {isResetFlow
+//                             ? 'Enter your email to receive a secure reset link'
+//                             : 'Sign in to access your learning dashboard'}
+//                     </p>
+//                 </div>
+
+//                 <form
+//                     onSubmit={isResetFlow ? handleResetPassword : handleLogin}
+//                     className="auth-form"
+//                 >
+//                     {/* Email Field */}
+//                     <div className="auth-field">
+//                         <label className="auth-label">Email Address</label>
+//                         <div className="auth-input-wrapper">
+//                             <Mail className="auth-input-icon" size={18} />
+//                             <input
+//                                 type="email"
+//                                 placeholder="name@mlab.co.za"
+//                                 value={email}
+//                                 onChange={(e) => setEmail(e.target.value)}
+//                                 required
+//                                 className="auth-input"
+//                             />
+//                         </div>
+//                     </div>
+
+//                     {/* Password Field */}
+//                     {!isResetFlow && (
+//                         <div className="auth-field">
+//                             <div className="auth-label-row">
+//                                 <label className="auth-label">Password</label>
+//                                 <button
+//                                     type="button"
+//                                     onClick={() => {
+//                                         setIsResetFlow(true);
+//                                         setError('');
+//                                         setSuccessMessage('');
+//                                     }}
+//                                     className="auth-link-sm"
+//                                 >
+//                                     Forgot password?
+//                                 </button>
+//                             </div>
+//                             <div className="auth-input-wrapper">
+//                                 <Lock className="auth-input-icon" size={18} />
+//                                 <input
+//                                     type={showPassword ? "text" : "password"}
+//                                     placeholder="Enter your password"
+//                                     value={password}
+//                                     onChange={(e) => setPassword(e.target.value)}
+//                                     required
+//                                     className="auth-input"
+//                                 />
+//                                 <button
+//                                     type="button"
+//                                     className="auth-toggle-btn"
+//                                     onClick={() => setShowPassword(!showPassword)}
+//                                     tabIndex={-1}
+//                                 >
+//                                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+//                                 </button>
+//                             </div>
+//                         </div>
+//                     )}
+
+//                     {/* Alert Messages */}
+//                     {error && (
+//                         <div className="auth-alert auth-alert--error">
+//                             <AlertCircle size={18} />
+//                             <span>{error}</span>
+//                         </div>
+//                     )}
+
+//                     {successMessage && (
+//                         <div className="auth-alert auth-alert--success">
+//                             <CheckCircle2 size={18} />
+//                             <span>{successMessage}</span>
+//                         </div>
+//                     )}
+
+//                     {/* Submit Button */}
+//                     <button
+//                         type="submit"
+//                         disabled={loading}
+//                         className={`auth-btn ${loading ? 'auth-btn--loading' : ''}`}
+//                     >
+//                         {loading ? (
+//                             <Loader2 className="auth-spin" size={20} />
+//                         ) : isResetFlow ? (
+//                             <>
+//                                 <KeyRound size={18} />
+//                                 <span>Send Reset Link</span>
+//                             </>
+//                         ) : (
+//                             <>
+//                                 <span>Sign In Securely</span>
+//                                 <ArrowRight size={16} className="auth-btn-icon" />
+//                             </>
+//                         )}
+//                     </button>
+
+//                     {/* Back to Login Link */}
+//                     {isResetFlow && (
+//                         <button
+//                             type="button"
+//                             onClick={() => {
+//                                 setIsResetFlow(false);
+//                                 setError('');
+//                                 setSuccessMessage('');
+//                             }}
+//                             className="auth-btn auth-btn--secondary"
+//                         >
+//                             <ArrowLeft size={16} />
+//                             <span>Back to Sign In</span>
+//                         </button>
+//                     )}
+//                 </form>
+
+//                 {/* Footer Links */}
+//                 {!isResetFlow && (
+//                     <div className="auth-footer">
+//                         <div className="auth-footer-item">
+//                             <span>Need help?</span>
+//                             <a href="mailto:support@mlab.co.za" className="auth-link">
+//                                 Contact Support
+//                             </a>
+//                         </div>
+//                         <div className="auth-divider" />
+//                         <div className="auth-footer-item">
+//                             <span>Verify credentials?</span>
+//                             <a href="/verify" className="auth-link auth-link--highlight">
+//                                 Check Results
+//                             </a>
+//                         </div>
+//                     </div>
+//                 )}
+//             </div>
+
+//             {/* Copyright */}
+//             <div className="auth-copyright">
+//                 © {new Date().getFullYear()} Mobile Applications Laboratory NPC. All rights reserved.
+//             </div>
+//         </div>
+//     );
+// };
+
+// export default Login;

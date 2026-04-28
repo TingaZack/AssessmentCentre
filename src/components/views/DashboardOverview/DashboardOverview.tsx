@@ -10,43 +10,44 @@ import {
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
 import { useStore } from '../../../store/useStore';
-import '../../admin/WorkplacesManager/WorkplacesManager.css';
+// import '../../admin/WorkplacesManager/WorkplacesManager.css';
 import './DashboardOverview.css';
+import StatCard from '../../common/StatCard/StatCard';
 
-// ─── LOCAL STAT CARD (Reusing wm-card styles) ───
-const DashboardStatCard = ({ title, value, icon, borderColor, onClick, hoverable }: any) => (
-    <div
-        className="wm-card"
-        onClick={onClick}
-        style={{
-            borderTopColor: borderColor || 'var(--mlab-blue)',
-            cursor: onClick ? 'pointer' : 'default',
-            transform: hoverable ? undefined : 'none',
-            transition: 'transform 0.2s, box-shadow 0.2s',
-            height: '100%'
-        }}
-        onMouseEnter={e => {
-            if (hoverable) {
-                e.currentTarget.style.transform = 'translateY(-3px)';
-                e.currentTarget.style.boxShadow = '0 8px 20px rgba(0,0,0,0.08)';
-            }
-        }}
-        onMouseLeave={e => {
-            if (hoverable) {
-                e.currentTarget.style.transform = 'none';
-                e.currentTarget.style.boxShadow = '0 2px 8px rgba(7, 63, 78, 0.05)';
-            }
-        }}
-    >
-        <div className="wm-card__header" style={{ paddingBottom: '0.5rem' }}>
-            <h3 className="wm-card__name" style={{ fontSize: '0.85rem', color: 'var(--mlab-grey)' }}>{title}</h3>
-            <div style={{ color: borderColor || 'var(--mlab-blue)', opacity: 0.8 }}>{icon}</div>
-        </div>
-        <div style={{ padding: '0 1.1rem 1.1rem', fontSize: '2.2rem', fontWeight: 'bold', color: 'var(--mlab-blue)', fontFamily: 'var(--font-heading)' }}>
-            {value}
-        </div>
-    </div>
-);
+// // ─── LOCAL STAT CARD (Reusing wm-card styles) ───
+// const DashboardStatCard = ({ title, value, icon, borderColor, onClick, hoverable }: any) => (
+//     <div
+//         className="wm-card"
+//         onClick={onClick}
+//         style={{
+//             borderTopColor: borderColor || 'var(--mlab-blue)',
+//             cursor: onClick ? 'pointer' : 'default',
+//             transform: hoverable ? undefined : 'none',
+//             transition: 'transform 0.2s, box-shadow 0.2s',
+//             height: '100%'
+//         }}
+//         onMouseEnter={e => {
+//             if (hoverable) {
+//                 e.currentTarget.style.transform = 'translateY(-3px)';
+//                 e.currentTarget.style.boxShadow = '0 8px 20px rgba(0,0,0,0.08)';
+//             }
+//         }}
+//         onMouseLeave={e => {
+//             if (hoverable) {
+//                 e.currentTarget.style.transform = 'none';
+//                 e.currentTarget.style.boxShadow = '0 2px 8px rgba(7, 63, 78, 0.05)';
+//             }
+//         }}
+//     >
+//         <div className="wm-card__header" style={{ paddingBottom: '0.5rem' }}>
+//             <h3 className="wm-card__name" style={{ fontSize: '0.85rem', color: 'var(--mlab-grey)' }}>{title}</h3>
+//             <div style={{ color: borderColor || 'var(--mlab-blue)', opacity: 0.8 }}>{icon}</div>
+//         </div>
+//         <div style={{ padding: '0 1.1rem 1.1rem', fontSize: '2.2rem', fontWeight: 'bold', color: 'var(--mlab-blue)', fontFamily: 'var(--font-heading)' }}>
+//             {value}
+//         </div>
+//     </div>
+// );
 
 export const DashboardOverview: React.FC = () => {
     const { learners, cohorts, programmes, settings, user } = useStore();
@@ -206,15 +207,16 @@ export const DashboardOverview: React.FC = () => {
 
             {/* ── KPI RIBBON ── */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.25rem', marginBottom: '1.5rem' }}>
-                <DashboardStatCard icon={<BookOpen size={20} />} title="Active Qualifications" value={activeProgrammesCount} borderColor="var(--mlab-blue)" />
-                <DashboardStatCard icon={<Layers size={20} />} title="Active Cohorts" value={ongoingCohorts} borderColor="#8b5cf6" />
-                <DashboardStatCard icon={<Users size={20} />} title="Total Enrollments" value={totalEnrollments} borderColor="var(--mlab-blue)" />
-                <DashboardStatCard icon={<MapPin size={20} />} title="Active Delivery Sites" value={activeCampusesCount} borderColor="#f59e0b" />
+                <StatCard
+                    icon={<BookOpen size={20} />} title="Active Qualifications" value={activeProgrammesCount} borderColor="var(--mlab-blue)" />
+                <StatCard icon={<Layers size={20} />} title="Active Cohorts" value={ongoingCohorts} borderColor="#8b5cf6" />
+                <StatCard icon={<Users size={20} />} title="Total Enrollments" value={totalEnrollments} borderColor="var(--mlab-blue)" />
+                <StatCard icon={<MapPin size={20} />} title="Active Delivery Sites" value={activeCampusesCount} borderColor="#f59e0b" />
 
-                <DashboardStatCard icon={<GraduationCap size={20} />} title="EISA Admitted (Ready)" value={eisaReadyCount} borderColor="var(--mlab-green)" />
-                <DashboardStatCard icon={<AlertTriangle size={20} />} title="At-Risk Learners" value={atRiskLearnersCount} borderColor="var(--mlab-red)" />
+                <StatCard icon={<GraduationCap size={20} />} title="EISA Admitted (Ready)" value={eisaReadyCount} borderColor="var(--mlab-green)" />
+                <StatCard icon={<AlertTriangle size={20} />} title="At-Risk Learners" value={atRiskLearnersCount} borderColor="var(--mlab-red)" />
 
-                <DashboardStatCard
+                <StatCard
                     icon={<Scale size={20} />}
                     title="Active Appeals"
                     value={pendingAppealsCount}
@@ -223,7 +225,7 @@ export const DashboardOverview: React.FC = () => {
                     hoverable={user?.role === 'admin' || user?.role === 'moderator'}
                 />
 
-                <DashboardStatCard icon={<ShieldCheck size={20} />} title="Web3 Certificates Issued" value={securedCertificates} borderColor="#8b5cf6" />
+                <StatCard icon={<ShieldCheck size={20} />} title="Web3 Certificates Issued" value={securedCertificates} borderColor="#8b5cf6" />
             </div>
 
             {/* ── CHARTS ── */}

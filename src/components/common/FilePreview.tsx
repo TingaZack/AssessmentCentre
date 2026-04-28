@@ -16,7 +16,7 @@ export const FilePreview = ({
     if (!isLinkValid(url)) {
         return (
             <div className="ap-file-preview__fallback">
-                <span className="ap-file-preview__fallback-name">Local fallback: {url}</span>
+                <span className="ap-file-preview__fallback-name" style={{ color: 'black' }}>Selected file: {url}</span>
                 {!disabled && onRemove && (
                     <button type="button" className="ap-file-preview__remove-btn" onClick={onRemove}>
                         <Trash2 size={14} />

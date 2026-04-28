@@ -12,6 +12,10 @@ import { db, storage } from '../../../lib/firebase';
 import './FacilitatorProfileSetup.css';
 import { DynamicDocUpload, type DynamicDocument } from '../../LearnerPortal/LearnerProfileSetup/LearnerProfileSetup';
 
+import mLabLogo from '../../../assets/logo/mlab_logo_white.png';
+import Loader from '../../../components/common/Loader/Loader';
+import { ToastContainer, useToast } from '../../../components/common/Toast/Toast';
+
 interface FacilitatorData {
     fullName: string;
     nationalityType: 'South African' | 'Foreign National';
@@ -38,7 +42,9 @@ interface FacilitatorData {
 
 export const FacilitatorProfileSetup: React.FC = () => {
     const navigate = useNavigate();
-    const { user, refreshUser, setUser } = useStore(); // Added setUser here
+    const { user, refreshUser, setUser, settings } = useStore();
+
+    const toast = useToast();
 
     const [step, setStep] = useState(1);
     const [loading, setLoading] = useState(false);
@@ -247,7 +253,7 @@ export const FacilitatorProfileSetup: React.FC = () => {
         if (!user?.uid) return;
 
         if (missingRequiredDocs.length > 0) {
-            alert(`Please upload all required documents: ${missingRequiredDocs.map(d => d.name).join(', ')}`);
+            toast.error(`Please upload all required documents: ${missingRequiredDocs.map(d => d.name).join(', ')}`);
             return;
         }
 
@@ -311,32 +317,42 @@ export const FacilitatorProfileSetup: React.FC = () => {
             // 3. Await the refresh
             await refreshUser();
 
-            // 4. Force replace navigate to break out of setup route
-            navigate('/facilitator', { replace: true });
+            // 4. Show success toast and delay redirect slightly
+            toast.success("Profile setup complete! Redirecting...");
 
-        } catch (error) {
+            setTimeout(() => {
+                navigate('/facilitator', { replace: true });
+            }, 1500);
+
+        } catch (error: any) {
             console.error(error);
-            alert('Compliance sync failed. Please check your connection.');
-        } finally {
-            setLoading(false);
+            if (error.message?.includes('unauthorized')) {
+                toast.error("Upload unauthorized. Please check Firebase Storage rules.");
+            } else {
+                toast.error('Compliance sync failed. Please check your connection.');
+            }
+            setLoading(false); // Only set loading false if it fails, so it doesn't flicker on success redirect
         }
     };
 
     if (fetchingInitial) {
         return (
             <div className="lp-loading" style={{ position: 'absolute', right: 0, left: 0, bottom: 0, top: 0 }}>
-                <Loader2 className="spin" size={40} color="var(--mlab-blue)" />
-                <h2 className="lp-loading__title">Loading Profile</h2>
-                <p className="lp-loading__sub">Retrieving your existing records...</p>
+                <Loader message='Loading Profile' />
             </div>
         );
     }
 
     return (
         <div className="lp-container animate-fade-in">
+            {/* RENDER TOAST CONTAINER */}
+            <ToastContainer toasts={toast.toasts} onClose={toast.closeToast} />
+
             <div className="lp-card practitioner-gate">
                 <div className="lp-header">
-                    <span className="lp-logo"><span className="lp-logo__m">m</span>lab</span>
+
+                    <img height={50} src={(settings as any)?.logoUrl || mLabLogo} alt="Institution Logo" />
+
                     <h1 className="lp-header__title">Facilitator Onboarding</h1>
                     <p className="lp-header__sub">Step {step} of 3: {step === 1 ? 'Identity' : step === 2 ? 'Experience & Contact' : 'Document Vault'}</p>
 

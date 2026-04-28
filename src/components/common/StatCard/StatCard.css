@@ -1,0 +1,134 @@
+/* src/components/common/StatCard/StatCard.css */
+
+.mlab-stat-card {
+  background: var(--mlab-white, #ffffff);
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  transition: all 0.2s ease;
+}
+
+.mlab-stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 10px 15px -3px rgba(0, 0, 0, 0.1),
+    0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+.mlab-stat-icon {
+  width: 54px;
+  height: 54px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.mlab-stat-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mlab-stat-label {
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  color: #64748b;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  line-height: 1.2;
+}
+
+.mlab-stat-value {
+  font-family: var(--font-heading);
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--mlab-blue);
+}
+
+/* ── Color Theme Variants ── */
+
+/* Blue (Default) */
+.mlab-stat-card--blue {
+  border-left: 4px solid #0ea5e9;
+}
+.mlab-stat-card--blue .mlab-stat-icon {
+  background: #e0f2fe;
+  color: #0284c7;
+}
+
+/* Green */
+.mlab-stat-card--green {
+  border-left: 4px solid var(--mlab-green, #94c73d);
+}
+.mlab-stat-card--green .mlab-stat-icon {
+  background: #f0fdf4;
+  color: #16a34a;
+}
+.mlab-stat-card--green .mlab-stat-value {
+  color: var(--mlab-blue);
+}
+
+/* Amber */
+.mlab-stat-card--amber {
+  border-left: 4px solid #f59e0b;
+}
+.mlab-stat-card--amber .mlab-stat-icon {
+  background: #fffbeb;
+  color: #d97706;
+}
+.mlab-stat-card--amber .mlab-stat-value {
+  color: #b45309;
+}
+
+/* Slate / Grey */
+.mlab-stat-card--slate {
+  border-left: 4px solid #64748b;
+}
+.mlab-stat-card--slate .mlab-stat-icon {
+  background: #f1f5f9;
+  color: #475569;
+}
+.mlab-stat-card--slate .mlab-stat-value {
+  color: #334155;
+}
+
+/* Emerald */
+.mlab-stat-card--emerald {
+  border-left: 4px solid #10b981;
+}
+.mlab-stat-card--emerald .mlab-stat-icon {
+  background: #ecfdf5;
+  color: #059669;
+}
+
+/* Purple */
+.mlab-stat-card--purple {
+  border-left: 4px solid #8b5cf6;
+}
+.mlab-stat-card--purple .mlab-stat-icon {
+  background: #f5f3ff;
+  color: #7c3aed;
+}
+.mlab-stat-card--purple .mlab-stat-value {
+  color: #6d28d9;
+}
+
+/* Red */
+.mlab-stat-card--red {
+  border-left: 4px solid #ef4444;
+}
+.mlab-stat-card--red .mlab-stat-icon {
+  background: #fef2f2;
+  color: #dc2626;
+}
+.mlab-stat-card--red .mlab-stat-value {
+  color: #991b1b;
+}

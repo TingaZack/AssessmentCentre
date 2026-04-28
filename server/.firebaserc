@@ -1,5 +1,8 @@
 {
   "projects": {
-    "default": "testpro-8f08c"
-  }
+    "default": "testpro-8f08c",
+    "mlabassessmentcentre": "mlabassessmentcenter"
+  },
+  "targets": {},
+  "etags": {}
 }

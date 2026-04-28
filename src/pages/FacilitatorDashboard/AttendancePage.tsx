@@ -13,7 +13,8 @@ import { StatusModal } from '../../components/common/StatusModal/StatusModal';
 import { ExpandableText } from '../../components/common/ExpandableText';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import './FacilitatorDashboard.css';
+// import './FacilitatorDashboard.css';
+import '../FacilitatorDashboard/FacilitatorDashboard/FacilitatorDashboard.css'
 
 const ABSENCE_REASONS = [
     "Medical (Sick/Illness)",

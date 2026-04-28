@@ -50,17 +50,14 @@ export const AdminProfileView: React.FC<ProfileProps> = ({ profile, user, onUpda
         const unsubscribe = onSnapshot(doc(db, 'users', targetId), (docSnap) => {
             if (docSnap.exists()) {
                 const data = docSnap.data();
-                setLiveProfile(data);
-
-                // If signature just arrived, close the modal automatically!
-                if (data.signatureUrl && showSignatureModal) {
-                    setShowSignatureModal(false);
-                }
+                // 🚀 FIXED: Removed the buggy auto-close logic here. 
+                // We just safely update the live profile state now.
+                setLiveProfile((prev: any) => ({ ...prev, ...data }));
             }
         });
 
         return () => unsubscribe();
-    }, [targetId, showSignatureModal]);
+    }, [targetId]);
 
     // 2. HYDRATE UI FROM LIVE PROFILE (Only when NOT editing)
     useEffect(() => {
@@ -99,10 +96,11 @@ export const AdminProfileView: React.FC<ProfileProps> = ({ profile, user, onUpda
 
     // 3. STRICT COMPLIANCE: Trigger Signature Modal
     useEffect(() => {
-        if (liveProfile && Object.keys(liveProfile).length > 0 && !liveProfile.signatureUrl) {
+        // Only trigger the signature modal automatically if the user is NOT a Super Admin and missing a signature
+        if (liveProfile && Object.keys(liveProfile).length > 0 && !liveProfile.signatureUrl && !isSuper) {
             setShowSignatureModal(true);
         }
-    }, [liveProfile.signatureUrl]);
+    }, [liveProfile.signatureUrl, isSuper]);
 
 
     // ─── HANDLERS ─────────────────────────────────────────────────────────
@@ -223,7 +221,11 @@ export const AdminProfileView: React.FC<ProfileProps> = ({ profile, user, onUpda
     return (
         <>
             {showSignatureModal && (
-                <SignatureSetupModal userUid={targetId} onComplete={() => { }} />
+                <SignatureSetupModal
+                    userUid={targetId}
+                    existingSignatureUrl={liveProfile?.signatureUrl} // 👈 Pass the existing URL here!
+                    onComplete={() => setShowSignatureModal(false)}
+                />
             )}
 
             <div className="wm-root animate-fade-in" style={{ paddingBottom: '2rem' }}>
@@ -399,32 +401,46 @@ export const AdminProfileView: React.FC<ProfileProps> = ({ profile, user, onUpda
                             </div>
                         )}
 
-                        <div className="wm-card" style={{ padding: '1.5rem' }}>
-                            <div style={{ paddingBottom: '0.75rem', marginBottom: '1rem', borderBottom: '1px solid var(--mlab-border)' }}>
-                                <h4 className="wm-card__name" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}><Key size={16} color="var(--mlab-blue)" /> Authorized Signature</h4>
-                                <p style={{ fontSize: '0.75rem', color: 'var(--mlab-grey)', margin: '4px 0 0 0', lineHeight: 1.4 }}>Required for institutional sign-offs and certificates.</p>
-                            </div>
+                        {/* Hide Signature Block completely if user is Super Admin */}
+                        {!isSuper && (
+                            <div className="wm-card" style={{ padding: '1.5rem' }}>
+                                <div style={{ paddingBottom: '0.75rem', marginBottom: '1rem', borderBottom: '1px solid var(--mlab-border)' }}>
+                                    <h4 className="wm-card__name" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <Key size={16} color="var(--mlab-blue)" /> Authorized Signature
+                                    </h4>
+                                    <p style={{ fontSize: '0.75rem', color: 'var(--mlab-grey)', margin: '4px 0 0 0', lineHeight: 1.4 }}>
+                                        Required for institutional sign-offs and certificates.
+                                    </p>
+                                </div>
 
-                            <div style={{ background: '#f8fafc', border: '1px dashed #cbd5e1', padding: '1rem', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', minHeight: '100px', borderRadius: '6px' }}>
-                                {liveProfile?.signatureUrl ? (
-                                    <>
-                                        <img src={liveProfile.signatureUrl} alt="Signature" style={{ maxHeight: '70px', maxWidth: '100%', objectFit: 'contain' }} />
-                                        {isEditing && (
-                                            <button type="button" onClick={(e) => { e.preventDefault(); setShowSignatureModal(true); }} style={{ marginTop: '10px', fontSize: '11px', color: '#0ea5e9', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', background: 'transparent', border: 'none', fontWeight: 600 }}>
-                                                <Edit3 size={11} /> Redraw Signature
+                                <div style={{ background: '#f8fafc', border: '1px dashed #cbd5e1', padding: '1rem', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', minHeight: '100px', borderRadius: '6px' }}>
+                                    {liveProfile?.signatureUrl ? (
+                                        <>
+                                            <img src={liveProfile.signatureUrl} alt="Signature" style={{ maxHeight: '70px', maxWidth: '100%', objectFit: 'contain' }} />
+                                            <button
+                                                type="button"
+                                                onClick={(e) => { e.preventDefault(); setShowSignatureModal(true); }}
+                                                style={{ marginTop: '10px', fontSize: '11px', color: '#0ea5e9', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', background: 'transparent', border: 'none', fontWeight: 600 }}
+                                            >
+                                                <Edit3 size={11} /> Update Signature
                                             </button>
-                                        )}
-                                    </>
-                                ) : (
-                                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
-                                        <span style={{ fontSize: '0.75rem', color: '#ef4444', fontWeight: 600 }}>Action Required: Signature Missing</span>
-                                        <button type="button" className="wm-btn wm-btn--primary" onClick={(e) => { e.preventDefault(); setShowSignatureModal(true); }} style={{ padding: '6px 12px', fontSize: '0.75rem' }}>
-                                            <Plus size={12} /> Draw Signature
-                                        </button>
-                                    </div>
-                                )}
+                                        </>
+                                    ) : (
+                                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                                            <span style={{ fontSize: '0.75rem', color: '#ef4444', fontWeight: 600 }}>Action Required: Signature Missing</span>
+                                            <button
+                                                type="button"
+                                                className="wm-btn wm-btn--primary"
+                                                onClick={(e) => { e.preventDefault(); setShowSignatureModal(true); }}
+                                                style={{ padding: '6px 12px', fontSize: '0.75rem' }}
+                                            >
+                                                <Plus size={12} /> Add Signature
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
-                        </div>
+                        )}
 
                         {/* Save Button explicitly placed at the bottom of the sidebar */}
                         {isEditing && (

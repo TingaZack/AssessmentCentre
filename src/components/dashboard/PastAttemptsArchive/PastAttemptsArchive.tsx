@@ -1,9 +1,10 @@
+// src/components/dashboard/PastAttemptsArchive/PastAttemptsArchive.tsx
+
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { History, Eye, X, Check, MessageSquare, Clock, ShieldCheck, Info, Award } from 'lucide-react';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
-import { TintedSignature } from '../../../pages/FacilitatorDashboard/FacilitatorProfileView/FacilitatorProfileView';
 
 interface PastAttemptsArchiveProps {
     historySnapshots: any[];
@@ -22,7 +23,8 @@ const ArchivedSnapshotViewer: React.FC<{ snapshot: any; assessment: any; onClose
         style.innerHTML = `body, html { overflow: hidden !important; }`;
         document.head.appendChild(style);
 
-        // Fetch the historical signees for this exact snapshot
+        // Fetch the historical signees for this exact snapshot as a fallback
+        // if the snapshot doesn't contain the signature URL (for old records).
         const fetchProfiles = async () => {
             try {
                 // 1. Properly resolve Learner Auth UID
@@ -246,8 +248,8 @@ const ArchivedSnapshotViewer: React.FC<{ snapshot: any; assessment: any; onClose
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' }}>
                                 <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: '6px', border: '1px solid #bfdbfe', display: 'flex', flexDirection: 'column', gap: '4px', textAlign: 'center' }}>
                                     <p style={{ margin: '0 0 8px', fontSize: '0.75rem', fontWeight: 'bold', color: '#0284c7', textTransform: 'uppercase' }}>Facilitator Declaration</p>
-                                    {fProfile?.signatureUrl ? (
-                                        <TintedSignature imageUrl={fProfile.signatureUrl} color="blue" />
+                                    {preIntervention.facilitatorSignatureUrl || fProfile?.signatureUrl ? (
+                                        <img src={preIntervention.facilitatorSignatureUrl || fProfile?.signatureUrl} alt="Facilitator Signature" style={{ height: '40px', objectFit: 'contain', margin: '0 auto' }} />
                                     ) : (
                                         <div style={{ height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontStyle: 'italic', fontSize: '0.8rem' }}>No Canvas Signature</div>
                                     )}
@@ -258,8 +260,8 @@ const ArchivedSnapshotViewer: React.FC<{ snapshot: any; assessment: any; onClose
                                     <p style={{ margin: '0 0 8px', fontSize: '0.75rem', fontWeight: 'bold', color: '#475569', textTransform: 'uppercase' }}>Learner Acknowledgement</p>
                                     {preIntervention.acknowledged ? (
                                         <>
-                                            {lProfile?.signatureUrl ? (
-                                                <TintedSignature imageUrl={lProfile.signatureUrl} color="black" />
+                                            {preIntervention.learnerSignatureUrl || lProfile?.signatureUrl ? (
+                                                <img src={preIntervention.learnerSignatureUrl || lProfile?.signatureUrl} alt="Learner Signature" style={{ height: '40px', objectFit: 'contain', margin: '0 auto' }} />
                                             ) : (
                                                 <div style={{ height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontStyle: 'italic', fontSize: '0.8rem' }}>No Canvas Signature</div>
                                             )}
@@ -298,8 +300,8 @@ const ArchivedSnapshotViewer: React.FC<{ snapshot: any; assessment: any; onClose
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' }}>
                                 <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: '6px', border: '1px solid #bfdbfe', display: 'flex', flexDirection: 'column', gap: '4px', textAlign: 'center' }}>
                                     <p style={{ margin: '0 0 8px', fontSize: '0.75rem', fontWeight: 'bold', color: '#0284c7', textTransform: 'uppercase' }}>Facilitator Declaration</p>
-                                    {fProfile?.signatureUrl ? (
-                                        <TintedSignature imageUrl={fProfile.signatureUrl} color="blue" />
+                                    {postIntervention.facilitatorSignatureUrl || fProfile?.signatureUrl ? (
+                                        <img src={postIntervention.facilitatorSignatureUrl || fProfile?.signatureUrl} alt="Facilitator Signature" style={{ height: '40px', objectFit: 'contain', margin: '0 auto' }} />
                                     ) : (
                                         <div style={{ height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontStyle: 'italic', fontSize: '0.8rem' }}>No Canvas Signature</div>
                                     )}
@@ -315,12 +317,13 @@ const ArchivedSnapshotViewer: React.FC<{ snapshot: any; assessment: any; onClose
                         </div>
                     )}
 
-                    {/* Historical Final Signatures */}
+                    {/* Historical Final Signatures USING SNAPSHOTS */}
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
+
                         <div style={{ background: 'white', padding: '1rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
                             <p style={{ margin: '0 0 8px', fontSize: '0.75rem', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase' }}>Learner Declared</p>
-                            {lProfile?.signatureUrl ? (
-                                <TintedSignature imageUrl={lProfile.signatureUrl} color="black" />
+                            {sData.learnerDeclaration?.signatureUrl || lProfile?.signatureUrl ? (
+                                <img src={sData.learnerDeclaration?.signatureUrl || lProfile?.signatureUrl} alt="Learner Signature" style={{ height: '40px', objectFit: 'contain', margin: '0 auto' }} />
                             ) : (
                                 <div style={{ height: '40px', display: 'flex', alignItems: 'center', color: '#94a3b8', fontStyle: 'italic', fontSize: '0.8rem' }}>No Canvas Signature</div>
                             )}
@@ -332,8 +335,8 @@ const ArchivedSnapshotViewer: React.FC<{ snapshot: any; assessment: any; onClose
                             <p style={{ margin: '0 0 8px', fontSize: '0.75rem', fontWeight: 'bold', color: '#ef4444', textTransform: 'uppercase' }}>Assessor Signed</p>
                             {sData.grading?.gradedAt ? (
                                 <>
-                                    {aProfile?.signatureUrl ? (
-                                        <TintedSignature imageUrl={aProfile.signatureUrl} color="red" />
+                                    {sData.grading?.assessorSignatureUrl || aProfile?.signatureUrl ? (
+                                        <img src={sData.grading?.assessorSignatureUrl || aProfile?.signatureUrl} alt="Assessor Signature" style={{ height: '40px', objectFit: 'contain', margin: '0 auto' }} />
                                     ) : (
                                         <div style={{ height: '40px', display: 'flex', alignItems: 'center', color: '#ef4444', fontStyle: 'italic', fontSize: '0.8rem' }}>No Canvas Signature</div>
                                     )}
@@ -349,8 +352,8 @@ const ArchivedSnapshotViewer: React.FC<{ snapshot: any; assessment: any; onClose
                             <p style={{ margin: '0 0 8px', fontSize: '0.75rem', fontWeight: 'bold', color: '#22c55e', textTransform: 'uppercase' }}>Moderator Signed</p>
                             {sData.moderation?.moderatedAt ? (
                                 <>
-                                    {mProfile?.signatureUrl ? (
-                                        <TintedSignature imageUrl={mProfile.signatureUrl} color="green" />
+                                    {sData.moderation?.moderatorSignatureUrl || mProfile?.signatureUrl ? (
+                                        <img src={sData.moderation?.moderatorSignatureUrl || mProfile?.signatureUrl} alt="Moderator Signature" style={{ height: '40px', objectFit: 'contain', margin: '0 auto' }} />
                                     ) : (
                                         <div style={{ height: '40px', display: 'flex', alignItems: 'center', color: '#22c55e', fontStyle: 'italic', fontSize: '0.8rem' }}>No Canvas Signature</div>
                                     )}

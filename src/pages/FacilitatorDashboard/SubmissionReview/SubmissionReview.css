@@ -287,6 +287,7 @@
   text-align: center;
   color: #073f4e;
   outline: none;
+  background: whitesmoke;
 }
 .sr-score-input:focus {
   border-color: #f59e0b;
@@ -425,6 +426,7 @@
   resize: vertical;
   margin-bottom: 2rem;
   outline-color: #073f4e;
+  --background: whitesmoke;
 }
 
 .sr-action-area {
@@ -1285,7 +1287,7 @@
    The core problem: the browser prints whatever layout it rendered on screen.
    If the screen is 1400px wide, the PDF is 1400px wide.
    
-   The fix: we use a print-only wrapper (.sr-print-wrap) that is:
+   we use a print-only wrapper (.sr-print-wrap) that is:
    - Invisible on screen (display:none)  
    - In print: position:fixed, sized in mm to exact A4 printable area
    

@@ -86,12 +86,11 @@ export const buildMlabEmailHtml = (params: EmailTemplateParams): string => {
             <td align="center" style="background-color:#073f4e; padding:44px 40px 36px;">
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto 22px;">
                 <tr>
-                  <td style="background:rgba(148,199,61,0.15); border:1px solid rgba(148,199,61,0.4); padding:5px 14px;">
-                    <span style="color:#94c73d; font-family:'Oswald',sans-serif; font-size:10px; font-weight:700; letter-spacing:0.2em; text-transform:uppercase;">&#x1F512;&nbsp; Secure Communication</span>
+                  <td>
+                    <Img src="https://firebasestorage.googleapis.com/v0/b/mlabassessmentcenter.firebasestorage.app/o/mlab_logo_white.png?alt=media&token=0ae3794f-3888-4fe8-95da-4bf96de4cee4" alt="mLab Logo" style="height:100px; width:auto;" />
                   </td>
                 </tr>
               </table>
-              <h1 style="color:#ffffff; margin:0 0 6px; font-family:'Oswald',sans-serif; font-size:26px; font-weight:700; letter-spacing:0.12em; text-transform:uppercase; line-height:1.1;">Mobile Applications Laboratory NPC</h1>
               <p style="color:rgba(255,255,255,0.45); margin:0; font-size:11px; font-family:'Trebuchet MS',sans-serif; letter-spacing:0.08em; text-transform:uppercase;">Assessment &amp; Credentialing Platform</p>
             </td>
           </tr>
