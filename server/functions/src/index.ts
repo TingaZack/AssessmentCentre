@@ -42,8 +42,11 @@ import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 const puppeteer = require("puppeteer-core");
 const chromium = require("@sparticuz/chromium");
 
-admin.initializeApp();
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import { onSchedule } from "firebase-functions/v2/scheduler";
+import { FieldValue } from "firebase-admin/firestore";
 
+admin.initializeApp();
 // ================= CONFIGURATION & SECRETS =================
 // // ZARD
 // const ZARD_APP_URL = "https://assessmentcentr.web.app";
@@ -60,6 +63,7 @@ const APP_URL =
 
 const mailgunSecret = defineSecret("MAILGUN_API_KEY");
 const privateKeySecret = defineSecret("INSTITUTION_PRIVATE_KEY");
+// const geminiSecret = defineSecret("GEMINI_API_KEY");
 
 // ============================================================================
 // REUSABLE MAILGUN EMAIL HELPER
@@ -4916,3 +4920,422 @@ export const cancelAssessmentSweep = onCall(
     }
   },
 );
+
+// ============================================================================
+// GEMINI AI: SESSION REPORT GENERATORS
+// ============================================================================
+
+// ============================================================================
+// GEMINI AI: SESSION REPORT GENERATORS (DEBUG / TEST MODE)
+// ============================================================================
+// import { GoogleGenerativeAI } from "@google/generative-ai";
+
+// ⚠️ DEBUG MODE: Hardcode your test key here to bypass Firebase Secret Manager
+// ============================================================================
+// GEMINI AI: SESSION REPORT GENERATORS (DEBUG / TEST MODE)
+// ============================================================================
+
+// ⚠️ DEBUG MODE: Hardcode your test key here to bypass Firebase Secret Manager
+const TEST_GEMINI_API_KEY = "AIzaSyDRxVFCtHj1jVC7WJd2vDTZcDOoJsrbttw";
+
+export const draftSessionReport = onCall(async (request) => {
+  logger.info("BACKEND: draftSessionReport triggered.");
+  const auth = request.auth;
+
+  if (!auth || !["facilitator", "admin"].includes(auth.token.role)) {
+    logger.error("BACKEND: Unauthorized access attempt.");
+    throw new HttpsError("permission-denied", "Unauthorized access.");
+  }
+
+  // 🚀 UPDATED: Extracted the new Qualification IDs and Credits
+  const {
+    topics,
+    moduleNames,
+    programmeName,
+    nqfLevel,
+    saqaId,
+    qctoId,
+    credits,
+    facilitatorName,
+    preferences,
+  } = request.data;
+
+  const apiKey = TEST_GEMINI_API_KEY;
+
+  if (!apiKey) {
+    logger.error("BACKEND: API Key is missing.");
+    throw new HttpsError(
+      "internal",
+      "Server configuration error: Missing AI API Key.",
+    );
+  }
+
+  try {
+    logger.info(`BACKEND: Initializing Gemini SDK for ${facilitatorName}...`);
+    const genAI = new GoogleGenerativeAI(apiKey);
+
+    const model = genAI.getGenerativeModel({
+      model: "gemini-2.5-flash",
+      systemInstruction:
+        "You are an elite, strict QCTO (Quality Council for Trades and Occupations) and SETA compliance administrator and master educational facilitator in South Africa. Your ONLY purpose is to draft, review, and enhance formal Session Reports, Lesson Plans, and academic reflections. You must strictly utilize South African outcomes-based education terminology. Maintain a highly formal, academic, and audit-ready tone. Output ONLY valid HTML. Do not include markdown blocks.",
+    });
+
+    // 🚀 UPDATED PROMPT: Injecting the SAQA, QCTO, and Credit details
+    const prompt = `
+        You are an expert QCTO and MICT SETA compliance administrator. 
+        Write a highly professional, detailed Session Report for a facilitator.
+        
+        Context:
+        - Facilitator: ${facilitatorName}
+        - Programme: ${programmeName} (NQF: ${nqfLevel}, SAQA ID: ${saqaId}, QCTO ID: ${qctoId}, Credits: ${credits})
+        - Modules: ${moduleNames}
+        - Topics Covered: ${topics.map((t: any) => t.title).join(", ")}
+        - Facilitator's Style/Preferences: ${preferences || "Interactive lecture with practical lab exercises."}
+
+        Requirements:
+        1. Expand on the topics to create realistic Learning Outcomes and Objectives.
+        2. Describe the Teaching Activities using the Facilitator's Style.
+        3. Keep the tone formal, academic, and audit-ready.
+        4. Output ONLY clean HTML. Do not include markdown blocks like \`\`\`html.
+        5. ALL text and headers MUST use inline styles for pure black ink: style="color: #000000;"
+
+        Use exactly this structure:
+        <h3 style="color: #000000;">1. Programme & Module Information</h3>
+        <p style="color: #000000;"><strong>Programme:</strong> ${programmeName}</p>
+        <p style="color: #000000;"><strong>SAQA ID:</strong> ${saqaId} | <strong>QCTO / Curriculum ID:</strong> ${qctoId}</p>
+        <p style="color: #000000;"><strong>NQF Level:</strong> ${nqfLevel} | <strong>Total Credits:</strong> ${credits}</p>
+        <p style="color: #000000;"><strong>Module(s) Covered:</strong> ${moduleNames}</p>
+        
+        <h3 style="color: #000000;">2 & 3. Outcomes & Objectives</h3>
+        [List here]
+        <h3 style="color: #000000;">4. Content / Key Learning Areas</h3>
+        [List here]
+        <h3 style="color: #000000;">5 & 10. Teaching Activities & Facilitation Approach</h3>
+        [Paragraph here]
+        <h3 style="color: #000000;">6. Resources & Materials</h3>
+        [Paragraph here]
+        <h3 style="color: #000000;">7. Time Allocation</h3>
+        [List here]
+        <h3 style="color: #000000;">8 & 9. Assessment Strategy & Evidence</h3>
+        [Paragraph here]
+        <h3 style="color: #000000;">11. Learner Support & Remediation</h3>
+        [Paragraph here]
+        <h3 style="color: #000000;">12. Evaluation & Reflection</h3>
+        <p style="color: #000000;"><em>[Facilitator to add reflection notes here]</em></p>
+        <h3 style="color: #000000;">13. Alignment to Workplace</h3>
+        [Paragraph here]
+        <hr />
+        <p style="color: #000000;"><strong>14. Compliance Sign-Off</strong></p>
+        <p style="color: #000000;"><strong>Delivered By:</strong> ${facilitatorName}</p>
+        <p style="color: #000000;"><strong>Date Logged:</strong> ${new Date().toLocaleDateString()}</p>
+        <p style="color: #000000;"><em>Digitally Authenticated by mLab Assessment Centre</em></p>
+      `;
+
+    const result = await model.generateContent(prompt);
+    let htmlResponse = result.response.text();
+
+    // Clean markdown formatting if Gemini includes it
+    htmlResponse = htmlResponse
+      .replace(/```html/g, "")
+      .replace(/```/g, "")
+      .trim();
+
+    return { success: true, html: htmlResponse };
+  } catch (error: any) {
+    logger.error("Gemini Generation Error:", error);
+    throw new HttpsError(
+      "internal",
+      `AI Error: ${error.message || "Failed to generate report."}`,
+    );
+  }
+});
+
+export const enhanceText = onCall(async (request) => {
+  logger.info("BACKEND: enhanceText triggered.");
+  const auth = request.auth;
+  if (!auth) throw new HttpsError("unauthenticated", "Unauthorized access.");
+
+  const { text } = request.data;
+  const apiKey = TEST_GEMINI_API_KEY;
+
+  if (!apiKey) {
+    throw new HttpsError(
+      "internal",
+      "Server configuration error: Missing AI API Key.",
+    );
+  }
+
+  try {
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({
+      model: "gemini-2.5-flash",
+      systemInstruction:
+        "You are an elite, strict QCTO (Quality Council for Trades and Occupations) and SETA compliance administrator and master educational facilitator in South Africa. Your ONLY purpose is to draft, review, and enhance formal Session Reports, Lesson Plans, and academic reflections. You must strictly utilize South African outcomes-based education terminology. Maintain a highly formal, academic, and audit-ready tone. Output ONLY the rewritten text with no markdown formatting.",
+    });
+
+    const prompt = `Rewrite the following text to sound highly professional, academic, and suitable for a formal QCTO compliance audit document. Expand it slightly if it is too brief, but keep the core meaning exactly the same. Text to enhance: "${text}"`;
+
+    const result = await model.generateContent(prompt);
+    return { success: true, text: result.response.text().trim() };
+  } catch (error: any) {
+    logger.error("Gemini Enhance Error:", error);
+    throw new HttpsError("internal", `AI Enhance Error: ${error.message}`);
+  }
+});
+
+// ============================================================================
+// AUTOMATED COMPLIANCE SWEEPERS (HOURLY CRON JOBS)
+// ============================================================================
+
+export const enforceProfessionalismScores = onSchedule(
+  "every 1 hours",
+  async (event) => {
+    const db = admin.firestore();
+    const now = new Date();
+
+    try {
+      logger.info("⏳ Running Professionalism Score Sweeper...");
+
+      // Find all curriculum logs where the 48hr deadline has passed
+      const expiredLogsSnap = await db
+        .collection("curriculum_logs")
+        .where("deadlineAt", "<", now.toISOString())
+        .get();
+
+      if (expiredLogsSnap.empty) return;
+
+      const batch = db.batch();
+      let penaltyCount = 0;
+
+      for (const logDoc of expiredLogsSnap.docs) {
+        const logData = logDoc.data();
+        const cohortId = logData.cohortId;
+        const acknowledgedBy = logData.acknowledgedBy || [];
+        const penalizedLearners = logData.penalizedLearners || [];
+
+        // Get all active learners in this cohort
+        const enrollmentsSnap = await db
+          .collection("enrollments")
+          .where("cohortId", "==", cohortId)
+          .where("status", "==", "active")
+          .get();
+
+        const allLearnerIds = enrollmentsSnap.docs.map(
+          (d) => d.data().learnerId,
+        );
+
+        // Figure out who DID NOT acknowledge it, and hasn't been penalized for this specific log yet
+        const stragglers = allLearnerIds.filter(
+          (id) =>
+            !acknowledgedBy.includes(id) && !penalizedLearners.includes(id),
+        );
+
+        if (stragglers.length > 0) {
+          for (const learnerId of stragglers) {
+            const learnerRef = db.collection("learners").doc(learnerId);
+            // Deduct 2 points, reset streak to 0
+            batch.update(learnerRef, {
+              professionalismScore: FieldValue.increment(-2),
+              professionalismStreak: 0,
+              lastPenaltyAt: now.toISOString(),
+            });
+            penaltyCount++;
+          }
+
+          // Add stragglers to the penalized list to prevent double-charging
+          batch.update(logDoc.ref, {
+            penalizedLearners: FieldValue.arrayUnion(...stragglers),
+          });
+        }
+      }
+
+      if (penaltyCount > 0) {
+        await batch.commit();
+        logger.info(
+          `🚨 Sweeper executed. Deducted points from ${penaltyCount} stragglers.`,
+        );
+      }
+    } catch (error) {
+      logger.error("❌ Critical error in Professionalism Sweeper:", error);
+    }
+  },
+);
+
+export const autoLockSessionReports = onSchedule(
+  "every 1 hours",
+  async (event) => {
+    const db = admin.firestore();
+    const now = new Date();
+    // 48 hours ago
+    const cutoff = new Date(now.getTime() - 48 * 60 * 60 * 1000).toISOString();
+
+    try {
+      logger.info("⏳ Running Session Report Auto-Locker...");
+
+      // Find drafts where the dateLogged was more than 48 hours ago
+      const expiredDraftsSnap = await db
+        .collection("session_reports")
+        .where("status", "==", "draft")
+        .where("dateLogged", "<", cutoff)
+        .get();
+
+      if (expiredDraftsSnap.empty) return;
+
+      const batch = db.batch();
+
+      expiredDraftsSnap.docs.forEach((docSnap) => {
+        batch.update(docSnap.ref, {
+          status: "final",
+          lockedAt: now.toISOString(),
+          systemNote: "Auto-locked after 48-hour draft window expired.",
+        });
+      });
+
+      await batch.commit();
+      logger.info(
+        `🔒 Auto-locked ${expiredDraftsSnap.size} expired session reports.`,
+      );
+    } catch (error) {
+      logger.error("❌ Critical error in Session Report Auto-Locker:", error);
+    }
+  },
+);
+
+// ============================================================================
+// LEARNER ACTION (ACKNOWLEDGE TOPIC)
+// ============================================================================
+
+export const acknowledgeCurriculumTopic = onCall(async (request) => {
+  const auth = request.auth;
+  if (!auth) throw new HttpsError("unauthenticated", "Must be logged in.");
+
+  const { logId, learnerId } = request.data;
+  if (!logId || !learnerId)
+    throw new HttpsError("invalid-argument", "Missing data.");
+
+  const db = admin.firestore();
+
+  try {
+    const logRef = db.collection("curriculum_logs").doc(logId);
+    const learnerRef = db.collection("learners").doc(learnerId);
+
+    // Run as a transaction to ensure score capping is accurate
+    await db.runTransaction(async (transaction) => {
+      const learnerDoc = await transaction.get(learnerRef);
+      if (!learnerDoc.exists) throw new Error("Learner not found");
+
+      const currentScore = learnerDoc.data()?.professionalismScore ?? 100;
+
+      transaction.update(logRef, {
+        acknowledgedBy: FieldValue.arrayUnion(learnerId),
+      });
+
+      // Reward: +1 to streak, +1 to score (capped at 100)
+      const newScore = Math.min(100, currentScore + 1);
+
+      transaction.update(learnerRef, {
+        professionalismScore: newScore,
+        professionalismStreak: FieldValue.increment(1),
+      });
+    });
+
+    return { success: true, message: "Topic acknowledged. Score updated!" };
+  } catch (error: any) {
+    logger.error("Failed to acknowledge topic:", error);
+    throw new HttpsError("internal", "Failed to process acknowledgement.");
+  }
+});
+
+export const startAssessment = onCall(async (request) => {
+  const auth = request.auth;
+  if (!auth || auth.token.role !== "learner") {
+    throw new HttpsError(
+      "permission-denied",
+      "Only learners can start assessments.",
+    );
+  }
+
+  const { submissionId } = request.data;
+
+  try {
+    const subRef = admin
+      .firestore()
+      .collection("learner_submissions")
+      .doc(submissionId);
+    const subSnap = await subRef.get();
+
+    if (!subSnap.exists) {
+      throw new HttpsError("not-found", "Assessment not found.");
+    }
+
+    const subData = subSnap.data();
+
+    // 🛑 QCTO COMPLIANCE GATE (Only runs if it's a Summative)
+    if (subData?.type?.toLowerCase().includes("summative")) {
+      const cohortId = subData.cohortId;
+      const learnerId = subData.learnerId;
+      const moduleCode = subData.moduleNumber;
+
+      // Check 1: Are there any pending curriculum topics for this module?
+      const logsSnap = await admin
+        .firestore()
+        .collection("curriculum_logs")
+        .where("cohortId", "==", cohortId)
+        .where("moduleCode", "==", moduleCode)
+        .get();
+
+      const pendingLogs = logsSnap.docs.filter((doc) => {
+        const log = doc.data();
+        return (
+          !log.acknowledgedBy?.includes(learnerId) &&
+          new Date(log.deadlineAt) > new Date()
+        );
+      });
+
+      if (pendingLogs.length > 0) {
+        throw new HttpsError(
+          "failed-precondition",
+          "You must acknowledge all curriculum topics for this module before starting the Summative Assessment.",
+        );
+      }
+
+      // Check 2: Did they pass the Formative? (Checking history for a Competent Formative in this module)
+      const formativeSnap = await admin
+        .firestore()
+        .collection("learner_submissions")
+        .where("learnerId", "==", learnerId)
+        .where("moduleNumber", "==", moduleCode)
+        .where("status", "==", "moderated")
+        .where("competency", "==", "C")
+        .get();
+
+      const hasFacilitatorOverride = subData.facilitatorOverride === true;
+
+      // If they didn't pass the formative AND don't have an override, block them.
+      if (formativeSnap.empty && !hasFacilitatorOverride) {
+        throw new HttpsError(
+          "failed-precondition",
+          "You must achieve Competency on the Formative assessment before attempting the Summative.",
+        );
+      }
+    }
+
+    // ✅ ALL CLEAR: Start the exam clock!
+    const now = new Date().toISOString();
+    await subRef.update({
+      status: "in_progress",
+      startedAt: now,
+    });
+
+    return { success: true, startedAt: now };
+  } catch (error: any) {
+    // Prevent our custom HTTP errors from being overwritten by generic internal errors
+    if (error instanceof HttpsError) {
+      throw error;
+    }
+    throw new HttpsError(
+      "internal",
+      error.message || "Failed to start assessment.",
+    );
+  }
+});
