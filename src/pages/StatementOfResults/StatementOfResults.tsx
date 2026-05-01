@@ -5,14 +5,13 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { collection, query, where, getDocs, doc, getDoc, writeBatch } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db } from '../../lib/firebase';
-import { useStore } from '../../store/useStore';
+import { useStore, generateStudentId } from '../../store/useStore';
 import { QRCodeSVG } from 'qrcode.react';
 import { verifyBlockchainCertificate } from '../utils/lib/web3/blockchainService';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import './StatementOfResults.css';
 import type { SoRModule } from '../../types/learner.types';
-import { generateSorId } from '../utils/validation';
 
 import mLabLogo from '../../assets/logo/mlab_logo.png';
 import zackSignature from '../../assets/Signatue_Zack_.png';
@@ -187,7 +186,8 @@ const StatementOfResults: React.FC = () => {
                         practicalModules: (data.practicalModules || []).map((m: any) => ({ ...m, status: mapStatus(m.status, m.marks, m.totalMarks) })),
                         workExperienceModules: (data.workExperienceModules || []).map((m: any) => ({ ...m, status: mapStatus(m.status, m.marks, m.totalMarks) })),
                         eisaAdmission: data.eisaAdmission || false,
-                        verificationCode: data.verificationCode || generateSorId(finalFullName, finalIssueDate),
+                        // 🚀 Apply the globally consistent ID logic here!
+                        verificationCode: data.verificationCode || generateStudentId(data.cohortId || "CODE", docId),
                         issueDate: finalIssueDate,
                         nextEISADate: data.nextEisaDate || "TBA",
                         ipfsHash: data.ipfsHash || "",

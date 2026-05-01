@@ -5339,3 +5339,98 @@ export const startAssessment = onCall(async (request) => {
     );
   }
 });
+
+// ─── 1. SECURELY DECLARE THE SECRET ──────────────────────────────
+const geminiApiKey = defineSecret("GEMINI_API_KEY");
+
+export const sendHolidayGoodwill = onSchedule(
+  {
+    schedule: "0 8 * * *",
+    timeZone: "Africa/Johannesburg", // Runs exactly at 8:00 AM SAST
+    secrets: [geminiApiKey], // ─── 2. BIND THE SECRET TO THIS FUNCTION ───
+  },
+  async (event) => {
+    try {
+      const today = new Date();
+      const year = today.getFullYear();
+
+      // Format date to YYYY-MM-DD
+      const todayString = `${year}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+
+      console.log(`Checking holidays for: ${todayString}`);
+
+      // ─── FETCH HOLIDAYS FROM API ─────────────────────────────────
+      const response = await fetch(
+        `https://date.nager.at/api/v3/PublicHolidays/${year}/ZA`,
+      );
+      if (!response.ok) {
+        throw new Error(`Failed to fetch holidays: ${response.statusText}`);
+      }
+
+      const holidays = await response.json();
+      const todayHoliday = holidays.find((h: any) => h.date === todayString);
+
+      if (!todayHoliday) {
+        console.log("No public holiday today. Skipping execution.");
+        return;
+      }
+
+      const holidayName = todayHoliday.localName;
+      console.log(`Today is ${holidayName}! Generating AI message...`);
+
+      // ─── GENERATE AI MESSAGE ────────────────────────────────────
+      // 3. ACCESS THE SECRET SECURELY IN MEMORY (Will fail if not bound in Step 2)
+      const apiKey = geminiApiKey.value();
+
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+      const prompt = `
+            Today is ${holidayName} in South Africa. 
+            Write a short, powerful, and inspiring push notification for young software development learners at 'CodeTribe'.
+            
+            Requirements:
+            1. Acknowledge the historical significance of the day (e.g., Sharpeville heroes for Human Rights Day, the 1976 students for Youth Day, etc.).
+            2. Connect this history to their current journey: remind them not to take their freedom and opportunities for granted.
+            3. Encourage them to honor these sacrifices by upskilling themselves in tech, pulling each other up, and contributing positively to their communities to build a better future.
+            4. Keep it under 3 sentences. Tone should be respectful, highly motivating, and tech-forward.
+        `;
+
+      const result = await model.generateContent(prompt);
+      const generatedMessage = result.response.text().trim();
+
+      console.log("Generated Message:", generatedMessage);
+
+      // ─── SEND PUSH NOTIFICATION ─────────────────────────────────
+      const messagePayload = {
+        notification: {
+          title: `${holidayName} 🇿🇦`,
+          body: generatedMessage,
+        },
+        topic: "all_learners",
+        data: {
+          type: "holiday",
+          route: "/notifications",
+        },
+      };
+
+      await admin.messaging().send(messagePayload);
+      console.log("Push notification blasted to all_learners!");
+
+      // ─── SAVE TO FIRESTORE ──────────────────────────────────────
+      await admin
+        .firestore()
+        .collection("notifications")
+        .add({
+          type: "holiday",
+          title: `${holidayName}`,
+          message: generatedMessage,
+          date: admin.firestore.FieldValue.serverTimestamp(),
+          readBy: [], // Used later to show the "unread" dot on the frontend
+        });
+      console.log("Notification saved to Firestore Inbox.");
+    } catch (error) {
+      console.error("Error in sendHolidayGoodwill function:", error);
+    }
+  },
+);

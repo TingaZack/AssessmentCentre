@@ -122,6 +122,18 @@ const sanitizeForFirestore = (obj: any): any => {
   return obj;
 };
 
+// STUDENT ID GENERATOR
+export const generateStudentId = (cohortId: string, enrollmentId: string) => {
+  const dynamicPrefix =
+    cohortId && cohortId.length > 2
+      ? cohortId
+          .replace(/[^a-zA-Z0-9]/g, "")
+          .slice(0, 4)
+          .toUpperCase()
+      : "CODE";
+  return `${dynamicPrefix}-CT-${enrollmentId.slice(-6).toUpperCase()}`;
+};
+
 interface StoreState extends CohortSlice {
   user: UserProfile | null;
   loading: boolean;
@@ -558,12 +570,15 @@ export const useStore = create<StoreState>()(
           { merge: true },
         );
 
-        // 5. 🚀 RELATIONSHIP SYNC: The Registration Ledger
+        // 5. RELATIONSHIP SYNC: The Registration Ledger
         // We only create an enrollment record if a valid cohortId is provided.
         // This implements the "Importing is not Enrolling" product rule.
         if (payload.cohortId && payload.cohortId !== "") {
           const batch = writeBatch(db);
           const enrollmentId = `${payload.cohortId}_${learnerDocId}`;
+
+          // 🚀 GENERATE OFFICIAL STUDENT ID 🚀
+          const studentId = generateStudentId(payload.cohortId, enrollmentId);
 
           const enrollmentData = {
             id: enrollmentId,
@@ -571,14 +586,14 @@ export const useStore = create<StoreState>()(
             cohortId: payload.cohortId,
             qualification: payload.qualification || {},
             status: "active",
+            verificationCode: (payload as any).verificationCode || studentId, // <-- Added here
             enrolledAt: timestamp,
             updatedAt: timestamp,
             assignedBy: USER_ID,
             isArchived: false,
-            // Carry over academic requirements from payload
-            practicalModules: payload.practicalModules || [],
-            knowledgeModules: payload.knowledgeModules || [],
-            workExperienceModules: payload.workExperienceModules || [],
+            practicalModules: (payload as any).practicalModules || [],
+            knowledgeModules: (payload as any).knowledgeModules || [],
+            workExperienceModules: (payload as any).workExperienceModules || [],
           };
 
           // A. Create the Ledger Entry
@@ -593,7 +608,7 @@ export const useStore = create<StoreState>()(
             learnerIds: arrayUnion(learnerDocId),
           });
 
-          // C. Ghost Cleanup: Ensure no legacy "Unassigned" ledger exists for this ID
+          // C. Ghost Cleanup
           batch.delete(doc(db, "enrollments", `Unassigned_${learnerDocId}`));
 
           await batch.commit();
@@ -749,12 +764,19 @@ export const useStore = create<StoreState>()(
           if (newCohortId && newCohortId !== "") {
             const newEnrollmentId = `${newCohortId}_${learnerIdNumber}`;
 
+            // GENERATE OFFICIAL STUDENT ID FOR THE NEW CLASS
+            const studentId = generateStudentId(newCohortId, newEnrollmentId);
+
             const newEnrollmentData = {
               ...existingRow, // Maintain existing data
               ...updates, // Apply new changes (campus, qualification, etc)
               id: newEnrollmentId,
               learnerId: learnerIdNumber,
               cohortId: newCohortId,
+              verificationCode:
+                (updates as any).verificationCode ||
+                existingRow.verificationCode ||
+                studentId,
               status: "active",
               enrolledAt: existingRow.createdAt || timestamp,
               updatedAt: timestamp,
@@ -772,6 +794,34 @@ export const useStore = create<StoreState>()(
               learnerIds: arrayUnion(learnerIdNumber),
             });
           }
+
+          // // A. TRANSFER TO NEW CLASS (Create New Ledger)
+          // if (newCohortId && newCohortId !== "") {
+          //   const newEnrollmentId = `${newCohortId}_${learnerIdNumber}`;
+
+          //   const newEnrollmentData = {
+          //     ...existingRow, // Maintain existing data
+          //     ...updates, // Apply new changes (campus, qualification, etc)
+          //     id: newEnrollmentId,
+          //     learnerId: learnerIdNumber,
+          //     cohortId: newCohortId,
+          //     status: "active",
+          //     enrolledAt: existingRow.createdAt || timestamp,
+          //     updatedAt: timestamp,
+          //     isArchived: false,
+          //   };
+
+          //   batch.set(
+          //     doc(db, "enrollments", newEnrollmentId),
+          //     sanitizeForFirestore(newEnrollmentData),
+          //     { merge: true },
+          //   );
+
+          //   // Update New Cohort Class List
+          //   batch.update(doc(db, "cohorts", newCohortId), {
+          //     learnerIds: arrayUnion(learnerIdNumber),
+          //   });
+          // }
 
           // B. REMOVE FROM OLD CLASS (Ledger Deletion)
           if (oldCohortId && oldCohortId !== "") {
@@ -952,17 +1002,20 @@ export const useStore = create<StoreState>()(
         const timestamp = now();
         const batch = writeBatch(db);
 
-        // 🚀 DETERMINISTIC LEDGER ID: Unique composite key per enrollment
+        //  DETERMINISTIC LEDGER ID
         const enrollmentId = `${cohortId}_${learnerId}`;
 
+        // GENERATE OFFICIAL STUDENT ID
+        const studentId = generateStudentId(cohortId, enrollmentId);
+
         // 2. 📑 STEP 1: INITIALIZE REGISTRATION LEDGER
-        // This is the source of truth for the auditor/QCTO.
         const enrollmentData = {
           id: enrollmentId,
           learnerId: learnerId,
           cohortId: cohortId,
-          programmeId: programmeId || "", // Strictly mapped
+          programmeId: programmeId || "",
           status: "active",
+          verificationCode: studentId,
           enrolledAt: timestamp,
           updatedAt: timestamp,
           assignedBy: USER_ID,
@@ -974,7 +1027,6 @@ export const useStore = create<StoreState>()(
           sanitizeForFirestore(enrollmentData),
           { merge: true },
         );
-
         // 3. 👤 STEP 2: UPDATE HUMAN PROFILE POINTER
         // We update the 'learners' collection so the profile knows which class it belongs to.
         batch.update(doc(db, "learners", learnerId), {
