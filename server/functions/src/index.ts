@@ -5434,3 +5434,257 @@ export const sendHolidayGoodwill = onSchedule(
     }
   },
 );
+
+export const generateDailyKioskPins = onSchedule(
+  {
+    schedule: "0 6 * * *", // Runs at 6:00 AM daily
+    timeZone: "Africa/Johannesburg", // SAST Timezone
+    timeoutSeconds: 120, // Extended slightly to handle email dispatch
+    memory: "256MiB",
+    secrets: [mailgunSecret], //  REQUIRED: Binds the Mailgun API key
+  },
+  async (event) => {
+    try {
+      const db = admin.firestore();
+
+      // Securely format today's date as YYYY-MM-DD based on SAST
+      const now = new Date();
+      const sastDate = new Date(now.getTime() + 2 * 60 * 60 * 1000);
+      const todayString = `${sastDate.getUTCFullYear()}-${String(sastDate.getUTCMonth() + 1).padStart(2, "0")}-${String(sastDate.getUTCDate()).padStart(2, "0")}`;
+
+      logger.info(`Generating Kiosk PINs for: ${todayString}`);
+
+      // 1. Get all active cohorts
+      const cohortsSnap = await db
+        .collection("cohorts")
+        .where("isArchived", "==", false)
+        .get();
+
+      if (cohortsSnap.empty) {
+        logger.info("No active cohorts found. Skipping execution.");
+        return;
+      }
+
+      // 2. Initialize Firestore Batch & Promise Array
+      const batch = db.batch();
+      const emailPromises: Promise<any>[] = [];
+      let count = 0;
+
+      for (const doc of cohortsSnap.docs) {
+        const cohortData = doc.data();
+
+        // Only generate for cohorts that have a facilitator assigned
+        if (!cohortData.facilitatorId) continue;
+
+        // Generate a secure 6-digit random PIN
+        const pin = Math.floor(100000 + Math.random() * 900000).toString();
+        const cohortName = cohortData.name || "Unnamed Cohort";
+
+        // Create a new document reference in 'kiosk_sessions'
+        const sessionRef = db.collection("kiosk_sessions").doc();
+
+        batch.set(sessionRef, {
+          pin: pin,
+          cohortId: doc.id,
+          cohortName: cohortName,
+          facilitatorId: cohortData.facilitatorId,
+          date: todayString,
+          status: "active",
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        count++;
+
+        // 3. Fetch Facilitator Data to send the email
+        const facSnap = await db
+          .collection("users")
+          .doc(cohortData.facilitatorId)
+          .get();
+        if (facSnap.exists) {
+          const facData = facSnap.data();
+          if (facData?.email) {
+            // 🚀 DYNAMIC MLAB EMAIL TEMPLATE
+            const emailParams = {
+              title: "Today's Kiosk PIN",
+              subtitle: cohortName,
+              recipientName: facData.fullName || "Facilitator",
+              bodyHtml: `
+                      <p>Good morning! Your live attendance kiosk PIN for today has been securely generated.</p>
+                      <div style="background-color: #f8fafc; padding: 15px; border-radius: 6px; border: 1px solid #dde4e8; border-left: 4px solid #0ea5e9; margin: 20px 0; text-align: center;">
+                          <p style="margin: 0; color: #475569; font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; font-weight: bold;">Secure Access Code</p>
+                          <p style="margin: 5px 0 0; color: #073f4e; font-size: 34px; font-weight: bold; font-family: monospace; letter-spacing: 0.2em;">${pin}</p>
+                      </div>
+                      <p>To project today's rotating QR code, simply open the Kiosk page on your classroom's Smart TV or tablet and enter this code.</p>
+                    `,
+              ctaText: "Open TV Kiosk Now",
+              ctaLink: `${APP_URL}/kiosk`,
+              showStepIndicator: false,
+            };
+
+            // Push the email request to the promise array
+            emailPromises.push(
+              sendMailgunEmail({
+                to: facData.email,
+                subject: `Hub Kiosk PIN: ${pin} (${cohortName})`,
+                text: buildMlabEmailPlainText(emailParams),
+                html: buildMlabEmailHtml(emailParams),
+              }).catch((err) => {
+                logger.error(
+                  `Failed to send PIN email to ${facData.email}`,
+                  err,
+                );
+              }),
+            );
+          }
+        }
+      }
+
+      // 4. Commit the batch and send emails
+      if (count > 0) {
+        await batch.commit();
+        logger.info(
+          `Successfully saved ${count} daily Kiosk PINs to Firestore.`,
+        );
+
+        // Wait for all Mailgun emails to be dispatched
+        await Promise.all(emailPromises);
+        logger.info(
+          `Successfully dispatched ${emailPromises.length} PIN emails.`,
+        );
+      }
+    } catch (error) {
+      logger.error("Error generating daily Kiosk PINs:", error);
+    }
+  },
+);
+
+export const testGenerateKioskPins = onRequest(
+  {
+    secrets: [mailgunSecret], // 🚀 REQUIRED: Binds the Mailgun API key
+    timeoutSeconds: 120,
+    memory: "256MiB",
+  },
+  async (req, res) => {
+    try {
+      const db = admin.firestore();
+
+      // 🚀 HARDCODED TEST EMAIL
+      // Change this to your personal email to receive the test PINs
+      // const TEST_EMAIL = "codetribe@mlab.co.za";
+      const TEST_EMAIL = "fca63821@laoia.com";
+
+      // Securely format today's date as YYYY-MM-DD based on SAST
+      const now = new Date();
+      const sastDate = new Date(now.getTime() + 2 * 60 * 60 * 1000);
+      const todayString = `${sastDate.getUTCFullYear()}-${String(sastDate.getUTCMonth() + 1).padStart(2, "0")}-${String(sastDate.getUTCDate()).padStart(2, "0")}`;
+
+      logger.info(`[TEST MODE] Generating Kiosk PINs for: ${todayString}`);
+
+      // 1. Get all active cohorts
+      const cohortsSnap = await db
+        .collection("cohorts")
+        .where("isArchived", "==", false)
+        .get();
+
+      if (cohortsSnap.empty) {
+        logger.info("No active cohorts found. Skipping execution.");
+        res
+          .status(200)
+          .send({ success: true, message: "No active cohorts found." });
+        return;
+      }
+
+      // 2. Initialize Firestore Batch & Promise Array
+      const batch = db.batch();
+      const emailPromises: Promise<any>[] = [];
+      let count = 0;
+
+      for (const doc of cohortsSnap.docs) {
+        const cohortData = doc.data();
+
+        // Only generate for cohorts that have a facilitator assigned
+        if (!cohortData.facilitatorId) continue;
+
+        // Generate a secure 6-digit random PIN
+        const pin = Math.floor(100000 + Math.random() * 900000).toString();
+        const cohortName = cohortData.name || "Unnamed Cohort";
+
+        // Create a new document reference in 'kiosk_sessions'
+        const sessionRef = db.collection("kiosk_sessions").doc();
+
+        batch.set(sessionRef, {
+          pin: pin,
+          cohortId: doc.id,
+          cohortName: cohortName,
+          facilitatorId: cohortData.facilitatorId,
+          date: todayString,
+          status: "active",
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        count++;
+
+        // 3. Fetch Facilitator Data to get their name, but override the email
+        const facSnap = await db
+          .collection("users")
+          .doc(cohortData.facilitatorId)
+          .get();
+        const facName = facSnap.exists
+          ? facSnap.data()?.fullName
+          : "Test Facilitator";
+
+        // 🚀 DYNAMIC MLAB EMAIL TEMPLATE
+        const emailParams = {
+          title: "[TEST] Today's Kiosk PIN",
+          subtitle: cohortName,
+          recipientName: facName,
+          bodyHtml: `
+              <p>Good morning! Your live attendance kiosk PIN for today has been securely generated.</p>
+              <div style="background-color: #f8fafc; padding: 15px; border-radius: 6px; border: 1px solid #dde4e8; border-left: 4px solid #0ea5e9; margin: 20px 0; text-align: center;">
+                  <p style="margin: 0; color: #475569; font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; font-weight: bold;">Secure Access Code</p>
+                  <p style="margin: 5px 0 0; color: #073f4e; font-size: 34px; font-weight: bold; font-family: monospace; letter-spacing: 0.2em;">${pin}</p>
+              </div>
+              <p>To project today's rotating QR code, simply open the Kiosk page on your classroom's Smart TV or tablet and enter this code.</p>
+            `,
+          ctaText: "Open TV Kiosk Now",
+          ctaLink: `${APP_URL}/kiosk`,
+          showStepIndicator: false,
+        };
+
+        // Push the email request to the promise array (using the hardcoded TEST_EMAIL)
+        emailPromises.push(
+          sendMailgunEmail({
+            to: TEST_EMAIL,
+            subject: `[TEST] Hub Kiosk PIN: ${pin} (${cohortName})`,
+            text: buildMlabEmailPlainText(emailParams),
+            html: buildMlabEmailHtml(emailParams),
+          }).catch((err) => {
+            logger.error(`Failed to send test PIN email to ${TEST_EMAIL}`, err);
+          }),
+        );
+      }
+
+      // 4. Commit the batch and send emails
+      if (count > 0) {
+        await batch.commit();
+        logger.info(
+          `Successfully saved ${count} daily Kiosk PINs to Firestore.`,
+        );
+
+        // Wait for all Mailgun emails to be dispatched
+        await Promise.all(emailPromises);
+        logger.info(
+          `Successfully dispatched ${emailPromises.length} test PIN emails to ${TEST_EMAIL}.`,
+        );
+      }
+
+      res.status(200).send({
+        success: true,
+        message: `Generated ${count} PINs. Sent emails to ${TEST_EMAIL}.`,
+      });
+    } catch (error: any) {
+      logger.error("Error generating test Kiosk PINs:", error);
+      res.status(500).send({ success: false, error: error.message });
+    }
+  },
+);

@@ -264,6 +264,14 @@ interface StoreState extends CohortSlice {
   createCertificateGroup: (name: string) => Promise<void>;
 
   renameCertificateGroup: (id: string, newName: string) => Promise<void>;
+
+  leaveRequests: any[];
+  isFetchingLeaves: boolean;
+  fetchFacilitatorLeaveRequests: (facilitatorId: string) => Promise<void>;
+  updateLeaveStatus: (
+    requestId: string,
+    status: "Approved" | "Declined",
+  ) => Promise<void>;
 }
 
 export const useStore = create<StoreState>()(
@@ -2490,6 +2498,110 @@ export const useStore = create<StoreState>()(
         if (get().fetchSubmissions) await get().fetchSubmissions();
       } catch (error: any) {
         console.error("Failed to update placement in Firebase:", error);
+        throw error;
+      }
+    },
+
+    leaveRequests: [],
+    isFetchingLeaves: false,
+
+    // Inside your Zustand store:
+
+    fetchFacilitatorLeaveRequests: async (facilitatorId: string) => {
+      set({ isFetchingLeaves: true });
+      try {
+        // STEP 1: Find all cohorts this facilitator manages
+        const cohortQuery = query(
+          collection(db, "cohorts"),
+          where("facilitatorId", "==", facilitatorId),
+        );
+        const cohortSnapshot = await getDocs(cohortQuery);
+        const cohortIds = cohortSnapshot.docs.map((doc) => doc.id);
+
+        if (cohortIds.length === 0) {
+          set({ leaveRequests: [], isFetchingLeaves: false });
+          return;
+        }
+
+        // STEP 2: Fetch leave requests for those cohorts
+        const q = query(
+          collection(db, "leave_requests"),
+          where("cohortId", "in", cohortIds),
+        );
+
+        const snapshot = await getDocs(q);
+        let requests = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...(doc.data() as any),
+        }));
+
+        console.log("RAW REQUESTS FROM FIRESTORE:", requests);
+
+        // STEP 3: Fetch Learner Names (NoSQL Join)
+        // Get unique learner IDs from the requests
+        const uniqueLearnerIds = [
+          ...new Set(requests.map((r) => r.learnerId).filter(Boolean)),
+        ];
+
+        if (uniqueLearnerIds.length > 0) {
+          // Fetch the profile for each learner (adjust 'learners' or 'users' based on your DB)
+          const learnerPromises = uniqueLearnerIds.map((id) =>
+            getDoc(doc(db, "learners", id)),
+          );
+          const learnerDocs = await Promise.all(learnerPromises);
+
+          // Create a dictionary of { learnerId: "Full Name" }
+          const learnerMap: Record<string, string> = {};
+          learnerDocs.forEach((docSnap) => {
+            if (docSnap.exists()) {
+              const data = docSnap.data();
+              // Handle different name field structures (fullName, or firstName + lastName)
+              learnerMap[docSnap.id] =
+                data.fullName ||
+                `${data.firstName || ""} ${data.lastName || ""}`.trim() ||
+                "Unknown Learner";
+            }
+          });
+
+          // Attach the names to the requests
+          requests = requests.map((req) => ({
+            ...req,
+            learnerName: learnerMap[req.learnerId] || req.learnerId, // Fallback to ID if name is missing
+          }));
+        }
+
+        // Sort descending by submission date
+        requests.sort(
+          (a: any, b: any) =>
+            b.submittedOn?.toMillis() - a.submittedOn?.toMillis(),
+        );
+
+        set({ leaveRequests: requests, isFetchingLeaves: false });
+      } catch (error) {
+        console.error("Error fetching leave requests:", error);
+        set({ isFetchingLeaves: false, leaveRequests: [] });
+      }
+    },
+
+    updateLeaveStatus: async (
+      requestId: string,
+      status: "Approved" | "Declined",
+    ) => {
+      try {
+        const docRef = doc(db, "leave_requests", requestId);
+        await updateDoc(docRef, {
+          status,
+          updatedAt: new Date(), // Audit trail
+        });
+
+        // Optimistically update the UI
+        set((state) => ({
+          leaveRequests: state.leaveRequests.map((req) =>
+            req.id === requestId ? { ...req, status } : req,
+          ),
+        }));
+      } catch (error) {
+        console.error("Error updating leave request:", error);
         throw error;
       }
     },
