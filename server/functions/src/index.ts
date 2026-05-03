@@ -5435,13 +5435,22 @@ export const sendHolidayGoodwill = onSchedule(
   },
 );
 
+// import { onSchedule } from "firebase-functions/v2/scheduler";
+// import * as logger from "firebase-functions/logger";
+// import * as admin from "firebase-admin";
+
+// // Ensure app is initialized
+// if (!admin.apps.length) {
+//   admin.initializeApp();
+// }
+
 export const generateDailyKioskPins = onSchedule(
   {
-    schedule: "0 6 * * *", // Runs at 6:00 AM daily
+    schedule: "0 6 * * 1-5", // Runs 6:00 AM, Monday to Friday ONLY
     timeZone: "Africa/Johannesburg", // SAST Timezone
-    timeoutSeconds: 120, // Extended slightly to handle email dispatch
+    timeoutSeconds: 120,
     memory: "256MiB",
-    secrets: [mailgunSecret], //  REQUIRED: Binds the Mailgun API key
+    secrets: [mailgunSecret], // REQUIRED: Binds the Mailgun API key
   },
   async (event) => {
     try {
@@ -5450,7 +5459,44 @@ export const generateDailyKioskPins = onSchedule(
       // Securely format today's date as YYYY-MM-DD based on SAST
       const now = new Date();
       const sastDate = new Date(now.getTime() + 2 * 60 * 60 * 1000);
-      const todayString = `${sastDate.getUTCFullYear()}-${String(sastDate.getUTCMonth() + 1).padStart(2, "0")}-${String(sastDate.getUTCDate()).padStart(2, "0")}`;
+      const currentYear = sastDate.getUTCFullYear();
+      const todayString = `${currentYear}-${String(sastDate.getUTCMonth() + 1).padStart(2, "0")}-${String(sastDate.getUTCDate()).padStart(2, "0")}`;
+
+      // DYNAMIC HOLIDAY CHECK VIA API
+      try {
+        logger.info(
+          `Fetching SA public holidays for ${currentYear} from API...`,
+        );
+        // Nager.Date is a free, reliable, no-auth API for global public holidays
+        const response = await fetch(
+          `https://date.nager.at/api/v3/PublicHolidays/${currentYear}/ZA`,
+        );
+
+        if (response.ok) {
+          const holidays = await response.json();
+          const holidayDates = holidays.map((h: any) => h.date);
+
+          if (holidayDates.includes(todayString)) {
+            // Find the specific name of the holiday for the logs
+            const holidayName =
+              holidays.find((h: any) => h.date === todayString)?.name ||
+              "Public Holiday";
+            logger.info(
+              `Today (${todayString}) is ${holidayName}. Skipping auto-generation.`,
+            );
+            return; // Exit early, no PINs generated today!
+          }
+        } else {
+          logger.warn(
+            `Holiday API returned status ${response.status}. Proceeding with normal execution as fallback.`,
+          );
+        }
+      } catch (apiError) {
+        logger.error(
+          "Failed to fetch public holidays from API. Proceeding with normal execution.",
+          apiError,
+        );
+      }
 
       logger.info(`Generating Kiosk PINs for: ${todayString}`);
 
@@ -5500,6 +5546,7 @@ export const generateDailyKioskPins = onSchedule(
           .collection("users")
           .doc(cohortData.facilitatorId)
           .get();
+
         if (facSnap.exists) {
           const facData = facSnap.data();
           if (facData?.email) {
@@ -5570,8 +5617,8 @@ export const testGenerateKioskPins = onRequest(
 
       // 🚀 HARDCODED TEST EMAIL
       // Change this to your personal email to receive the test PINs
-      // const TEST_EMAIL = "codetribe@mlab.co.za";
-      const TEST_EMAIL = "fca63821@laoia.com";
+      const TEST_EMAIL = "codetribe@mlab.co.za";
+      // const TEST_EMAIL = "fca63821@laoia.com";
 
       // Securely format today's date as YYYY-MM-DD based on SAST
       const now = new Date();
@@ -5685,6 +5732,96 @@ export const testGenerateKioskPins = onRequest(
     } catch (error: any) {
       logger.error("Error generating test Kiosk PINs:", error);
       res.status(500).send({ success: false, error: error.message });
+    }
+  },
+);
+
+// import { onSchedule } from "firebase-functions/v2/scheduler";
+// import * as logger from "firebase-functions/logger";
+// import * as admin from "firebase-admin";
+
+// // Ensure app is initialized
+// if (!admin.apps.length) {
+//   admin.initializeApp();
+// }
+
+export const autoFinalizeAttendance = onSchedule(
+  {
+    schedule: "59 23 * * *", // Runs at 11:59 PM daily SAST
+    timeZone: "Africa/Johannesburg",
+    region: "us-central1",
+    timeoutSeconds: 300,
+    memory: "256MiB",
+  },
+  async (event) => {
+    try {
+      const db = admin.firestore();
+      logger.info(`Starting auto-finalization cron job...`);
+
+      // 1. Grab ALL leftover live scans, regardless of date
+      const liveScansSnap = await db.collection("live_attendance_scans").get();
+
+      if (liveScansSnap.empty) {
+        logger.info("No unfinalized attendance records found. Exiting.");
+        return;
+      }
+
+      // 2. Group by Cohort AND Date
+      // Structure: { "cohort123": { "2023-10-24": [...scans], "2023-10-25": [...scans] } }
+      const cohortDateGroups: Record<string, Record<string, any[]>> = {};
+
+      liveScansSnap.forEach((doc) => {
+        const data = doc.data();
+        const cohortId = data.cohortId;
+        const dateStr = data.dateString;
+
+        if (!cohortDateGroups[cohortId]) cohortDateGroups[cohortId] = {};
+        if (!cohortDateGroups[cohortId][dateStr])
+          cohortDateGroups[cohortId][dateStr] = [];
+
+        cohortDateGroups[cohortId][dateStr].push({ ref: doc.ref, ...data });
+      });
+
+      let totalRegistersCreated = 0;
+      let totalScansProcessed = 0;
+
+      // 3. Process each cohort's dates
+      for (const [cohortId, datesObj] of Object.entries(cohortDateGroups)) {
+        for (const [scanDate, scans] of Object.entries(datesObj)) {
+          const presentIds = [...new Set(scans.map((s: any) => s.learnerId))];
+          const facilitatorId = scans[0].facilitatorId || "system-auto";
+
+          // Save the permanent historical record using the actual scan date
+          await db.collection("attendance").add({
+            cohortId: cohortId,
+            facilitatorId: facilitatorId,
+            date: scanDate,
+            presentLearners: presentIds,
+            absentLearners: [],
+            proofs: {},
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            finalizedBy: "system-auto",
+          });
+
+          // Wipe the live board for that specific cohort/date grouping
+          const batch = db.batch();
+          scans.forEach((s) => batch.delete(s.ref));
+          await batch.commit();
+
+          totalRegistersCreated++;
+          totalScansProcessed += presentIds.length;
+
+          logger.info(
+            `Auto-Finalized cohort ${cohortId} for date ${scanDate} with ${presentIds.length} learners.`,
+          );
+        }
+      }
+
+      logger.info(
+        `Successfully created ${totalRegistersCreated} registers and wiped ${totalScansProcessed} live scans.`,
+      );
+    } catch (error: any) {
+      logger.error("Error running auto-finalization:", error);
     }
   },
 );

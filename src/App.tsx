@@ -25,16 +25,13 @@ import { AccessManager } from './pages/AdminDashboard/AccessManager/AccessManage
 import { FacilitatorLayout } from './pages/FacilitatorDashboard/FacilitatorLayout/FacilitatorLayout';
 import { FacilitatorDashboard } from './pages/FacilitatorDashboard/FacilitatorDashboard/FacilitatorDashboard';
 import { AttendancePage } from './pages/FacilitatorDashboard/AttendancePage';
-import { AssessmentManager } from './pages/FacilitatorDashboard/AssessmentManager/AssessmentManager';
 import { AssessmentBuilder } from './pages/FacilitatorDashboard/AssessmentBuilder/AssessmentBuilder';
 import { AssessmentPreview } from './pages/FacilitatorDashboard/AssessmentPreview/AssessmentPreview';
 import { SubmissionReview } from './pages/FacilitatorDashboard/SubmissionReview/SubmissionReview';
 import { AssessorDashboard } from './pages/FacilitatorDashboard/AssessorDashboard/AssessorDashboard';
 import InvigilatorDashboard from './components/views/InvigilatorDashboard/InvigilatorDashboard';
 
-// 🚀 NEW: ATTENDANCE KIOSK PAGES 🚀
 import { KioskPage } from './pages/KioskPage/KioskPage';
-import { LiveAttendanceKiosk } from './components/FacilitatorPortal/AttendanceDashboard/LiveAttendanceKiosk';
 import { AppScannerRequired } from './pages/AppScannerRequired';
 
 // Compliance & Profile Setup Gates
@@ -58,7 +55,7 @@ import { LearnerProfileView } from './components/views/LearnerProfileView/Learne
 import { WorkplacesManager } from './components/admin/WorkplacesManager/WorkplacesManager';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { CohortDetailsPage } from './pages/CohortDetails/CohortDetailsPage';
-import { fetchStatssaCodes } from './services/qctoService';
+
 import { PrivacyPolicy } from './components/views/PrivacyPolicy/PrivacyPolicy';
 import Loader from './components/common/Loader/Loader';
 import ResetPassword from './pages/ResetPassword/ResetPassword';
@@ -67,6 +64,7 @@ import ResetPassword from './pages/ResetPassword/ResetPassword';
 import { WelcomeWizard } from './components/common/WelcomeWizard/WelcomeWizard';
 
 import '../src/assets/styles/mLabModals.css';
+import { LiveAttendanceBoard } from './pages/FacilitatorDashboard/LiveAttendanceBoard/LiveAttendanceBoard';
 
 // --- TRAFFIC CONTROLLER ---
 const RootRedirect = () => {
@@ -306,13 +304,6 @@ function App() {
               </RoleProtectedRoute>
             } />
 
-            {/* 🚀 FACILITATOR FALLBACK SCANNER 🚀 */}
-            <Route path="/facilitator/attendance/scanner/:cohortId" element={
-              <RoleProtectedRoute allowedRoles={['admin', 'facilitator']}>
-                <LiveAttendanceKiosk />
-              </RoleProtectedRoute>
-            } />
-
             {/* FACILITATOR SUITE */}
             <Route path="/facilitator" element={
               <RoleProtectedRoute allowedRoles={['facilitator']}>
@@ -323,6 +314,8 @@ function App() {
               <Route path="dashboard" element={<FacilitatorDashboard />} />
               <Route path="profile" element={<FacilitatorDashboard />} />
               <Route path="attendance" element={<FacilitatorDashboard />} />
+              {/*  LIVE DASHBOARD MUST COME BEFORE THE DYNAMIC ID ROUTE  */}
+              <Route path="attendance/live" element={<LiveAttendanceBoard />} />
               <Route path="attendance/:cohortId" element={<AttendancePage />} />
               <Route path="assessments" element={<FacilitatorDashboard />} />
               <Route path="assessments/builder/:assessmentId?" element={<AssessmentBuilder />} />

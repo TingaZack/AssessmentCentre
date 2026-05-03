@@ -324,6 +324,12 @@ export interface IssuedBy {
   title: string;
 }
 
+export interface RecessPeriod {
+  start: string;
+  end: string;
+  reason: string;
+}
+
 export interface Cohort {
   id: string;
   name: string;
@@ -347,12 +353,14 @@ export interface Cohort {
   // The Students
   learnerIds: string[]; // Array of Learner IDs
 
+  // 🚀 STRICTLY TYPED RECESS PERIODS
+  recessPeriods?: RecessPeriod[];
+
   staffHistory?: StaffHistoryEntry[];
 
   isArchived: boolean;
   createdAt: string;
 }
-
 export interface StaffHistoryEntry {
   staffId: string;
   role: "facilitator" | "assessor" | "moderator";
