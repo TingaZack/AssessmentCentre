@@ -114,12 +114,8 @@ export const AccessManager: React.FC = () => {
         setSuccess(null);
 
         const officialDomain = "@mlab.co.za";
-<<<<<<< HEAD
         // const isTestEmail = email.toLowerCase() === "adlab@gmail.com";
         const isTestEmail = email.toLowerCase() === "moq66065@laoia.com";
-=======
-        const isTestEmail = email.toLowerCase() === "adlab@gmail.com";
->>>>>>> dc5e6e85f7da2b5cc456794fff55bafa22f23d7c
 
         if (!email.toLowerCase().endsWith(officialDomain) && !isTestEmail) {
             setError(`Security Policy: Administrator accounts must use an official ${officialDomain} email address.`);

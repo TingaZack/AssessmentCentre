@@ -169,7 +169,10 @@ export const QualificationsView: React.FC<QualificationsViewProps> = ({
                                     <div className="mlab-icon-btn-group" style={{ justifyContent: 'flex-end' }}>
                                         <button
                                             className="mlab-icon-btn mlab-icon-btn--blue"
-                                            onClick={() => onEdit(prog)}
+                                            onClick={() => {
+                                                onEdit(prog)
+                                                // console.log('Programem docume: ', prog)
+                                            }}
                                             title="Edit Programme"
                                         >
                                             <Edit size={15} />

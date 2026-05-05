@@ -1956,7 +1956,8 @@ export const useStore = create<StoreState>()(
         const q = query(collection(db, "programmes"), orderBy("name"));
         const snapshot = await getDocs(q);
         const programmes = snapshot.docs.map(
-          (doc) => ({ id: doc.id, ...doc.data() }) as ProgrammeTemplate,
+          // (doc) => ({ id: doc.id, ...doc.data() }) as ProgrammeTemplate,
+          (doc) => ({ ...doc.data(), id: doc.id }) as ProgrammeTemplate,
         );
         set({
           programmes,
