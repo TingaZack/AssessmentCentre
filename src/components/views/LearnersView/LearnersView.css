@@ -58,66 +58,127 @@
   width: 100%;
 }
 
-/* ── Tab Bar ───────────────────────────────────────────────────────────────── */
+/* ── Global Tabs & Tab Bar (Matched to ViewPortfolio) ──────────────────────── */
+.mlab-tabs,
 .mlab-tab-bar {
   display: flex;
-  gap: 0;
-  border-bottom: 2px solid #e2e8f0;
-  margin-bottom: 1.5rem;
+  gap: 2px;
+  background: var(--mlab-white);
+  border: 1px solid #cbd5e1;
+  border-bottom: none;
+  padding: 0.5rem;
+  margin-bottom: 2rem;
+  box-shadow: 0 4px 6px -1px rgba(7, 63, 78, 0.08); /* Floating effect */
+  overflow-x: auto;
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  scrollbar-width: none; /* Hides scrollbar on Firefox */
+  -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
+}
+
+/* Hides scrollbar on Chrome/Safari/Edge */
+.mlab-tabs::-webkit-scrollbar,
+.mlab-tab-bar::-webkit-scrollbar {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .mlab-tabs,
+  .mlab-tab-bar {
+    top: 56px; /* Adjust if your mobile header is taller */
+  }
 }
 
 .mlab-tab {
-  padding: 1rem 1.5rem;
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  font-family: var(--font-heading);
-  font-weight: 500;
-  font-size: 1rem;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  transition: all 0.2s;
-  outline: none;
-  border-bottom: 3px solid transparent;
-  margin-bottom: -2px; /* Overlap the container border */
-  color: var(--mlab-grey);
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: transparent;
+  border: none;
+  border-bottom: 3px solid transparent;
+  font-family: var(--font-heading);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--mlab-grey);
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+
+  /* Aggressive Reset for browser focus outlines and mobile tap flashes */
+  -webkit-tap-highlight-color: transparent !important;
+}
+
+/* Kill all default browser focus rings and purple outlines */
+.mlab-tab:focus,
+.mlab-tab:active,
+.mlab-tab:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+  border-top-color: transparent !important;
+  border-left-color: transparent !important;
+  border-right-color: transparent !important;
+}
+
+.mlab-tab:hover {
+  color: var(--mlab-blue);
+  background: whitesmoke;
+  outline: none !important;
+  box-shadow: none !important;
 }
 
 .mlab-tab--active {
-  color: var(--mlab-blue);
-  border-bottom-color: var(--mlab-blue);
+  color: var(--mlab-white);
+  background: var(--mlab-blue);
+}
+
+.mlab-tab--active:hover {
+  background: var(--mlab-blue-dark);
+  color: var(--mlab-grey-light);
 }
 
 .mlab-tab--staging-active {
+  color: var(--mlab-white);
+  background: var(--mlab-green);
+}
+
+.mlab-tab--staging-active:hover {
+  background: var(--mlab-green-dark);
+  color: rgb(232, 232, 232);
+}
+
+/* Unified Badges/Counts inside tabs */
+.mlab-tab__count,
+.mlab-tab-badge {
+  /* background: var(--mlab-green); */
+  border: 1px solid var(--mlab-green);
   color: var(--mlab-green);
-  border-bottom-color: var(--mlab-green);
-}
-
-.mlab-tab:hover:not(.mlab-tab--active):not(.mlab-tab--staging-active) {
-  color: var(--mlab-blue);
-  border-bottom-color: #cbd5e1;
-}
-
-.mlab-tab__count {
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-family: var(--font-heading);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 24px;
   height: 24px;
-  border-radius: 12px;
-  font-size: 0.75rem;
-  font-weight: 700;
-  background: #e2e8f0;
-  color: var(--mlab-grey);
-  font-family: var(--font-body);
+  transition: all 0.2s ease;
 }
 
-.mlab-tab--active .mlab-tab__count {
-  background: var(--mlab-blue);
+.mlab-tab--active .mlab-tab__count,
+.mlab-tab--active .mlab-tab-badge {
+  background: var(--mlab-green);
   color: var(--mlab-white);
+}
+
+.mlab-tab--staging-active .mlab-tab__count,
+.mlab-tab--staging-active .mlab-tab-badge {
+  background: var(--mlab-white);
+  color: var(--mlab-green-dark);
 }
 
 .mlab-tab__count--alt {
@@ -127,22 +188,9 @@
 }
 
 .mlab-tab--active .mlab-tab__count--alt {
-  background: var(--mlab-grey-light);
-  color: var(--mlab-blue);
-}
-
-.mlab-tab__badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 8px;
-  height: 24px;
-  border-radius: 12px;
-  font-size: 0.75rem;
-  font-weight: 700;
-  background: var(--mlab-green);
+  background: rgba(255, 255, 255, 0.2);
   color: var(--mlab-white);
-  font-family: var(--font-body);
+  border-color: transparent;
 }
 
 /* ── Toolbar ───────────────────────────────────────────────────────────────── */
@@ -510,7 +558,7 @@
 .mlab-badge {
   display: inline-block;
   padding: 0.3rem 0.75rem;
-  border-radius: 20px;
+  /* border-radius: 20px; */
   font-family: var(--font-body);
   font-size: 0.75rem;
   font-weight: 700;
@@ -590,8 +638,8 @@
 .mlab-icon-btn svg {
   width: 18px;
   height: 18px;
-  display: block; /* or inline-block */
-  flex-shrink: 0; /* prevent shrinking */
+  display: block;
+  flex-shrink: 0;
 }
 
 .mlab-icon-btn:hover {

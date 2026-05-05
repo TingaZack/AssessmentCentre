@@ -1,0 +1,517 @@
+/* src/styles/mLabModals.css */
+@import url("https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&display=swap");
+
+:root {
+  --mlab-blue: #073f4e;
+  --mlab-blue-dark: #052e3a;
+  --mlab-green: #94c73d;
+  --mlab-green-dark: #7aaa2e;
+  --mlab-green-bg: #f0f7e1;
+  --mlab-grey: #6b6b6b;
+  --mlab-grey-lt: #9b9b9b;
+  --mlab-white: #ffffff;
+  --mlab-bg: #f0f4f6;
+  --mlab-border: #dde4e8;
+  --mlab-light-blue: #e8f0f3;
+  --mlab-red: #ef4444;
+  --font-heading: "Oswald", "Trebuchet MS", sans-serif;
+  --font-body: "Trebuchet MS", "Lucida Grande", Arial, sans-serif;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+@keyframes mlab-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes mlab-fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.mlab-spin {
+  animation: mlab-spin 0.75s linear infinite;
+  display: inline-block;
+}
+
+/* ── OVERLAY ─────────────────────────────────────────────────────────────── */
+.mlab-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(5, 46, 58, 0.72);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1.5rem;
+}
+
+/* ── MODAL SHELL ─────────────────────────────────────────────────────────── */
+.mlab-modal-window {
+  background: var(--mlab-white);
+  width: 100%;
+  max-width: 800px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  border: 2px solid var(--mlab-blue);
+  animation: mlab-fadeIn 0.22s ease both;
+  overflow: hidden;
+}
+
+.mlab-modal-window--sm {
+  max-width: 500px;
+}
+
+/* ── HEADER ──────────────────────────────────────────────────────────────── */
+.mlab-modal-header {
+  background: var(--mlab-blue);
+  padding: 1.1rem 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  border-bottom: 3px solid var(--mlab-green);
+  background-image: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 40px,
+    rgba(255, 255, 255, 0.015) 40px,
+    rgba(255, 255, 255, 0.015) 41px
+  );
+}
+
+.mlab-modal-title {
+  font-family: var(--font-heading);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--mlab-white);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.mlab-modal-title svg {
+  color: var(--mlab-green);
+  flex-shrink: 0;
+}
+
+.mlab-modal-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.55);
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  transition: color 0.15s;
+  outline: none;
+}
+.mlab-modal-close:hover:not(:disabled) {
+  color: var(--mlab-white);
+}
+.mlab-modal-close:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ── BODY ────────────────────────────────────────────────────────────────── */
+.mlab-modal-body {
+  overflow-y: auto;
+  flex: 1;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+/* ── ERROR BANNER ────────────────────────────────────────────────────────── */
+.mlab-error-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: #fef2f2;
+  border: 2px solid var(--mlab-red);
+  border-left: 5px solid var(--mlab-red);
+  padding: 0.75rem 1rem;
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  color: #991b1b;
+}
+.mlab-error-banner svg {
+  color: var(--mlab-red);
+  flex-shrink: 0;
+}
+
+/* ── SECTION HEADERS ─────────────────────────────────────────────────────── */
+.mlab-section-hdr {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--font-heading);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--mlab-blue);
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid var(--mlab-blue);
+  margin-bottom: 0.75rem;
+}
+.mlab-section-hdr svg {
+  color: var(--mlab-green);
+}
+
+/* ── GRID ────────────────────────────────────────────────────────────────── */
+.mlab-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.85rem 1.25rem;
+}
+.mlab-grid .mlab-fg--full {
+  grid-column: 1 / -1;
+}
+
+/* ── FORM GROUPS ─────────────────────────────────────────────────────────── */
+.mlab-fg {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.mlab-fg label {
+  font-family: var(--font-heading);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--mlab-grey);
+}
+
+.mlab-input {
+  font-family: var(--font-body);
+  font-size: 0.88rem;
+  color: var(--mlab-blue);
+  background: whitesmoke;
+  border: 1px solid var(--mlab-border);
+  padding: 0.55rem 0.75rem;
+  outline: none;
+  transition: border-color 0.15s;
+  width: 100%;
+  border-radius: 0;
+  appearance: none;
+}
+.mlab-input:focus {
+  border-color: var(--mlab-blue);
+}
+.mlab-input[type="number"] {
+  appearance: textfield;
+}
+
+.mlab-select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23073f4e' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  padding-right: 2rem;
+  cursor: pointer;
+}
+
+/* ── TABS ────────────────────────────────────────────────────────────────── */
+.mlab-tabs {
+  display: flex;
+  border-bottom: 2px solid var(--mlab-blue);
+  margin-bottom: 0;
+}
+
+.mlab-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: var(--font-heading);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 0.6rem 1.1rem;
+  border: none;
+  cursor: pointer;
+  outline: none;
+  background: var(--mlab-bg);
+  color: var(--mlab-grey);
+  border-right: 1px solid var(--mlab-border);
+  transition:
+    background 0.15s,
+    color 0.15s;
+  position: relative;
+  bottom: -2px;
+}
+.mlab-tab-btn:hover {
+  background: var(--mlab-light-blue);
+  color: var(--mlab-blue);
+}
+.mlab-tab-btn.active {
+  background: var(--mlab-blue);
+  color: var(--mlab-white);
+  border-color: var(--mlab-blue);
+}
+.mlab-tab-btn.active svg {
+  color: var(--mlab-green);
+}
+
+.mlab-tab-badge {
+  background: var(--mlab-border);
+  color: var(--mlab-grey);
+  font-size: 0.6rem;
+  font-weight: 700;
+  padding: 1px 6px;
+  margin-left: 2px;
+}
+.mlab-tab-badge.active {
+  background: var(--mlab-green);
+  color: var(--mlab-blue);
+}
+
+/* ── FLAGS PANEL ─────────────────────────────────────────────────────────── */
+.mlab-flags-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.85rem 1rem;
+  background: var(--mlab-light-blue);
+  border: 1px solid var(--mlab-border);
+  border-left: 4px solid var(--mlab-blue);
+}
+
+.mlab-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  color: var(--mlab-blue);
+  cursor: pointer;
+  user-select: none;
+}
+.mlab-checkbox-row input[type="checkbox"] {
+  accent-color: var(--mlab-green);
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* ── SHARED ACTION BUTTONS ───────────────────────────────────────────────── */
+.mlab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-family: var(--font-heading);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 0.6rem 1.25rem;
+  border: none;
+  cursor: pointer;
+  outline: none;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    opacity 0.15s;
+  border-radius: 0;
+}
+.mlab-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.mlab-btn--ghost {
+  background: var(--mlab-white);
+  color: var(--mlab-grey);
+  border: 2px solid var(--mlab-border);
+}
+.mlab-btn--ghost:hover:not(:disabled) {
+  border-color: var(--mlab-blue);
+  color: var(--mlab-blue);
+}
+
+.mlab-btn--primary {
+  background: var(--mlab-blue);
+  color: var(--mlab-white);
+}
+.mlab-btn--primary:hover:not(:disabled) {
+  background: var(--mlab-blue-dark);
+}
+
+/* ── FOOTER ──────────────────────────────────────────────────────────────── */
+.mlab-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem 1.5rem;
+  border-top: 2px solid var(--mlab-border);
+  background: var(--mlab-bg);
+  flex-shrink: 0;
+}
+
+/* ── RESPONSIVE ──────────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .mlab-grid {
+    grid-template-columns: 1fr;
+  }
+  .mlab-tabs {
+    flex-wrap: wrap;
+  }
+}
+
+/* ========
+Stats  CArd Styling
+======== */
+/* src/components/common/StatCard/StatCard.css */
+
+.mlab-stat-card {
+  background: var(--mlab-white, #ffffff);
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  transition: all 0.2s ease;
+}
+
+.mlab-stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 10px 15px -3px rgba(0, 0, 0, 0.1),
+    0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+.mlab-stat-icon {
+  width: 54px;
+  height: 54px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.mlab-stat-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mlab-stat-label {
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  color: #64748b;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  line-height: 1.2;
+}
+
+.mlab-stat-value {
+  font-family: var(--font-heading);
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--mlab-blue);
+}
+
+/* ── Color Theme Variants ── */
+
+/* Blue (Default) */
+.mlab-stat-card--blue {
+  border-left: 4px solid #0ea5e9;
+}
+.mlab-stat-card--blue .mlab-stat-icon {
+  background: #e0f2fe;
+  color: #0284c7;
+}
+
+/* Green */
+.mlab-stat-card--green {
+  border-left: 4px solid var(--mlab-green, #94c73d);
+}
+.mlab-stat-card--green .mlab-stat-icon {
+  background: #f0fdf4;
+  color: #16a34a;
+}
+.mlab-stat-card--green .mlab-stat-value {
+  color: var(--mlab-blue);
+}
+
+/* Amber */
+.mlab-stat-card--amber {
+  border-left: 4px solid #f59e0b;
+}
+.mlab-stat-card--amber .mlab-stat-icon {
+  background: #fffbeb;
+  color: #d97706;
+}
+.mlab-stat-card--amber .mlab-stat-value {
+  color: #b45309;
+}
+
+/* Slate / Grey */
+.mlab-stat-card--slate {
+  border-left: 4px solid #64748b;
+}
+.mlab-stat-card--slate .mlab-stat-icon {
+  background: #f1f5f9;
+  color: #475569;
+}
+.mlab-stat-card--slate .mlab-stat-value {
+  color: #334155;
+}
+
+/* Emerald */
+.mlab-stat-card--emerald {
+  border-left: 4px solid #10b981;
+}
+.mlab-stat-card--emerald .mlab-stat-icon {
+  background: #ecfdf5;
+  color: #059669;
+}
+
+/* Purple */
+.mlab-stat-card--purple {
+  border-left: 4px solid #8b5cf6;
+}
+.mlab-stat-card--purple .mlab-stat-icon {
+  background: #f5f3ff;
+  color: #7c3aed;
+}
+.mlab-stat-card--purple .mlab-stat-value {
+  color: #6d28d9;
+}
+
+/* Red */
+.mlab-stat-card--red {
+  border-left: 4px solid #ef4444;
+}
+.mlab-stat-card--red .mlab-stat-icon {
+  background: #fef2f2;
+  color: #dc2626;
+}
+.mlab-stat-card--red .mlab-stat-value {
+  color: #991b1b;
+}

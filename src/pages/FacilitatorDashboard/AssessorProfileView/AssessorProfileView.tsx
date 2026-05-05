@@ -43,9 +43,6 @@ export const AssessorProfileView: React.FC<ProfileProps> = ({ profile, user, onU
 
     const targetId = profile?.uid || profile?.id || user?.uid;
 
-    // STRICT COMPLIANCE: Assessor Pen is always RED
-    const inkColor = 'red';
-
     // 1. REAL-TIME LISTENER: Keep liveProfile perfectly in sync with Firestore
     useEffect(() => {
         if (!targetId) return;
@@ -53,17 +50,13 @@ export const AssessorProfileView: React.FC<ProfileProps> = ({ profile, user, onU
         const unsubscribe = onSnapshot(doc(db, 'users', targetId), (docSnap) => {
             if (docSnap.exists()) {
                 const data = docSnap.data();
-                setLiveProfile(data);
-
-                // If signature just arrived, close the modal automatically!
-                if (data.signatureUrl && isSigModalOpen) {
-                    setIsSigModalOpen(false);
-                }
+                // Safely merge so we don't accidentally wipe out initial state
+                setLiveProfile((prev: any) => ({ ...prev, ...data }));
             }
         });
 
         return () => unsubscribe();
-    }, [targetId, isSigModalOpen]);
+    }, [targetId]);
 
     // 2. HYDRATE UI FROM LIVE PROFILE (Only when NOT editing)
     useEffect(() => {
@@ -105,7 +98,7 @@ export const AssessorProfileView: React.FC<ProfileProps> = ({ profile, user, onU
         }
     }, [liveProfile, isEditing]);
 
-    // 3. STRICT COMPLIANCE: Trigger Signature Modal automatically
+    // 3. STRICT COMPLIANCE: Trigger Signature Modal automatically if missing
     useEffect(() => {
         if (liveProfile && Object.keys(liveProfile).length > 0 && !liveProfile.signatureUrl) {
             setIsSigModalOpen(true);
@@ -271,13 +264,12 @@ export const AssessorProfileView: React.FC<ProfileProps> = ({ profile, user, onU
     return (
         <div className="lpv-wrapper animate-fade-in">
 
-            {/* STRICT SIGNATURE MODAL */}
+            {/* 🚀 FIXED: STRICT SIGNATURE MODAL MOUNTED OUTSIDE CONDITIONAL EDIT LOGIC */}
             {isSigModalOpen && (
                 <SignatureSetupModal
                     userUid={targetId}
-                    onComplete={() => {
-                        // The onSnapshot listener will automatically close this and update the UI!
-                    }}
+                    existingSignatureUrl={liveProfile?.signatureUrl}
+                    onComplete={() => setIsSigModalOpen(false)}
                 />
             )}
 
@@ -422,34 +414,48 @@ export const AssessorProfileView: React.FC<ProfileProps> = ({ profile, user, onU
                         )}
                     </section>
 
-                    {/* SIGNATURE SECTION */}
+                    {/* 🚀 FIXED: VISIBLE SIGNATURE PREVIEW SECTION */}
                     <section className="lpv-panel">
                         <div className="lpv-panel__header">
                             <h3 className="lpv-panel__title">
                                 <PenTool size={16} /> Digital Signature Certificate
                             </h3>
-                            {isEditing && (
-                                <button className="lpv-sig-edit-btn" onClick={(e) => { e.preventDefault(); setIsSigModalOpen(true); }}>
-                                    <Edit3 size={12} /> Redraw Signature
-                                </button>
-                            )}
+                            <button
+                                className="lpv-edit-btn"
+                                onClick={(e) => { e.preventDefault(); setIsSigModalOpen(true); }}
+                            >
+                                <Edit3 size={13} /> {liveProfile?.signatureUrl ? 'Update Signature' : 'Add Signature'}
+                            </button>
                         </div>
                         <div style={{ padding: '1.5rem', background: '#f8fafc', border: '1px dashed #cbd5e1', borderRadius: '8px', textAlign: 'center' }}>
                             {liveProfile?.signatureUrl ? (
                                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                                    <TintedSignature imageUrl={liveProfile.signatureUrl} color={inkColor} />
-                                    <span style={{ fontSize: '0.7rem', color: inkColor, textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 'bold', marginTop: '10px' }}>
-                                        Registered Assessor Signature (Red Ink)
+                                    {/* 🚀 FIXED: White background card prevents transparent PNGs from disappearing */}
+                                    <div style={{ background: 'white', padding: '10px 20px', borderRadius: '8px', border: '1px solid #e2e8f0', width: '100%', maxWidth: '350px' }}>
+                                        <img
+                                            src={liveProfile.signatureUrl}
+                                            alt="Registered Assessor Signature"
+                                            style={{
+                                                height: '60px',
+                                                width: '100%',
+                                                objectFit: 'contain',
+                                                // 🚀 FIXED: Applies the exact Red Ink filter used in the review dashboard!
+                                                filter: 'brightness(0) saturate(100%) invert(13%) sepia(94%) saturate(7454%) hue-rotate(0deg) brightness(94%) contrast(116%)'
+                                            }}
+                                        />
+                                    </div>
+                                    <span style={{ fontSize: '0.7rem', color: 'var(--mlab-red)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 'bold', marginTop: '10px' }}>
+                                        Authenticated Assessor Signature (Red Ink)
                                     </span>
                                 </div>
                             ) : (
-                                <div style={{ color: 'var(--mlab-red)', fontSize: '0.9rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                                <div style={{ color: 'var(--mlab-amber)', fontSize: '0.9rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
                                     <AlertCircle size={16} /> No digital signature found.
                                 </div>
                             )}
                         </div>
                         <p style={{ marginTop: '1rem', fontSize: '0.75rem', color: '#64748b', fontStyle: 'italic' }}>
-                            Signatures are color-coded to Red Ink for official assessment declarations per QCTO compliance standards.
+                            Signatures are automatically color-coded to Red Ink for official assessment declarations per QCTO compliance standards.
                         </p>
                     </section>
 
@@ -534,31 +540,6 @@ export const AssessorProfileView: React.FC<ProfileProps> = ({ profile, user, onU
 };
 
 /* ── Typed Helpers ───────────────────────────────────────────────────────── */
-
-const TintedSignature = ({ imageUrl, color }: { imageUrl: string, color: string }) => {
-    // Pure CSS Pen color transformation (CORS-proof)
-    const filterMap: any = {
-        black: 'brightness(0)',
-        blue: 'brightness(0) saturate(100%) invert(31%) sepia(94%) saturate(1413%) hue-rotate(185deg) brightness(101%) contrast(101%)',
-        red: 'brightness(0) saturate(100%) invert(13%) sepia(94%) saturate(7454%) hue-rotate(0deg) brightness(94%) contrast(116%)',
-        green: 'brightness(0) saturate(100%) invert(29%) sepia(96%) saturate(1352%) hue-rotate(120deg) brightness(92%) contrast(101%)'
-    };
-
-    return (
-        <img
-            src={imageUrl}
-            alt="Signature"
-            style={{
-                height: '60px',
-                width: 'auto',
-                maxWidth: '100%',
-                objectFit: 'contain',
-                marginBottom: '10px',
-                filter: filterMap[color] || 'none'
-            }}
-        />
-    );
-};
 
 const ROField = ({ label, value, icon }: { label: string; value?: string; icon?: React.ReactNode }) => (
     <div>

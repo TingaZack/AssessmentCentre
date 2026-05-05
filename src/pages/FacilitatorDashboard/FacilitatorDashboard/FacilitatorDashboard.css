@@ -393,3 +393,60 @@
     font-size: 1.5rem;
   }
 }
+
+/* src/pages/FacilitatorDashboard/FacilitatorDashboard.css */
+
+.f-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.ld-cohort-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1.5rem;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+/* ── TABLET & MOBILE BREAKPOINTS ── */
+
+@media (max-width: 1024px) {
+  .f-stats-grid {
+    grid-template-columns: 1fr 1fr; /* 2 columns for tablets */
+  }
+
+  /* We use the classes from AdminDashboard.css to hide/show headers */
+  .dashboard-header {
+    display: none !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .f-stats-grid {
+    grid-template-columns: 1fr; /* 1 column for phones */
+    gap: 1rem;
+  }
+
+  .ld-cohort-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .main-wrapper {
+    padding: 10px !important;
+  }
+
+  .stat-card {
+    padding: 1rem;
+  }
+
+  .value {
+    font-size: 1.4rem !important;
+  }
+}

@@ -1,17 +1,15 @@
 /* ─────────────────────────────────────────────────────────────────────────────
-   CohortDetailsPage.css
-   mLab Corporate Identity Brand Guide 2019
-   Consistent with LearnersView.css · CohortsView.css · AdminDashboard.css
+   CohortDetailsPage.css — mLab Corporate Identity Brand Guide 2019
+   Cohort Details · Learner Roster · Module Progress · QCTO Export
 
    Colours:
      --mlab-blue:   #073f4e  (Midnight Blue)
-     --mlab-green:  #94c73d  (Green – primary accent)
-     --mlab-grey:   #6b6b6b  (Grey – secondary text)
-     --mlab-white:  #ffffff
-
+     --mlab-green:  #94c73d  (Green — accent)
+     --mlab-grey:   #6b6b6b  (Grey — secondary)
+     --mlab-amber:  #d97706  (Amber — pending / warning)
    Typefaces:
-     Oswald       – headings, labels, buttons (uppercase)
-     Trebuchet MS – body, data text
+     Oswald       – headings, labels, badges, buttons
+     Trebuchet MS – body, data, descriptions
 ───────────────────────────────────────────────────────────────────────────── */
 
 @import url("https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&display=swap");
@@ -20,246 +18,401 @@
 :root {
   --mlab-blue: #073f4e;
   --mlab-blue-dark: #052e3a;
+  --mlab-blue-mid: #0a5266;
   --mlab-green: #94c73d;
   --mlab-green-dark: #7aaa2e;
+  --mlab-green-light: #f0f7e1;
   --mlab-grey: #6b6b6b;
+  --mlab-grey-light: #9b9b9b;
   --mlab-white: #ffffff;
-  --mlab-light-blue: #e8f0f3;
-  --mlab-light-green: #f0f7e1;
-  --mlab-amber: #d97706;
+  --mlab-bg: #f0f4f6;
+  --mlab-border: #dde4e8;
+  --mlab-light-blue: #e4edf0;
   --mlab-red: #ef4444;
-  --mlab-red-light: #fef2f2;
-  --mlab-border: #d1dde3;
-  --mlab-bg: #f4f7f9;
+  --mlab-amber: #d97706;
 
   --font-heading: "Oswald", "Trebuchet MS", sans-serif;
-  --font-body:
-    "Trebuchet MS", "Lucida Grande", "Lucida Sans Unicode", Arial, sans-serif;
-
-  --radius-sm: 3px;
-  --radius-md: 8px;
-  --transition: 0.18s ease;
+  --font-body: "Trebuchet MS", "Lucida Grande", Arial, sans-serif;
 }
 
-/* Spinner */
+/* ── Animations ────────────────────────────────────────────────────────────── */
 @keyframes cdp-spin {
   to {
     transform: rotate(360deg);
   }
 }
-.spin {
-  animation: cdp-spin 0.8s linear infinite;
+@keyframes cdp-fade {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.cdp-spinner {
+  animation: cdp-spin 0.85s linear infinite;
 }
 
-/* ══════════════════════════════════════════════════════════════════════════════
-   LOADING / EMPTY STATE
-══════════════════════════════════════════════════════════════════════════════ */
-.mlab-loading,
-.mlab-state {
+/* ═══════════════════════════════════════════════════════════════════════════
+   LAYOUT SHELL
+═══════════════════════════════════════════════════════════════════════════ */
+.cdp-layout {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: row;
+  overflow: hidden;
+  background: var(--mlab-bg);
+  font-family: var(--font-body);
+}
+.cdp-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  background: var(--mlab-bg);
+}
+.cdp-main--centered {
+  align-items: center;
+  justify-content: center;
+}
+
+/* Loading state */
+.cdp-loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+.cdp-loading-state__label {
+  font-family: var(--font-heading);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--mlab-grey);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PAGE HEADER
+   Dark blue band, consistent with all other portal headers
+═══════════════════════════════════════════════════════════════════════════ */
+.cdp-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding: 1.25rem 2rem 1.1rem;
+  background: var(--mlab-blue);
+  border-bottom: 3px solid var(--mlab-green);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  background-image: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 28px,
+    rgba(255, 255, 255, 0.018) 28px,
+    rgba(255, 255, 255, 0.018) 29px
+  );
+}
+@media (max-width: 768px) {
+  .cdp-header {
+    padding: 1rem 1.25rem;
+  }
+}
+
+.cdp-header__left {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.cdp-header__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 0.6);
+  font-family: var(--font-body);
+  font-size: 0.76rem;
+  padding: 3px 9px;
+  cursor: pointer;
+  margin-bottom: 6px;
+  transition: background 0.15s;
+  align-self: flex-start;
+}
+.cdp-header__back:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: var(--mlab-white);
+}
+
+.cdp-header__eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-heading);
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--mlab-green);
+}
+.cdp-header__title {
+  font-family: var(--font-heading);
+  font-size: clamp(1.15rem, 3vw, 1.7rem);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--mlab-white);
+  margin: 0;
+  line-height: 1.1;
+}
+.cdp-header__sub {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.42);
+  margin: 2px 0 0;
+}
+.cdp-header__sub-icon {
+  flex-shrink: 0;
+}
+
+/* Status pill in header */
+.cdp-header__status {
+  font-family: var(--font-heading);
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+}
+.cdp-header__status--active {
+  background: rgba(148, 199, 61, 0.18);
+  color: var(--mlab-green);
+  border: 1px solid rgba(148, 199, 61, 0.35);
+}
+.cdp-header__status--archived {
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.cdp-header__right {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+.cdp-header__actions {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CONTENT AREA
+═══════════════════════════════════════════════════════════════════════════ */
+.cdp-content {
+  flex: 1;
+  padding: 1.75rem 2rem 3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  animation: cdp-fade 0.25s ease both;
+}
+@media (max-width: 900px) {
+  .cdp-content {
+    padding: 1.25rem;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   STAT CARD ROW
+═══════════════════════════════════════════════════════════════════════════ */
+.cdp-stat-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 1rem;
+}
+.cdp-stat-card {
+  background: var(--mlab-white);
+  border: 1px solid var(--mlab-border);
+  border-top: 4px solid var(--mlab-border);
+  padding: 1.1rem 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  box-shadow: 0 2px 8px rgba(7, 63, 78, 0.05);
+  transition:
+    box-shadow 0.18s,
+    transform 0.18s;
+}
+.cdp-stat-card:hover {
+  box-shadow: 0 6px 18px rgba(7, 63, 78, 0.1);
+  transform: translateY(-2px);
+}
+.cdp-stat-card--blue {
+  border-top-color: var(--mlab-blue);
+}
+.cdp-stat-card--green {
+  border-top-color: var(--mlab-green);
+}
+.cdp-stat-card--amber {
+  border-top-color: var(--mlab-amber);
+}
+.cdp-stat-card--grey {
+  border-top-color: var(--mlab-grey-light);
+}
+
+.cdp-stat-card__icon {
+  width: 44px;
+  height: 44px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.75rem;
-  padding: 4rem 2rem;
-  font-family: var(--font-heading);
-  font-size: 0.95rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--mlab-grey);
-  text-align: center;
+  flex-shrink: 0;
 }
-.mlab-state--loading {
-  flex-direction: column;
-}
-
-/* ══════════════════════════════════════════════════════════════════════════════
-   CONTENT PANE EXTRA PADDING  (cdp-content extends .admin-content)
-══════════════════════════════════════════════════════════════════════════════ */
-.cdp-content {
-  padding-bottom: 4rem;
-}
-
-/* ══════════════════════════════════════════════════════════════════════════════
-   BACK BUTTON
-══════════════════════════════════════════════════════════════════════════════ */
-.mlab-back-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  background: none;
-  border: none;
-  cursor: pointer;
-  margin-bottom: 1rem;
-  color: var(--mlab-grey);
-  font-family: var(--font-body);
-  font-size: 0.88rem;
-  padding: 0;
-  transition: color var(--transition);
-  outline: none;
-}
-.mlab-back-btn:hover {
+.cdp-stat-card--blue .cdp-stat-card__icon {
+  background: var(--mlab-light-blue);
   color: var(--mlab-blue);
 }
-
-/* ══════════════════════════════════════════════════════════════════════════════
-   PAGE DETAIL HEADER  (older version — kept for backward compat)
-══════════════════════════════════════════════════════════════════════════════ */
-.mlab-detail-header {
-  margin-bottom: 1.75rem;
+.cdp-stat-card--green .cdp-stat-card__icon {
+  background: rgba(148, 199, 61, 0.12);
+  color: var(--mlab-green-dark);
+}
+.cdp-stat-card--amber .cdp-stat-card__icon {
+  background: rgba(217, 119, 6, 0.1);
+  color: var(--mlab-amber);
+}
+.cdp-stat-card--grey .cdp-stat-card__icon {
+  background: var(--mlab-bg);
+  color: var(--mlab-grey-light);
 }
 
-.mlab-detail-header h1 {
+.cdp-stat-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.cdp-stat-card__value {
   font-family: var(--font-heading);
   font-size: 1.6rem;
   font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
   color: var(--mlab-blue);
-  margin: 0 0 0.25rem;
+  line-height: 1;
 }
-.mlab-detail-header p {
-  font-size: 0.88rem;
-  color: var(--mlab-grey);
-  margin: 0;
+.cdp-stat-card__label {
+  font-family: var(--font-heading);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--mlab-grey-light);
 }
 
-/* ══════════════════════════════════════════════════════════════════════════════
-   SUMMARY CARD  (dates · staff roles strip)
-══════════════════════════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════════════════
+   STAFF SUMMARY CARD  (reused mlab-summary-* classes)
+═══════════════════════════════════════════════════════════════════════════ */
 .mlab-summary-card {
+  display: flex;
   background: var(--mlab-white);
   border: 1px solid var(--mlab-border);
-  border-left: 5px solid var(--mlab-green);
-  border-radius: 0 var(--radius-md) var(--radius-md) 0;
-  padding: 1.25rem 1.5rem;
-  margin-bottom: 2rem;
-  display: flex;
+  border-top: 4px solid var(--mlab-blue);
   flex-wrap: wrap;
-  gap: 0;
-  align-items: stretch;
-  font-family: var(--font-body);
 }
-
 .mlab-summary-item {
-  padding: 0 2rem;
-  border-right: 1px solid var(--mlab-border);
+  flex: 1;
+  min-width: 140px;
+  padding: 1rem 1.5rem;
   display: flex;
   flex-direction: column;
   gap: 4px;
-}
-.mlab-summary-item:first-child {
-  padding-left: 0;
+  border-right: 1px solid var(--mlab-border);
 }
 .mlab-summary-item:last-child {
   border-right: none;
 }
-
 .mlab-summary-item__label {
   display: flex;
   align-items: center;
   gap: 5px;
   font-family: var(--font-heading);
-  font-size: 0.68rem;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--mlab-grey-light);
+}
+.mlab-summary-item__value {
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--mlab-blue);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   LEARNER PANEL
+═══════════════════════════════════════════════════════════════════════════ */
+.cdp-panel {
+  background: var(--mlab-white);
+  border: 1px solid var(--mlab-border);
+  border-top: 4px solid var(--mlab-blue);
+}
+.cdp-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.9rem 1.5rem;
+  border-bottom: 1px solid var(--mlab-border);
+  background: var(--mlab-bg);
+}
+.cdp-panel__title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--font-heading);
+  font-size: 0.82rem;
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--mlab-grey);
-}
-.mlab-summary-item__value {
-  font-weight: 700;
-  font-size: 0.9rem;
   color: var(--mlab-blue);
 }
-
-/* ══════════════════════════════════════════════════════════════════════════════
-   SECTION BLOCK
-══════════════════════════════════════════════════════════════════════════════ */
-.mlab-section {
-  margin-bottom: 2rem;
-}
-
-.mlab-section__title {
-  font-family: var(--font-heading);
-  font-size: 0.95rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+.cdp-panel__title-icon {
   color: var(--mlab-blue);
-  margin: 0 0 1rem;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-.mlab-section__title::after {
-  content: "";
-  flex: 1;
-  height: 2px;
-  background: var(--mlab-light-blue);
-  margin-left: 0.5rem;
-}
-
-/* Section header row (title + optional action) */
-.cdp-section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 1rem;
-}
-.cdp-section-header .mlab-section__title {
-  margin-bottom: 0;
-}
-
-/* ══════════════════════════════════════════════════════════════════════════════
-   INFO BANNER  (sync workbooks notice)
-══════════════════════════════════════════════════════════════════════════════ */
-.cdp-info-banner {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  background: #e0f2fe;
-  border: 1px solid #bae6fd;
-  border-radius: var(--radius-md);
-  padding: 12px 16px;
-  margin-bottom: 1rem;
-}
-.cdp-info-banner__icon {
-  color: #0284c7;
-  margin-top: 2px;
   flex-shrink: 0;
 }
-.cdp-info-banner__title {
+.cdp-panel__count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 5px;
+  background: var(--mlab-blue);
+  color: var(--mlab-white);
   font-family: var(--font-heading);
-  font-size: 0.85rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  color: #0369a1;
-  margin: 0 0 4px;
-}
-.cdp-info-banner__body {
-  font-size: 0.8rem;
-  color: #0c4a6e;
-  line-height: 1.5;
-  margin: 0;
-}
-.cdp-info-banner__body strong {
+  font-size: 0.62rem;
   font-weight: 700;
 }
 
-/* ══════════════════════════════════════════════════════════════════════════════
+/* ═══════════════════════════════════════════════════════════════════════════
    TABLE
-══════════════════════════════════════════════════════════════════════════════ */
+═══════════════════════════════════════════════════════════════════════════ */
 .mlab-table-wrap {
   overflow-x: auto;
-  border: 2px solid var(--mlab-blue);
 }
-
 .mlab-table {
   width: 100%;
   border-collapse: collapse;
   font-family: var(--font-body);
 }
-
 .mlab-table thead {
   background: var(--mlab-blue);
   position: sticky;
@@ -267,336 +420,251 @@
   z-index: 2;
 }
 .mlab-table th {
-  padding: 0.85rem 1rem;
+  padding: 0.8rem 1rem;
   text-align: left;
   font-family: var(--font-heading);
+  font-size: 0.68rem;
   font-weight: 700;
-  font-size: 0.72rem;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--mlab-white);
-  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.8);
+  border-right: 1px solid rgba(255, 255, 255, 0.07);
   white-space: nowrap;
 }
 .mlab-table th:last-child {
   border-right: none;
 }
-
+.cdp-th--right {
+  text-align: right !important;
+}
 .mlab-table td {
   padding: 0.85rem 1rem;
-  border-bottom: 1px solid var(--mlab-light-blue);
+  border-bottom: 1px solid var(--mlab-border);
   vertical-align: middle;
-  transition: background var(--transition);
-}
-.mlab-table tbody tr:last-child td {
-  border-bottom: none;
+  font-size: 0.85rem;
 }
 .mlab-table tbody tr:hover td {
-  background: #f0f6f9;
+  background: #f2f7f9;
 }
-
-/* Dropped row — red tint */
 .mlab-table tbody tr.mlab-tr--dropped td {
-  background: var(--mlab-red-light);
+  opacity: 0.6;
+  background: #fef8f8;
 }
 .mlab-table tbody tr.mlab-tr--dropped:hover td {
   background: #fde8e8;
 }
-
-/* Faded row — previous staff assignment */
-.mlab-table tbody tr.mlab-tr--faded {
-  opacity: 0.55;
+.cdp-td--right {
+  text-align: right;
 }
 
-/* ── Cell helpers ──────────────────────────────────────────────────────────── */
-.mlab-cell-name {
+/* ── Learner name cell ────────────────────────────────────────────────────── */
+.cdp-learner-cell {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.cdp-learner-avatar {
+  width: 32px;
+  height: 32px;
+  background: var(--mlab-blue);
+  color: var(--mlab-white);
+  font-family: var(--font-heading);
+  font-size: 0.88rem;
   font-weight: 700;
-  font-size: 0.9rem;
-  color: var(--mlab-blue);
-  line-height: 1.3;
-}
-.mlab-cell-name--dropped {
-  color: #991b1b;
-}
-
-.mlab-cell-sub {
-  font-size: 0.78rem;
-  color: var(--mlab-grey);
-  margin-top: 2px;
-}
-.mlab-cell-sub--dropped {
-  color: #b91c1c;
-}
-
-/* Pending marking indicator */
-.cdp-pending-marking {
   display: flex;
   align-items: center;
-  gap: 4px;
-  margin-top: 6px;
-  font-size: 0.75rem;
-  font-weight: 700;
-  color: #3b82f6;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 1px;
 }
-
-/* Empty table cell */
-.mlab-table-empty {
-  text-align: center;
-  padding: 2rem;
-  color: var(--mlab-grey);
-  font-size: 0.88rem;
-  font-style: italic;
-}
-
-/* ══════════════════════════════════════════════════════════════════════════════
-   WORKPLACE PLACEMENT CELL
-══════════════════════════════════════════════════════════════════════════════ */
-.cdp-placement {
+.cdp-learner-cell__info {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
+  min-width: 0;
 }
-.cdp-placement__employer {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 0.85rem;
+.cdp-learner-cell__name {
   font-weight: 700;
-  color: #0f172a;
+  color: var(--mlab-blue);
+  font-size: 0.9rem;
+  line-height: 1.2;
 }
-.cdp-placement__icon {
-  color: #0ea5e9;
-  flex-shrink: 0;
+.cdp-learner-cell__name--dropped {
+  color: #991b1b;
 }
-.cdp-placement__mentor {
+.cdp-learner-cell__id {
   font-size: 0.75rem;
-  color: var(--mlab-grey);
+  color: var(--mlab-grey-light);
 }
-.cdp-placement--pending {
-  font-size: 0.8rem;
-  color: #94a3b8;
-  font-style: italic;
-}
-
-/* ══════════════════════════════════════════════════════════════════════════════
-   MODULE CHIPS
-══════════════════════════════════════════════════════════════════════════════ */
-.mlab-module-chips {
-  display: flex;
-  gap: 0.4rem;
-  flex-wrap: wrap;
-}
-.mlab-chip {
+.cdp-pending-chip {
   display: inline-flex;
   align-items: center;
+  gap: 3px;
   font-family: var(--font-heading);
-  font-size: 0.68rem;
+  font-size: 0.58rem;
   font-weight: 700;
-  letter-spacing: 0.08em;
-  padding: 3px 9px;
-  border-radius: var(--radius-sm);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #075985;
+  background: #e0f2fe;
+  border: 1px solid #7dd3fc;
+  padding: 1px 6px;
+  margin-top: 2px;
 }
-.mlab-chip--k {
+
+/* ── Workplace cell ───────────────────────────────────────────────────────── */
+.cdp-placement__employer {
+  font-weight: 700;
+  color: var(--mlab-blue);
+  font-size: 0.85rem;
+}
+.cdp-placement--pending {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-heading);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--mlab-amber);
+}
+
+/* ── Module chips ─────────────────────────────────────────────────────────── */
+.cdp-chips {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+.cdp-chip {
+  font-family: var(--font-heading);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+}
+.cdp-chip--k {
   background: var(--mlab-light-blue);
   color: var(--mlab-blue);
   border: 1px solid #b0c4cc;
 }
-.mlab-chip--p {
-  background: var(--mlab-light-green);
+.cdp-chip--p {
+  background: rgba(148, 199, 61, 0.12);
   color: var(--mlab-green-dark);
   border: 1px solid #c2e08a;
 }
+.cdp-chip--w {
+  background: rgba(217, 119, 6, 0.1);
+  color: #92400e;
+  border: 1px solid rgba(217, 119, 6, 0.3);
+}
 
-/* ══════════════════════════════════════════════════════════════════════════════
-   STATUS BADGES
-══════════════════════════════════════════════════════════════════════════════ */
-.mlab-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 10px;
+/* ── Status badge ─────────────────────────────────────────────────────────── */
+.cdp-status-badge {
   font-family: var(--font-heading);
-  font-size: 0.68rem;
+  font-size: 0.62rem;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  border-radius: var(--radius-sm);
+  padding: 3px 9px;
   white-space: nowrap;
 }
-.mlab-badge--active {
-  background: var(--mlab-green);
-  color: var(--mlab-white);
+.cdp-status-badge--active {
+  background: rgba(148, 199, 61, 0.12);
+  color: var(--mlab-green-dark);
+  border: 1px solid rgba(148, 199, 61, 0.35);
 }
-.mlab-badge--previous {
-  background: var(--mlab-light-blue);
-  color: var(--mlab-grey);
-  border: 1px solid #b0c4cc;
-}
-
-/* ══════════════════════════════════════════════════════════════════════════════
-   DROPPED STATUS BLOCK
-══════════════════════════════════════════════════════════════════════════════ */
-.mlab-dropped-status {
-  font-family: var(--font-body);
-}
-
-.mlab-dropped-status__label {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-family: var(--font-heading);
-  font-weight: 700;
-  font-size: 0.78rem;
-  letter-spacing: 0.06em;
-  color: var(--mlab-red);
-  margin-bottom: 2px;
-}
-.mlab-dropped-status__detail {
-  font-size: 0.73rem;
+.cdp-status-badge--dropped {
+  background: rgba(239, 68, 68, 0.1);
   color: #b91c1c;
-  margin-top: 2px;
-  opacity: 0.85;
-  line-height: 1.4;
+  border: 1px solid rgba(239, 68, 68, 0.25);
 }
 
-/* ══════════════════════════════════════════════════════════════════════════════
-   BUTTONS
-══════════════════════════════════════════════════════════════════════════════ */
-.mlab-btn {
+/* ── Action buttons ───────────────────────────────────────────────────────── */
+.cdp-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.cdp-btn {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  gap: 0.4rem;
-  padding: 0.5rem 1rem;
+  gap: 5px;
+  padding: 0.38rem 0.8rem;
   border: 2px solid transparent;
-  border-radius: var(--radius-sm);
   cursor: pointer;
   font-family: var(--font-heading);
-  font-weight: 600;
-  font-size: 0.78rem;
-  letter-spacing: 0.07em;
+  font-weight: 700;
+  font-size: 0.65rem;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  transition:
-    background var(--transition),
-    border-color var(--transition),
-    color var(--transition),
-    opacity var(--transition);
-  outline: none;
   white-space: nowrap;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+  outline: none;
 }
-.mlab-btn:disabled {
+.cdp-btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
 
-.mlab-btn--outline-blue {
+.cdp-btn--outline {
   background: transparent;
   color: var(--mlab-blue);
   border-color: var(--mlab-blue);
 }
-.mlab-btn--outline-blue:hover:not(:disabled) {
-  opacity: 0.75;
+.cdp-btn--outline:hover:not(:disabled) {
+  background: var(--mlab-light-blue);
 }
 
-.mlab-btn--outline-red {
-  background: transparent;
-  color: var(--mlab-red);
-  border-color: var(--mlab-red);
+/* Outline on dark header bg */
+.cdp-header .cdp-btn--outline {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.75);
+  border-color: rgba(255, 255, 255, 0.2);
 }
-.mlab-btn--outline-red:hover:not(:disabled) {
-  background: var(--mlab-red-light);
+.cdp-header .cdp-btn--outline:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.18);
+  color: var(--mlab-white);
+  border-color: rgba(255, 255, 255, 0.35);
 }
 
-/* Sky-blue — Assign Workplace */
 .cdp-btn--sky {
-  color: #0284c7;
-  border-color: #0284c7;
-  background: transparent;
+  background: #e0f2fe;
+  color: #075985;
+  border-color: #7dd3fc;
 }
 .cdp-btn--sky:hover:not(:disabled) {
-  background: #e0f2fe;
+  background: #bae6fd;
 }
 
-/* Solid blue — Mark Script */
-.cdp-btn--blue {
-  background: #3b82f6;
-  color: var(--mlab-white);
-  border-color: #3b82f6;
+.cdp-btn--danger {
+  background: rgba(239, 68, 68, 0.08);
+  color: #b91c1c;
+  border-color: rgba(239, 68, 68, 0.3);
+  padding: 0.38rem 0.55rem;
 }
-.cdp-btn--blue:hover:not(:disabled) {
-  background: #2563eb;
-  border-color: #2563eb;
-}
-
-/* Actions cell flex row */
-.cdp-actions {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  align-items: center;
+.cdp-btn--danger:hover:not(:disabled) {
+  background: #fee2e2;
+  border-color: var(--mlab-red);
 }
 
-/* ══════════════════════════════════════════════════════════════════════════════
-   STAFF HISTORY SECTION
-══════════════════════════════════════════════════════════════════════════════ */
-.mlab-history-section {
-  margin-top: 2.5rem;
-  padding-top: 1.5rem;
-  border-top: 2px solid var(--mlab-light-blue);
-}
-
-.mlab-history-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-family: var(--font-heading);
-  font-size: 0.8rem;
-  font-weight: 700;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: var(--mlab-grey);
-  padding: 0;
-  transition: color var(--transition);
-  outline: none;
-}
-.mlab-history-toggle:hover {
-  color: var(--mlab-blue);
-}
-
-.mlab-history-panel {
-  margin-top: 1rem;
-  border: 1px solid var(--mlab-border);
-  border-left: 4px solid var(--mlab-blue);
-  overflow-x: auto;
-}
-
-/* ── Audit trail cell types ────────────────────────────────────────────────── */
-.mlab-audit-role {
-  font-family: var(--font-heading);
-  font-weight: 700;
-  font-size: 0.8rem;
-  letter-spacing: 0.05em;
-  text-transform: capitalize;
-  color: var(--mlab-blue);
-}
-.mlab-audit-reason {
-  font-style: italic;
-  color: var(--mlab-grey);
-  font-size: 0.82rem;
-}
-
-/* ══════════════════════════════════════════════════════════════════════════════
+/* ═══════════════════════════════════════════════════════════════════════════
    RESPONSIVE
-══════════════════════════════════════════════════════════════════════════════ */
+═══════════════════════════════════════════════════════════════════════════ */
 @media (max-width: 900px) {
+  .cdp-stat-row {
+    grid-template-columns: 1fr 1fr;
+  }
   .mlab-summary-card {
-    gap: 1rem;
+    flex-wrap: wrap;
   }
   .mlab-summary-item {
-    padding: 0.5rem 1rem;
     border-right: none;
     border-bottom: 1px solid var(--mlab-border);
   }
@@ -604,17 +672,15 @@
     border-bottom: none;
   }
 }
-
 @media (max-width: 640px) {
-  .mlab-table th,
-  .mlab-table td {
-    padding: 0.65rem 0.75rem;
+  .cdp-stat-row {
+    grid-template-columns: 1fr;
   }
   .cdp-actions {
-    gap: 4px;
+    justify-content: flex-start;
   }
-  .mlab-btn {
-    padding: 0.45rem 0.75rem;
-    font-size: 0.72rem;
+  .cdp-header__right {
+    flex-direction: column;
+    align-items: flex-end;
   }
 }

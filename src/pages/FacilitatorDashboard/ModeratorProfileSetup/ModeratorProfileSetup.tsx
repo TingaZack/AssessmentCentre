@@ -12,7 +12,7 @@ import { doc, updateDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useStore } from '../../../store/useStore';
 import { db, storage } from '../../../lib/firebase';
-import mLabLogo from '../../../assets/logo/mlab_logo.png';
+import mLabLogo from '../../../assets/logo/mlab_logo_white.png';
 import '../AssessorProfileSetup/AssessorProfileSetup.css'; // Reuses the Assessor styling base
 import { DynamicDocUpload, type DynamicDocument } from '../../LearnerPortal/LearnerProfileSetup/LearnerProfileSetup';
 
@@ -366,7 +366,8 @@ export const ModeratorProfileSetup: React.FC = () => {
         <div className="lp-container animate-fade-in">
             <div className="lp-card practitioner-gate" style={{ borderTopColor: 'var(--mlab-green)' }}>
                 <div className="lp-header">
-                    <img height={50} src={(settings as any)?.logoUrl || mLabLogo} alt="Institution Logo" />
+                    {/* <img height={50} src={(settings as any)?.logoUrl || mLabLogo} alt="Institution Logo" /> */}
+                    <img height={50} src={mLabLogo} alt="Institution Logo" />
                     <h1 className="lp-header__title" style={{ color: 'var(--mlab-green)' }}>QA Moderator Compliance</h1>
                     <p className="lp-header__sub">Step {step} of 3: {step === 1 ? 'Identity' : step === 2 ? 'Registration & Contact' : 'Vault'}</p>
 

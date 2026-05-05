@@ -11,7 +11,7 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useStore } from '../../../store/useStore';
 import { db, storage } from '../../../lib/firebase';
 
-import mLabLogo from '../../../assets/logo/mlab_logo.png';
+import mLabLogo from '../../../assets/logo/mlab_logo_white.png';
 import '../../FacilitatorDashboard/AssessorProfileSetup/AssessorProfileSetup.css';
 
 import { DynamicDocUpload, type DynamicDocument } from '../../LearnerPortal/LearnerProfileSetup/LearnerProfileSetup';

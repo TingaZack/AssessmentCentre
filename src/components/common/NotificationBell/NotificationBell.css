@@ -1,0 +1,185 @@
+/* src/components/common/NotificationBell/NotificationBell.css */
+
+.mlab-notif-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.mlab-notif-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  position: relative;
+  padding: 8px;
+  color: var(--mlab-blue);
+  transition: color 0.2s;
+  outline: none;
+}
+
+.mlab-notif-btn:hover {
+  color: var(--mlab-green-dark);
+}
+
+.mlab-notif-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  background: var(--mlab-red);
+  color: var(--mlab-white);
+  font-family: var(--font-body);
+  font-size: 0.65rem;
+  font-weight: bold;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+}
+
+.mlab-notif-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 10px;
+  width: 350px;
+  background: var(--mlab-white);
+  border: 2px solid var(--mlab-blue);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Matches the mlab-modal-header perfectly */
+.mlab-notif-header {
+  background: var(--mlab-blue);
+  padding: 0.85rem 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 3px solid var(--mlab-green);
+  background-image: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 40px,
+    rgba(255, 255, 255, 0.015) 40px,
+    rgba(255, 255, 255, 0.015) 41px
+  );
+}
+
+.mlab-notif-title {
+  font-family: var(--font-heading);
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--mlab-white);
+  margin: 0;
+}
+
+.mlab-notif-mark-read {
+  background: none;
+  border: none;
+  color: var(--mlab-green);
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  transition: color 0.15s;
+}
+
+.mlab-notif-mark-read:hover {
+  color: var(--mlab-white);
+}
+
+.mlab-notif-list {
+  max-height: 380px;
+  overflow-y: auto;
+  background: var(--mlab-bg);
+}
+
+.mlab-notif-empty {
+  padding: 2.5rem 1rem;
+  text-align: center;
+  color: var(--mlab-grey);
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+}
+
+.mlab-notif-item {
+  display: flex;
+  gap: 12px;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--mlab-border);
+  background: var(--mlab-white);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.mlab-notif-item:hover {
+  background: var(--mlab-light-blue);
+}
+
+/* Unread state gets a prominent green left border to match mLab styling */
+.mlab-notif-item.unread {
+  background: var(--mlab-green-bg);
+  border-left: 4px solid var(--mlab-green);
+}
+
+.mlab-notif-icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.mlab-notif-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mlab-notif-item-title {
+  font-family: var(--font-heading);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--mlab-blue);
+  margin: 0;
+}
+
+.mlab-notif-item-message {
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  color: var(--mlab-grey);
+  line-height: 1.4;
+}
+
+.mlab-notif-item-message strong {
+  color: var(--mlab-blue);
+}
+
+.mlab-notif-container {
+  position: relative !important; /* Anchors the popover to the bell */
+  display: inline-flex;
+  align-items: center;
+}
+
+.mlab-notif-dropdown {
+  position: absolute !important; /* Rips it out of the document flow so it doesn't push content */
+  top: 100%; /* Puts it directly below the bell */
+  left: 0; /* Aligns it to the left edge */
+  margin-top: 15px;
+  width: 350px;
+  background: var(--mlab-white);
+  border: 2px solid var(--mlab-blue);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+  z-index: 99999 !important; /* Forces it to hover above all other dashboard elements */
+  display: flex;
+  flex-direction: column;
+}

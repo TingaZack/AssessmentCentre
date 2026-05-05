@@ -1,0 +1,321 @@
+/* ─── Base Layout ─── */
+.kiosk-layout {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  font-family: var(--font-body);
+}
+
+.gatekeeper-bg {
+  background: var(--mlab-blue);
+  align-items: center;
+  justify-content: center;
+  background-image: radial-gradient(circle at center, #0a5266 0%, #073f4e 100%);
+}
+
+.active-kiosk-bg {
+  background: #f8fafc;
+  padding: 2rem 4rem;
+}
+
+/* ─── Gatekeeper (PIN Entry) ─── */
+.gatekeeper-card {
+  background: var(--mlab-white);
+  padding: 3rem;
+  border-radius: 24px;
+  width: 100%;
+  max-width: 480px;
+  text-align: center;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  border-top: 6px solid var(--mlab-green);
+}
+
+.gatekeeper-icon {
+  width: 80px;
+  height: 80px;
+  background: var(--mlab-light-blue);
+  border-radius: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 1.5rem;
+}
+
+.gatekeeper-title {
+  font-family: var(--font-heading);
+  color: var(--mlab-blue);
+  font-size: 2rem;
+  margin: 0 0 0.5rem 0;
+  text-transform: uppercase;
+}
+
+.gatekeeper-desc {
+  color: var(--mlab-grey);
+  font-size: 1rem;
+  line-height: 1.5;
+  margin-bottom: 2rem;
+}
+
+.gatekeeper-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: #fef2f2;
+  color: #dc2626;
+  padding: 12px;
+  border-radius: 8px;
+  margin-bottom: 1.5rem;
+  font-weight: bold;
+  border: 1px solid #fecaca;
+}
+
+.pin-input-wrap {
+  position: relative;
+  margin-bottom: 1.5rem;
+}
+
+.pin-icon {
+  position: absolute;
+  left: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--mlab-grey);
+}
+
+.pin-input {
+  width: 100%;
+  padding: 20px 20px 20px 55px;
+  font-size: 2rem;
+  font-family: monospace;
+  letter-spacing: 0.2em;
+  text-align: center;
+  border: 2px solid var(--mlab-border);
+  border-radius: 12px;
+  color: var(--mlab-blue);
+  font-weight: bold;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.pin-input:focus {
+  border-color: var(--mlab-blue);
+}
+
+.gatekeeper-btn {
+  width: 100%;
+  padding: 18px !important;
+  font-size: 1.2rem !important;
+  justify-content: center;
+}
+
+/* ─── Active Kiosk (TV Screen) ─── */
+.kiosk-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 3rem;
+}
+
+.kiosk-brand {
+  font-family: var(--font-heading);
+  color: var(--mlab-grey);
+  font-size: 1.5rem;
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.kiosk-cohort-name {
+  font-family: var(--font-heading);
+  color: var(--mlab-blue);
+  font-size: 3rem;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.kiosk-status-badge {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #dcfce7;
+  color: #166534;
+  padding: 12px 24px;
+  border-radius: 30px;
+  font-family: var(--font-heading);
+  font-size: 1.2rem;
+  font-weight: bold;
+  text-transform: uppercase;
+  border: 2px solid #bbf7d0;
+}
+
+.kiosk-main-content {
+  display: flex;
+  gap: 4rem;
+  flex: 1;
+}
+
+/* QR Panel */
+.kiosk-qr-panel {
+  flex: 1.2;
+  background: white;
+  border-radius: 32px;
+  padding: 4rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 20px 40px rgba(7, 63, 78, 0.08);
+  border: 4px solid var(--mlab-blue);
+}
+
+.qr-container {
+  background: white;
+  padding: 2rem;
+  border-radius: 24px;
+  border: 4px solid var(--mlab-light-blue);
+  margin-bottom: 2rem;
+}
+
+.qr-instruction {
+  font-family: var(--font-heading);
+  color: var(--mlab-blue);
+  font-size: 2.5rem;
+  margin: 0 0 1rem 0;
+  text-transform: uppercase;
+}
+
+.qr-timer-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1.5rem;
+  font-weight: bold;
+  margin-bottom: 1rem;
+}
+
+.qr-progress-track {
+  width: 300px;
+  height: 8px;
+  background: #e2e8f0;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.qr-progress-fill {
+  height: 100%;
+  transition:
+    width 1s linear,
+    background-color 0.3s;
+}
+
+/* Roster Panel */
+.kiosk-roster-panel {
+  flex: 1;
+  background: white;
+  border-radius: 32px;
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.05);
+  border: 1px solid var(--mlab-border);
+}
+
+.roster-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 1.5rem;
+  border-bottom: 2px solid var(--mlab-light-blue);
+  margin-bottom: 1rem;
+}
+
+.roster-title {
+  font-family: var(--font-heading);
+  color: var(--mlab-blue);
+  font-size: 2rem;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.roster-list {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 1rem;
+}
+
+/* Hide scrollbar for a clean TV look */
+.roster-list::-webkit-scrollbar {
+  display: none;
+}
+
+.roster-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 1.25rem;
+  background: #f8fafc;
+  border-radius: 16px;
+  margin-bottom: 1rem;
+  border: 1px solid #e2e8f0;
+}
+
+.roster-check {
+  color: var(--mlab-green);
+  background: #dcfce7;
+  width: 40px;
+  height: 40px;
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.roster-info {
+  flex: 1;
+}
+
+.roster-name {
+  font-size: 1.4rem;
+  font-weight: bold;
+  color: var(--mlab-blue);
+}
+
+.roster-time {
+  font-size: 1rem;
+  color: var(--mlab-grey);
+  font-family: monospace;
+}
+
+.roster-empty {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: var(--mlab-grey-light);
+  font-size: 1.5rem;
+  font-family: var(--font-heading);
+  text-transform: uppercase;
+}
+
+.roster-empty-icon {
+  opacity: 0.3;
+  margin-bottom: 1rem;
+}
+
+/* Animations */
+@keyframes slideLeft {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.animate-slide-left {
+  animation: slideLeft 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}

@@ -1,264 +1,433 @@
 /* ─────────────────────────────────────────────────────────────────────────────
-   AttendanceHistoryList.css  —  mLab Corporate Identity v2.1
-   Matches ViewPortfolio.css aesthetic
+   AttendanceDashboard.css — mLab Corporate Identity Brand Guide 2019
+   Attendance Register History · Leave Request Review
+
+   Colours:
+     --mlab-blue:   #073f4e  (Midnight Blue)
+     --mlab-green:  #94c73d  (Green — accent / present)
+     --mlab-grey:   #6b6b6b  (Grey — secondary text)
+     --mlab-amber:  #d97706  (Amber — pending)
+     --mlab-red:    #ef4444  (Red — declined / danger)
+   Typefaces:
+     Oswald       – tabs, labels, badges, buttons, headings
+     Trebuchet MS – body text, dates, reasons
 ───────────────────────────────────────────────────────────────────────────── */
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(1); /* change color */
+  cursor: pointer;
+}
 
 @import url("https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&display=swap");
 
+/* ── CSS Variables ─────────────────────────────────────────────────────────── */
 :root {
   --mlab-blue: #073f4e;
   --mlab-blue-dark: #052e3a;
+  --mlab-blue-mid: #0a5266;
   --mlab-green: #94c73d;
   --mlab-green-dark: #7aaa2e;
   --mlab-grey: #6b6b6b;
+  --mlab-grey-light: #9b9b9b;
   --mlab-white: #ffffff;
-  --mlab-light-blue: #e8f0f3;
-  --mlab-light-green: #f0f7e1;
+  --mlab-bg: #f0f4f6;
+  --mlab-border: #dde4e8;
+  --mlab-light-blue: #e4edf0;
   --mlab-red: #ef4444;
-  --mlab-red-light: #fef2f2;
+  --mlab-amber: #d97706;
+
   --font-heading: "Oswald", "Trebuchet MS", sans-serif;
   --font-body: "Trebuchet MS", "Lucida Grande", Arial, sans-serif;
 }
 
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-}
-
-@keyframes ahl-fadeIn {
+/* ── Animations ────────────────────────────────────────────────────────────── */
+@keyframes att-fade {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(6px);
   }
   to {
     opacity: 1;
     transform: translateY(0);
   }
 }
-@keyframes ahl-spin {
-  to {
-    transform: rotate(360deg);
-  }
+.animate-fade-in {
+  animation: att-fade 0.25s ease both;
 }
 
-.ahl-animate {
-  animation: ahl-fadeIn 0.3s ease both;
-}
-
-/* ── Spinner ─────────────────────────────────────────────────────────────── */
-.ahl-spinner {
-  width: 28px;
-  height: 28px;
-  border: 3px solid rgba(7, 63, 78, 0.12);
-  border-top-color: var(--mlab-green);
-  border-radius: 50%;
-  animation: ahl-spin 0.85s linear infinite;
-}
-
-/* ── Loading (matches mlab-state--loading) ───────────────────────────────── */
-.ahl-loading {
-  padding: 4rem;
-  text-align: center;
+/* ═══════════════════════════════════════════════════════════════════════════
+   ROOT WRAPPER
+═══════════════════════════════════════════════════════════════════════════ */
+.att-root {
+  font-family: var(--font-body);
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 1rem;
-  font-family: var(--font-heading);
-  font-size: 0.8rem;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--mlab-grey);
+  gap: 0;
+  color: var(--mlab-blue);
 }
 
-/* ── Error (left-border accent, matches mlab pattern) ───────────────────── */
-.ahl-error {
-  border: 1px solid #fecaca;
-  border-left: 5px solid var(--mlab-red);
-  background: var(--mlab-red-light);
-  padding: 1.5rem 1.75rem;
-}
-
-.ahl-error__heading {
+/* ── Loading wrapper ────────────────────────────────────────────────────── */
+.att-loader-wrap {
+  padding: 4rem 0;
   display: flex;
+  justify-content: center;
+  width: 100%;
+}
+.att-loader-wrap--inline {
+  padding: 3rem 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   TABS
+   Consistent with vp-tabs, ad-overview-header, cdp-tabs — mLab standard
+   tab pattern: light blue inactive, solid blue active, green underline
+═══════════════════════════════════════════════════════════════════════════ */
+.att-tabs {
+  display: flex;
+  border-bottom: 3px solid var(--mlab-blue);
+  margin-bottom: 1.5rem;
+  background: var(--mlab-white);
+}
+.att-tab {
+  display: inline-flex;
   align-items: center;
-  gap: 0.6rem;
+  gap: 7px;
+  padding: 0.75rem 1.5rem;
+  border: none;
+  cursor: pointer;
   font-family: var(--font-heading);
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: #991b1b;
-  margin-bottom: 0.5rem;
+  background: var(--mlab-light-blue);
+  color: var(--mlab-grey);
+  transition:
+    background 0.18s,
+    color 0.18s;
+  outline: none;
+  white-space: nowrap;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -3px;
+  position: relative;
+}
+.att-tab:hover {
+  background: #d4e4ea;
+  color: var(--mlab-blue);
+}
+.att-tab--active {
+  background: var(--mlab-blue);
+  color: var(--mlab-white);
+  border-bottom-color: var(--mlab-blue);
 }
 
-.ahl-error__message {
-  font-family: var(--font-body);
-  font-size: 0.85rem;
+/* Pending count badge inside tab */
+.att-pending-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1px 7px;
+  background: var(--mlab-amber);
+  color: var(--mlab-white);
+  font-family: var(--font-heading);
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.att-tab--active .att-pending-badge {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ERROR BANNER
+═══════════════════════════════════════════════════════════════════════════ */
+.att-error {
+  padding: 0.9rem 1.25rem;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  border-left: 4px solid var(--mlab-red);
+  margin-bottom: 1.25rem;
+}
+.att-error__title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--font-heading);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
   color: #b91c1c;
+  margin-bottom: 4px;
+}
+.att-error__title svg {
+  flex-shrink: 0;
+}
+.att-error__body {
+  font-size: 0.82rem;
+  color: #991b1b;
   margin: 0;
   line-height: 1.6;
 }
 
-/* ── Panel (matches mlab-panel) ──────────────────────────────────────────── */
-.ahl-panel {
-  border: 2px solid var(--mlab-blue);
-  border-left: 5px solid var(--mlab-green);
-  background: var(--mlab-white);
-  overflow: hidden;
+/* ═══════════════════════════════════════════════════════════════════════════
+   TABLE UTILITIES
+═══════════════════════════════════════════════════════════════════════════ */
+.att-th--right {
+  text-align: right !important;
 }
-
-/* ── Table (matches mlab-table) ──────────────────────────────────────────── */
-.ahl-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-family: var(--font-body);
-}
-
-.ahl-table thead {
-  background: var(--mlab-blue);
-}
-
-.ahl-table th {
-  padding: 0.85rem 1rem;
-  text-align: left;
-  font-family: var(--font-heading);
-  font-weight: 700;
-  font-size: 0.72rem;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--mlab-white);
-  border-right: 1px solid rgba(255, 255, 255, 0.1);
-  white-space: nowrap;
-}
-.ahl-table th:last-child {
-  border-right: none;
+.att-td--right {
   text-align: right;
 }
 
-.ahl-table td {
-  padding: 0.9rem 1rem;
-  border-bottom: 1px solid var(--mlab-light-blue);
-  vertical-align: middle;
+/* ── Date cell (registers tab) ───────────────────────────────────────────── */
+.att-date-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.att-date-cell__icon {
+  color: var(--mlab-blue);
+  flex-shrink: 0;
+}
+.att-date-cell__label {
+  font-family: var(--font-heading);
+  font-size: 0.88rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--mlab-blue);
+}
+
+/* ── Dates cell (leaves tab, supports multi-day range) ───────────────────── */
+.att-dates-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.att-dates-cell__start {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-size: 0.88rem;
   color: var(--mlab-blue);
 }
-.ahl-table tbody tr {
-  transition: background 0.12s;
-}
-.ahl-table tbody tr:last-child td {
-  border-bottom: none;
-}
-.ahl-table tbody tr:hover td {
-  background: var(--mlab-light-blue);
-}
-
-.ahl-col-right {
-  text-align: right;
-}
-
-/* ── Date cell ───────────────────────────────────────────────────────────── */
-.ahl-date {
-  display: flex;
-  align-items: center;
-  gap: 0.55rem;
-  font-weight: 600;
+.att-dates-cell__icon {
   color: var(--mlab-blue);
-  font-size: 0.9rem;
-}
-.ahl-date__icon {
-  color: var(--mlab-grey);
   flex-shrink: 0;
 }
+.att-dates-cell__label {
+  font-family: var(--font-heading);
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--mlab-blue);
+}
+.att-dates-cell__end {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 19px; /* aligns under the calendar icon above */
+}
+.att-dates-cell__arrow {
+  color: var(--mlab-grey-light);
+  flex-shrink: 0;
+}
+.att-dates-cell__label--end {
+  font-size: 0.8rem;
+  color: var(--mlab-grey);
+}
 
-/* ── Badges (matches mlab-badge system) ──────────────────────────────────── */
-.ahl-badge {
+/* ── Reason cell ─────────────────────────────────────────────────────────── */
+.att-reason-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.att-reason-cell__type {
+  font-family: var(--font-heading);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--mlab-blue);
+}
+.att-reason-cell__quote {
+  font-size: 0.8rem;
+  color: var(--mlab-grey);
+  font-style: italic;
+  line-height: 1.5;
+}
+
+/* ── Attachment link ─────────────────────────────────────────────────────── */
+.att-attach-link {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 3px 10px;
+  gap: 5px;
+  padding: 4px 10px;
+  background: rgba(148, 199, 61, 0.1);
+  border: 1px solid rgba(148, 199, 61, 0.35);
+  color: var(--mlab-green-dark);
   font-family: var(--font-heading);
-  font-size: 0.68rem;
+  font-size: 0.65rem;
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.att-attach-link:hover {
+  background: rgba(148, 199, 61, 0.2);
 }
 
-.ahl-badge--present {
-  background: var(--mlab-light-blue);
-  color: var(--mlab-blue);
-  border: 1px solid #b0c4cc;
+/* ── No-data placeholder ─────────────────────────────────────────────────── */
+.att-no-data {
+  font-size: 0.82rem;
+  color: var(--mlab-grey-light);
 }
 
-.ahl-badge--proofs {
-  background: var(--mlab-light-green);
-  color: var(--mlab-green-dark);
-  border: 1px solid #c2e08a;
+/* ── Open register button spacing ────────────────────────────────────────── */
+.att-open-btn {
+  gap: 6px;
 }
 
-/* ── Proofs none ─────────────────────────────────────────────────────────── */
-.ahl-none {
-  color: #94a3b8;
-  font-size: 0.85rem;
-  font-style: italic;
+/* ── Reviewed label ──────────────────────────────────────────────────────── */
+.att-reviewed-label {
+  font-family: var(--font-heading);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--mlab-grey-light);
 }
 
-/* ── Action button ───────────────────────────────────────────────────────── */
-.ahl-btn {
+/* ═══════════════════════════════════════════════════════════════════════════
+   BADGES
+   att- prefixed so they don't conflict with global mlab-badge
+═══════════════════════════════════════════════════════════════════════════ */
+.att-badge {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0.45rem 0.95rem;
-  background: transparent;
-  border: 2px solid var(--mlab-blue);
-  color: var(--mlab-blue);
-  cursor: pointer;
+  gap: 4px;
+  padding: 3px 9px;
   font-family: var(--font-heading);
-  font-size: 0.72rem;
+  font-size: 0.62rem;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  outline: none;
-  transition: background 0.15s;
   white-space: nowrap;
 }
-.ahl-btn:hover {
+
+/* Attendance present (green) */
+.att-badge--present {
+  background: rgba(148, 199, 61, 0.12);
+  color: var(--mlab-green-dark);
+  border: 1px solid rgba(148, 199, 61, 0.35);
+}
+
+/* Proof attached (slate) */
+.att-badge--proof {
   background: var(--mlab-light-blue);
-}
-
-/* ── Empty state (matches mlab-state) ───────────────────────────────────── */
-.ahl-empty {
-  padding: 4rem 2rem;
-  text-align: center;
-  color: var(--mlab-grey);
-  font-family: var(--font-body);
-}
-.ahl-empty__icon {
-  opacity: 0.25;
-  margin-bottom: 1rem;
-  display: flex;
-  justify-content: center;
-}
-.ahl-empty__title {
-  font-family: var(--font-heading);
-  font-size: 1rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
   color: var(--mlab-blue);
-  margin: 0 0 0.4rem;
-}
-.ahl-empty__sub {
-  font-size: 0.85rem;
-  color: var(--mlab-grey);
-  margin: 0;
+  border: 1px solid var(--mlab-border);
 }
 
-/* ── Mobile ──────────────────────────────────────────────────────────────── */
-@media (max-width: 600px) {
-  .ahl-table th:nth-child(3),
-  .ahl-table td:nth-child(3) {
-    display: none;
+/* Leave: Pending (amber) */
+.att-badge--pending {
+  background: #fffbeb;
+  color: #b45309;
+  border: 1px solid #fde68a;
+}
+
+/* Leave: Approved (green) */
+.att-badge--approved {
+  background: rgba(148, 199, 61, 0.12);
+  color: var(--mlab-green-dark);
+  border: 1px solid rgba(148, 199, 61, 0.35);
+}
+
+/* Leave: Declined (red) */
+.att-badge--declined {
+  background: rgba(239, 68, 68, 0.08);
+  color: #b91c1c;
+  border: 1px solid rgba(239, 68, 68, 0.25);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ACTION BUTTONS (leave approve / decline)
+═══════════════════════════════════════════════════════════════════════════ */
+.att-action-btns {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.att-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0.42rem 0.9rem;
+  border: 2px solid transparent;
+  cursor: pointer;
+  font-family: var(--font-heading);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+  outline: none;
+}
+.att-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Approve — green */
+.att-btn--approve {
+  background: var(--mlab-green);
+  color: var(--mlab-white);
+  border-color: var(--mlab-green-dark);
+}
+.att-btn--approve:hover:not(:disabled) {
+  background: var(--mlab-green-dark);
+  box-shadow: 0 3px 10px rgba(148, 199, 61, 0.25);
+}
+
+/* Decline — transparent red outline */
+.att-btn--decline {
+  background: transparent;
+  color: #b91c1c;
+  border-color: rgba(239, 68, 68, 0.45);
+}
+.att-btn--decline:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.06);
+  border-color: var(--mlab-red);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   RESPONSIVE
+═══════════════════════════════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+  .att-tab {
+    padding: 0.65rem 1rem;
+    font-size: 0.7rem;
+  }
+  .att-action-btns {
+    justify-content: flex-start;
+  }
+}
+@media (max-width: 640px) {
+  .att-tabs {
+    flex-wrap: wrap;
+  }
+  .att-tab {
+    flex: 1;
+    justify-content: center;
   }
 }
