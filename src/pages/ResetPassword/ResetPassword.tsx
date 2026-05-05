@@ -149,11 +149,7 @@ const ResetPassword = () => {
                 </div>
 
                 {success ? (
-<<<<<<< HEAD
                     <div className="auth-success-state" style={{ color: 'grey' }}>
-=======
-                    <div className="auth-success-state">
->>>>>>> dc5e6e85f7da2b5cc456794fff55bafa22f23d7c
                         <div className="auth-success-icon">
                             <ShieldCheck size={48} strokeWidth={2} />
                             <div className="auth-success-particles">
@@ -162,11 +158,7 @@ const ResetPassword = () => {
                                 ))}
                             </div>
                         </div>
-<<<<<<< HEAD
                         <div className="auth-success-message" style={{ color: 'grey' }}>
-=======
-                        <div className="auth-success-message">
->>>>>>> dc5e6e85f7da2b5cc456794fff55bafa22f23d7c
                             <strong>Password Reset Complete</strong>
                             <p>Redirecting you to login in a few seconds...</p>
                         </div>
