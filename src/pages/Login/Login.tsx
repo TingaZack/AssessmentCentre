@@ -2,14 +2,22 @@
 
 import React, { useEffect, useState } from 'react';
 import { signInWithEmailAndPassword } from 'firebase/auth';
+<<<<<<< HEAD
 import { doc, getDoc, updateDoc } from 'firebase/firestore'; // 🚀 ADDED updateDoc
+=======
+import { doc, getDoc } from 'firebase/firestore';
+>>>>>>> dc5e6e85f7da2b5cc456794fff55bafa22f23d7c
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { auth, db } from '../../lib/firebase';
 import { useNavigate } from 'react-router-dom';
 import {
     Lock, AlertCircle, Loader2, KeyRound, CheckCircle2,
     ArrowLeft, Mail, Shield, Eye, EyeOff, ArrowRight,
+<<<<<<< HEAD
     Hexagon, Server, ShieldCheck
+=======
+    Hexagon, Server, ShieldCheck, Fingerprint
+>>>>>>> dc5e6e85f7da2b5cc456794fff55bafa22f23d7c
 } from 'lucide-react';
 import mLabLogo from '../../assets/logo/mlab_logo.png';
 import './Login.css';

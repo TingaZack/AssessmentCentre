@@ -96,10 +96,12 @@ const AdminDashboard: React.FC = () => {
             store.fetchCohorts();
         }
         if (currentNav === 'qualifications') store.fetchProgrammes();
+
         if (currentNav === 'staff') {
             store.fetchStaff();
             store.fetchEmployers();
         }
+
         if (currentNav === 'workplaces') store.fetchEmployers();
         if (currentNav === 'studio') {
             if (store.fetchAdHocCertificates) store.fetchAdHocCertificates();
@@ -292,7 +294,9 @@ const AdminDashboard: React.FC = () => {
                     {currentNav === 'attendance' && <AttendanceHistoryList />}
 
                     {currentNav === 'dashboard' && <DashboardOverview />}
+
                     {currentNav === 'directory' && <LearnerDirectoryView learners={store.learners} />}
+
                     {currentNav === 'learners' && (
                         <LearnersView
                             learners={store.learners}
@@ -334,6 +338,7 @@ const AdminDashboard: React.FC = () => {
                         />
                     )}
                     {currentNav === 'workplaces' && <WorkplacesManager />}
+
                     {currentNav === 'cohorts' && (
                         <CohortsView
                             cohorts={store.cohorts}
@@ -343,6 +348,7 @@ const AdminDashboard: React.FC = () => {
                             onArchive={(c) => setCohortToDelete(c)}
                         />
                     )}
+
                     {currentNav === 'qualifications' && (
                         <QualificationsView
                             programmes={store.programmes}
@@ -679,6 +685,7 @@ export default AdminDashboard;
 // import { CertificateStudio } from './CertificateStudio/CertificateStudio';
 // import { AdminProfileView } from './AdminProfileView/AdminProfileView';
 // import { AccessManager } from './AccessManager/AccessManager';
+// import { AssessmentManager } from '../FacilitatorDashboard/AssessmentManager/AssessmentManager';
 
 // // --- NEWLY INTEGRATED VIEWS & COMPONENTS ---
 // import { AssessmentManager } from '../FacilitatorDashboard/AssessmentManager/AssessmentManager';
@@ -723,6 +730,8 @@ export default AdminDashboard;
 
 //     const [showStaffModal, setShowStaffModal] = useState(false);
 //     const [staffToDelete, setStaffToDelete] = useState<StaffMember | null>(null);
+//     const [editingStaff, setEditingStaff] = useState<StaffMember | null>(null);
+
 //     const [editingStaff, setEditingStaff] = useState<StaffMember | null>(null);
 
 //     const [showCohortModal, setShowCohortModal] = useState(false);
@@ -2185,12 +2194,10 @@ export default AdminDashboard;
 // //         }
 
 // //         if (currentNav === 'qualifications') store.fetchProgrammes();
-
 // //         if (currentNav === 'staff') {
 // //             store.fetchStaff();
 // //             store.fetchEmployers();
 // //         }
-
 // //         if (currentNav === 'workplaces') store.fetchEmployers();
 
 // //         if (currentNav === 'studio') {
@@ -2468,7 +2475,6 @@ export default AdminDashboard;
 // //                             onArchive={(c) => setCohortToDelete(c)}
 // //                         />
 // //                     )}
-
 // //                     {currentNav === 'qualifications' && (
 // //                         <QualificationsView
 // //                             programmes={store.programmes}

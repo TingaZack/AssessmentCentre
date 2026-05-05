@@ -41,10 +41,13 @@ import { generateHistorySnapshot } from "./modules/generateHistorySnapshot";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 const puppeteer = require("puppeteer-core");
 const chromium = require("@sparticuz/chromium");
+<<<<<<< HEAD
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { FieldValue } from "firebase-admin/firestore";
+=======
+>>>>>>> dc5e6e85f7da2b5cc456794fff55bafa22f23d7c
 
 admin.initializeApp();
 // ================= CONFIGURATION & SECRETS =================
@@ -197,6 +200,7 @@ export const sendMailgunEmail = async ({
 // CLOUD FUNCTIONS
 // ============================================================================
 
+<<<<<<< HEAD
 exports.generateHistorySnapshot = generateHistorySnapshot;
 
 export const helloTryrld = onRequest(
@@ -537,8 +541,33 @@ export const deleteStaffAccount = onCall(async (request) => {
       "You cannot delete your own active session.",
     );
   }
+=======
+// ================= CONFIGURATION & SECRETS =================
+// // ZARD
+// const ZARD_APP_URL = "https://assessmentcentr.web.app";
+// MLAB
+// const APP_URL = "https://mlabassessmentcenter.web.app";
+// const APP_URL = "http://localhost:5173";
 
+// Auto-detects if running locally or in production
+// firebase emulators:start (The Sandbox) and irebase deploy --only functions ( Live)
+const APP_URL =
+  process.env.FUNCTIONS_EMULATOR === "true"
+    ? "http://localhost:5173"
+    : "https://mlabassessmentcenter.web.app";
+
+const mailgunSecret = defineSecret("MAILGUN_API_KEY");
+const privateKeySecret = defineSecret("INSTITUTION_PRIVATE_KEY");
+
+// ============================================================================
+// REUSABLE MAILGUN EMAIL HELPER
+// ============================================================================
+>>>>>>> dc5e6e85f7da2b5cc456794fff55bafa22f23d7c
+
+const getMailgunConfig = () => {
+  let apiKey = "";
   try {
+<<<<<<< HEAD
     // Delete from Firebase Authentication
     try {
       await admin.auth().deleteUser(uid);
@@ -556,9 +585,397 @@ export const deleteStaffAccount = onCall(async (request) => {
     throw new HttpsError(
       "internal",
       error.message || "Failed to fully delete staff account.",
+=======
+    const secretValue = mailgunSecret.value();
+    if (secretValue) apiKey = secretValue;
+  } catch (e) {}
+
+  if (!apiKey) {
+    apiKey = process.env.MAILGUN_API_KEY || "";
+  }
+
+  if (!apiKey) {
+    throw new Error(
+      "MAILGUN_API_KEY not found in Secret Manager or .env variables.",
+>>>>>>> dc5e6e85f7da2b5cc456794fff55bafa22f23d7c
     );
   }
-});
+
+<<<<<<< HEAD
+export const sendCustomPasswordReset = onCall(
+  { secrets: [mailgunSecret] },
+  async (request) => {
+    const { email } = request.data;
+
+    if (!email) {
+      throw new HttpsError("invalid-argument", "Email address is required.");
+    }
+
+    try {
+      // Check if user exists in Firebase Auth
+      const userRecord = await admin.auth().getUserByEmail(email);
+
+      // Fetch the actual name from the Firestore 'users' collection
+      const userDoc = await admin
+        .firestore()
+        .collection("users")
+        .doc(userRecord.uid)
+        .get();
+      const userData = userDoc.data();
+      const actualName =
+        userData?.fullName || userRecord.displayName || "Member";
+
+      // Generate the standard Firebase link
+      // (We still need to generate this so Firebase creates the valid oobCode in the backend)
+      const defaultFirebaseLink = await admin
+        .auth()
+        .generatePasswordResetLink(email);
+
+      // Extract the secret "oobCode" from the Firebase link
+      const urlObj = new URL(defaultFirebaseLink);
+      const oobCode = urlObj.searchParams.get("oobCode");
+
+      // Construct your 100% Custom React Link pointing to your new ResetPassword.tsx page
+      const customReactLink = `${APP_URL}/reset-password?oobCode=${oobCode}`;
+
+      // Prepare the custom mLab branded email
+      const emailParams = {
+        title: "Password Reset Request",
+        subtitle: "Securely regain access to your account",
+        recipientName: actualName,
+        bodyHtml: `
+          <p>A request has been made to reset the password for your account on the <strong>mLab Assessment Platform</strong>.</p>
+          <p>To proceed with the reset, please click the secure button below.</p>
+          
+          <div style="background-color: #f8fafc; padding: 15px; border-radius: 6px; border: 1px solid #dde4e8; border-left: 4px solid #0ea5e9; margin: 20px 0;">
+              <p style="margin: 0; color: #475569; font-size: 13px;"><strong>Platform Access:</strong><br/> 
+              Once your password is reset, you can access your dashboard at any time by visiting:<br/>
+              <a href="${APP_URL}" style="color: #0ea5e9; font-weight: bold; text-decoration: none;">${APP_URL}</a></p>
+          </div>
+
+          <p>If you did not initiate this request, you can safely ignore this email. Your password will remain unchanged.</p>
+        `,
+        ctaText: "Reset My Password",
+        ctaLink: customReactLink,
+        showStepIndicator: false,
+      };
+
+      await sendMailgunEmail({
+        to: email,
+        subject: "Action Required: Reset Your Password",
+        text: buildMlabEmailPlainText(emailParams),
+        html: buildMlabEmailHtml(emailParams),
+      });
+
+      return { success: true, message: "Custom reset email sent." };
+    } catch (error: any) {
+      logger.error("Password Reset Error:", error);
+
+      if (error.code === "auth/user-not-found") {
+        throw new HttpsError("not-found", "No account found with that email.");
+      }
+
+      throw new HttpsError("internal", "Unable to send reset email.");
+    }
+  },
+);
+
+=======
+  const domain = process.env.MAILGUN_DOMAIN;
+  if (!domain) {
+    throw new Error("MAILGUN_DOMAIN not found in .env variables.");
+  }
+
+  return { apiKey, domain };
+};
+
+export const sendMailgunEmail = async ({
+  to,
+  subject,
+  text,
+  html,
+}: {
+  to: string;
+  subject: string;
+  text?: string;
+  html?: string;
+}) => {
+  const { apiKey, domain } = getMailgunConfig();
+
+  const params = new URLSearchParams();
+  params.append("from", `mLab Assessment Platform <noreply@${domain}>`);
+  params.append("to", to);
+  params.append("subject", subject);
+
+  if (text) params.append("text", text);
+  if (html) params.append("html", html);
+  if (html && !text)
+    params.append(
+      "text",
+      "Please view this email in an HTML-compatible client.",
+    );
+
+  const res = await fetch(`https://api.mailgun.net/v3/${domain}/messages`, {
+    method: "POST",
+    headers: {
+      Authorization: "Basic " + Buffer.from(`api:${apiKey}`).toString("base64"),
+    },
+    body: params,
+  });
+
+  const data = await res.json();
+
+  if (!res.ok) {
+    throw new Error(`Mailgun API Error: ${data.message || res.statusText}`);
+  }
+
+  return data;
+};
+
+// ============================================================================
+// CLOUD FUNCTIONS
+// ============================================================================
+
+exports.generateHistorySnapshot = generateHistorySnapshot;
+
+export const helloTryrld = onRequest(
+  { secrets: [mailgunSecret] },
+  async (request, response) => {
+    try {
+      const emailParams = {
+        title: "Test Successful",
+        subtitle: "System Operational",
+        recipientName: "Zack",
+        bodyHtml: `
+          <p>You have successfully triggered the reusable Mailgun helper function with a secure domain.</p>
+          <div style="background-color: #f8fafc; padding: 15px; border-radius: 6px; border: 1px solid #dde4e8; border-left: 4px solid #94c73d; margin: 20px 0;">
+              <p style="margin: 0; color: #073f4e; font-size: 13px;"><strong>System Status:</strong> 100% Operational ✅</p>
+              <p style="margin: 6px 0 0; color: #475569; font-size: 12px;"><strong>Routing Domain:</strong> mg.mlab.co.za</p>
+          </div>
+          <p>This HTML template perfectly matches your corporate identity and is ready to be reused!</p>
+        `,
+        ctaText: "Return to Dashboard",
+        ctaLink: APP_URL,
+        showStepIndicator: false,
+      };
+
+      const data = await sendMailgunEmail({
+        to: "Zack <zakhele@mlab.co.za>",
+        subject: "✅ mLab System Test Successful",
+        text: buildMlabEmailPlainText(emailParams),
+        html: buildMlabEmailHtml(emailParams),
+      });
+
+      logger.info("Email sent successfully!", { data });
+      response.status(200).send(data);
+    } catch (error: any) {
+      logger.error("Failed to send email", error);
+      response
+        .status(500)
+        .send({ error: error.message || "Failed to send email" });
+    }
+  },
+);
+
+export const createStaffAccount = onCall(
+  { secrets: [mailgunSecret] },
+  async (request) => {
+    const {
+      email,
+      fullName,
+      role,
+      phone,
+      employerId,
+      assessorRegNumber,
+      isSuperAdmin,
+      privileges,
+    } = request.data;
+    const auth = request.auth;
+
+    if (!auth)
+      throw new HttpsError("unauthenticated", "Authentication required.");
+    const callerDoc = await admin
+      .firestore()
+      .collection("users")
+      .doc(auth.uid)
+      .get();
+    if (!callerDoc.exists || callerDoc.data()?.role !== "admin")
+      throw new HttpsError(
+        "permission-denied",
+        "Only Admins can provision staff accounts.",
+      );
+
+    if (role === "admin" && !email.toLowerCase().endsWith("@mlab.co.za")) {
+      throw new HttpsError(
+        "permission-denied",
+        "Security Policy Violation: Admin accounts can only be provisioned for official @mlab.co.za domains.",
+      );
+    }
+
+    try {
+      const userRecord = await admin
+        .auth()
+        .createUser({ email, displayName: fullName, emailVerified: true });
+      await admin.auth().setCustomUserClaims(userRecord.uid, {
+        role,
+        ...(role === "admin" && isSuperAdmin ? { isSuperAdmin: true } : {}),
+      });
+
+      const userData: any = {
+        uid: userRecord.uid,
+        fullName,
+        email,
+        role,
+        phone: phone || "",
+        status: "active",
+        createdAt: new Date().toISOString(),
+        signatureUrl: "",
+      };
+
+      if (role === "admin") {
+        userData.isSuperAdmin = !!isSuperAdmin;
+        if (!isSuperAdmin && privileges) userData.privileges = privileges;
+      } else if (role === "mentor" && employerId) {
+        userData.employerId = employerId;
+      } else if (
+        ["assessor", "moderator"].includes(role) &&
+        assessorRegNumber
+      ) {
+        userData.assessorRegNumber = assessorRegNumber;
+      }
+
+      await admin
+        .firestore()
+        .collection("users")
+        .doc(userRecord.uid)
+        .set(userData);
+      const link = await admin.auth().generatePasswordResetLink(email);
+      const displayRole =
+        role === "admin" && isSuperAdmin
+          ? "Super Administrator"
+          : role.charAt(0).toUpperCase() + role.slice(1).replace("_", " ");
+
+      const emailParams = {
+        title: "Platform Access Granted",
+        subtitle: "Secure your account to access your dashboard",
+        recipientName: fullName,
+        bodyHtml: `<p>You have been securely provisioned as a <strong>${displayRole}</strong> on the mLab platform.</p>
+                   <p>Please click the button below to set your private password and access your dashboard.</p>`,
+        ctaText: "Set Password & Login",
+        ctaLink: link,
+        showStepIndicator: false,
+      };
+
+      await sendMailgunEmail({
+        to: email,
+        subject: `Action Required: Access Granted - ${displayRole}`,
+        text: buildMlabEmailPlainText(emailParams),
+        html: buildMlabEmailHtml(emailParams),
+      });
+
+      return {
+        success: true,
+        message: `Account created securely for ${email}`,
+        uid: userRecord.uid,
+      };
+    } catch (error: any) {
+      console.error("Error creating staff:", error);
+      throw new HttpsError(
+        "internal",
+        error.message || "Unable to create account.",
+      );
+    }
+  },
+);
+
+export const createLearnerAccount = onRequest(
+  { secrets: [mailgunSecret] },
+  (req, res) => {
+    return cors(req, res, async () => {
+      try {
+        if (req.method !== "POST")
+          return res.status(405).send("Method Not Allowed");
+        const { email, fullName, role } = req.body.data || req.body;
+        if (!email || !fullName)
+          return res.status(400).send({
+            data: { success: false, message: "Missing email or name" },
+          });
+
+        let uid: string;
+        let isNewUser = false;
+
+        try {
+          const existingUser = await admin.auth().getUserByEmail(email);
+          uid = existingUser.uid;
+        } catch (error: any) {
+          if (error.code === "auth/user-not-found") {
+            const newUser = await admin.auth().createUser({
+              email,
+              emailVerified: false,
+              displayName: fullName,
+            });
+            uid = newUser.uid;
+            isNewUser = true;
+          } else throw error;
+        }
+
+        await admin
+          .auth()
+          .setCustomUserClaims(uid, { role: role || "learner" });
+
+        const userRef = admin.firestore().collection("users").doc(uid);
+        const userDoc = await userRef.get();
+        if (!userDoc.exists)
+          await userRef.set({
+            email,
+            fullName,
+            role: role || "learner",
+            createdAt: new Date().toISOString(),
+          });
+
+        const snapshot = await admin
+          .firestore()
+          .collection("learners")
+          .where("email", "==", email)
+          .get();
+        if (!snapshot.empty)
+          await snapshot.docs[0].ref.update({
+            authUid: uid,
+            status: "active",
+            lastSynced: new Date().toISOString(),
+          });
+
+        const link = await admin.auth().generatePasswordResetLink(email);
+
+        const emailParams = {
+          title: "Invitation to mLab Learner Portal",
+          recipientName: fullName,
+          bodyHtml: `<p>You have been registered as a <strong>Learner</strong> on the mLab Assessment Platform.</p>
+                     <p>Please click the button below to set your secure password and access your dashboard:</p>`,
+          ctaText: "Set Password & Login",
+          ctaLink: link,
+          showStepIndicator: true,
+        };
+
+        await sendMailgunEmail({
+          to: email,
+          subject: "Invitation to mLab Learner Portal",
+          text: buildMlabEmailPlainText(emailParams),
+          html: buildMlabEmailHtml(emailParams),
+        });
+
+        return res.status(200).send({
+          data: { success: true, uid: uid, wasNewlyCreated: isNewUser },
+        });
+      } catch (error: any) {
+        console.error("Critical Error:", error);
+        return res
+          .status(500)
+          .send({ data: { success: false, message: error.message } });
+      }
+    });
+  },
+);
 
 export const sendCustomPasswordReset = onCall(
   { secrets: [mailgunSecret] },
@@ -638,6 +1055,7 @@ export const sendCustomPasswordReset = onCall(
   },
 );
 
+>>>>>>> dc5e6e85f7da2b5cc456794fff55bafa22f23d7c
 export const onCohortCreated = onDocumentCreated(
   { document: "cohorts/{cohortId}", secrets: [mailgunSecret] },
   async (event) => {
@@ -792,6 +1210,7 @@ export const sendAdHocCertificate = onCall(
     } catch (error) {
       console.error("Email Error:", error);
       throw new HttpsError("internal", "Failed to send email.");
+<<<<<<< HEAD
     }
   },
 );
@@ -1217,10 +1636,13 @@ export const sendCustomVerificationEmail = onCall(
     } catch (error: any) {
       console.error("Email Error:", error);
       throw new HttpsError("internal", error.message || "Failed to send email");
+=======
+>>>>>>> dc5e6e85f7da2b5cc456794fff55bafa22f23d7c
     }
   },
 );
 
+<<<<<<< HEAD
 // ============================================================================
 // BLOCKCHAIN LOGIC
 // ============================================================================
@@ -1329,10 +1751,177 @@ export const issueBlockchainCertificate = onCall(
         "internal",
         error.message || "Failed to process certificate",
       );
+=======
+export const onSubmissionStatusChange = onDocumentUpdated(
+  { document: "learner_submissions/{submissionId}", secrets: [mailgunSecret] },
+  async (event) => {
+    const beforeData = event.data?.before.data();
+    const afterData = event.data?.after.data();
+    const submissionId = event.params.submissionId;
+
+    if (!beforeData || !afterData) return;
+
+    const db = admin.firestore();
+    const learnerId = afterData.learnerId;
+    const cohortId = afterData.cohortId;
+    const moduleName =
+      afterData.title || afterData.moduleNumber || "Assessment";
+
+    const getUser = async (uid: string) =>
+      uid ? (await db.collection("users").doc(uid).get()).data() : null;
+    const getLearner = async (uid: string) =>
+      uid ? (await db.collection("learners").doc(uid).get()).data() : null;
+    const getCohortStaff = async () =>
+      cohortId
+        ? (await db.collection("cohorts").doc(cohortId).get()).data() || {}
+        : {};
+
+    try {
+      const cohortStaff = await getCohortStaff();
+
+      if (
+        beforeData.status !== "submitted" &&
+        afterData.status === "submitted"
+      ) {
+        const assessor = await getUser(
+          afterData.gradedBy || cohortStaff.assessorId,
+        );
+        const facilitator = await getUser(cohortStaff.facilitatorId);
+        const learner = await getLearner(learnerId);
+
+        if (assessor?.email) {
+          const params = {
+            title: `New PoE Submitted`,
+            subtitle: moduleName,
+            recipientName: assessor.fullName || "Assessor",
+            bodyHtml: `<p><strong>${learner?.fullName}</strong> has just submitted their Portfolio of Evidence for <strong>${moduleName}</strong>.</p>
+                       <p>The submission is now waiting in your queue to be graded.</p>`,
+            ctaText: "Review & Grade",
+            ctaLink: `${APP_URL}/assessments/grade/${submissionId}`,
+            showStepIndicator: false,
+          };
+          await sendMailgunEmail({
+            to: assessor.email,
+            subject: `Action Required: New PoE Submitted`,
+            text: buildMlabEmailPlainText(params),
+            html: buildMlabEmailHtml(params),
+          });
+        }
+
+        if (facilitator?.email) {
+          const params = {
+            title: `Learner Progress Update`,
+            subtitle: moduleName,
+            recipientName: facilitator.fullName || "Facilitator",
+            bodyHtml: `<p>Your learner, <strong>${learner?.fullName}</strong>, has successfully submitted their work for <strong>${moduleName}</strong>.</p>
+                       <p>The assessment has been routed to the cohort Assessor for grading.</p>`,
+            ctaText: "View Class Progress",
+            ctaLink: `${APP_URL}/cohorts/${cohortId}`,
+            showStepIndicator: false,
+          };
+          await sendMailgunEmail({
+            to: facilitator.email,
+            subject: `Progress Update: ${learner?.fullName}`,
+            text: buildMlabEmailPlainText(params),
+            html: buildMlabEmailHtml(params),
+          });
+        }
+      }
+
+      if (beforeData.status !== "graded" && afterData.status === "graded") {
+        const moderator = await getUser(
+          afterData.moderation?.moderatedBy || cohortStaff.moderatorId,
+        );
+        const learner = await getLearner(learnerId);
+        const marks = afterData.marks || 0;
+        const totalMarks = afterData.totalMarks || 100;
+        const competency =
+          afterData.competency === "C" ? "Competent" : "Not Yet Competent";
+
+        if (moderator?.email) {
+          const params = {
+            title: `Grading Finalized for Moderation`,
+            subtitle: moduleName,
+            recipientName: moderator.fullName || "Moderator",
+            bodyHtml: `<p>An Assessor has finalized the grading for <strong>${learner?.fullName}</strong> on <strong>${moduleName}</strong>.</p>
+                       <p>This submission is now available for your internal moderation and quality assurance review.</p>`,
+            ctaText: "Moderate Grade",
+            ctaLink: `${APP_URL}/assessments/moderate/${submissionId}`,
+            showStepIndicator: false,
+          };
+          await sendMailgunEmail({
+            to: moderator.email,
+            subject: `Grading Finalized: ${moduleName}`,
+            text: buildMlabEmailPlainText(params),
+            html: buildMlabEmailHtml(params),
+          });
+        }
+
+        if (learner?.email) {
+          const params = {
+            title: `Assessment Graded`,
+            subtitle: moduleName,
+            recipientName: learner.fullName || "Learner",
+            bodyHtml: `<p>Your assessment for <strong>${moduleName}</strong> has been graded!</p>
+                       <div style="background-color: #f8fafc; padding: 15px; border-radius: 6px; border: 1px solid #dde4e8; border-left: 4px solid #0ea5e9; margin: 20px 0;">
+                          <p style="margin: 0; color: #475569;"><strong>Score:</strong> ${marks} / ${totalMarks}<br/><strong>Outcome:</strong> ${competency}</p>
+                       </div>
+                       <p>Log in to your portal to read your Assessor's feedback.</p>`,
+            ctaText: "View Feedback",
+            ctaLink: `${APP_URL}/portal/assessments/${submissionId}`,
+            showStepIndicator: false,
+          };
+          await sendMailgunEmail({
+            to: learner.email,
+            subject: `Assessment Graded: ${moduleName}`,
+            text: buildMlabEmailPlainText(params),
+            html: buildMlabEmailHtml(params),
+          });
+        }
+      }
+
+      const wasRejected =
+        afterData.status === "rework" ||
+        (afterData.moderation?.status === "rejected" &&
+          beforeData.moderation?.status !== "rejected");
+
+      if (wasRejected) {
+        const assessor = await getUser(
+          afterData.gradedBy || cohortStaff.assessorId,
+        );
+        const moderatorName =
+          afterData.moderation?.moderatorName || "The Internal Moderator";
+
+        if (assessor?.email) {
+          const params = {
+            title: `Action Required: Moderation Rework`,
+            subtitle: moduleName,
+            recipientName: assessor.fullName || "Assessor",
+            bodyHtml: `<p>${moderatorName} has requested a rework on your grading for <strong>${moduleName}</strong>.</p>
+                       <div style="background-color: #fffbeb; padding: 15px; border-radius: 6px; border: 1px solid #fde68a; border-left: 4px solid #f59e0b; margin: 20px 0;">
+                          <p style="margin: 0; color: #92400e;"><strong>Moderator Notes:</strong><br/><i>"${afterData.moderation?.feedback || "Please review the assessment again."}"</i></p>
+                       </div>
+                       <p>Please log in immediately to apply the required corrective actions.</p>`,
+            ctaText: "Correct Assessment",
+            ctaLink: `${APP_URL}/assessments/grade/${submissionId}`,
+            showStepIndicator: false,
+          };
+          await sendMailgunEmail({
+            to: assessor.email,
+            subject: `Action Required: Moderation Rework`,
+            text: buildMlabEmailPlainText(params),
+            html: buildMlabEmailHtml(params),
+          });
+        }
+      }
+    } catch (error) {
+      console.error("Error processing submission notifications:", error);
+>>>>>>> dc5e6e85f7da2b5cc456794fff55bafa22f23d7c
     }
   },
 );
 
+<<<<<<< HEAD
 // // ============================================================================
 // // PDF GENERATION LOGIC (generateMasterPoE)
 // // ============================================================================
@@ -2754,6 +3343,273 @@ export const issueBlockchainCertificate = onCall(
 // ============================================================================
 // PDF GENERATION LOGIC (generateMasterPoE)
 // ============================================================================
+=======
+export const onAssessmentCreated = onDocumentCreated(
+  { document: "assessments/{assessmentId}", secrets: [mailgunSecret] },
+  async (event) => {
+    const data = event.data?.data();
+    if (!data || !data.cohortId) return;
+
+    const { title, cohortId, availableFrom, dueDate } = data;
+    const db = admin.firestore();
+
+    try {
+      const cohortSnap = await db.collection("cohorts").doc(cohortId).get();
+      const cohortData = cohortSnap.data();
+      if (!cohortData || !cohortData.learnerIds) return;
+
+      const emailPromises = cohortData.learnerIds.map(async (uid: string) => {
+        const lSnap = await db.collection("learners").doc(uid).get();
+        const learner = lSnap.data();
+        if (!learner?.email) return;
+
+        const params = {
+          title: `New Assessment Available`,
+          subtitle: title,
+          recipientName: learner.fullName || "Learner",
+          bodyHtml: `<p>A new assessment <strong>${title}</strong> has been assigned to your class.</p>
+                     <div style="background-color: #f8fafc; padding: 15px; border-radius: 6px; border: 1px solid #e2e8f0; border-left: 4px solid #073f4e; margin: 20px 0;">
+                        <p style="margin: 0; color: #475569;">
+                          ${availableFrom ? `📅 <b>Scheduled Start:</b> ${availableFrom}<br/>` : ""}
+                          ${dueDate ? `⏰ <b>Submission Deadline:</b> ${dueDate}` : ""}
+                        </p>
+                     </div>
+                     <p>Please log in to your learner portal to review the requirements and start your submission.</p>`,
+          ctaText: "Go to Assessment",
+          ctaLink: `${APP_URL}/portal/assessments`,
+          showStepIndicator: false,
+        };
+
+        return sendMailgunEmail({
+          to: learner.email,
+          subject: `New Assessment: ${title}`,
+          text: buildMlabEmailPlainText(params),
+          html: buildMlabEmailHtml(params),
+        });
+      });
+
+      await Promise.all(emailPromises);
+    } catch (error) {
+      console.error("Error sending new assessment alerts:", error);
+    }
+  },
+);
+
+export const onLearnerBlockchainVerified = onDocumentUpdated(
+  { document: "learners/{learnerId}", secrets: [mailgunSecret] },
+  async (event) => {
+    const beforeData = event.data?.before.data();
+    const afterData = event.data?.after.data();
+
+    if (!beforeData || !afterData) return;
+
+    if (!beforeData.isBlockchainVerified && afterData.isBlockchainVerified) {
+      const { email, fullName, verificationCode } = afterData;
+      const qualName = afterData.qualification?.name || "Qualification";
+
+      if (email && verificationCode) {
+        const params = {
+          title: `Official Credential Minted`,
+          subtitle: qualName,
+          recipientName: fullName || "Learner",
+          bodyHtml: `<p>Your official Statement of Results for <strong>${qualName}</strong> has been successfully minted to the blockchain.</p>
+                     <p>This means your academic credential is now permanently secured, immutable, and instantly verifiable by future employers.</p>
+                     <div style="background-color: #f0fdf4; padding: 15px; border-radius: 6px; border: 1px solid #bbf7d0; border-left: 4px solid #16a34a; margin: 20px 0;">
+                        <p style="margin: 0; color: #166534;"><strong>Your Verification ID:</strong> ${verificationCode}</p>
+                     </div>
+                     <p>You can view, download, and share your official digital credential using your public verification link below:</p>`,
+          ctaText: "View Official Credential",
+          ctaLink: `${APP_URL}/sor/${verificationCode}`,
+          showStepIndicator: false,
+        };
+
+        try {
+          await sendMailgunEmail({
+            to: email,
+            subject: `🎉 Official Credential Minted: ${qualName}`,
+            text: buildMlabEmailPlainText(params),
+            html: buildMlabEmailHtml(params),
+          });
+        } catch (error) {
+          console.error("Error sending blockchain verification email:", error);
+        }
+      }
+    }
+  },
+);
+
+export const sendCustomVerificationEmail = onCall(
+  { secrets: [mailgunSecret] },
+  async (request) => {
+    const authCtx = request.auth;
+    if (!authCtx) throw new HttpsError("unauthenticated", "Must be logged in.");
+
+    const userEmail = authCtx.token.email;
+    const uid = authCtx.uid;
+    if (!userEmail)
+      throw new HttpsError("invalid-argument", "No email found for this user.");
+
+    try {
+      let userName = authCtx.token.name;
+      if (!userName) {
+        const userDoc = await admin
+          .firestore()
+          .collection("users")
+          .doc(uid)
+          .get();
+        if (userDoc.exists) userName = userDoc.data()?.fullName;
+      }
+      userName = userName || "there";
+
+      const verificationLink = await admin
+        .auth()
+        .generateEmailVerificationLink(userEmail);
+
+      const emailParams = {
+        title: "Verify Your Email",
+        subtitle: "Secure your account to access your platform dashboard",
+        recipientName: userName,
+        bodyHtml: `<p>Welcome to the mLab Assessment Platform. To secure your credentials and unlock your platform dashboard, please verify your email address by clicking the button below.</p>
+                   <div style="margin: 20px 0; padding: 14px 18px; background-color: #e4edf0; border: 1px solid #dde4e8; border-left: 4px solid #073f4e;">
+                      <p style="margin: 0; font-size: 9px; font-weight: bold; text-transform: uppercase; color: #9b9b9b;">Verification Recipient</p>
+                      <p style="margin: 0; font-size: 16px; font-weight: bold; color: #073f4e;">${userEmail}</p>
+                   </div>`,
+        ctaText: "Verify Email Address",
+        ctaLink: verificationLink,
+        showStepIndicator: true,
+      };
+
+      await sendMailgunEmail({
+        to: userEmail,
+        subject: "Verify Your mLab Account",
+        text: buildMlabEmailPlainText(emailParams),
+        html: buildMlabEmailHtml(emailParams),
+      });
+
+      return { success: true, message: "Verification email sent." };
+    } catch (error: any) {
+      console.error("Email Error:", error);
+      throw new HttpsError("internal", error.message || "Failed to send email");
+    }
+  },
+);
+
+// ============================================================================
+// BLOCKCHAIN LOGIC
+// ============================================================================
+const RPC_URL =
+  process.env.RPC_URL || "https://ethereum-sepolia-rpc.publicnode.com";
+const CONTRACT_ADDRESS = process.env.CONTRACT_ADDRESS || "";
+const PINATA_JWT = process.env.PINATA_JWT || "";
+
+const contractABI = [
+  "function issueCertificate(string certId, bytes32 dataFingerprint) public",
+];
+
+export const issueBlockchainCertificate = onCall(
+  { secrets: [privateKeySecret] },
+  async (request) => {
+    const { data, auth } = request;
+
+    if (!auth) {
+      throw new HttpsError(
+        "unauthenticated",
+        "You must be logged in to mint documents.",
+      );
+    }
+
+    const {
+      verificationCode,
+      learnerName,
+      idNumber,
+      qualification,
+      issueDate,
+      eisaStatus,
+      pdfBase64,
+    } = data;
+
+    if (!verificationCode || !pdfBase64 || !CONTRACT_ADDRESS || !PINATA_JWT) {
+      throw new HttpsError(
+        "invalid-argument",
+        "Missing required data or environment variables.",
+      );
+    }
+
+    try {
+      console.log(`Uploading ${verificationCode}.pdf to Pinata...`);
+      const base64Data = pdfBase64.replace(
+        /^data:application\/pdf;base64,/,
+        "",
+      );
+      const pdfBuffer = Buffer.from(base64Data, "base64");
+
+      const formData = new FormData();
+      formData.append("file", pdfBuffer, {
+        filename: `${verificationCode}.pdf`,
+        contentType: "application/pdf",
+      });
+
+      const pinataResponse = await axios.post(
+        "https://api.pinata.cloud/pinning/pinFileToIPFS",
+        formData,
+        {
+          headers: {
+            Authorization: `Bearer ${PINATA_JWT}`,
+            ...formData.getHeaders(),
+          },
+        },
+      );
+
+      const ipfsHash = pinataResponse.data.IpfsHash;
+      console.log(`✅ Uploaded to IPFS! Hash: ${ipfsHash}`);
+      console.log(`Minting to Sepolia...`);
+
+      const provider = new ethers.JsonRpcProvider(RPC_URL);
+      const wallet = new ethers.Wallet(privateKeySecret.value(), provider);
+      const contract = new ethers.Contract(
+        CONTRACT_ADDRESS,
+        contractABI,
+        wallet,
+      );
+
+      const fingerprint = ethers.solidityPackedKeccak256(
+        ["string", "string", "string", "string", "string", "string"],
+        [
+          learnerName.trim(),
+          idNumber.trim(),
+          qualification.trim(),
+          issueDate.trim(),
+          eisaStatus.trim(),
+          ipfsHash.trim(),
+        ],
+      );
+
+      const tx = await contract.issueCertificate(verificationCode, fingerprint);
+      const receipt = await tx.wait();
+
+      console.log(`✅ Minted successfully! TX: ${receipt.hash}`);
+
+      return {
+        success: true,
+        ipfsHash: ipfsHash,
+        fingerprint: fingerprint,
+        transactionHash: receipt.hash,
+        timestamp: new Date().toISOString(),
+      };
+    } catch (error: any) {
+      console.error("Cloud Function Error:", error);
+      throw new HttpsError(
+        "internal",
+        error.message || "Failed to process certificate",
+      );
+    }
+  },
+);
+
+// ============================================================================
+// PDF GENERATION LOGIC (generateMasterPoE)
+// ============================================================================
+>>>>>>> dc5e6e85f7da2b5cc456794fff55bafa22f23d7c
 
 interface UploadedDoc {
   id: string;
@@ -2859,12 +3715,15 @@ const fetchFileBuffer = async (url: string): Promise<Buffer | null> => {
   }
 };
 
+<<<<<<< HEAD
 // ─── HELPER: CLEAN RICH TEXT (FIXES THE WORD-BREAK BUG IN PDF) ───────────────
 const cleanRichText = (html?: string) => {
   if (!html) return "";
   return html.replace(/&nbsp;/g, " ");
 };
 
+=======
+>>>>>>> dc5e6e85f7da2b5cc456794fff55bafa22f23d7c
 const POE_STYLES = `
   @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@300;400;500;600;700&display=swap');
   @page { size: A4; margin: 15mm 16mm 22mm; }
@@ -2948,8 +3807,11 @@ const POE_STYLES = `
   .badge--p   { background: #f0f4f6; color: #6b6b6b; border: 1px solid #dde4e8; }
   .badge--attempt { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
   .badge--attempt1 { background: #f0f4f6; color: #6b6b6b; border: 1px solid #dde4e8; }
+<<<<<<< HEAD
   .mod-header-row td { background-color: #f1f5f9 !important; border-top: 2px solid #cbd5e1 !important; border-bottom: 1px solid #cbd5e1 !important; }
   .mod-header-text { font-family: 'Oswald', sans-serif; font-size: 10px; color: #073f4e; letter-spacing: 0.05em; text-transform: uppercase; font-weight: 700; }
+=======
+>>>>>>> dc5e6e85f7da2b5cc456794fff55bafa22f23d7c
   .module-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 12px 16px; background: #e4edf0; border-left: 5px solid #073f4e; margin-bottom: 12px; }
   .module-header__title { font-family: 'Oswald', sans-serif; font-size: 14px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: #073f4e; margin: 0; }
   .eval-box { border: 1px solid #dde4e8; border-top: 3px solid #073f4e; margin-bottom: 16px; page-break-inside: avoid; }

@@ -226,6 +226,7 @@ export const AssessmentBuilder: React.FC = () => {
     };
 
     useEffect(() => {
+        console.log('USERSAAA: ', user)
         if (cohorts.length === 0) fetchCohorts();
         if (learners.length === 0) fetchLearners();
         if (programmes.length === 0) fetchProgrammes();
@@ -1292,6 +1293,7 @@ export const AssessmentBuilder: React.FC = () => {
                                 <div className="ab-fg">
                                     <div className="ab-fg-header">
                                         <label className="ab-fg-label">Assign to Cohorts</label>
+<<<<<<< HEAD
                                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                                             {/* 🚀 SELECT ALL TOGGLE BUTTON */}
                                             {cohorts.length > 0 && (
@@ -1308,6 +1310,11 @@ export const AssessmentBuilder: React.FC = () => {
                                                 <button className="ab-text-btn" onClick={() => setShowCohortModal(true)}>+ New Class</button>
                                             )}
                                         </div>
+=======
+                                        {user?.role === 'admin' && (
+                                            <button className="ab-text-btn" onClick={() => setShowCohortModal(true)}>+ New Class</button>
+                                        )}
+>>>>>>> dc5e6e85f7da2b5cc456794fff55bafa22f23d7c
                                     </div>
 
                                     {/* 🚀 Visual counter of selected cohorts */}
