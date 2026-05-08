@@ -90,7 +90,7 @@ export const AttendancePage: React.FC = () => {
                     });
 
                     // Sort alphabetically
-                    roster.sort((a, b) => a.fullName.localeCompare(b.fullName));
+                    roster.sort((a: any, b: any) => a.fullName.localeCompare(b.fullName));
                     setAttendanceList(roster);
                 }
                 setLoading(false);
