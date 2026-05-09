@@ -356,7 +356,7 @@ export interface Cohort {
   // The Students
   learnerIds: string[]; // Array of Learner IDs
 
-  // 🚀 STRICTLY TYPED RECESS PERIODS
+  // STRICTLY TYPED RECESS PERIODS
   recessPeriods?: RecessPeriod[];
 
   staffHistory?: StaffHistoryEntry[];

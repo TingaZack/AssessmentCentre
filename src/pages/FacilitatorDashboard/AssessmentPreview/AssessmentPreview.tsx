@@ -155,7 +155,7 @@ export const AssessmentPreview: React.FC = () => {
                         {blocks.reduce((acc: any[], block: any) => {
                             if (block.type === 'section') acc.push({ type: 'section', label: block.title, id: block.id });
                             else if (['text', 'mcq', 'task', 'checklist', 'logbook', 'qcto_workplace'].includes(block.type))
-                                // 🚀 FIX: Strip HTML tags out of the sidebar navigation links
+                                // FIX: Strip HTML tags out of the sidebar navigation links
                                 acc.push({ type: 'q', label: block.question?.replace(/<[^>]*>?/gm, '') || block.title || 'Workplace Checkpoint', id: block.id });
                             return acc;
                         }, []).map((item: any) =>
@@ -263,7 +263,7 @@ export const AssessmentPreview: React.FC = () => {
                                     <div key={block.id} id={`block-${block.id}`} className="mlab-block-question">
                                         <div className="mlab-block-question__header">
                                             <span className="mlab-block-question__num">Q{qNum}</span>
-                                            {/* 🚀 FIX: Apply Quill styling to preview header */}
+                                            {/* FIX: Apply Quill styling to preview header */}
                                             <div className="mlab-block-question__text">
                                                 {block.question ? <div className="quill-read-only-content" dangerouslySetInnerHTML={{ __html: block.question }} /> : 'Untitled Question'}
                                             </div>
@@ -289,7 +289,7 @@ export const AssessmentPreview: React.FC = () => {
                                     <div key={block.id} id={`block-${block.id}`} className="mlab-block-question">
                                         <div className="mlab-block-question__header">
                                             <span className="mlab-block-question__num">Q{qNum}</span>
-                                            {/* 🚀 FIX: Apply Quill styling to preview header */}
+                                            {/* FIX: Apply Quill styling to preview header */}
                                             <div className="mlab-block-question__text">
                                                 {block.question ? <div className="quill-read-only-content" dangerouslySetInnerHTML={{ __html: block.question }} /> : 'Untitled Question'}
                                             </div>
@@ -331,7 +331,7 @@ export const AssessmentPreview: React.FC = () => {
                                     <div key={block.id} id={`block-${block.id}`} className="mlab-block-question">
                                         <div className="mlab-block-question__header">
                                             <span className="mlab-block-question__num" style={{ background: '#ede9fe', color: '#8b5cf6' }}>Q{qNum}</span>
-                                            {/* 🚀 FIX: Apply Quill styling to preview header */}
+                                            {/* FIX: Apply Quill styling to preview header */}
                                             <div className="mlab-block-question__text">
                                                 {block.question ? <div className="quill-read-only-content" dangerouslySetInnerHTML={{ __html: block.question }} /> : 'Untitled Question'}
                                             </div>

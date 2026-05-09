@@ -1,7 +1,7 @@
 // src/components/views/LearnerProfileView/LearnerProfileView.tsx
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { createPortal } from 'react-dom'; // 🚀 IMPORTED CREATEPORTAL
+import { createPortal } from 'react-dom'; // IMPORTED CREATEPORTAL
 import {
     User, Phone, MapPin, ShieldCheck,
     FileText, Edit3, Save, X, Fingerprint,

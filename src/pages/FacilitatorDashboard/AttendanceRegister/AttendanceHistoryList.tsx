@@ -28,15 +28,15 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
     const navigate = useNavigate();
     const toast = useToast();
 
-    // 🚀 ADMIN "GOD MODE" CHECK 🚀
+    // ADMIN "GOD MODE" CHECK 🚀
     const user = useStore(s => s.user);
     const isAdmin = user?.role === 'admin' || (user as any)?.isSuperAdmin;
 
-    // 🚀 COHORT SELECTOR LOGIC 🚀
+    // COHORT SELECTOR LOGIC 🚀
     const allCohorts = useStore(s => s.cohorts) || [];
     const fetchCohorts = useStore(s => s.fetchCohorts);
 
-    // 🚀 GUARANTEE COHORTS ARE LOADED INSTANTLY
+    // GUARANTEE COHORTS ARE LOADED INSTANTLY
     useEffect(() => {
         if (allCohorts.length === 0 && fetchCohorts) {
             fetchCohorts();
@@ -48,10 +48,10 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
         return allCohorts.filter(c => c.facilitatorId === (facilitatorId || user?.uid));
     }, [allCohorts, isAdmin, facilitatorId, user?.uid]);
 
-    // 🚀 Default to empty string ("All Cohorts")
+    // Default to empty string ("All Cohorts")
     const [selectedCohortId, setSelectedCohortId] = useState<string>('');
 
-    // 🚀 TIME MACHINE STATE 🚀
+    // TIME MACHINE STATE 🚀
     const [reconcileDate, setReconcileDate] = useState<string>('');
 
     const fetchFacilitatorLeaveRequests = useStore(s => s.fetchFacilitatorLeaveRequests);
@@ -64,10 +64,10 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
     const [loadingRegisters, setLoadingRegisters] = useState<boolean>(() => cachedHistory === null);
     const [error, setError] = useState<string | null>(null);
 
-    // 🚀 HOLIDAY CACHE FOR ANALYTICS 🚀
+    // HOLIDAY CACHE FOR ANALYTICS 🚀
     const [holidays, setHolidays] = useState<string[]>([]);
 
-    // 🚀 ADMIN LEAVES STATE 🚀
+    // ADMIN LEAVES STATE 🚀
     const [adminLeaves, setAdminLeaves] = useState<any[]>([]);
     const [loadingAdminLeaves, setLoadingAdminLeaves] = useState(false);
 
@@ -176,7 +176,7 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
         return data;
     }, [history, registerSearch, selectedCohortId]);
 
-    // ── 🚀 ANALYTICS: COHORT HEALTH MATH 🚀 ──────────────────────────────────
+    // ── ANALYTICS: COHORT HEALTH MATH ──────────────────────────────────
     const cohortStats = useMemo(() => {
         if (!selectedCohortId) return null;
 
@@ -252,7 +252,7 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
 
     const pendingLeaveCount = displayedLeavesData.filter(r => r.status === 'Pending').length;
 
-    // 🚀 STATE-DRIVEN RECONCILIATION CHECK 🚀
+    // STATE-DRIVEN RECONCILIATION CHECK 🚀
     const todayString = moment().format('YYYY-MM-DD');
     const isFinalizedToday = selectedCohortId
         ? history.some(r => r.cohortId === selectedCohortId && r.date === todayString)
@@ -296,7 +296,7 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
                         scansByDate[date].push({ ref: d.ref, ...data });
                     });
 
-                    // 🚀 If nobody checked in at all today, we STILL must finalize TODAY
+                    // If nobody checked in at all today, we STILL must finalize TODAY
                     if (Object.keys(scansByDate).length === 0) {
                         scansByDate[todayString] = [];
                     }
@@ -306,7 +306,7 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
                         // Deduplicate who was present
                         const presentLearnerIds = [...new Set(scans.map(s => s.learnerId))];
 
-                        // 🚀 CALCULATE ABSENCES: Roster MINUS Present Learners
+                        // CALCULATE ABSENCES: Roster MINUS Present Learners
                         const absentLearnerIds = rosterIds.filter((id: string) => !presentLearnerIds.includes(id));
 
                         const historyRef = doc(collection(db, 'attendance'));
@@ -325,7 +325,7 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
                             method: 'manual_close'
                         });
 
-                        // 🚀 NEW: GAMIFICATION ENGINE - Grade the Learners! 🚀
+                        // NEW: GAMIFICATION ENGINE - Grade the Learners! 🚀
 
                         // A. Reward Present Learners (+8 Lab Hours, +1 Streak)
                         presentLearnerIds.forEach((id: string) => {
@@ -461,7 +461,7 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
                     <div className="mlab-toolbar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.5rem' }}>
                         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', flex: 1 }}>
 
-                            {/* 🚀 BEAUTIFUL DATE FILTER INPUT 🚀 */}
+                            {/* BEAUTIFUL DATE FILTER INPUT */}
                             <div className="mlab-search" style={{
                                 minWidth: '250px', maxWidth: '350px', display: 'flex',
                                 alignItems: 'center', gap: '8px', padding: '4px 12px',
@@ -517,7 +517,7 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
                                 ))}
                             </select>
 
-                            {/* 🚀 TIME MACHINE WIDGET 🚀 */}
+                            {/* TIME MACHINE WIDGET */}
                             {selectedCohortId && (
                                 <div style={{
                                     display: 'flex', alignItems: 'center', gap: '8px',
@@ -587,7 +587,7 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
                                 <Clock size={16} /> Live Dashboard
                             </button>
 
-                            {/* 🚀 STATE-DRIVEN FINALIZE BUTTON 🚀 */}
+                            {/* STATE-DRIVEN FINALIZE BUTTON */}
                             {selectedCohortId && (
                                 <button
                                     className="mlab-btn"
@@ -618,7 +618,7 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
                         </div>
                     </div>
 
-                    {/* 🚀 TERM ANALYTICS PANEL (Appears when Cohort Selected) 🚀 */}
+                    {/* TERM ANALYTICS PANEL (Appears when Cohort Selected) */}
                     {selectedCohortId && cohortStats && (
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginBottom: '1.5rem', animation: 'fade-in 0.3s ease' }}>
                             <div style={{ background: 'white', padding: '1.25rem', borderRadius: '12px', border: '1px solid var(--mlab-border)', borderLeft: '4px solid var(--mlab-blue)', display: 'flex', alignItems: 'center', gap: '1rem' }}>
@@ -672,7 +672,7 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
                                     const proofCount = Object.keys(record.proofs || {}).length;
                                     const presentCount = record.presentLearners?.length || 0;
 
-                                    // 🚀 FIX: Grab the saved name first, then fallback to the lookup, then fallback to Unknown
+                                    // FIX: Grab the saved name first, then fallback to the lookup, then fallback to Unknown
                                     const cohortName = record.cohortName || allCohorts.find(c => c.id === record.cohortId)?.name || 'Unknown Cohort';
 
                                     return (
@@ -959,15 +959,15 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
 //     const navigate = useNavigate();
 //     const toast = useToast();
 
-//     // 🚀 ADMIN "GOD MODE" CHECK 🚀
+//     // ADMIN "GOD MODE" CHECK 🚀
 //     const user = useStore(s => s.user);
 //     const isAdmin = user?.role === 'admin' || (user as any)?.isSuperAdmin;
 
-//     // 🚀 COHORT SELECTOR LOGIC 🚀
+//     // COHORT SELECTOR LOGIC 🚀
 //     const allCohorts = useStore(s => s.cohorts) || [];
 //     const fetchCohorts = useStore(s => s.fetchCohorts);
 
-//     // 🚀 GUARANTEE COHORTS ARE LOADED INSTANTLY
+//     // GUARANTEE COHORTS ARE LOADED INSTANTLY
 //     useEffect(() => {
 //         if (allCohorts.length === 0 && fetchCohorts) {
 //             fetchCohorts();
@@ -979,10 +979,10 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
 //         return allCohorts.filter(c => c.facilitatorId === (facilitatorId || user?.uid));
 //     }, [allCohorts, isAdmin, facilitatorId, user?.uid]);
 
-//     // 🚀 Default to empty string ("All Cohorts")
+//     // Default to empty string ("All Cohorts")
 //     const [selectedCohortId, setSelectedCohortId] = useState<string>('');
 
-//     // 🚀 TIME MACHINE STATE 🚀
+//     // TIME MACHINE STATE 🚀
 //     const [reconcileDate, setReconcileDate] = useState<string>('');
 
 //     const fetchFacilitatorLeaveRequests = useStore(s => s.fetchFacilitatorLeaveRequests);
@@ -995,10 +995,10 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
 //     const [loadingRegisters, setLoadingRegisters] = useState<boolean>(() => cachedHistory === null);
 //     const [error, setError] = useState<string | null>(null);
 
-//     // 🚀 HOLIDAY CACHE FOR ANALYTICS 🚀
+//     // HOLIDAY CACHE FOR ANALYTICS 🚀
 //     const [holidays, setHolidays] = useState<string[]>([]);
 
-//     // 🚀 ADMIN LEAVES STATE 🚀
+//     // ADMIN LEAVES STATE 🚀
 //     const [adminLeaves, setAdminLeaves] = useState<any[]>([]);
 //     const [loadingAdminLeaves, setLoadingAdminLeaves] = useState(false);
 
@@ -1107,7 +1107,7 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
 //         return data;
 //     }, [history, registerSearch, selectedCohortId]);
 
-//     // ── 🚀 ANALYTICS: COHORT HEALTH MATH 🚀 ──────────────────────────────────
+//     // ── ANALYTICS: COHORT HEALTH MATH ──────────────────────────────────
 //     const cohortStats = useMemo(() => {
 //         if (!selectedCohortId) return null;
 
@@ -1183,7 +1183,7 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
 
 //     const pendingLeaveCount = displayedLeavesData.filter(r => r.status === 'Pending').length;
 
-//     // 🚀 STATE-DRIVEN RECONCILIATION CHECK 🚀
+//     // STATE-DRIVEN RECONCILIATION CHECK 🚀
 //     const todayString = moment().format('YYYY-MM-DD');
 //     const isFinalizedToday = selectedCohortId
 //         ? history.some(r => r.cohortId === selectedCohortId && r.date === todayString)
@@ -1227,7 +1227,7 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
 //                         scansByDate[date].push({ ref: d.ref, ...data });
 //                     });
 
-//                     // 🚀 If nobody checked in at all today, we STILL must finalize TODAY
+//                     // If nobody checked in at all today, we STILL must finalize TODAY
 //                     if (Object.keys(scansByDate).length === 0) {
 //                         scansByDate[todayString] = [];
 //                     }
@@ -1237,7 +1237,7 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
 //                         // Deduplicate who was present
 //                         const presentLearnerIds = [...new Set(scans.map(s => s.learnerId))];
 
-//                         // 🚀 CALCULATE ABSENCES: Roster MINUS Present Learners
+//                         // CALCULATE ABSENCES: Roster MINUS Present Learners
 //                         const absentLearnerIds = rosterIds.filter((id: string) => !presentLearnerIds.includes(id));
 
 //                         const historyRef = doc(collection(db, 'attendance'));
@@ -1372,7 +1372,7 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
 //                     <div className="mlab-toolbar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.5rem' }}>
 //                         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', flex: 1 }}>
 
-//                             {/* 🚀 BEAUTIFUL DATE FILTER INPUT 🚀 */}
+//                             {/* BEAUTIFUL DATE FILTER INPUT */}
 //                             <div className="mlab-search" style={{
 //                                 minWidth: '250px', maxWidth: '350px', display: 'flex',
 //                                 alignItems: 'center', gap: '8px', padding: '4px 12px',
@@ -1428,7 +1428,7 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
 //                                 ))}
 //                             </select>
 
-//                             {/* 🚀 TIME MACHINE WIDGET 🚀 */}
+//                             {/* TIME MACHINE WIDGET */}
 //                             {selectedCohortId && (
 //                                 <div style={{
 //                                     display: 'flex', alignItems: 'center', gap: '8px',
@@ -1498,7 +1498,7 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
 //                                 <Clock size={16} /> Live Dashboard
 //                             </button>
 
-//                             {/* 🚀 STATE-DRIVEN FINALIZE BUTTON 🚀 */}
+//                             {/* STATE-DRIVEN FINALIZE BUTTON */}
 //                             {selectedCohortId && (
 //                                 <button
 //                                     className="mlab-btn"
@@ -1529,7 +1529,7 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
 //                         </div>
 //                     </div>
 
-//                     {/* 🚀 TERM ANALYTICS PANEL (Appears when Cohort Selected) 🚀 */}
+//                     {/* TERM ANALYTICS PANEL (Appears when Cohort Selected) */}
 //                     {selectedCohortId && cohortStats && (
 //                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginBottom: '1.5rem', animation: 'fade-in 0.3s ease' }}>
 //                             <div style={{ background: 'white', padding: '1.25rem', borderRadius: '12px', border: '1px solid var(--mlab-border)', borderLeft: '4px solid var(--mlab-blue)', display: 'flex', alignItems: 'center', gap: '1rem' }}>
@@ -1583,7 +1583,7 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
 //                                     const proofCount = Object.keys(record.proofs || {}).length;
 //                                     const presentCount = record.presentLearners?.length || 0;
 
-//                                     // 🚀 FIX: Grab the saved name first, then fallback to the lookup, then fallback to Unknown
+//                                     // FIX: Grab the saved name first, then fallback to the lookup, then fallback to Unknown
 //                                     const cohortName = record.cohortName || allCohorts.find(c => c.id === record.cohortId)?.name || 'Unknown Cohort';
 
 //                                     return (
@@ -1870,21 +1870,21 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
 // //     const navigate = useNavigate();
 // //     const toast = useToast();
 
-// //     // 🚀 ADMIN "GOD MODE" CHECK 🚀
+// //     // ADMIN "GOD MODE" CHECK 🚀
 // //     const user = useStore(s => s.user);
 // //     const isAdmin = user?.role === 'admin' || (user as any)?.isSuperAdmin;
 
-// //     // 🚀 COHORT SELECTOR LOGIC 🚀
+// //     // COHORT SELECTOR LOGIC 🚀
 // //     const allCohorts = useStore(s => s.cohorts) || [];
 // //     const availableCohorts = useMemo(() => {
 // //         if (isAdmin) return allCohorts;
 // //         return allCohorts.filter(c => c.facilitatorId === (facilitatorId || user?.uid));
 // //     }, [allCohorts, isAdmin, facilitatorId, user?.uid]);
 
-// //     // 🚀 Default to empty string ("All Cohorts")
+// //     // Default to empty string ("All Cohorts")
 // //     const [selectedCohortId, setSelectedCohortId] = useState<string>('');
 
-// //     // 🚀 TIME MACHINE STATE 🚀
+// //     // TIME MACHINE STATE 🚀
 // //     const [reconcileDate, setReconcileDate] = useState<string>('');
 
 // //     const fetchFacilitatorLeaveRequests = useStore(s => s.fetchFacilitatorLeaveRequests);
@@ -1897,10 +1897,10 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
 // //     const [loadingRegisters, setLoadingRegisters] = useState<boolean>(() => cachedHistory === null);
 // //     const [error, setError] = useState<string | null>(null);
 
-// //     // 🚀 HOLIDAY CACHE FOR ANALYTICS 🚀
+// //     // HOLIDAY CACHE FOR ANALYTICS 🚀
 // //     const [holidays, setHolidays] = useState<string[]>([]);
 
-// //     // 🚀 ADMIN LEAVES STATE 🚀
+// //     // ADMIN LEAVES STATE 🚀
 // //     const [adminLeaves, setAdminLeaves] = useState<any[]>([]);
 // //     const [loadingAdminLeaves, setLoadingAdminLeaves] = useState(false);
 
@@ -2012,7 +2012,7 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
 // //         return data;
 // //     }, [history, registerSearch, selectedCohortId]);
 
-// //     // ── 🚀 ANALYTICS: COHORT HEALTH MATH 🚀 ──────────────────────────────────
+// //     // ── ANALYTICS: COHORT HEALTH MATH ──────────────────────────────────
 // //     const cohortStats = useMemo(() => {
 // //         if (!selectedCohortId) return null;
 
@@ -2088,7 +2088,7 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
 
 // //     const pendingLeaveCount = displayedLeavesData.filter(r => r.status === 'Pending').length;
 
-// //     // 🚀 STATE-DRIVEN RECONCILIATION CHECK 🚀
+// //     // STATE-DRIVEN RECONCILIATION CHECK 🚀
 // //     const todayString = moment().format('YYYY-MM-DD');
 // //     const isFinalizedToday = selectedCohortId
 // //         ? history.some(r => r.cohortId === selectedCohortId && r.date === todayString)
@@ -2303,7 +2303,7 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
 // //                                 ))}
 // //                             </select>
 
-// //                             {/* 🚀 TIME MACHINE WIDGET 🚀 */}
+// //                             {/* TIME MACHINE WIDGET */}
 // //                             {selectedCohortId && (
 // //                                 <div style={{
 // //                                     display: 'flex', alignItems: 'center', gap: '8px',
@@ -2373,7 +2373,7 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
 // //                                 <Clock size={16} /> Live Dashboard
 // //                             </button>
 
-// //                             {/* 🚀 STATE-DRIVEN FINALIZE BUTTON 🚀 */}
+// //                             {/* STATE-DRIVEN FINALIZE BUTTON */}
 // //                             {selectedCohortId && (
 // //                                 <button
 // //                                     className="mlab-btn"
@@ -2404,7 +2404,7 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
 // //                         </div>
 // //                     </div>
 
-// //                     {/* 🚀 TERM ANALYTICS PANEL (Appears when Cohort Selected) 🚀 */}
+// //                     {/* TERM ANALYTICS PANEL (Appears when Cohort Selected) */}
 // //                     {selectedCohortId && cohortStats && (
 // //                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginBottom: '1.5rem', animation: 'fade-in 0.3s ease' }}>
 // //                             <div style={{ background: 'white', padding: '1.25rem', borderRadius: '12px', border: '1px solid var(--mlab-border)', borderLeft: '4px solid var(--mlab-blue)', display: 'flex', alignItems: 'center', gap: '1rem' }}>
@@ -2458,7 +2458,7 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
 // //                                     const proofCount = Object.keys(record.proofs || {}).length;
 // //                                     const presentCount = record.presentLearners?.length || 0;
 
-// //                                     // 🚀 FIX: Grab the saved name first, then fallback to the lookup, then fallback to Unknown
+// //                                     // FIX: Grab the saved name first, then fallback to the lookup, then fallback to Unknown
 // //                                     const cohortName = record.cohortName || allCohorts.find(c => c.id === record.cohortId)?.name || 'Unknown Cohort';
 
 // //                                     return (
@@ -2745,18 +2745,18 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
 // // //     const navigate = useNavigate();
 // // //     const toast = useToast();
 
-// // //     // 🚀 ADMIN "GOD MODE" CHECK 🚀
+// // //     // ADMIN "GOD MODE" CHECK 🚀
 // // //     const user = useStore(s => s.user);
 // // //     const isAdmin = user?.role === 'admin' || (user as any)?.isSuperAdmin;
 
-// // //     // 🚀 COHORT SELECTOR LOGIC 🚀
+// // //     // COHORT SELECTOR LOGIC 🚀
 // // //     const allCohorts = useStore(s => s.cohorts) || [];
 // // //     const availableCohorts = useMemo(() => {
 // // //         if (isAdmin) return allCohorts;
 // // //         return allCohorts.filter(c => c.facilitatorId === (facilitatorId || user?.uid));
 // // //     }, [allCohorts, isAdmin, facilitatorId, user?.uid]);
 
-// // //     // 🚀 Default to empty string ("All Cohorts")
+// // //     // Default to empty string ("All Cohorts")
 // // //     const [selectedCohortId, setSelectedCohortId] = useState<string>('');
 
 // // //     const fetchFacilitatorLeaveRequests = useStore(s => s.fetchFacilitatorLeaveRequests);
@@ -2769,10 +2769,10 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
 // // //     const [loadingRegisters, setLoadingRegisters] = useState<boolean>(() => cachedHistory === null);
 // // //     const [error, setError] = useState<string | null>(null);
 
-// // //     // 🚀 HOLIDAY CACHE FOR ANALYTICS 🚀
+// // //     // HOLIDAY CACHE FOR ANALYTICS 🚀
 // // //     const [holidays, setHolidays] = useState<string[]>([]);
 
-// // //     // 🚀 ADMIN LEAVES STATE 🚀
+// // //     // ADMIN LEAVES STATE 🚀
 // // //     const [adminLeaves, setAdminLeaves] = useState<any[]>([]);
 // // //     const [loadingAdminLeaves, setLoadingAdminLeaves] = useState(false);
 
@@ -2884,7 +2884,7 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
 // // //         return data;
 // // //     }, [history, registerSearch, selectedCohortId]);
 
-// // //     // ── 🚀 ANALYTICS: COHORT HEALTH MATH 🚀 ──────────────────────────────────
+// // //     // ── ANALYTICS: COHORT HEALTH MATH ──────────────────────────────────
 // // //     const cohortStats = useMemo(() => {
 // // //         if (!selectedCohortId) return null;
 
@@ -2960,7 +2960,7 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
 
 // // //     const pendingLeaveCount = displayedLeavesData.filter(r => r.status === 'Pending').length;
 
-// // //     // 🚀 STATE-DRIVEN RECONCILIATION CHECK 🚀
+// // //     // STATE-DRIVEN RECONCILIATION CHECK 🚀
 // // //     const todayString = moment().format('YYYY-MM-DD');
 // // //     const isFinalizedToday = selectedCohortId
 // // //         ? history.some(r => r.cohortId === selectedCohortId && r.date === todayString)
@@ -3207,7 +3207,7 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
 // // //                                 <Clock size={16} /> Live Dashboard
 // // //                             </button>
 
-// // //                             {/* 🚀 STATE-DRIVEN FINALIZE BUTTON 🚀 */}
+// // //                             {/* STATE-DRIVEN FINALIZE BUTTON */}
 // // //                             {selectedCohortId && (
 // // //                                 <button
 // // //                                     className="mlab-btn"
@@ -3238,7 +3238,7 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
 // // //                         </div>
 // // //                     </div>
 
-// // //                     {/* 🚀 TERM ANALYTICS PANEL (Appears when Cohort Selected) 🚀 */}
+// // //                     {/* TERM ANALYTICS PANEL (Appears when Cohort Selected) */}
 // // //                     {selectedCohortId && cohortStats && (
 // // //                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginBottom: '1.5rem', animation: 'fade-in 0.3s ease' }}>
 // // //                             <div style={{ background: 'white', padding: '1.25rem', borderRadius: '12px', border: '1px solid var(--mlab-border)', borderLeft: '4px solid var(--mlab-blue)', display: 'flex', alignItems: 'center', gap: '1rem' }}>
@@ -3292,7 +3292,7 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
 // // //                                     const proofCount = Object.keys(record.proofs || {}).length;
 // // //                                     const presentCount = record.presentLearners?.length || 0;
 
-// // //                                     // 🚀 FIX: Grab the saved name first, then fallback to the lookup, then fallback to Unknown
+// // //                                     // FIX: Grab the saved name first, then fallback to the lookup, then fallback to Unknown
 // // //                                     const cohortName = record.cohortName || allCohorts.find(c => c.id === record.cohortId)?.name || 'Unknown Cohort';
 
 // // //                                     return (
@@ -3579,18 +3579,18 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
 // // // //     const navigate = useNavigate();
 // // // //     const toast = useToast();
 
-// // // //     // 🚀 ADMIN "GOD MODE" CHECK 🚀
+// // // //     // ADMIN "GOD MODE" CHECK 🚀
 // // // //     const user = useStore(s => s.user);
 // // // //     const isAdmin = user?.role === 'admin' || (user as any)?.isSuperAdmin;
 
-// // // //     // 🚀 COHORT SELECTOR LOGIC 🚀
+// // // //     // COHORT SELECTOR LOGIC 🚀
 // // // //     const allCohorts = useStore(s => s.cohorts) || [];
 // // // //     const availableCohorts = useMemo(() => {
 // // // //         if (isAdmin) return allCohorts;
 // // // //         return allCohorts.filter(c => c.facilitatorId === (facilitatorId || user?.uid));
 // // // //     }, [allCohorts, isAdmin, facilitatorId, user?.uid]);
 
-// // // //     // 🚀 Default to empty string ("All Cohorts")
+// // // //     // Default to empty string ("All Cohorts")
 // // // //     const [selectedCohortId, setSelectedCohortId] = useState<string>('');
 
 // // // //     // NOTE: We intentionally REMOVED the auto-select useEffect here 
@@ -3606,7 +3606,7 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
 // // // //     const [loadingRegisters, setLoadingRegisters] = useState<boolean>(() => cachedHistory === null);
 // // // //     const [error, setError] = useState<string | null>(null);
 
-// // // //     // 🚀 ADMIN LEAVES STATE 🚀
+// // // //     // ADMIN LEAVES STATE 🚀
 // // // //     const [adminLeaves, setAdminLeaves] = useState<any[]>([]);
 // // // //     const [loadingAdminLeaves, setLoadingAdminLeaves] = useState(false);
 
@@ -3704,7 +3704,7 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
 
 // // // //     const pendingLeaveCount = displayedLeavesData.filter(r => r.status === 'Pending').length;
 
-// // // //     // 🚀 STATE-DRIVEN RECONCILIATION CHECK 🚀
+// // // //     // STATE-DRIVEN RECONCILIATION CHECK 🚀
 // // // //     const todayString = moment().format('YYYY-MM-DD');
 // // // //     const isFinalizedToday = selectedCohortId
 // // // //         ? history.some(r => r.cohortId === selectedCohortId && r.date === todayString)
@@ -3951,7 +3951,7 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
 // // // //                                 <Clock size={16} /> Live Dashboard
 // // // //                             </button>
 
-// // // //                             {/* 🚀 STATE-DRIVEN FINALIZE BUTTON 🚀 */}
+// // // //                             {/* STATE-DRIVEN FINALIZE BUTTON */}
 // // // //                             {selectedCohortId && (
 // // // //                                 <button
 // // // //                                     className="mlab-btn"
@@ -3998,7 +3998,7 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
 // // // //                                     const proofCount = Object.keys(record.proofs || {}).length;
 // // // //                                     const presentCount = record.presentLearners?.length || 0;
 
-// // // //                                     // 🚀 FIX: Grab the saved name first, then fallback to the lookup, then fallback to Unknown
+// // // //                                     // FIX: Grab the saved name first, then fallback to the lookup, then fallback to Unknown
 // // // //                                     const cohortName = record.cohortName || allCohorts.find(c => c.id === record.cohortId)?.name || 'Unknown Cohort';
 
 // // // //                                     return (
@@ -4286,11 +4286,11 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
 // // // // //     const navigate = useNavigate();
 // // // // //     const toast = useToast();
 
-// // // // //     // 🚀 ADMIN "GOD MODE" CHECK 🚀
+// // // // //     // ADMIN "GOD MODE" CHECK 🚀
 // // // // //     const user = useStore(s => s.user);
 // // // // //     const isAdmin = user?.role === 'admin' || (user as any)?.isSuperAdmin;
 
-// // // // //     // 🚀 COHORT SELECTOR LOGIC 🚀
+// // // // //     // COHORT SELECTOR LOGIC 🚀
 // // // // //     const allCohorts = useStore(s => s.cohorts) || [];
 // // // // //     const availableCohorts = useMemo(() => {
 // // // // //         if (isAdmin) return allCohorts;
@@ -4316,7 +4316,7 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
 // // // // //     const [loadingRegisters, setLoadingRegisters] = useState<boolean>(() => cachedHistory === null);
 // // // // //     const [error, setError] = useState<string | null>(null);
 
-// // // // //     // 🚀 ADMIN LEAVES STATE 🚀
+// // // // //     // ADMIN LEAVES STATE 🚀
 // // // // //     const [adminLeaves, setAdminLeaves] = useState<any[]>([]);
 // // // // //     const [loadingAdminLeaves, setLoadingAdminLeaves] = useState(false);
 
@@ -4414,7 +4414,7 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
 
 // // // // //     const pendingLeaveCount = displayedLeavesData.filter(r => r.status === 'Pending').length;
 
-// // // // //     // 🚀 STATE-DRIVEN RECONCILIATION CHECK 🚀
+// // // // //     // STATE-DRIVEN RECONCILIATION CHECK 🚀
 // // // // //     const todayString = moment().format('YYYY-MM-DD');
 // // // // //     const isFinalizedToday = selectedCohortId
 // // // // //         ? history.some(r => r.cohortId === selectedCohortId && r.date === todayString)
@@ -4661,7 +4661,7 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
 // // // // //                                 <Clock size={16} /> Live Dashboard
 // // // // //                             </button>
 
-// // // // //                             {/* 🚀 STATE-DRIVEN FINALIZE BUTTON 🚀 */}
+// // // // //                             {/* STATE-DRIVEN FINALIZE BUTTON */}
 // // // // //                             {selectedCohortId && (
 // // // // //                                 <button
 // // // // //                                     className="mlab-btn"
@@ -5110,7 +5110,7 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
 // // // // // //     return (
 // // // // // //         <div className="att-root animate-fade-in">
 
-// // // // // //             {/* 🚀 Z-INDEX SAFEGUARD FOR STATUS MODAL 🚀 */}
+// // // // // //             {/* Z-INDEX SAFEGUARD FOR STATUS MODAL */}
 // // // // // //             {modalConfig.isOpen && createPortal(
 // // // // // //                 <div style={{ position: 'relative', zIndex: 999999 }}>
 // // // // // //                     <StatusModal
@@ -5222,7 +5222,7 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
 // // // // // //                                         fid: facilitatorId,
 // // // // // //                                         cid: "placeholder_cohort_id" // (We'll pass the real one later)
 // // // // // //                                     }));
-// // // // // //                                     // 🚀 FIX: Use the full origin URL
+// // // // // //                                     // FIX: Use the full origin URL
 // // // // // //                                     const url = `${window.location.origin}/kiosk?auth=${encodedAuth}`;
 // // // // // //                                     window.open(url, '_blank');
 // // // // // //                                 }}

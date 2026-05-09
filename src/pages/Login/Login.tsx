@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { signInWithEmailAndPassword } from 'firebase/auth';
-import { doc, getDoc, updateDoc } from 'firebase/firestore'; // 🚀 ADDED updateDoc
+import { doc, getDoc, updateDoc } from 'firebase/firestore'; // ADDED updateDoc
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { auth, db } from '../../lib/firebase';
 import { useNavigate } from 'react-router-dom';
@@ -50,7 +50,7 @@ const Login: React.FC = () => {
                 const userData = docSnap.data();
                 const role = userData.role || 'learner';
 
-                // 🚀 ENGAGEMENT TRACKER: Update the lastLoginAt timestamp
+                // ENGAGEMENT TRACKER: Update the lastLoginAt timestamp
                 try {
                     await updateDoc(docRef, {
                         lastLoginAt: new Date().toISOString()

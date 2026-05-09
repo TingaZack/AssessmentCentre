@@ -10,7 +10,7 @@ import { useStore } from '../../../store/useStore';
 import { db } from '../../../lib/firebase';
 import Loader from '../../../components/common/Loader/Loader';
 
-// 🚀 CSS IMPORTS
+// CSS IMPORTS
 import '../../AdminDashboard/AdminDashboard.css';
 import '../../../components/views/LearnersView/LearnersView.css';
 import '../../../components/admin/LearnerFormModal/LearnerFormModal.css';
@@ -29,7 +29,7 @@ export const LiveAttendanceBoard: React.FC = () => {
     const [liveScans, setLiveScans] = useState<string[]>([]); // Array of learner IDs who are present
     const [isInitializing, setIsInitializing] = useState(true);
 
-    // 🚀 NEW: Closure State Management
+    // NEW: Closure State Management
     const [holidays, setHolidays] = useState<string[]>([]);
     const [bypassClosure, setBypassClosure] = useState(false);
 
@@ -83,7 +83,7 @@ export const LiveAttendanceBoard: React.FC = () => {
         return Array.from(uniqueMap.values()).sort((a, b) => a.fullName.localeCompare(b.fullName));
     }, [currentCohort, learners]);
 
-    // 3. 🚀 THE MAGIC: Real-time Firestore Listener 🚀
+    // 3. THE MAGIC: Real-time Firestore Listener 🚀
     useEffect(() => {
         if (!cohortId) return;
 
@@ -172,7 +172,7 @@ export const LiveAttendanceBoard: React.FC = () => {
         );
     }
 
-    // ── 🚀 INDUSTRY LOGIC: CHECK FOR CLOSURES ──
+    // ── INDUSTRY LOGIC: CHECK FOR CLOSURES ──
     const isWeekend = moment().day() === 0 || moment().day() === 6;
     const isHoliday = holidays.includes(todayString);
     const recess = (currentCohort.recessPeriods || []).find((p: any) => moment(todayString).isBetween(p.start, p.end, 'day', '[]'));
@@ -352,7 +352,7 @@ export const LiveAttendanceBoard: React.FC = () => {
 // // import { ChevronLeft, Users, UserCheck, CheckCircle, Search, ShieldAlert, Sidebar, Menu, X } from 'lucide-react';
 // // import moment from 'moment';
 
-// // // 🚀 IMPORTING THE STRICT DESIGN SYSTEM
+// // // IMPORTING THE STRICT DESIGN SYSTEM
 // // // import '../../components/admin/LearnerFormModal.css';
 // // import '../../../components/admin/LearnerFormModal/LearnerFormModal.css';
 // // import { useStore } from '../../../store/useStore';
@@ -408,7 +408,7 @@ export const LiveAttendanceBoard: React.FC = () => {
 // //         return Array.from(uniqueMap.values()).sort((a, b) => a.fullName.localeCompare(b.fullName));
 // //     }, [currentCohort, learners]);
 
-// //     // 3. 🚀 THE MAGIC: Real-time Firestore Listener 🚀
+// //     // 3. THE MAGIC: Real-time Firestore Listener 🚀
 // //     useEffect(() => {
 // //         if (!cohortId) return;
 
@@ -670,7 +670,7 @@ export const LiveAttendanceBoard: React.FC = () => {
 // import { ChevronLeft, Users, UserCheck, CheckCircle, Search, ShieldAlert } from 'lucide-react';
 // import moment from 'moment';
 
-// // 🚀 IMPORTING THE STRICT DESIGN SYSTEM
+// // IMPORTING THE STRICT DESIGN SYSTEM
 // // import '../../components/admin/LearnerFormModal.css';
 // import '../../../components/admin/LearnerFormModal/LearnerFormModal.css';
 // import { useStore } from '../../../store/useStore';
@@ -717,7 +717,7 @@ export const LiveAttendanceBoard: React.FC = () => {
 //         return Array.from(uniqueMap.values()).sort((a, b) => a.fullName.localeCompare(b.fullName));
 //     }, [currentCohort, learners]);
 
-//     // 3. 🚀 THE MAGIC: Real-time Firestore Listener 🚀
+//     // 3. THE MAGIC: Real-time Firestore Listener 🚀
 //     useEffect(() => {
 //         if (!cohortId) return;
 
@@ -963,7 +963,7 @@ export const LiveAttendanceBoard: React.FC = () => {
 // // //         return Array.from(uniqueMap.values()).sort((a, b) => a.fullName.localeCompare(b.fullName));
 // // //     }, [currentCohort, learners]);
 
-// // //     // 3. 🚀 THE MAGIC: Real-time Firestore Listener 🚀
+// // //     // 3. THE MAGIC: Real-time Firestore Listener 🚀
 // // //     useEffect(() => {
 // // //         if (!cohortId) return;
 

@@ -52,7 +52,7 @@ export const FilePreview: React.FC<FilePreviewProps> = ({ url, onRemove, disable
                         {isOffice ? 'Download / View Native' : 'Open Fullscreen'}
                     </a>
 
-                    {/* 🚀 THE MISSING ONREMOVE BUTTON 🚀 */}
+                    {/* THE MISSING ONREMOVE BUTTON */}
                     {onRemove && !disabled && (
                         <button
                             type="button"

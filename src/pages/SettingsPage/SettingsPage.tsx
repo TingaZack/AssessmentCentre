@@ -591,7 +591,7 @@ export const SettingsPage: React.FC = () => {
                                                     />
                                                 </div>
 
-                                                {/* 🚀 CAMPUS CONFIG EDITOR (ADDRESS & WIFI SHIELD) */}
+                                                {/* CAMPUS CONFIG EDITOR (ADDRESS & WIFI SHIELD) */}
                                                 <div className="mlab-form-group col-span-2 bg-slate-50 p-5 rounded-lg mt-2">
                                                     <div className="editor-title mb-4"><Edit2 size={14} /> <span>Site Configuration (Address & Security)</span></div>
 
@@ -1115,7 +1115,7 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 //                         }
 //                     });
 
-//                     // 🚀 FIX: SELF-HEALING CAMPUS IDs 🚀
+//                     // FIX: SELF-HEALING CAMPUS IDs 🚀
 //                     // Scans the array. If it finds duplicate IDs (e.g., multiple "campus-1"s), 
 //                     // it generates fresh, unique IDs for them.
 //                     let loadedCampuses = data.campuses || DEFAULT_SETTINGS.campuses;
@@ -1146,7 +1146,7 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 //                     setFormData(mergedData);
 //                     setOriginalData(mergedData);
 
-//                     // 🚀 Trigger the "Save Changes" bar automatically if we fixed broken data
+//                     // Trigger the "Save Changes" bar automatically if we fixed broken data
 //                     if (foundDuplicates) {
 //                         setIsDirty(true);
 //                     }

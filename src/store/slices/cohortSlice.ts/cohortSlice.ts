@@ -248,7 +248,7 @@ export const createCohortSlice: StateCreator<
         // A. Remove fast-pointer from Learner profile (Move to Dormant State)
         batch.set(
           doc(db, "learners", lid),
-          { cohortId: "", status: "dropped", updatedAt: timestamp }, // 🚀 STRICT EMPTY STRING
+          { cohortId: "", status: "dropped", updatedAt: timestamp }, // STRICT EMPTY STRING
           { merge: true },
         );
 
@@ -297,7 +297,7 @@ export const createCohortSlice: StateCreator<
               l.cohortId = id;
               l.status = "active";
             } else if (oldIds.includes(l.id)) {
-              // 🚀 NO FALLBACKS: Force them into Dormant status
+              // NO FALLBACKS: Force them into Dormant status
               l.cohortId = "";
               l.status = "dropped";
             }
@@ -415,7 +415,7 @@ export const createCohortSlice: StateCreator<
 //     if (newCohort.learnerIds && newCohort.learnerIds.length > 0) {
 //       newCohort.learnerIds.forEach((learnerId: string) => {
 //         const learnerRef = doc(db, "learners", learnerId);
-//         // 🚀 BULLETPROOF UPSERT: Use set with merge instead of update
+//         // BULLETPROOF UPSERT: Use set with merge instead of update
 //         batch.set(
 //           learnerRef,
 //           {
@@ -520,7 +520,7 @@ export const createCohortSlice: StateCreator<
 //       const removed = oldIds.filter((lid: string) => !newIds.includes(lid));
 
 //       added.forEach((lid: string) => {
-//         // 🚀 BULLETPROOF UPSERT: Use set with merge instead of update
+//         // BULLETPROOF UPSERT: Use set with merge instead of update
 //         batch.set(
 //           doc(db, "learners", lid),
 //           {
@@ -532,7 +532,7 @@ export const createCohortSlice: StateCreator<
 //       });
 
 //       removed.forEach((lid: string) => {
-//         // 🚀 BULLETPROOF UPSERT: Use set with merge instead of update
+//         // BULLETPROOF UPSERT: Use set with merge instead of update
 //         batch.set(
 //           doc(db, "learners", lid),
 //           {

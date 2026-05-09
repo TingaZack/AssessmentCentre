@@ -37,7 +37,7 @@ const LearnerActionInbox: React.FC<{ profileId: string; logs: any[] }> = ({ prof
         return () => clearInterval(interval);
     }, []);
 
-    // 🚀 Split logs into Pending and History
+    // Split logs into Pending and History
     const pendingLogs = useMemo(() => {
         return logs.filter(log => {
             const isPending = !log.acknowledgedBy?.includes(profileId);
@@ -131,7 +131,7 @@ const LearnerActionInbox: React.FC<{ profileId: string; logs: any[] }> = ({ prof
 
             <div style={{ borderRadius: '8px', overflow: 'hidden', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', marginBottom: '1.5rem', background: 'white', border: '1px solid var(--mlab-border)' }}>
 
-                {/* 🚀 SUB-TABS: PENDING VS HISTORY 🚀 */}
+                {/* SUB-TABS: PENDING VS HISTORY */}
                 <div style={{ display: 'flex', borderBottom: '1px solid var(--mlab-border)', background: '#f8fafc' }}>
                     <button
                         onClick={() => setViewMode('pending')}
@@ -369,7 +369,7 @@ const LearnerDashboard: React.FC = () => {
         return store.cohorts.filter(c => enrolledCohortIds.has(c.id));
     }, [learnerEnrollments, store.cohorts]);
 
-    // 🚀 LOGS LISTENER (Pulls ALL logs for the inbox to filter) 🚀
+    // LOGS LISTENER (Pulls ALL logs for the inbox to filter) 🚀
     useEffect(() => {
         if (!academicProfile?.id || myCohorts.length === 0) return;
 
@@ -536,7 +536,7 @@ const LearnerDashboard: React.FC = () => {
                         <p>{pageSub}</p>
                     </div>
 
-                    {/* 🚀 GAMIFICATION HEADER 🚀 */}
+                    {/* GAMIFICATION HEADER */}
                     {currentNav === 'dashboard' && (
                         <div style={{ display: 'flex', gap: '1rem', background: 'white', padding: '10px 16px', borderRadius: '8px', border: '1px solid var(--mlab-border)', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
                             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', paddingRight: '1rem', borderRight: '1px solid var(--mlab-border)' }}>
@@ -587,7 +587,7 @@ const LearnerDashboard: React.FC = () => {
                                 </div>
                             </div>
 
-                            {/* 🚀 TABBED NAVIGATION 🚀 */}
+                            {/* TABBED NAVIGATION */}
                             <div className="lfm-tabs" style={{ marginBottom: '1.5rem', marginTop: '1.5rem' }}>
                                 <button
                                     className={`lfm-tab ${activeDashTab === 'programmes' ? 'active' : ''}`}
@@ -611,7 +611,7 @@ const LearnerDashboard: React.FC = () => {
                                 </button>
                             </div>
 
-                            {/* 🚀 TAB CONTENT 🚀 */}
+                            {/* TAB CONTENT */}
                             {activeDashTab === 'tasks' && (
                                 <div className="animate-fade-in">
                                     <LearnerActionInbox profileId={academicProfile.id} logs={allCurriculumLogs} />
@@ -1239,7 +1239,7 @@ export default LearnerDashboard;
 //         return store.cohorts.filter(c => enrolledCohortIds.has(c.id));
 //     }, [learnerEnrollments, store.cohorts]);
 
-//     // 🚀 INBOX LISTENER 🚀
+//     // INBOX LISTENER 🚀
 //     useEffect(() => {
 //         if (!academicProfile?.id || myCohorts.length === 0) return;
 
@@ -1404,7 +1404,7 @@ export default LearnerDashboard;
 //                         <p>{pageSub}</p>
 //                     </div>
 
-//                     {/* 🚀 GAMIFICATION HEADER 🚀 */}
+//                     {/* GAMIFICATION HEADER */}
 //                     {currentNav === 'dashboard' && (
 //                         <div style={{ display: 'flex', gap: '1rem', background: 'white', padding: '10px 16px', borderRadius: '8px', border: '1px solid var(--mlab-border)', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
 //                             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', paddingRight: '1rem', borderRight: '1px solid var(--mlab-border)' }}>
@@ -1455,7 +1455,7 @@ export default LearnerDashboard;
 //                                 </div>
 //                             </div>
 
-//                             {/* 🚀 TABBED NAVIGATION (Matches Facilitator View) 🚀 */}
+//                             {/* TABBED NAVIGATION (Matches Facilitator View) */}
 //                             <div className="lfm-tabs" style={{ marginBottom: '1.5rem', marginTop: '1.5rem' }}>
 //                                 <button
 //                                     className={`lfm-tab ${activeDashTab === 'programmes' ? 'active' : ''}`}
@@ -1479,7 +1479,7 @@ export default LearnerDashboard;
 //                                 </button>
 //                             </div>
 
-//                             {/* 🚀 TAB CONTENT 🚀 */}
+//                             {/* TAB CONTENT */}
 //                             {activeDashTab === 'tasks' && (
 //                                 <div className="animate-fade-in">
 //                                     <LearnerActionInbox profileId={academicProfile.id} pendingLogs={pendingLogs} />
@@ -1895,7 +1895,7 @@ export default LearnerDashboard;
 // //                         ...profileData
 // //                     });
 
-// //                     // 2. 🚀 FETCH FROM ENROLLMENTS LEDGER (The new source of truth)
+// //                     // 2. FETCH FROM ENROLLMENTS LEDGER (The new source of truth)
 // //                     // We query the ledger to find any class where this specific human is enrolled.
 // //                     const enrolQ = query(
 // //                         collection(db, 'enrollments'),
@@ -1928,7 +1928,7 @@ export default LearnerDashboard;
 // //         }
 // //     };
 
-// //     // 🚀 LEDGER-FIRST COHORT RESOLUTION
+// //     // LEDGER-FIRST COHORT RESOLUTION
 // //     // The learner is in the cohort ONLY IF there is an active ledger document for it.
 // //     const myCohorts = useMemo(() => {
 // //         if (learnerEnrollments.length === 0 || !store.cohorts) return [];
@@ -2542,7 +2542,7 @@ export default LearnerDashboard;
 // // //         }
 // // //     };
 
-// // //     // 🚀 THE BULLETPROOF FIX: We check the Class Register (Admin perspective) directly!
+// // //     // THE BULLETPROOF FIX: We check the Class Register (Admin perspective) directly!
 // // //     const myCohorts = store.cohorts.filter(c => {
 // // //         if (!academicProfile) return false;
 
@@ -2555,7 +2555,7 @@ export default LearnerDashboard;
 // // //         return false;
 // // //     });
 
-// // //     // 🚀 AUTO-HEAL IN MEMORY: We ensure the child components know the true Cohort ID
+// // //     // AUTO-HEAL IN MEMORY: We ensure the child components know the true Cohort ID
 // // //     const resolvedAcademicProfile = useMemo(() => {
 // // //         if (!academicProfile) return null;
 
@@ -3522,7 +3522,7 @@ export default LearnerDashboard;
 // // // //                                         </div>
 
 // // // //                                         <div className="ld-cohort-card__footer">
-// // // //                                             {/* 🚀 THE FIX: Passing the cohortId state to the router so ViewPortfolio knows which class to load! 🚀 */}
+// // // //                                             {/* THE FIX: Passing the cohortId state to the router so ViewPortfolio knows which class to load! */}
 // // // //                                             <button
 // // // //                                                 className="ld-btn ld-btn--primary"
 // // // //                                                 onClick={() => navigate(`/portfolio/${myLearnerProfile?.id}`, { state: { cohortId: cohort.id } })}

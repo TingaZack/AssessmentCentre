@@ -50,7 +50,7 @@ export const AdminProfileView: React.FC<ProfileProps> = ({ profile, user, onUpda
         const unsubscribe = onSnapshot(doc(db, 'users', targetId), (docSnap) => {
             if (docSnap.exists()) {
                 const data = docSnap.data();
-                // 🚀 FIXED: Removed the buggy auto-close logic here. 
+                // FIXED: Removed the buggy auto-close logic here. 
                 // We just safely update the live profile state now.
                 setLiveProfile((prev: any) => ({ ...prev, ...data }));
             }

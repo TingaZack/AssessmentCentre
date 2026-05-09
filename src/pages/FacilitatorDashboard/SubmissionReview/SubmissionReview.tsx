@@ -1002,19 +1002,19 @@ export const SubmissionReview: React.FC = () => {
                 document.body
             )}
 
-            {/* 🚀 WRAPPED IN CREATE PORTAL 🚀 */}
+            {/* WRAPPED IN CREATE PORTAL */}
             {showRemediationModal && createPortal(
                 <RemediationModal submissionTitle={submission.title} attemptNumber={currentAttempt} onClose={() => setShowRemediationModal(false)} onSubmit={executeRemediation} />,
                 document.body
             )}
 
-            {/* 🚀 WRAPPED IN CREATE PORTAL 🚀 */}
+            {/* WRAPPED IN CREATE PORTAL */}
             {showReturnToLearnerModal && createPortal(
                 <ReturnToLearnerModal onClose={() => setShowReturnToLearnerModal(false)} onSubmit={executeReturnToLearner} />,
                 document.body
             )}
 
-            {/* 🚀 WRAPPED IN CREATE PORTAL 🚀 */}
+            {/* WRAPPED IN CREATE PORTAL */}
             {showResolveAppealModal && createPortal(
                 <ResolveAppealModal appealReason={submission.appeal?.reason || ''} onClose={() => setShowResolveAppealModal(false)} onSubmit={executeAppealResolution} />,
                 document.body
@@ -1138,7 +1138,7 @@ export const SubmissionReview: React.FC = () => {
                         <p><strong>Date Commenced:</strong> {submission?.startedAt ? new Date(submission.startedAt).toLocaleDateString() : 'N/A'}</p>
                     </div>
 
-                    {/* 🚀 OFFICIAL REMEDIATION RECORD (PRINT ONLY) 🚀 */}
+                    {/* OFFICIAL REMEDIATION RECORD (PRINT ONLY) */}
                     {submission?.attemptNumber > 1 && submission?.latestCoachingLog && (
                         <div className="print-page">
                             <h3>Record of Developmental Intervention (Remediation)</h3>
@@ -1328,7 +1328,7 @@ export const SubmissionReview: React.FC = () => {
                         </div>
                     )}
 
-                    {/* 🚀 MISSED ASSESSMENT BANNER */}
+                    {/* MISSED ASSESSMENT BANNER */}
                     {isMissed && (
                         <div style={{ background: '#fef2f2', border: '1px solid #fecaca', padding: '1.25rem', borderRadius: '8px', marginBottom: '1.5rem' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
@@ -1409,7 +1409,7 @@ export const SubmissionReview: React.FC = () => {
                                     </button>
                                 )}
 
-                                {/* 🚀 EXTRA TIME AND DEFERRED ACCESS (FOR FACILITATORS/ADMINS) */}
+                                {/* EXTRA TIME AND DEFERRED ACCESS (FOR FACILITATORS/ADMINS) */}
                                 {!isMentor && ((submission.status === 'in_progress' && assessment?.moduleInfo?.timeLimit > 0) || submission.status === 'not_started') && (
                                     <div className="no-print" style={{ marginTop: '10px', background: '#eff6ff', padding: '12px', borderRadius: '8px', border: '1px solid #bfdbfe' }}>
                                         <p style={{ margin: '0 0 8px 0', fontSize: '0.85rem', color: '#1e3a8a', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>

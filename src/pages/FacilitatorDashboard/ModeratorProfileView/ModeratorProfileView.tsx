@@ -405,7 +405,7 @@ export const ModeratorProfileView: React.FC<ProfileProps> = ({ profile, user, on
                         )}
                     </section>
 
-                    {/* 🚀 FIXED: VISIBLE SIGNATURE PREVIEW SECTION */}
+                    {/* FIXED: VISIBLE SIGNATURE PREVIEW SECTION */}
                     <section className="lpv-panel">
                         <div className="lpv-panel__header">
                             <h3 className="lpv-panel__title">
@@ -424,7 +424,7 @@ export const ModeratorProfileView: React.FC<ProfileProps> = ({ profile, user, on
                         <div style={{ padding: '1.5rem', background: '#f8fafc', border: '1px dashed #cbd5e1', borderRadius: '8px', textAlign: 'center' }}>
                             {liveProfile?.signatureUrl ? (
                                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                                    {/* 🚀 FIXED: White background card prevents transparent PNGs from disappearing */}
+                                    {/* FIXED: White background card prevents transparent PNGs from disappearing */}
                                     <div style={{ background: 'white', padding: '10px 20px', borderRadius: '8px', border: '1px solid #e2e8f0', width: '100%', maxWidth: '350px' }}>
                                         <img
                                             src={liveProfile.signatureUrl}
@@ -433,7 +433,7 @@ export const ModeratorProfileView: React.FC<ProfileProps> = ({ profile, user, on
                                                 height: '60px',
                                                 width: '100%',
                                                 objectFit: 'contain',
-                                                // 🚀 FIXED: Applies the exact Green Ink filter used in the review dashboard!
+                                                // FIXED: Applies the exact Green Ink filter used in the review dashboard!
                                                 filter: 'brightness(0) saturate(100%) invert(29%) sepia(96%) saturate(1352%) hue-rotate(120deg) brightness(92%) contrast(101%)'
                                             }}
                                         />

@@ -519,7 +519,7 @@ export const useStore = create<StoreState>()(
           learnersLastFetched: Date.now(),
         });
       } catch (systemError: any) {
-        // 🚀 SYSTEM ERROR PROPAGATION
+        // SYSTEM ERROR PROPAGATION
         console.error("Critical Fetch Failure in fetchLearners:", systemError);
         set({
           learnersError:
@@ -587,7 +587,7 @@ export const useStore = create<StoreState>()(
           const batch = writeBatch(db);
           const enrollmentId = `${payload.cohortId}_${learnerDocId}`;
 
-          // 🚀 GENERATE OFFICIAL STUDENT ID 🚀
+          // GENERATE OFFICIAL STUDENT ID 🚀
           const studentId = generateStudentId(payload.cohortId, enrollmentId);
 
           const enrollmentData = {
@@ -653,7 +653,7 @@ export const useStore = create<StoreState>()(
 
     //     profileData.createdAt = timestamp;
     //     profileData.createdBy = USER_ID;
-    //     // 🚀 Add cohort pointer for fast UI loading
+    //     // Add cohort pointer for fast UI loading
     //     profileData.cohortId = enrollmentData.cohortId || "Unassigned";
 
     //     enrollmentData.createdAt = timestamp;
@@ -700,7 +700,7 @@ export const useStore = create<StoreState>()(
 
     //     enrollmentData.learnerId = finalLearnerId;
 
-    //     // 🚀 FIX: Use Registration Ledger Pattern for manually added learners too!
+    //     // FIX: Use Registration Ledger Pattern for manually added learners too!
     //     const enrollmentId = `${enrollmentData.cohortId || "Unassigned"}_${finalLearnerId}`;
     //     enrollmentData.id = enrollmentId;
 
@@ -737,7 +737,7 @@ export const useStore = create<StoreState>()(
           );
         }
 
-        // 🚀 DETERMINISTIC ANCHOR: Use the physical ID Number for collection targeting.
+        // DETERMINISTIC ANCHOR: Use the physical ID Number for collection targeting.
         const learnerIdNumber = existingRow.idNumber;
         const oldCohortId = existingRow.cohortId || "";
         const newCohortId = updates.cohortId;
@@ -933,7 +933,7 @@ export const useStore = create<StoreState>()(
     //       }
     //     });
 
-    //     // 🚀 ROOT FIX: Force synchronization of critical mapping fields to the Ledger too!
+    //     // ROOT FIX: Force synchronization of critical mapping fields to the Ledger too!
     //     if (updates.cohortId !== undefined) {
     //       enrollmentUpdates.cohortId = updates.cohortId;
     //       hasEnrollmentUpdate = true;
@@ -985,7 +985,7 @@ export const useStore = create<StoreState>()(
     //   }
     // },
 
-    // 🚀 STRICT ENROLLMENT GATEKEEPER (The Ledger Sync) 🚀
+    // STRICT ENROLLMENT GATEKEEPER (The Ledger Sync) 🚀
     enrollLearnerInCohort: async (
       learnerId: string,
       cohortId: string,
@@ -1072,7 +1072,7 @@ export const useStore = create<StoreState>()(
           `✅ Ledger Sync Complete: Learner ${learnerId} enrolled in ${cohortId}`,
         );
       } catch (systemError: any) {
-        // 🚀 PROPAGATE SYSTEM ERROR: Log raw failure and throw to UI
+        // PROPAGATE SYSTEM ERROR: Log raw failure and throw to UI
         console.error("❌ Critical Enrollment Failure:", {
           code: systemError.code,
           message: systemError.message,
@@ -1093,7 +1093,7 @@ export const useStore = create<StoreState>()(
     //     const timestamp = now();
     //     const batch = writeBatch(db);
 
-    //     // 🚀 UPGRADE: Official Ledger Pattern
+    //     // UPGRADE: Official Ledger Pattern
     //     const enrollmentId = `${cohortId}_${learnerId}`;
 
     //     // Create formal enrollment record
@@ -1147,7 +1147,7 @@ export const useStore = create<StoreState>()(
         const batch = writeBatch(db);
         const timestamp = now();
 
-        // 🚀 UPGRADE: Official Ledger Pattern
+        // UPGRADE: Official Ledger Pattern
         const enrollmentId = `${cohortId}_${learnerId}`;
 
         batch.set(
@@ -1193,7 +1193,7 @@ export const useStore = create<StoreState>()(
           moduleType: assessmentTemplate.moduleType || "knowledge",
           moduleNumber: assessmentTemplate.moduleNumber || "",
           learnerId: targetHumanId,
-          authUid: learner.authUid || targetHumanId, // 🚀 VERY IMPORTANT: Carry authUid into manual assignments
+          authUid: learner.authUid || targetHumanId, // VERY IMPORTANT: Carry authUid into manual assignments
           enrollmentId: learner.enrollmentId || learner.id,
           cohortId: targetCohortId,
           qualificationName: learner.qualification?.name || "",
@@ -1387,7 +1387,7 @@ export const useStore = create<StoreState>()(
       }
     },
 
-    // 🚀 BULLETPROOF APPROVAL LOGIC (Strict Identity Only) 🚀
+    // BULLETPROOF APPROVAL LOGIC (Strict Identity Only) 🚀
     approveStagingLearners: async (learnersToApprove) => {
       set({ learnersLoading: true });
       const USER_ID = getAuth().currentUser?.uid || "System";
@@ -1414,7 +1414,7 @@ export const useStore = create<StoreState>()(
               continue;
             }
 
-            // 🚀 DETERMINISTIC ANCHOR: The ID Number is the Document ID
+            // DETERMINISTIC ANCHOR: The ID Number is the Document ID
             const profileId = l.idNumber.trim();
             let trueAuthUid = profileId; // Default to ID number if Auth is pending
             let isNewUser = true;
@@ -1451,7 +1451,7 @@ export const useStore = create<StoreState>()(
             }
 
             // 4. EXPLICIT PROFILE MAPPING (The Human Identity)
-            // 🚀 We force cohortId to be empty. They are strictly Dormant upon import.
+            // We force cohortId to be empty. They are strictly Dormant upon import.
             const profileData: any = {
               ...l, // Spread imported demographics/data
               id: profileId,
@@ -1505,7 +1505,7 @@ export const useStore = create<StoreState>()(
         // 8. REFRESH LIVE DATABASE VIEW
         await get().fetchLearners(true);
       } catch (systemError: any) {
-        // 🚀 CATCH SYSTEM ERROR: Propagate the raw system-defined error object
+        // CATCH SYSTEM ERROR: Propagate the raw system-defined error object
         console.error("System Transaction Failed in approveStagingLearners:", {
           code: systemError.code,
           message: systemError.message,
@@ -1518,9 +1518,9 @@ export const useStore = create<StoreState>()(
       }
     },
 
-    // // 🚀 BULLETPROOF APPROVAL LOGIC (Registration Ledger Pattern) 🚀
-    // // 🚀 BULLETPROOF APPROVAL LOGIC (Registration Ledger Pattern) 🚀
-    // // 🚀 BULLETPROOF APPROVAL LOGIC (Registration Ledger Pattern) 🚀
+    // // BULLETPROOF APPROVAL LOGIC (Registration Ledger Pattern) 🚀
+    // // BULLETPROOF APPROVAL LOGIC (Registration Ledger Pattern) 🚀
+    // // BULLETPROOF APPROVAL LOGIC (Registration Ledger Pattern) 🚀
     // approveStagingLearners: async (learnersToApprove) => {
     //   set({ learnersLoading: true });
     //   const USER_ID = getAuth().currentUser?.uid || "System";
@@ -1547,7 +1547,7 @@ export const useStore = create<StoreState>()(
     //           continue;
     //         }
 
-    //         // 🚀 DETERMINISTIC ANCHOR: The ID Number is the Document ID
+    //         // DETERMINISTIC ANCHOR: The ID Number is the Document ID
     //         const profileId = l.idNumber.trim();
     //         let trueAuthUid = profileId; // Default to ID number if Auth is pending
     //         let isNewUser = true;
@@ -1583,7 +1583,7 @@ export const useStore = create<StoreState>()(
     //           }
     //         }
 
-    //         // 🚀 NO FALLBACKS: cohortId is either a real ID or an empty string (Dormant)
+    //         // NO FALLBACKS: cohortId is either a real ID or an empty string (Dormant)
     //         const targetCohortId =
     //           l.cohortId && l.cohortId !== "Unassigned" ? l.cohortId : "";
     //         console.log("CHCHDHECKIGL )): ", targetCohortId);
@@ -1614,7 +1614,7 @@ export const useStore = create<StoreState>()(
     //         });
 
     //         // 5. CONDITIONAL ENROLLMENT MAPPING (The Registration Ledger)
-    //         // 🚀 THE CURE: Only create an enrollment document if they have a real cohortId
+    //         // THE CURE: Only create an enrollment document if they have a real cohortId
     //         if (targetCohortId !== "") {
     //           const enrollmentId = `${targetCohortId}_${profileId}`;
     //           console.log("CHCHDHECKIGL: ", enrollmentId);
@@ -1679,7 +1679,7 @@ export const useStore = create<StoreState>()(
     //     await get().fetchLearners(true);
     //     if ((get() as any).fetchCohorts) await (get() as any).fetchCohorts();
     //   } catch (systemError: any) {
-    //     // 🚀 CATCH SYSTEM ERROR: Propagate the raw system-defined error object
+    //     // CATCH SYSTEM ERROR: Propagate the raw system-defined error object
     //     console.error("System Transaction Failed in approveStagingLearners:", {
     //       code: systemError.code,
     //       message: systemError.message,
@@ -1692,7 +1692,7 @@ export const useStore = create<StoreState>()(
     //   }
     // },
 
-    // // 🚀 BULLETPROOF APPROVAL LOGIC (Registration Ledger Pattern) 🚀
+    // // BULLETPROOF APPROVAL LOGIC (Registration Ledger Pattern) 🚀
     // approveStagingLearners: async (learnersToApprove) => {
     //   set({ learnersLoading: true });
     //   const USER_ID = getAuth().currentUser?.uid || "UnknownUser";
@@ -1881,7 +1881,7 @@ export const useStore = create<StoreState>()(
             learner.learnerId || learner.id,
           );
 
-          // 🚀 FIX: Update both authStatus and the actual authUid returned from Firebase
+          // FIX: Update both authStatus and the actual authUid returned from Firebase
           await updateDoc(learnerRef, {
             authStatus: "active",
             authUid: data.uid || learner.authUid,
@@ -2197,8 +2197,8 @@ export const useStore = create<StoreState>()(
       }
     },
 
-    // 🚀 THE SMART IMPORT ENGINE 🚀
-    // 🚀 STRICT MVP IMPORT ENGINE (Database-Enforced)
+    // THE SMART IMPORT ENGINE 🚀
+    // STRICT MVP IMPORT ENGINE (Database-Enforced)
     importUnifiedLearners: async (file: File) => {
       const USER_ID = getAuth().currentUser?.uid || "System";
 
@@ -2343,7 +2343,7 @@ export const useStore = create<StoreState>()(
 
                 if (!learnersMap.has(idNumber)) {
                   learnersMap.set(idNumber, {
-                    id: idNumber, // 🚀 DETERMINISTIC ID ANCHOR
+                    id: idNumber, // DETERMINISTIC ID ANCHOR
                     fullName,
                     idNumber,
                     firstName: firstName || fullName.split(" ")[0],
@@ -2379,7 +2379,7 @@ export const useStore = create<StoreState>()(
                       getVal(["verificationcode"]) ||
                       generateSorId(fullName, issueDateStr, providerCode),
                     issueDate: issueDateStr,
-                    cohortId: "", // 🚀 NO FALLBACKS: Force empty string for Dormant state
+                    cohortId: "", // NO FALLBACKS: Force empty string for Dormant state
                     status: "active",
                     createdAt: now(),
                     createdBy: USER_ID,
@@ -2396,7 +2396,7 @@ export const useStore = create<StoreState>()(
               let batchCount = 0;
 
               learnersMap.forEach((learner) => {
-                // 🚀 DETERMINISTIC KEY: Using idNumber as the physical Document ID in staging
+                // DETERMINISTIC KEY: Using idNumber as the physical Document ID in staging
                 // This guarantees no duplicates even if a file is uploaded multiple times.
                 const docRef = doc(db, "staging_learners", learner.idNumber);
                 batch.set(docRef, sanitizeForFirestore(learner), {
@@ -2464,7 +2464,7 @@ export const useStore = create<StoreState>()(
       }
     },
 
-    // 🚀 FIXED: GHOST SPLIT PREVENTION 🚀
+    // FIXED: GHOST SPLIT PREVENTION 🚀
     // Correctly routes the update data to the correct profile and enrollment docs
     updateLearnerPlacement: async (enrollmentId, employerId, mentorId) => {
       try {
@@ -3048,7 +3048,7 @@ export const useStore = create<StoreState>()(
 //           const enrollment = docSnap.data();
 //           const profile = profilesMap.get(enrollment.learnerId);
 
-//           // 🚀 GHOST SHIELD: We now strictly enforce that the profile MUST have a valid name or ID
+//           // GHOST SHIELD: We now strictly enforce that the profile MUST have a valid name or ID
 //           if (profile && (profile.fullName || profile.idNumber)) {
 //             usedProfileIds.add(profile.id);
 //             combinedLearners.push({
@@ -3538,7 +3538,7 @@ export const useStore = create<StoreState>()(
 //       }
 //     },
 
-//     // 🚀 BULLETPROOF APPROVAL LOGIC 🚀
+//     // BULLETPROOF APPROVAL LOGIC 🚀
 //     approveStagingLearners: async (learnersToApprove) => {
 //       set({ learnersLoading: true });
 //       const USER_ID = getAuth().currentUser?.uid || "UnknownUser";
@@ -4000,9 +4000,9 @@ export const useStore = create<StoreState>()(
 //       }
 //     },
 
-//     // 🚀 THE SMART IMPORT ENGINE 🚀
+//     // THE SMART IMPORT ENGINE 🚀
 //     // Checks for existing users to flag them in the staging UI
-//     // 🚀 STRICT MVP IMPORT ENGINE (Database-Enforced)
+//     // STRICT MVP IMPORT ENGINE (Database-Enforced)
 //     importUnifiedLearners: async (file: File) => {
 //       const USER_ID = getAuth().currentUser?.uid || "UnknownUser";
 
@@ -4265,7 +4265,7 @@ export const useStore = create<StoreState>()(
 //       }
 //     },
 
-//     // 🚀 FIXED: GHOST SPLIT PREVENTION 🚀
+//     // FIXED: GHOST SPLIT PREVENTION 🚀
 //     // Correctly routes the update data to the correct profile and enrollment docs
 //     updateLearnerPlacement: async (enrollmentId, employerId, mentorId) => {
 //       try {
@@ -5268,7 +5268,7 @@ export const useStore = create<StoreState>()(
 // //               enrollmentData.approvedAt = now();
 // //               enrollmentData.approvedBy = USER_ID;
 
-// //               // 🚀 FIX: SANITIZE TO PREVENT FIREBASE UNDEFINED CRASH 🚀
+// //               // FIX: SANITIZE TO PREVENT FIREBASE UNDEFINED CRASH 🚀
 // //               const cleanProfileData = sanitizeForFirestore(profileData);
 // //               const cleanEnrollmentData = sanitizeForFirestore(enrollmentData);
 
@@ -9053,7 +9053,7 @@ export const useStore = create<StoreState>()(
 // // // // //   staffError: string | null;
 // // // // //   fetchStaff: (force?: boolean) => Promise<void>;
 // // // // //   addStaff: (staff: Omit<StaffMember, "id" | "createdAt">) => Promise<void>;
-// // // // //   updateStaff: (id: string, updates: Partial<StaffMember>) => Promise<void>; // 🚀 Added missing interface
+// // // // //   updateStaff: (id: string, updates: Partial<StaffMember>) => Promise<void>; // Added missing interface
 // // // // //   deleteStaff: (id: string) => Promise<void>;
 // // // // //   updateStaffProfile: (uid: string, updates: any) => Promise<void>;
 

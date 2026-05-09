@@ -167,7 +167,7 @@ const AILessonPlanModal: React.FC<{
 
                         onShowStatus('warning', 'AI Temporarily Unavailable', errorMessage);
 
-                        // 🚀 FALLBACK TEMPLATE 🚀
+                        // FALLBACK TEMPLATE 🚀
                         const fallbackTemplate = `
                             <h3 style="color: #000000;">1. Programme & Module Information</h3>
                             <p style="color: #000000;"><strong>Programme:</strong> ${activeProgramme?.name || cohort?.name}</p>
@@ -437,7 +437,7 @@ export const CohortDetailsPage: React.FC = () => {
     const isFacilitator = user?.role === 'facilitator';
     const cohort = cohorts.find(c => c.id === cohortId);
 
-    // 🚀 CRITICAL FIX: Robust Programme ID Matching 🚀
+    // CRITICAL FIX: Robust Programme ID Matching 🚀
     const activeProgramme = useMemo(() => {
         if (!cohort || !programmes.length) return null;
 
@@ -799,7 +799,7 @@ export const CohortDetailsPage: React.FC = () => {
     const pendingTotal = submissions.filter(s => s.status === 'submitted').length;
     const selectedTopicCount = Object.keys(selectedTopics).length;
 
-    // 🚀 PROGRESS CARD RENDERER 🚀
+    // PROGRESS CARD RENDERER 🚀
     const renderProgressCard = (title: string, data: { total: number, logged: number }, themeColor: string, bgColor: string) => {
         const pct = data.total > 0 ? Math.round((data.logged / data.total) * 100) : 0;
         return (

@@ -287,7 +287,7 @@ export const AssessmentManager: React.FC = () => {
                     )}
                 </div>
 
-                {/* 🚀 PROMINENT CREATE ASSESSMENT BUTTON 🚀 */}
+                {/* PROMINENT CREATE ASSESSMENT BUTTON */}
                 <button
                     className="mlab-btn mlab-btn--primary"
                     onClick={() => navigate('/facilitator/assessments/builder')}

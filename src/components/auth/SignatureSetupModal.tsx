@@ -163,7 +163,7 @@ export const SignatureSetupModal: React.FC<Props> = ({ userUid, existingSignatur
 
             ctx.putImageData(imageData, 0, 0);
 
-            // 🚀 THE MAGIC: AUTO-CROP THE EMPTY SPACE 🚀
+            // THE MAGIC: AUTO-CROP THE EMPTY SPACE
             if (hasInk && maxX > minX && maxY > minY) {
                 const padding = 20; // Leave a nice little border around the ink
                 const cropX = Math.max(0, minX - padding);

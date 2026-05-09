@@ -617,7 +617,7 @@ export const LearnerFormModal: React.FC<LearnerFormModalProps> = ({
         });
     };
 
-    // 🚀 STRICT DB SUBMIT HANDLER
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsSaving(true);
@@ -751,7 +751,6 @@ export const LearnerFormModal: React.FC<LearnerFormModalProps> = ({
                                             </button>
                                         </div>
                                         <select className="lfm-input lfm-select" value={formData.cohortId || ""} onChange={(e) => updateField("cohortId", e.target.value)} style={{ marginTop: "4px" }}>
-                                            {/* 🚀 Empty string implies 'Dormant', avoiding system ghosts */}
                                             <option value="">-- No Class Assigned (Dormant) --</option>
                                             {cohorts.map((c) => <option key={c.id} value={c.id}>{c.name} ({c.startDate})</option>)}
                                         </select>

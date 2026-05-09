@@ -128,7 +128,7 @@ const AssessmentPlayer: React.FC = () => {
 
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
-    const [isStarting, setIsStarting] = useState(false); // 🚀 NEW: For start button spinner
+    const [isStarting, setIsStarting] = useState(false); // NEW: For start button spinner
 
     const [assessment, setAssessment] = useState<any>(null);
     const [submission, setSubmission] = useState<any>(null);
@@ -149,7 +149,7 @@ const AssessmentPlayer: React.FC = () => {
     const [showAppealModal, setShowAppealModal] = useState(false);
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-    // 🚀 NEW COMPLIANCE STATES
+    // NEW COMPLIANCE STATES
     const [moduleLogs, setModuleLogs] = useState<any[]>([]);
     const [passedFormative, setPassedFormative] = useState(false);
 
@@ -419,7 +419,7 @@ const AssessmentPlayer: React.FC = () => {
                     const _needsGate = (activeSub.attemptNumber || 1) > 1 && activeSub.latestCoachingLog && !activeSub.latestCoachingLog.acknowledged && !_isAppealUpheld;
                     const isPrac = assData.moduleType === 'practical' || assData.moduleType === 'workplace';
 
-                    // 🚀 STRICT REAL-WORLD TIMER ENFORCEMENT ON INITIAL LOAD
+                    // STRICT REAL-WORLD TIMER ENFORCEMENT ON INITIAL LOAD
                     if (!isPrac && assData.moduleInfo?.timeLimit > 0 && !_needsGate) {
                         const extraTime = activeSub.extraTimeGranted || 0;
                         const totalAllowedTimeMs = (assData.moduleInfo.timeLimit + extraTime) * 60 * 1000;
@@ -470,7 +470,7 @@ const AssessmentPlayer: React.FC = () => {
         if (timeOffset !== null) load();
     }, [assessmentId, user?.uid, timeOffset]);
 
-    // ─── 🚀 FETCH COMPLIANCE LOGS FOR THE GATES ────────────────────────
+    // ─── FETCH COMPLIANCE LOGS FOR THE GATES ────────────────────────
     useEffect(() => {
         if (!submission || !user?.uid) return;
 
@@ -595,7 +595,7 @@ const AssessmentPlayer: React.FC = () => {
     }, [moduleLogs, submission]);
     const isFullyCompliant = pendingTopics.length === 0;
 
-    // ─── 🚀 NEW: CLOUD FUNCTION START EXAM HANDLER ──────────────────────────
+    // ─── NEW: CLOUD FUNCTION START EXAM HANDLER ──────────────────────────
     const handleStartAssessment = async () => {
         if (!startDeclarationChecked || (needsRemediationGate && !coachingAckChecked)) return;
         setIsStarting(true);
@@ -1252,7 +1252,7 @@ const AssessmentPlayer: React.FC = () => {
                         {assessment.moduleInfo?.timeLimit > 0 && <li className="ap-rule-item"><div className="ap-rule-icon"><Clock size={18} /></div><div><span className="ap-rule-title">Timed Assessment</span><p className="ap-rule-desc">The countdown continues even if you close the browser. Plan your time carefully.</p></div></li>}
                     </ul>
 
-                    {/* 🚀 NEW: The Smart Tollbooth Logic 🚀 */}
+                    {/* NEW: The Smart Tollbooth Logic */}
                     {isSummative && !passedFormative && !hasOverride && !isAppealUpheld ? (
                         <div style={{ background: '#fef2f2', border: '1px solid #fecaca', padding: '1.5rem', borderRadius: '8px', marginTop: '1.5rem' }}>
                             <strong style={{ color: '#be123c', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
@@ -1616,7 +1616,7 @@ const AssessmentPlayer: React.FC = () => {
                                         <div key={block.id} id={`block-${block.id}`} className="ap-block-section">
                                             <span>{block.title}</span>
                                             {isAssDone && totals && totals.total > 0 && <span className="no-print ap-block-section__score"><BarChart size={13} /> {totals.awarded}/{totals.total}</span>}
-                                            {/* 🚀 FIXED HTML PARSING */}
+                                            {/* FIXED HTML PARSING */}
                                             {block.content && <div className="quill-read-only-content ap-block-section__content" style={{ wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.content) }} />}
                                             {renderBlockImage(block)}
                                         </div>
@@ -1627,7 +1627,7 @@ const AssessmentPlayer: React.FC = () => {
                                 if (block.type === 'info') return (
                                     <div key={block.id} id={`block-${block.id}`} className="ap-block-info">
                                         <div className="ap-block-info__label"><Info size={13} /> Reading Material</div>
-                                        {/* 🚀 FIXED HTML PARSING */}
+                                        {/* FIXED HTML PARSING */}
                                         <div className="quill-read-only-content ap-block-info__text" style={{ wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.content) }} />
                                         {renderBlockImage(block)}
                                     </div>
@@ -1654,7 +1654,7 @@ const AssessmentPlayer: React.FC = () => {
                                                     <span className="ap-block-question__text" style={{ display: 'flex', flexDirection: 'column' }}>
                                                         <span className={`ap-block-type-chip ${typeChipClass}`} style={{ alignSelf: 'flex-start', marginBottom: '8px' }}>{typeLabel}</span>
 
-                                                        {/* 🚀 FIXED HTML PARSING FOR QUESTIONS */}
+                                                        {/* FIXED HTML PARSING FOR QUESTIONS */}
                                                         {block.type === 'qcto_workplace' ? (
                                                             <div className="quill-read-only-content" style={{ wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(`${block.weCode} – ${block.weTitle}`) }} />
                                                         ) : block.question ? (
@@ -1701,7 +1701,7 @@ const AssessmentPlayer: React.FC = () => {
                                                         onKeyDownCapture={preventCopyPasteAndDrop}
                                                     >
                                                         {isLocked && !isAwaitingSignoff ? (
-                                                            // 🚀 FIXED HTML PARSING FOR LEARNER ANSWER (READ ONLY)
+                                                            // FIXED HTML PARSING FOR LEARNER ANSWER (READ ONLY)
                                                             <div className="quill-read-only-content" style={{ padding: '1rem', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(learnerAns) || '<em>No answer provided.</em>' }} />
                                                         ) : (
                                                             <ReactQuill theme="snow" value={learnerAns || ''} onChange={c => handleAnswerChange(block.id, c)} readOnly={!canEditTask} modules={quillModules} formats={quillFormats} placeholder={!canEditTask ? 'No answer provided.' : 'Type your detailed response here…'} />
@@ -1737,7 +1737,7 @@ const AssessmentPlayer: React.FC = () => {
                                                                         onKeyDownCapture={preventCopyPasteAndDrop}
                                                                     >
                                                                         {isLocked && !isAwaitingSignoff ? (
-                                                                            // 🚀 FIXED HTML PARSING FOR TASK ANSWER
+                                                                            // FIXED HTML PARSING FOR TASK ANSWER
                                                                             <div className="quill-read-only-content" style={{ padding: '1rem', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(learnerAns?.text) || '<em>No answer provided.</em>' }} />
                                                                         ) : (
                                                                             <ReactQuill theme="snow" value={learnerAns?.text || ''} onChange={c => handleTaskAnswerChange(block.id, 'text', c)} readOnly={!canEditTask} modules={quillModules} formats={quillFormats} placeholder="Type your answer here…" />
@@ -1794,7 +1794,7 @@ const AssessmentPlayer: React.FC = () => {
                                                                                     {activeCtab === 'text' && (
                                                                                         <div className={`ap-quill-wrapper${!canEditChecklist ? ' locked' : ''}`} onCopyCapture={preventCopyPasteAndDrop} onCutCapture={preventCopyPasteAndDrop} onPasteCapture={preventCopyPasteAndDrop} onDropCapture={preventCopyPasteAndDrop} onKeyDownCapture={preventCopyPasteAndDrop}>
                                                                                             {isLocked && !isAwaitingSignoff ? (
-                                                                                                // 🚀 FIXED HTML PARSING FOR CHECKLIST TEXT
+                                                                                                // FIXED HTML PARSING FOR CHECKLIST TEXT
                                                                                                 <div className="quill-read-only-content" style={{ padding: '1rem', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(critEv.text) || '<em>No notes provided.</em>' }} />
                                                                                             ) : (
                                                                                                 <ReactQuill theme="snow" value={critEv.text || ''} onChange={c => handleNestedAnswerChange(block.id, critKey, 'text', c)} readOnly={!canEditChecklist} modules={quillModules} formats={quillFormats} placeholder="Type evidence notes…" />
@@ -1814,7 +1814,7 @@ const AssessmentPlayer: React.FC = () => {
                                                 {/* LOGBOOK */}
                                                 {block.type === 'logbook' && (
                                                     <div className="ap-logbook">
-                                                        {/* 🚀 FIXED HTML PARSING FOR LOGBOOK TITLE */}
+                                                        {/* FIXED HTML PARSING FOR LOGBOOK TITLE */}
                                                         <div className="quill-read-only-content ap-logbook__desc" style={{ wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.content) }} />
                                                         <table className="ap-logbook__table">
                                                             <thead className="ap-logbook__thead">
@@ -1827,7 +1827,7 @@ const AssessmentPlayer: React.FC = () => {
                                                                         <td className="ap-logbook__td ap-logbook__task-cell">
                                                                             <div className={`ap-quill-wrapper ap-quill-wrapper--logbook${!canEditLogbook ? ' locked' : ''}`} onCopyCapture={preventCopyPasteAndDrop} onCutCapture={preventCopyPasteAndDrop} onPasteCapture={preventCopyPasteAndDrop} onDropCapture={preventCopyPasteAndDrop} onKeyDownCapture={preventCopyPasteAndDrop}>
                                                                                 {isLocked && !isAwaitingSignoff ? (
-                                                                                    // 🚀 FIXED HTML PARSING FOR LOGBOOK ENTRY
+                                                                                    // FIXED HTML PARSING FOR LOGBOOK ENTRY
                                                                                     <div className="quill-read-only-content" style={{ wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(entry.task) || '<em>No task described.</em>' }} />
                                                                                 ) : (
                                                                                     <ReactQuill theme="snow" value={entry.task || ''} onChange={v => { const n = [...learnerAns]; n[i].task = v; handleAnswerChange(block.id, n); }} readOnly={!canEditLogbook} modules={quillModules} formats={quillFormats} placeholder="Task description…" />
@@ -1871,7 +1871,7 @@ const AssessmentPlayer: React.FC = () => {
                                                                         <div className="ap-workplace__field">
                                                                             <label className="ap-workplace__field-label">Task Performed</label>
                                                                             {isLocked && !isAwaitingSignoff ? (
-                                                                                // 🚀 FIXED HTML PARSING FOR WORKPLACE TASK
+                                                                                // FIXED HTML PARSING FOR WORKPLACE TASK
                                                                                 <div className="quill-read-only-content" style={{ padding: '0.75rem', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '4px', wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(waTask) || '<em>No task description provided.</em>' }} />
                                                                             ) : (
                                                                                 <input type="text" className="ap-workplace__input" value={waTask} onChange={e => handleTaskAnswerChange(block.id, `wa_${wa.id}_task`, e.target.value)} disabled={!canEditWorkplace} placeholder="What did you do?" onCopyCapture={preventCopyPasteAndDrop} onCutCapture={preventCopyPasteAndDrop} onPasteCapture={preventCopyPasteAndDrop} onDropCapture={preventCopyPasteAndDrop} onKeyDownCapture={preventCopyPasteAndDrop} />
@@ -1899,7 +1899,7 @@ const AssessmentPlayer: React.FC = () => {
                                                                                                 {activeSeTab === 'text' && (
                                                                                                     <div className={`ap-quill-wrapper${!canEditWorkplace ? ' locked' : ''}`} onCopyCapture={preventCopyPasteAndDrop} onCutCapture={preventCopyPasteAndDrop} onPasteCapture={preventCopyPasteAndDrop} onDropCapture={preventCopyPasteAndDrop} onKeyDownCapture={preventCopyPasteAndDrop}>
                                                                                                         {isLocked && !isAwaitingSignoff ? (
-                                                                                                            // 🚀 FIXED HTML PARSING FOR WORKPLACE EVIDENCE
+                                                                                                            // FIXED HTML PARSING FOR WORKPLACE EVIDENCE
                                                                                                             <div className="quill-read-only-content" style={{ padding: '1rem', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(seData.text) || '<em>No notes provided.</em>' }} />
                                                                                                         ) : (
                                                                                                             <ReactQuill theme="snow" value={seData.text || ''} onChange={c => handleNestedAnswerChange(block.id, seKey, 'text', c)} readOnly={!canEditWorkplace} modules={quillModules} formats={quillFormats} placeholder="Type evidence notes…" />
@@ -2679,7 +2679,7 @@ export default AssessmentPlayer;
 //                     const _needsGate = (activeSub.attemptNumber || 1) > 1 && activeSub.latestCoachingLog && !activeSub.latestCoachingLog.acknowledged && !_isAppealUpheld;
 //                     const isPrac = assData.moduleType === 'practical' || assData.moduleType === 'workplace';
 
-//                     // 🚀 STRICT REAL-WORLD TIMER ENFORCEMENT ON INITIAL LOAD
+//                     // STRICT REAL-WORLD TIMER ENFORCEMENT ON INITIAL LOAD
 //                     if (!isPrac && assData.moduleInfo?.timeLimit > 0 && !_needsGate) {
 //                         const extraTime = activeSub.extraTimeGranted || 0;
 //                         const totalAllowedTimeMs = (assData.moduleInfo.timeLimit + extraTime) * 60 * 1000;
@@ -2692,7 +2692,7 @@ export default AssessmentPlayer;
 //                             if (now >= scheduledEnd) {
 //                                 // Real-world time has expired
 //                                 if (activeSub.status === 'not_started') {
-//                                     // 🚀 FORCE DATABASE UPDATE IF OPENED LATE
+//                                     // FORCE DATABASE UPDATE IF OPENED LATE
 //                                     activeSub.status = 'missed';
 //                                     await updateDoc(doc(db, 'learner_submissions', activeSub.id), {
 //                                         status: 'missed',
@@ -3283,7 +3283,7 @@ export default AssessmentPlayer;
 //         );
 //     }
 
-//     // 🚀 NEW: MISSED ASSESSMENT LOCKOUT (LFM STYLED)
+//     // NEW: MISSED ASSESSMENT LOCKOUT (LFM STYLED)
 //     if (isMissed) {
 //         return (
 //             <div className="lfm-overlay">
@@ -3310,7 +3310,7 @@ export default AssessmentPlayer;
 //         );
 //     }
 
-//     // 🚀 COMING SOON / UPCOMING LOCK (Respects Override)
+//     // COMING SOON / UPCOMING LOCK (Respects Override)
 //     if (assessment?.status === 'upcoming' && !isAdminIntercept && !submission?.overrideUnlock) {
 //         return (
 //             <div className="ap-fullscreen" style={{ position: 'absolute', right: 0, left: 0, bottom: 0, top: 0, backgroundColor: '#f8fafc' }}>
@@ -3777,7 +3777,7 @@ export default AssessmentPlayer;
 //                                         <div key={block.id} id={`block-${block.id}`} className="ap-block-section">
 //                                             <span>{block.title}</span>
 //                                             {isAssDone && totals && totals.total > 0 && <span className="no-print ap-block-section__score"><BarChart size={13} /> {totals.awarded}/{totals.total}</span>}
-//                                             {/* 🚀 FIXED HTML PARSING */}
+//                                             {/* FIXED HTML PARSING */}
 //                                             {block.content && <div className="quill-read-only-content ap-block-section__content" style={{ wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.content) }} />}
 //                                             {renderBlockImage(block)}
 //                                         </div>
@@ -3788,7 +3788,7 @@ export default AssessmentPlayer;
 //                                 if (block.type === 'info') return (
 //                                     <div key={block.id} id={`block-${block.id}`} className="ap-block-info">
 //                                         <div className="ap-block-info__label"><Info size={13} /> Reading Material</div>
-//                                         {/* 🚀 FIXED HTML PARSING */}
+//                                         {/* FIXED HTML PARSING */}
 //                                         <div className="quill-read-only-content ap-block-info__text" style={{ wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.content) }} />
 //                                         {renderBlockImage(block)}
 //                                     </div>
@@ -3815,7 +3815,7 @@ export default AssessmentPlayer;
 //                                                     <span className="ap-block-question__text" style={{ display: 'flex', flexDirection: 'column' }}>
 //                                                         <span className={`ap-block-type-chip ${typeChipClass}`} style={{ alignSelf: 'flex-start', marginBottom: '8px' }}>{typeLabel}</span>
 
-//                                                         {/* 🚀 FIXED HTML PARSING FOR QUESTIONS */}
+//                                                         {/* FIXED HTML PARSING FOR QUESTIONS */}
 //                                                         {block.type === 'qcto_workplace' ? (
 //                                                             <div className="quill-read-only-content" style={{ wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(`${block.weCode} – ${block.weTitle}`) }} />
 //                                                         ) : block.question ? (
@@ -3862,7 +3862,7 @@ export default AssessmentPlayer;
 //                                                         onKeyDownCapture={preventCopyPasteAndDrop}
 //                                                     >
 //                                                         {isLocked && !isAwaitingSignoff ? (
-//                                                             // 🚀 FIXED HTML PARSING FOR LEARNER ANSWER (READ ONLY)
+//                                                             // FIXED HTML PARSING FOR LEARNER ANSWER (READ ONLY)
 //                                                             <div className="quill-read-only-content" style={{ padding: '1rem', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(learnerAns) || '<em>No answer provided.</em>' }} />
 //                                                         ) : (
 //                                                             <ReactQuill theme="snow" value={learnerAns || ''} onChange={c => handleAnswerChange(block.id, c)} readOnly={!canEditTask} modules={quillModules} formats={quillFormats} placeholder={!canEditTask ? 'No answer provided.' : 'Type your detailed response here…'} />
@@ -3898,7 +3898,7 @@ export default AssessmentPlayer;
 //                                                                         onKeyDownCapture={preventCopyPasteAndDrop}
 //                                                                     >
 //                                                                         {isLocked && !isAwaitingSignoff ? (
-//                                                                             // 🚀 FIXED HTML PARSING FOR TASK ANSWER
+//                                                                             // FIXED HTML PARSING FOR TASK ANSWER
 //                                                                             <div className="quill-read-only-content" style={{ padding: '1rem', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(learnerAns?.text) || '<em>No answer provided.</em>' }} />
 //                                                                         ) : (
 //                                                                             <ReactQuill theme="snow" value={learnerAns?.text || ''} onChange={c => handleTaskAnswerChange(block.id, 'text', c)} readOnly={!canEditTask} modules={quillModules} formats={quillFormats} placeholder="Type your answer here…" />
@@ -3955,7 +3955,7 @@ export default AssessmentPlayer;
 //                                                                                     {activeCtab === 'text' && (
 //                                                                                         <div className={`ap-quill-wrapper${!canEditChecklist ? ' locked' : ''}`} onCopyCapture={preventCopyPasteAndDrop} onCutCapture={preventCopyPasteAndDrop} onPasteCapture={preventCopyPasteAndDrop} onDropCapture={preventCopyPasteAndDrop} onKeyDownCapture={preventCopyPasteAndDrop}>
 //                                                                                             {isLocked && !isAwaitingSignoff ? (
-//                                                                                                 // 🚀 FIXED HTML PARSING FOR CHECKLIST TEXT
+//                                                                                                 // FIXED HTML PARSING FOR CHECKLIST TEXT
 //                                                                                                 <div className="quill-read-only-content" style={{ padding: '1rem', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(critEv.text) || '<em>No notes provided.</em>' }} />
 //                                                                                             ) : (
 //                                                                                                 <ReactQuill theme="snow" value={critEv.text || ''} onChange={c => handleNestedAnswerChange(block.id, critKey, 'text', c)} readOnly={!canEditChecklist} modules={quillModules} formats={quillFormats} placeholder="Type evidence notes…" />
@@ -3975,7 +3975,7 @@ export default AssessmentPlayer;
 //                                                 {/* LOGBOOK */}
 //                                                 {block.type === 'logbook' && (
 //                                                     <div className="ap-logbook">
-//                                                         {/* 🚀 FIXED HTML PARSING FOR LOGBOOK TITLE */}
+//                                                         {/* FIXED HTML PARSING FOR LOGBOOK TITLE */}
 //                                                         <div className="quill-read-only-content ap-logbook__desc" style={{ wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.content) }} />
 //                                                         <table className="ap-logbook__table">
 //                                                             <thead className="ap-logbook__thead">
@@ -3988,7 +3988,7 @@ export default AssessmentPlayer;
 //                                                                         <td className="ap-logbook__td ap-logbook__task-cell">
 //                                                                             <div className={`ap-quill-wrapper ap-quill-wrapper--logbook${!canEditLogbook ? ' locked' : ''}`} onCopyCapture={preventCopyPasteAndDrop} onCutCapture={preventCopyPasteAndDrop} onPasteCapture={preventCopyPasteAndDrop} onDropCapture={preventCopyPasteAndDrop} onKeyDownCapture={preventCopyPasteAndDrop}>
 //                                                                                 {isLocked && !isAwaitingSignoff ? (
-//                                                                                     // 🚀 FIXED HTML PARSING FOR LOGBOOK ENTRY
+//                                                                                     // FIXED HTML PARSING FOR LOGBOOK ENTRY
 //                                                                                     <div className="quill-read-only-content" style={{ wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(entry.task) || '<em>No task described.</em>' }} />
 //                                                                                 ) : (
 //                                                                                     <ReactQuill theme="snow" value={entry.task || ''} onChange={v => { const n = [...learnerAns]; n[i].task = v; handleAnswerChange(block.id, n); }} readOnly={!canEditLogbook} modules={quillModules} formats={quillFormats} placeholder="Task description…" />
@@ -4032,7 +4032,7 @@ export default AssessmentPlayer;
 //                                                                         <div className="ap-workplace__field">
 //                                                                             <label className="ap-workplace__field-label">Task Performed</label>
 //                                                                             {isLocked && !isAwaitingSignoff ? (
-//                                                                                 // 🚀 FIXED HTML PARSING FOR WORKPLACE TASK
+//                                                                                 // FIXED HTML PARSING FOR WORKPLACE TASK
 //                                                                                 <div className="quill-read-only-content" style={{ padding: '0.75rem', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '4px', wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(waTask) || '<em>No task description provided.</em>' }} />
 //                                                                             ) : (
 //                                                                                 <input type="text" className="ap-workplace__input" value={waTask} onChange={e => handleTaskAnswerChange(block.id, `wa_${wa.id}_task`, e.target.value)} disabled={!canEditWorkplace} placeholder="What did you do?" onCopyCapture={preventCopyPasteAndDrop} onCutCapture={preventCopyPasteAndDrop} onPasteCapture={preventCopyPasteAndDrop} onDropCapture={preventCopyPasteAndDrop} onKeyDownCapture={preventCopyPasteAndDrop} />
@@ -4060,7 +4060,7 @@ export default AssessmentPlayer;
 //                                                                                                 {activeSeTab === 'text' && (
 //                                                                                                     <div className={`ap-quill-wrapper${!canEditWorkplace ? ' locked' : ''}`} onCopyCapture={preventCopyPasteAndDrop} onCutCapture={preventCopyPasteAndDrop} onPasteCapture={preventCopyPasteAndDrop} onDropCapture={preventCopyPasteAndDrop} onKeyDownCapture={preventCopyPasteAndDrop}>
 //                                                                                                         {isLocked && !isAwaitingSignoff ? (
-//                                                                                                             // 🚀 FIXED HTML PARSING FOR WORKPLACE EVIDENCE
+//                                                                                                             // FIXED HTML PARSING FOR WORKPLACE EVIDENCE
 //                                                                                                             <div className="quill-read-only-content" style={{ padding: '1rem', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(seData.text) || '<em>No notes provided.</em>' }} />
 //                                                                                                         ) : (
 //                                                                                                             <ReactQuill theme="snow" value={seData.text || ''} onChange={c => handleNestedAnswerChange(block.id, seKey, 'text', c)} readOnly={!canEditWorkplace} modules={quillModules} formats={quillFormats} placeholder="Type evidence notes…" />

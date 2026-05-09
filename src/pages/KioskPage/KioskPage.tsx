@@ -131,7 +131,7 @@ function GatekeeperView({ onSuccess, bypassClosure, holidays }: { onSuccess: (se
         setLoading(true);
         setError(null);
         try {
-            // 🚀 INDUSTRY LOGIC: Fetch the session strictly by PIN and Active Status
+            // INDUSTRY LOGIC: Fetch the session strictly by PIN and Active Status
             // We NO LONGER filter by the browser's `today` clock. We trust the database's record.
             const q = query(
                 collection(db, 'kiosk_sessions'),
@@ -218,13 +218,13 @@ function ActiveKioskView({ session }: { session: KioskSession }) {
     const [timer, setTimer] = useState(15);
     const [liveScans, setLiveScans] = useState<any[]>([]);
 
-    // 🚀 NEW: Start in a 'verifying' state so we don't flash the QR code
+    // NEW: Start in a 'verifying' state so we don't flash the QR code
     const [isSessionClosed, setIsSessionClosed] = useState(false);
     const [verifyingStatus, setVerifyingStatus] = useState(true);
 
     const displayDate = moment(session.date).format("dddd, D MMMM YYYY");
 
-    // 1. 🚀 THE KILL SWITCH: Monitor Session Status in Real-Time
+    // 1. THE KILL SWITCH: Monitor Session Status in Real-Time
     useEffect(() => {
         let unsubscribe: () => void;
 
@@ -514,7 +514,7 @@ export const KioskPage: React.FC = () => {
         );
     }
 
-    // 🚀 ROOT LEVEL WEEKEND/HOLIDAY CHECK
+    // ROOT LEVEL WEEKEND/HOLIDAY CHECK
     const today = moment().format('YYYY-MM-DD');
     const isWeekend = moment().day() === 0 || moment().day() === 6;
     const isHoliday = holidays.includes(today);
@@ -678,7 +678,7 @@ export const KioskPage: React.FC = () => {
 //                 const cohortSnap = await getDoc(doc(db, 'cohorts', sessionData.cohortId));
 //                 const cohortData = cohortSnap.exists() ? cohortSnap.data() : {};
 
-//                 // 🚀 INDUSTRY LOGIC: Verify Cohort-Specific Recess
+//                 // INDUSTRY LOGIC: Verify Cohort-Specific Recess
 //                 const recess = (cohortData.recessPeriods || []).find((p: any) => moment().isBetween(p.start, p.end, 'day', '[]'));
 
 //                 if (recess && !bypassClosure) {
@@ -901,7 +901,7 @@ export const KioskPage: React.FC = () => {
 //         );
 //     }
 
-//     // 🚀 ROOT LEVEL WEEKEND/HOLIDAY CHECK
+//     // ROOT LEVEL WEEKEND/HOLIDAY CHECK
 //     const today = moment().format('YYYY-MM-DD');
 //     const isWeekend = moment().day() === 0 || moment().day() === 6;
 //     const isHoliday = holidays.includes(today);
@@ -1266,7 +1266,7 @@ export const KioskPage: React.FC = () => {
 // //                     </div>
 // //                 </div>
 
-// //                 {/* 🚀 EXPANDED Roster Panel 🚀 */}
+// //                 {/* EXPANDED Roster Panel */}
 // //                 <div style={{ width: 440, display: 'flex', flexDirection: 'column', padding: '24px 20px', background: 'rgba(0,0,0,0.1)' }}>
 // //                     <div style={{
 // //                         display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16,
@@ -1322,7 +1322,7 @@ export const KioskPage: React.FC = () => {
 // //                                         })()}
 // //                                     </div>
 
-// //                                     {/* 🚀 The Timesheet Trail 🚀 */}
+// //                                     {/* The Timesheet Trail */}
 // //                                     <div style={{ display: 'flex', gap: 6, width: '100%' }}>
 // //                                         <TimePill label="IN" time={scan.checkInAt || scan.scannedAt} color="#3b82f6" />
 // //                                         <TimePill label="L-OUT" time={scan.lunchOutAt} color="#f59e0b" />
@@ -1588,7 +1588,7 @@ export const KioskPage: React.FC = () => {
 // // //     const [liveScans, setLiveScans] = useState<any[]>([]);
 // // //     const todayString = moment().format('YYYY-MM-DD');
 
-// // //     /* 🚀 Rotating QR - UPDATED TO FALLBACK URL 🚀 */
+// // //     /* Rotating QR - UPDATED TO FALLBACK URL */
 // // //     useEffect(() => {
 // // //         const generate = () => {
 // // //             const params = new URLSearchParams({
@@ -1689,10 +1689,10 @@ export const KioskPage: React.FC = () => {
 // // //                             <QRCodeSVG
 // // //                                 value={qrData}
 // // //                                 size={380}
-// // //                                 level="M"                // 🚀 Changed from 'H' to 'M' (Makes dots larger and easier to read)
-// // //                                 includeMargin={true}     // 🚀 Changed to true (Adds the required white border)
-// // //                                 fgColor="#000000"        // 🚀 Pure black for maximum camera contrast
-// // //                                 bgColor="#ffffff"        // 🚀 Pure white background
+// // //                                 level="M"                // Changed from 'H' to 'M' (Makes dots larger and easier to read)
+// // //                                 includeMargin={true}     // Changed to true (Adds the required white border)
+// // //                                 fgColor="#000000"        // Pure black for maximum camera contrast
+// // //                                 bgColor="#ffffff"        // Pure white background
 // // //                             />
 // // //                         )}
 // // //                     </div>

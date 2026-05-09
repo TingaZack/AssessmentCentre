@@ -147,7 +147,7 @@ export const EventDetailsPage: React.FC = () => {
     const [event, setEvent] = useState<EcosystemEvent | null>(null);
     const [checkins, setCheckins] = useState<any[]>([]);
 
-    // 🚀 NEW: MASTER CRM PROFILES DICTIONARY 🚀
+    // MASTER CRM PROFILES DICTIONARY
     const [crmProfiles, setCrmProfiles] = useState<Record<string, any>>({});
 
     const [loading, setLoading] = useState(true);
@@ -231,7 +231,6 @@ export const EventDetailsPage: React.FC = () => {
 
         const escapeCSV = (str: any) => `"${String(str || '').replace(/"/g, '""')}"`;
 
-        // 🚀 EXPANDED HEADERS TO INCLUDE FULL CRM DATA
         const headers = [
             "Guest Name",
             "Email",

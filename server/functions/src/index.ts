@@ -130,7 +130,6 @@ export const sendMailgunEmail = async ({
     });
   }
 
-  // 🚀 FIXED: Use Axios instead of Fetch to prevent silent hanging with form-data
   try {
     const res = await axios.post(
       `https://api.mailgun.net/v3/${domain}/messages`,
@@ -223,7 +222,7 @@ export const helloTryrld = onRequest(
 
       const data = await sendMailgunEmail({
         to: "Zack <zakhele@mlab.co.za>",
-        subject: "✅ mLab System Test Successful",
+        subject: "mLab System Test Successful",
         text: buildMlabEmailPlainText(emailParams),
         html: buildMlabEmailHtml(emailParams),
       });
@@ -1289,7 +1288,7 @@ export const issueBlockchainCertificate = onCall(
       );
 
       const ipfsHash = pinataResponse.data.IpfsHash;
-      console.log(`✅ Uploaded to IPFS! Hash: ${ipfsHash}`);
+      console.log(`Uploaded to IPFS! Hash: ${ipfsHash}`);
       console.log(`Minting to Sepolia...`);
 
       const provider = new ethers.JsonRpcProvider(RPC_URL);
@@ -1315,7 +1314,7 @@ export const issueBlockchainCertificate = onCall(
       const tx = await contract.issueCertificate(verificationCode, fingerprint);
       const receipt = await tx.wait();
 
-      console.log(`✅ Minted successfully! TX: ${receipt.hash}`);
+      console.log(`Minted successfully! TX: ${receipt.hash}`);
 
       return {
         success: true,
@@ -3270,7 +3269,7 @@ export const generateMasterPoE = onDocumentCreated(
         "https://firebasestorage.googleapis.com/v0/b/testpro-8f08c.appspot.com/o/Mlab-Grey-variation-1.png?alt=media&token=e85e0473-97cc-431d-8c08-7a3445806983";
       const offlineEvidenceFiles: EvidenceFile[] = [];
 
-      // 🚀 UPDATED: Groups assessments logically under their module header!
+      // UPDATED: Groups assessments logically under their module header!
       const progressRows = (subs: Submission[]) => {
         if (!subs.length)
           return `<tr><td colspan="4" class="empty-state">No modules mapped for this component.</td></tr>`;
@@ -3320,7 +3319,7 @@ export const generateMasterPoE = onDocumentCreated(
         return html;
       };
 
-      // 🚀 UPDATED: Learning Plan Rows also grouped by Module Code!
+      // UPDATED: Learning Plan Rows also grouped by Module Code!
       const learningPlanRows = (subs: Submission[]) => {
         if (!subs.length)
           return `<tr><td colspan="8" class="empty-state">No modules mapped.</td></tr>`;
@@ -3572,7 +3571,7 @@ ${dividerPage("2", "Competence Record & Final Assessment Report", "Official syst
         const assDate = fmt(sub.gradedAt || grading.gradedAt);
         const modDate = fmt(moderation.moderatedAt);
 
-        // 🚀 PROMINENTLY DISPLAY THE TYPE OF ASSESSMENT
+        // PROMINENTLY DISPLAY THE TYPE OF ASSESSMENT
         html += `
 <div class="module-header pbi">
   <div>
@@ -3673,7 +3672,6 @@ ${
                 ) {
                   formattedAnswer = block.options[ans] || String(ans);
                 } else {
-                  // 🚀 CLEAN HTML 🚀
                   formattedAnswer = cleanRichText(String(ans));
                 }
               } else if (typeof ans === "object") {
@@ -4323,7 +4321,7 @@ export const sendAssessmentCalendarInvites = onCall(
         return { success: true, message: "No learner emails found." };
       }
 
-      // 🚀 DYNAMIC TERMINOLOGY BUILDER
+      // DYNAMIC TERMINOLOGY BUILDER
       const formatLabel = (str?: string) =>
         str ? str.charAt(0).toUpperCase() + str.slice(1).toLowerCase() : "";
       let assessmentDescriptor = "Assessment / Activity";
@@ -4363,7 +4361,7 @@ export const sendAssessmentCalendarInvites = onCall(
           startDate.getTime() + (timeLimit || 60) * 60000,
         );
 
-        // 🚀 FIX 1: FORCE SERVER TO FORMAT DATE IN SOUTH AFRICAN TIME (SAST)
+        // FORCE SERVER TO FORMAT DATE IN SOUTH AFRICAN TIME (SAST)
         saastFormattedDate = new Intl.DateTimeFormat("en-ZA", {
           timeZone: "Africa/Johannesburg",
           dateStyle: "full",
@@ -4384,7 +4382,7 @@ export const sendAssessmentCalendarInvites = onCall(
         );
         googleCalendarLink = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${eventTitle}&dates=${dtStart}/${dtEnd}&details=${eventDetails}`;
 
-        // 🚀 FIX 2: STRICT .ICS FILE WITH 3 ALARMS
+        //  STRICT .ICS FILE WITH 3 ALARMS
         const icsString = [
           "BEGIN:VCALENDAR",
           "VERSION:2.0",
@@ -4567,7 +4565,7 @@ export const scheduleAssessmentSweep = onCall(
 
       const [response] = await client.createTask({ parent, task });
       logger.info(
-        `✅ Successfully scheduled auto-sweep task for assessment ${assessmentId}`,
+        `Successfully scheduled auto-sweep task for assessment ${assessmentId}`,
       );
 
       return { success: true, taskId: response.name };
@@ -4642,7 +4640,7 @@ export const executeAssessmentSweep = onRequest((req, res) => {
 
       if (submissionsSnap.empty) {
         logger.info(
-          `✅ Sweep Complete: No absent learners found for ${assessmentId}.`,
+          `Sweep Complete: No absent learners found for ${assessmentId}.`,
         );
         res.status(200).send("Complete: No missed submissions.");
         return;
@@ -4679,7 +4677,7 @@ export const executeAssessmentSweep = onRequest((req, res) => {
         );
       } else {
         logger.info(
-          `✅ Sweep Complete: All pending learners had deferred access overrides.`,
+          `Sweep Complete: All pending learners had deferred access overrides.`,
         );
       }
 
@@ -4710,7 +4708,7 @@ export const cancelAssessmentSweep = onCall(
     try {
       const client = new CloudTasksClient();
       await client.deleteTask({ name: taskId });
-      logger.info(`✅ Successfully cancelled Google Cloud Task: ${taskId}`);
+      logger.info(`Successfully cancelled Google Cloud Task: ${taskId}`);
       return { success: true, message: "Scheduled sweep cancelled." };
     } catch (error: any) {
       if (error.code === 5) {
@@ -5155,7 +5153,7 @@ export const sendHolidayGoodwill = onSchedule(
   {
     schedule: "0 8 * * *",
     timeZone: "Africa/Johannesburg",
-    secrets: [openAISecret], // 🚀 Inject the secure secret here
+    secrets: [openAISecret],
   },
   async (event) => {
     try {
@@ -5229,7 +5227,7 @@ export const sendHolidayGoodwill = onSchedule(
         });
 
       logger.info(
-        `✅ Successfully broadcasted ${holidayName} goodwill message to all learners.`,
+        `Successfully broadcasted ${holidayName} goodwill message to all learners.`,
       );
     } catch (error) {
       logger.error("❌ Error in sendHolidayGoodwill function:", error);
@@ -5343,7 +5341,7 @@ export const generateDailyKioskPins = onSchedule(
         if (facSnap.exists) {
           const facData = facSnap.data();
           if (facData?.email) {
-            // 🚀 DYNAMIC MLAB EMAIL TEMPLATE
+            // DYNAMIC MLAB EMAIL TEMPLATE
             const emailParams = {
               title: "Today's Kiosk PIN",
               subtitle: cohortName,
@@ -5400,7 +5398,7 @@ export const generateDailyKioskPins = onSchedule(
 
 export const testGenerateKioskPins = onRequest(
   {
-    secrets: [mailgunSecret], // 🚀 REQUIRED: Binds the Mailgun API key
+    secrets: [mailgunSecret],
     timeoutSeconds: 120,
     memory: "256MiB",
   },
@@ -5408,7 +5406,7 @@ export const testGenerateKioskPins = onRequest(
     try {
       const db = admin.firestore();
 
-      // 🚀 HARDCODED TEST EMAIL
+      // HARDCODED TEST EMAIL
       // Change this to your personal email to receive the test PINs
       const TEST_EMAIL = "codetribe@mlab.co.za";
       // const TEST_EMAIL = "fca63821@laoia.com";
@@ -5473,7 +5471,7 @@ export const testGenerateKioskPins = onRequest(
           ? facSnap.data()?.fullName
           : "Test Facilitator";
 
-        // 🚀 DYNAMIC MLAB EMAIL TEMPLATE
+        // DYNAMIC MLAB EMAIL TEMPLATE
         const emailParams = {
           title: "[TEST] Today's Kiosk PIN",
           subtitle: cohortName,

@@ -186,7 +186,7 @@ const StatementOfResults: React.FC = () => {
                         practicalModules: (data.practicalModules || []).map((m: any) => ({ ...m, status: mapStatus(m.status, m.marks, m.totalMarks) })),
                         workExperienceModules: (data.workExperienceModules || []).map((m: any) => ({ ...m, status: mapStatus(m.status, m.marks, m.totalMarks) })),
                         eisaAdmission: data.eisaAdmission || false,
-                        // 🚀 Apply the globally consistent ID logic here!
+                        // Apply the globally consistent ID logic here!
                         verificationCode: data.verificationCode || generateStudentId(data.cohortId || "CODE", docId),
                         issueDate: finalIssueDate,
                         nextEISADate: data.nextEisaDate || "TBA",
@@ -659,7 +659,7 @@ const StatementOfResults: React.FC = () => {
                             disabled={mintingStatus !== 'idle' && mintingStatus !== 'error'}
                             className={`control-btn control-btn-mint ${mintingStatus !== 'idle' && mintingStatus !== 'error' ? 'disabled' : ''}`}
                         >
-                            {mintingStatus === 'idle' && "🚀 Issue to Blockchain"}
+                            {mintingStatus === 'idle' && "Issue to Blockchain"}
                             {mintingStatus === 'generating_pdf' && "📄 Generating..."}
                             {mintingStatus === 'securing_on_chain' && "☁️ Securing via Backend..."}
                             {mintingStatus === 'error' && "⚠️ Retry Issuance"}
@@ -1366,7 +1366,7 @@ export default StatementOfResults;
 //                             disabled={mintingStatus !== 'idle' && mintingStatus !== 'error'}
 //                             className={`control-btn control-btn-mint ${mintingStatus !== 'idle' && mintingStatus !== 'error' ? 'disabled' : ''}`}
 //                         >
-//                             {mintingStatus === 'idle' && "🚀 Issue to Blockchain"}
+//                             {mintingStatus === 'idle' && "Issue to Blockchain"}
 //                             {mintingStatus === 'generating_pdf' && "📄 Generating..."}
 //                             {mintingStatus === 'securing_on_chain' && "☁️ Securing via Backend..."}
 //                             {mintingStatus === 'error' && "⚠️ Retry Issuance"}

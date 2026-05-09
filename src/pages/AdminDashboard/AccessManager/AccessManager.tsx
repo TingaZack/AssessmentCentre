@@ -20,7 +20,7 @@ const PRIVILEGE_OPTIONS = [
     { key: 'settings', title: 'System Settings', desc: 'Modify global platform configurations and API integrations.' }
 ] as const;
 
-// 🚀 GLOBAL CACHE: Survives tab switching so it never spins twice!
+// GLOBAL CACHE: Survives tab switching so it never spins twice!
 let adminCache: any[] | null = null;
 
 export const AccessManager: React.FC = () => {

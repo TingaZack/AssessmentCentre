@@ -264,7 +264,7 @@ export const AssessorProfileView: React.FC<ProfileProps> = ({ profile, user, onU
     return (
         <div className="lpv-wrapper animate-fade-in">
 
-            {/* 🚀 FIXED: STRICT SIGNATURE MODAL MOUNTED OUTSIDE CONDITIONAL EDIT LOGIC */}
+            {/* FIXED: STRICT SIGNATURE MODAL MOUNTED OUTSIDE CONDITIONAL EDIT LOGIC */}
             {isSigModalOpen && (
                 <SignatureSetupModal
                     userUid={targetId}
@@ -414,7 +414,7 @@ export const AssessorProfileView: React.FC<ProfileProps> = ({ profile, user, onU
                         )}
                     </section>
 
-                    {/* 🚀 FIXED: VISIBLE SIGNATURE PREVIEW SECTION */}
+                    {/* FIXED: VISIBLE SIGNATURE PREVIEW SECTION */}
                     <section className="lpv-panel">
                         <div className="lpv-panel__header">
                             <h3 className="lpv-panel__title">
@@ -430,7 +430,7 @@ export const AssessorProfileView: React.FC<ProfileProps> = ({ profile, user, onU
                         <div style={{ padding: '1.5rem', background: '#f8fafc', border: '1px dashed #cbd5e1', borderRadius: '8px', textAlign: 'center' }}>
                             {liveProfile?.signatureUrl ? (
                                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                                    {/* 🚀 FIXED: White background card prevents transparent PNGs from disappearing */}
+                                    {/* FIXED: White background card prevents transparent PNGs from disappearing */}
                                     <div style={{ background: 'white', padding: '10px 20px', borderRadius: '8px', border: '1px solid #e2e8f0', width: '100%', maxWidth: '350px' }}>
                                         <img
                                             src={liveProfile.signatureUrl}
@@ -439,7 +439,7 @@ export const AssessorProfileView: React.FC<ProfileProps> = ({ profile, user, onU
                                                 height: '60px',
                                                 width: '100%',
                                                 objectFit: 'contain',
-                                                // 🚀 FIXED: Applies the exact Red Ink filter used in the review dashboard!
+                                                // FIXED: Applies the exact Red Ink filter used in the review dashboard!
                                                 filter: 'brightness(0) saturate(100%) invert(13%) sepia(94%) saturate(7454%) hue-rotate(0deg) brightness(94%) contrast(116%)'
                                             }}
                                         />

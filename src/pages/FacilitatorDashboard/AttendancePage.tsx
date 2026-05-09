@@ -8,7 +8,7 @@ import {
 } from 'firebase/firestore';
 import {
     ChevronLeft, Save, Edit3, Search,
-    DownloadCloud, Calendar, Users, Filter, // 🚀 Imported Filter icon
+    DownloadCloud, Calendar, Users, Filter, // Imported Filter icon
     Lock
 } from 'lucide-react';
 import { db } from '../../lib/firebase';
@@ -20,7 +20,7 @@ export const AttendancePage: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
 
-    // 🚀 DYNAMIC DATE FROM URL 
+    // DYNAMIC DATE FROM URL 
     const urlParams = new URLSearchParams(location.search);
     const registerDate = urlParams.get('date') || new Date().toISOString().split('T')[0];
 
@@ -34,7 +34,7 @@ export const AttendancePage: React.FC = () => {
     const [isLocked, setIsLocked] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
-    // 🚀 NEW: Status Filter State
+    // NEW: Status Filter State
     const [statusFilter, setStatusFilter] = useState<'all' | 'present' | 'absent'>('all');
 
     useEffect(() => {
@@ -150,7 +150,7 @@ export const AttendancePage: React.FC = () => {
         }, 600);
     };
 
-    // 🚀 COMBINED FILTER: Search Term + Status Dropdown
+    // COMBINED FILTER: Search Term + Status Dropdown
     const filteredLearners = attendanceList.filter(l => {
         const matchesSearch = l.fullName.toLowerCase().includes(searchTerm.toLowerCase()) || l.idNumber.includes(searchTerm);
         const matchesStatus =
@@ -235,7 +235,7 @@ export const AttendancePage: React.FC = () => {
                                 />
                             </div>
 
-                            {/* 🚀 NEW: Status Dropdown Filter */}
+                            {/* NEW: Status Dropdown Filter */}
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'white', border: '1px solid var(--mlab-border)', padding: '6px 12px', borderRadius: '8px' }}>
                                 <Filter size={16} color="var(--mlab-grey)" />
                                 <select
@@ -404,7 +404,7 @@ export const AttendancePage: React.FC = () => {
 //     "Other (Specify below)"
 // ];
 
-// // 🚀 UPDATED INTERFACES to handle the new object structure from the Mobile App
+// // UPDATED INTERFACES to handle the new object structure from the Mobile App
 // interface AttendanceProof {
 //     url: string;
 //     status: 'pending' | 'approved' | 'rejected';
@@ -503,7 +503,7 @@ export const AttendancePage: React.FC = () => {
 //                     roster.forEach(l => {
 //                         const isPresent = data.presentLearners?.includes(l.id) || data.presentLearners?.includes(l.idNumber) || false;
 
-//                         // 🚀 COMPATIBILITY LAYER: Handle old string URLs vs new Object structure
+//                         // COMPATIBILITY LAYER: Handle old string URLs vs new Object structure
 //                         const rawProof = data.proofs?.[l.id] || data.proofs?.[l.idNumber];
 //                         let parsedProof: AttendanceProof | undefined = undefined;
 
@@ -613,7 +613,7 @@ export const AttendancePage: React.FC = () => {
 //         }
 //     };
 
-//     // 🚀 NEW: Handle Facilitator Review of Pending Proof
+//     // NEW: Handle Facilitator Review of Pending Proof
 //     const handleProofDecision = (learnerId: string, status: 'approved' | 'rejected') => {
 //         setAttendance(prev => {
 //             const current = prev[learnerId];
@@ -679,7 +679,7 @@ export const AttendancePage: React.FC = () => {
 //             const reasonsMap: Record<string, string> = {};
 
 //             Object.keys(attendance).forEach(id => {
-//                 // 🚀 Safely save the entire proof object back to Firestore
+//                 // Safely save the entire proof object back to Firestore
 //                 if (attendance[id].proof) proofsMap[id] = attendance[id].proof;
 //                 if (attendance[id].reason) reasonsMap[id] = attendance[id].reason!;
 //             });
@@ -909,7 +909,7 @@ export const AttendancePage: React.FC = () => {
 //                                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'flex-start' }}>
 //                                                     <ExpandableText text={att.reason || 'No reason provided'} limit={40} />
 
-//                                                     {/* 🚀 NEW: Enhanced Proof Display & Review Controls */}
+//                                                     {/* NEW: Enhanced Proof Display & Review Controls */}
 //                                                     {att.proof && (
 //                                                         <div style={{ padding: '8px 10px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', width: '100%' }}>
 //                                                             <a href={att.proof.url} target="_blank" rel="noreferrer" style={{ color: 'var(--mlab-blue)', fontWeight: 600, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
@@ -1187,7 +1187,7 @@ export const AttendancePage: React.FC = () => {
 // //         doc.save(`Register_${currentCohort?.name}_${date}.pdf`);
 // //     };
 
-// //     // 🚀 Helper to open modal and prepopulate existing reason
+// //     // Helper to open modal and prepopulate existing reason
 // //     const openEvidenceModal = (learnerId: string, learnerName: string) => {
 // //         if (isLocked) return;
 // //         const currentAtt = attendance[learnerId];
@@ -1611,7 +1611,7 @@ export const AttendancePage: React.FC = () => {
 // // //     const [date, setDate] = useState(initialDate);
 // // //     const [attendance, setAttendance] = useState<Record<string, AttendanceStatus>>({});
 
-// // //     // 🚀 NEW: Store exactly who should be rendered in the table
+// // //     // NEW: Store exactly who should be rendered in the table
 // // //     const [registerLearners, setRegisterLearners] = useState<DashboardLearner[]>([]);
 // // //     const [existingRecordId, setExistingRecordId] = useState<string | null>(null);
 
@@ -1648,7 +1648,7 @@ export const AttendancePage: React.FC = () => {
 // // //                 const newStatus: Record<string, AttendanceStatus> = {};
 // // //                 let roster: DashboardLearner[] = [];
 
-// // //                 // 🚀 FIX: Safely deduplicate learners based on ID Number
+// // //                 // FIX: Safely deduplicate learners based on ID Number
 // // //                 const getUniqueRoster = (targetIds: Set<string> | string[]) => {
 // // //                     const idSet = targetIds instanceof Set ? targetIds : new Set(targetIds);
 // // //                     const uniqueMap = new Map<string, DashboardLearner>();
@@ -1666,7 +1666,7 @@ export const AttendancePage: React.FC = () => {
 // // //                 };
 
 // // //                 if (!querySnapshot.empty) {
-// // //                     // 🚀 RECORD EXISTS: Load it and LOCK the UI
+// // //                     // RECORD EXISTS: Load it and LOCK the UI
 // // //                     const docSnap = querySnapshot.docs[0];
 // // //                     const data = docSnap.data();
 
@@ -1690,7 +1690,7 @@ export const AttendancePage: React.FC = () => {
 // // //                         };
 // // //                     });
 // // //                 } else {
-// // //                     // 🚀 NO RECORD: Start fresh and unlock UI
+// // //                     // NO RECORD: Start fresh and unlock UI
 // // //                     setExistingRecordId(null);
 // // //                     setIsLocked(false);
 
@@ -1949,7 +1949,7 @@ export const AttendancePage: React.FC = () => {
 // // //                 <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
 // // //                     {isLocked ? (
 // // //                         <>
-// // //                             {/* 🚀 UI FIX: CLEARLY SHOW THIS IS A HISTORICAL RECORD */}
+// // //                             {/* UI FIX: CLEARLY SHOW THIS IS A HISTORICAL RECORD */}
 // // //                             <div style={{ background: '#f1f5f9', padding: '8px 14px', borderRadius: '8px', fontSize: '0.85rem', fontWeight: 600, color: '#475569', display: 'flex', alignItems: 'center', gap: '6px' }}>
 // // //                                 <Lock size={16} /> Read-Only Record
 // // //                             </div>

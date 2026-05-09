@@ -637,7 +637,7 @@ export const AssessmentBuilder: React.FC = () => {
     const qCount = blocks.filter((b) => ["text", "mcq", "task", "checklist", "qcto_workplace"].includes(b.type)).length;
     const coveredTopicIds = new Set(blocks.map((b) => b.linkedTopicId).filter(Boolean) as string[]);
 
-    // 🚀 THE ULTRA-SAFE DETERMINISTIC SAVE FUNCTION 🚀
+    // THE ULTRA-SAFE DETERMINISTIC SAVE FUNCTION 🚀
     const handleSave = async (status: AssessmentStatusType | "force_draft", isAutoSave = false) => {
         if (!title.trim() && !isAutoSave) {
             toast.warning("Please enter a Workbook Title.");
@@ -730,7 +730,7 @@ export const AssessmentBuilder: React.FC = () => {
                 targetDocId = baseComposite ? `${baseComposite}_${uniqueTag}` : doc(collection(db, "assessments")).id;
             }
 
-            // 🚀 GOOGLE CLOUD TASKS: Auto-Sweeper Scheduling 🚀
+            // GOOGLE CLOUD TASKS: Auto-Sweeper Scheduling 🚀
             // Crucial Fix: Only schedule the task if it is genuinely published as 'scheduled'.
             // If it is 'draft' or 'force_draft', we aggressively cancel existing tasks and do not create new ones.
             let newTaskId = autoCloseTaskId;
@@ -800,7 +800,7 @@ export const AssessmentBuilder: React.FC = () => {
                 lastUpdated: new Date().toISOString(),
                 lastUpdatedBy: user?.uid,
                 isWorkbook: true,
-                autoCloseTaskId: newTaskId || null, // 🚀 Save the receipt to Firestore!
+                autoCloseTaskId: newTaskId || null, // Save the receipt to Firestore!
             };
 
             if (targetDocId !== assessmentId) {
@@ -1011,7 +1011,7 @@ export const AssessmentBuilder: React.FC = () => {
                         </button>
                     </Tooltip>
 
-                    {/* 🚀 CLONE BUTTON 🚀 */}
+                    {/* CLONE BUTTON */}
                     {assessmentId && (
                         <Tooltip content="Duplicate this workbook" placement="bottom">
                             <button className="ab-btn ab-btn-ghost" onClick={handleClone}>
@@ -1030,7 +1030,7 @@ export const AssessmentBuilder: React.FC = () => {
                         </Tooltip>
                     )}
 
-                    {/* 🚀 UNPUBLISH BUTTON 🚀 */}
+                    {/* UNPUBLISH BUTTON */}
                     {isDeployed && (
                         <Tooltip content="Revert to Draft (Hide from Learners)" placement="bottom">
                             <button className="ab-btn ab-btn-ghost" style={{ color: '#ef4444' }} onClick={() => handleSave("force_draft")}>
@@ -1197,7 +1197,7 @@ export const AssessmentBuilder: React.FC = () => {
                                 <div>
                                     <FG label="Learner Visibility & Release">
                                         <div className="ab-form-group">
-                                            {/* 🚀 REMOVED disabled={isDeployed} SO THEY CAN CHANGE RELEASE STATE ANYTIME */}
+                                            {/* REMOVED disabled={isDeployed} SO THEY CAN CHANGE RELEASE STATE ANYTIME */}
                                             <select
                                                 className="ab-input ab-input--accent"
                                                 value={releaseState}
@@ -1220,7 +1220,7 @@ export const AssessmentBuilder: React.FC = () => {
                                                         onChange={(e) => setScheduledDate(e.target.value)}
                                                     />
                                                 </div>
-                                                {/* 🚀 QUICK ACTION: CANCEL SCHEDULE */}
+                                                {/* QUICK ACTION: CANCEL SCHEDULE */}
                                                 {isDeployed && assessmentStatus === "scheduled" && (
                                                     <button
                                                         className="ab-text-btn"
@@ -1294,7 +1294,7 @@ export const AssessmentBuilder: React.FC = () => {
                                     <div className="ab-fg-header">
                                         <label className="ab-fg-label">Assign to Cohorts</label>
                                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                            {/* 🚀 SELECT ALL TOGGLE BUTTON */}
+                                            {/* SELECT ALL TOGGLE BUTTON */}
                                             {cohorts.length > 0 && (
                                                 <button
                                                     className="ab-text-btn"
@@ -1311,7 +1311,7 @@ export const AssessmentBuilder: React.FC = () => {
                                         </div>
                                     </div>
 
-                                    {/* 🚀 Visual counter of selected cohorts */}
+                                    {/* Visual counter of selected cohorts */}
                                     {cohortIds.length > 0 && (
                                         <div style={{ fontSize: '0.75rem', color: 'var(--mlab-blue)', marginBottom: '8px', fontWeight: 'bold' }}>
                                             {cohortIds.length} Cohort(s) Selected
@@ -1331,7 +1331,7 @@ export const AssessmentBuilder: React.FC = () => {
                                         {cohorts.length === 0 && <span className="ab-empty-hint">No active classes available.</span>}
                                     </div>
 
-                                    {/* 🚀 SILENT PUBLISH TOGGLE */}
+                                    {/* SILENT PUBLISH TOGGLE */}
                                     <label className={`ab-check-row ${cohortIds.length === 0 ? 'ab-disabled' : ''}`} style={{ marginTop: '12px' }}>
                                         <input
                                             type="checkbox"
@@ -2860,7 +2860,7 @@ export default AssessmentBuilder;
 //                 batch.set(r, { ...payload, createdAt: new Date().toISOString() });
 //             }
 
-//             // 🚀 4. THE FIX: DIRECT DB QUERY TO GUARANTEE WORKBOOK CREATION 🚀
+//             // 4. THE FIX: DIRECT DB QUERY TO GUARANTEE WORKBOOK CREATION 🚀
 //             if (["active", "scheduled"].includes(finalStatus)) {
 
 //                 const allEnrollments: any[] = [];

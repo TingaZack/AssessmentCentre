@@ -154,7 +154,7 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
                 if (y !== selectedYear) return false;
             }
 
-            // 🚀 RELATIONAL QUALIFICATION FILTER
+            // RELATIONAL QUALIFICATION FILTER
             if (selectedQualification !== 'all') {
                 const activeProgId = isDormant ? null : ((learner as any).programmeId || cohorts.find(c => c.id === learner.cohortId)?.programmeId);
                 const progObj = activeProgId ? programmes?.find(p => p.id === activeProgId) : null;
@@ -319,7 +319,7 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
                         ? settings?.campuses?.find(c => c.id === activeCampusId)?.name || 'Unknown'
                         : 'Unassigned';
 
-                    // 🚀 RELATIONAL LOOKUP FOR EXPORT
+                    // RELATIONAL LOOKUP FOR EXPORT
                     const activeProgId = isDormant ? null : ((l as any).programmeId || cohortObj?.programmeId);
                     const progObj = activeProgId ? programmes?.find(p => p.id === activeProgId) : null;
                     const qualName = progObj ? progObj.name : (l.qualification?.name || 'N/A');
@@ -659,7 +659,7 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
                                 isSelected ? 'mlab-tr--selected' : '',
                             ].filter(Boolean).join(' ');
 
-                            // 🚀 STRICT LEDGER RESOLUTION: Ignore profile pointers if the enrollment is empty
+                            // STRICT LEDGER RESOLUTION: Ignore profile pointers if the enrollment is empty
                             const isDormant = !learner.enrollmentId;
 
                             const cohortObj = isDormant ? null : cohorts.find(c => c.id === learner.cohortId);
@@ -670,7 +670,7 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
                                 ? settings?.campuses?.find(c => c.id === activeCampusId)?.name || 'Unknown Location'
                                 : 'Location Pending';
 
-                            // 🚀 RELATIONAL LOOKUP FOR QUALIFICATIONS
+                            //  RELATIONAL LOOKUP FOR QUALIFICATIONS
                             const activeProgId = isDormant ? null : ((learner as any).programmeId || cohortObj?.programmeId);
                             const progObj = activeProgId ? programmes?.find(p => p.id === activeProgId) : null;
 
@@ -705,7 +705,7 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
                                             <div className="mlab-cell-sub">
                                                 {learner.idNumber} • {learner.trainingStartDate?.substring(0, 4) || "No Year"}
                                             </div>
-                                            {/* 🚀 THE SMART IMPORT UI BADGE 🚀 */}
+                                            {/* THE SMART IMPORT UI BADGE */}
                                             {viewMode === 'staging' && (learner as any).isExistingUser && (
                                                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '4px', padding: '2px 6px', background: '#e0f2fe', color: '#0369a1', borderRadius: '4px', fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase' }}>
                                                     <UserCheck size={10} /> Existing Profile
@@ -787,7 +787,7 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
                                                         {copiedId === learner.idNumber ? <ClipboardCheck size={14} /> : <Share2 size={14} />}
                                                     </button>
 
-                                                    {/* 🚀 THE FORCE ACTIVE BUTTON 🚀 */}
+                                                    {/* THE FORCE ACTIVE BUTTON */}
                                                     {viewMode === 'active' && isPendingSetup && (
                                                         <button
                                                             className="mlab-icon-btn"
@@ -799,7 +799,7 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
                                                         </button>
                                                     )}
 
-                                                    {/* 🚀 FIXED INVITE BUTTON (DISABLED ONLY IF FULLY REGISTERED) 🚀 */}
+                                                    {/* FIXED INVITE BUTTON (DISABLED ONLY IF FULLY REGISTERED) */}
                                                     {viewMode === 'active' && (
                                                         <button
                                                             className={`mlab-icon-btn ${learner.profileCompleted ? '' : 'mlab-icon-btn--green'}`}
@@ -870,7 +870,7 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
                 />
             )}
 
-            {/* 🚀 STATUS MODALS WRAPPED IN CREATEPORTAL 🚀 */}
+            {/* STATUS MODALS WRAPPED IN CREATEPORTAL */}
             {approvingLearners && approvingLearners.length > 0 && createPortal(
                 <StatusModal
                     type="success"
@@ -1083,7 +1083,7 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
 
 //             if (selectedQualification !== 'all' && learner.qualification?.name !== selectedQualification) return false;
 
-//             // 🚀 FIX: Use TRUE registration check for the filter
+//             // FIX: Use TRUE registration check for the filter
 //             if (filterStatus !== 'all') {
 //                 if (filterStatus === 'pending_setup') {
 //                     if (learner.profileCompleted) return false;
@@ -1171,7 +1171,7 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
 //         });
 //     };
 
-//     // 🚀 FIX: Update both the Profile and the Ledger when forcing Active
+//     // FIX: Update both the Profile and the Ledger when forcing Active
 //     const handleForceActive = async (learner: DashboardLearner) => {
 //         if (!window.confirm(`Force ${learner.fullName} to Active status? This overrides the email invite requirement.`)) return;
 
@@ -1183,7 +1183,7 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
 //             const learnerRef = doc(db, "learners", learner.learnerId || learner.id);
 //             batch.set(learnerRef, {
 //                 authStatus: "active",
-//                 profileCompleted: true, // 🚀 FIX: Trick the system into thinking they fully registered
+//                 profileCompleted: true, // FIX: Trick the system into thinking they fully registered
 //                 status: "active",
 //                 updatedAt: timestamp
 //             }, { merge: true });
@@ -1234,7 +1234,7 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
 //                         ? settings?.campuses?.find(c => c.id === activeCampusId)?.name || 'Unknown'
 //                         : 'Unassigned';
 
-//                     // 🚀 FIX: Use TRUE registration check for export
+//                     // FIX: Use TRUE registration check for export
 //                     const accountStatus = (l.profileCompleted || l.isOffline) ? 'Active' : 'Pending Setup';
 
 //                     return `"${l.fullName}","${l.idNumber}","${cohortName}","${campusName}","${l.qualification?.name || 'N/A'}","${l.status}","${accountStatus}","${l.trainingStartDate}","${l.profileCompleted ? 'Registered' : 'Pending'}","${l.isBlockchainVerified ? 'Yes' : 'No'}"`;
@@ -1580,7 +1580,7 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
 
 //                             const isReturning = learner.idNumber && (learnerCountsById[learner.idNumber] > 1);
 
-//                             // 🚀 FIX: Determine Pending Setup strictly via profileCompleted
+//                             // FIX: Determine Pending Setup strictly via profileCompleted
 //                             const isPendingSetup = !learner.profileCompleted && !learner.isOffline && viewMode !== 'staging';
 
 //                             return (
@@ -1607,7 +1607,7 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
 //                                             <div className="mlab-cell-sub">
 //                                                 {learner.idNumber} • {learner.trainingStartDate?.substring(0, 4) || "No Year"}
 //                                             </div>
-//                                             {/* 🚀 THE SMART IMPORT UI BADGE 🚀 */}
+//                                             {/* THE SMART IMPORT UI BADGE */}
 //                                             {viewMode === 'staging' && (learner as any).isExistingUser && (
 //                                                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '4px', padding: '2px 6px', background: '#e0f2fe', color: '#0369a1', borderRadius: '4px', fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase' }}>
 //                                                     <UserCheck size={10} /> Existing Profile
@@ -1688,7 +1688,7 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
 //                                                         {copiedId === learner.idNumber ? <ClipboardCheck size={14} /> : <Share2 size={14} />}
 //                                                     </button>
 
-//                                                     {/* 🚀 THE FORCE ACTIVE BUTTON 🚀 */}
+//                                                     {/* THE FORCE ACTIVE BUTTON */}
 //                                                     {viewMode === 'active' && isPendingSetup && (
 //                                                         <button
 //                                                             className="mlab-icon-btn"
@@ -1700,7 +1700,7 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
 //                                                         </button>
 //                                                     )}
 
-//                                                     {/* 🚀 FIXED INVITE BUTTON (DISABLED ONLY IF FULLY REGISTERED) 🚀 */}
+//                                                     {/* FIXED INVITE BUTTON (DISABLED ONLY IF FULLY REGISTERED) */}
 //                                                     {viewMode === 'active' && (
 //                                                         <button
 //                                                             className={`mlab-icon-btn ${learner.profileCompleted ? '' : 'mlab-icon-btn--green'}`}
@@ -1771,7 +1771,7 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
 //                 />
 //             )}
 
-//             {/* 🚀 STATUS MODALS WRAPPED IN CREATEPORTAL 🚀 */}
+//             {/* STATUS MODALS WRAPPED IN CREATEPORTAL */}
 //             {approvingLearners && approvingLearners.length > 0 && createPortal(
 //                 <StatusModal
 //                     type="success"
@@ -2487,7 +2487,7 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
 // //                                             <div className="mlab-cell-sub">
 // //                                                 {learner.idNumber} • {learner.trainingStartDate?.substring(0, 4) || "No Year"}
 // //                                             </div>
-// //                                             {/* 🚀 THE SMART IMPORT UI BADGE 🚀 */}
+// //                                             {/* THE SMART IMPORT UI BADGE */}
 // //                                             {viewMode === 'staging' && (learner as any).isExistingUser && (
 // //                                                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '4px', padding: '2px 6px', background: '#e0f2fe', color: '#0369a1', borderRadius: '4px', fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase' }}>
 // //                                                     <UserCheck size={10} /> Existing Profile
@@ -2568,7 +2568,7 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
 // //                                                         {copiedId === learner.idNumber ? <ClipboardCheck size={14} /> : <Share2 size={14} />}
 // //                                                     </button>
 
-// //                                                     {/* 🚀 THE FORCE ACTIVE BUTTON 🚀 */}
+// //                                                     {/* THE FORCE ACTIVE BUTTON */}
 // //                                                     {viewMode === 'active' && isPendingSetup && (
 // //                                                         <button
 // //                                                             className="mlab-icon-btn"
@@ -2580,7 +2580,7 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
 // //                                                         </button>
 // //                                                     )}
 
-// //                                                     {/* 🚀 UPDATED INVITE BUTTON (DISABLED IF ALREADY REGISTERED) 🚀 */}
+// //                                                     {/* UPDATED INVITE BUTTON (DISABLED IF ALREADY REGISTERED) */}
 // //                                                     {viewMode === 'active' && (
 // //                                                         <button
 // //                                                             className={`mlab-icon-btn ${learner.authStatus === 'active' ? '' : 'mlab-icon-btn--green'}`}
@@ -2651,7 +2651,7 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
 // //                 />
 // //             )}
 
-// //             {/* 🚀 STATUS MODALS WRAPPED IN CREATEPORTAL 🚀 */}
+// //             {/* STATUS MODALS WRAPPED IN CREATEPORTAL */}
 // //             {approvingLearners && approvingLearners.length > 0 && createPortal(
 // //                 <StatusModal
 // //                     type="success"

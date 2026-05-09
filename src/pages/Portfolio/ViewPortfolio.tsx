@@ -67,7 +67,7 @@ const TABS = [
 type TabId = typeof TABS[number]['id'];
 const INFORMAL_TYPES = ['Developmental Activity', 'Practice Set', 'Task'];
 
-// 🚀 UTILITY: Global Type Badge Generator
+// UTILITY: Global Type Badge Generator
 const getTypeBadge = (type: string) => {
     const t = (type || '').toLowerCase();
     const baseStyle: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', padding: '4px 8px', borderRadius: '4px', fontSize: '0.65rem', fontWeight: 800, border: 'none', textTransform: 'uppercase', letterSpacing: '0.05em' };
@@ -395,7 +395,7 @@ export const ViewPortfolio: React.FC = () => {
         if (!cohorts.length) fetchCohorts();
     }, []);
 
-    // 🚀 RESOLVING THE TARGET ENROLLMENT 🚀
+    // RESOLVING THE TARGET ENROLLMENT 🚀
     const enrollment = useMemo(() => {
         if (!routeId) return undefined;
         const records = learners.filter(l => l.enrollmentId === routeId || l.id === routeId || l.learnerId === routeId);
@@ -454,7 +454,7 @@ export const ViewPortfolio: React.FC = () => {
                     subs = snap.docs.map(d => ({ id: d.id, ...d.data() } as LearnerSubmission));
                 }
 
-                // 🚀 ISOLATED AUTO-HYDRATION BLOCK (Prevents silent failures for Facilitators)
+                // ISOLATED AUTO-HYDRATION BLOCK (Prevents silent failures for Facilitators)
                 try {
                     if (activeCohortId && activeCohortId !== "") {
                         const cohortAssessmentsQ = query(
@@ -791,7 +791,7 @@ export const ViewPortfolio: React.FC = () => {
         </div>
     );
 
-    // 🚀 DYNAMIC ROW RENDERER: Supports Flat and Grouped Rows
+    // DYNAMIC ROW RENDERER: Supports Flat and Grouped Rows
     const renderTableRow = (sub: LearnerSubmission, isGrouped: boolean) => {
         const isNYC = sub.status === 'moderated' && sub.competency === 'NYC';
         const hasPendingAppeal = sub.status === 'appealed' || sub.appeal?.status === 'pending';
@@ -861,7 +861,7 @@ export const ViewPortfolio: React.FC = () => {
         );
     };
 
-    // 🚀 DYNAMIC TABLE BODY RENDERER
+    // DYNAMIC TABLE BODY RENDERER
     const renderTableBody = () => {
         if (sortBy === 'module') {
             // Group by module
@@ -1396,7 +1396,7 @@ export default ViewPortfolio;
 // type TabId = typeof TABS[number]['id'];
 // const INFORMAL_TYPES = ['Developmental Activity', 'Practice Set', 'Task'];
 
-// // 🚀 UTILITY: Global Type Badge Generator
+// // UTILITY: Global Type Badge Generator
 // const getTypeBadge = (type: string) => {
 //     const t = (type || '').toLowerCase();
 //     const baseStyle: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', padding: '4px 8px', borderRadius: '4px', fontSize: '0.65rem', fontWeight: 800, border: 'none', textTransform: 'uppercase', letterSpacing: '0.05em' };
@@ -1724,7 +1724,7 @@ export default ViewPortfolio;
 //         if (!cohorts.length) fetchCohorts();
 //     }, []);
 
-//     // 🚀 RESOLVING THE TARGET ENROLLMENT 🚀
+//     // RESOLVING THE TARGET ENROLLMENT 🚀
 //     const enrollment = useMemo(() => {
 //         if (!routeId) return undefined;
 //         const records = learners.filter(l => l.enrollmentId === routeId || l.id === routeId || l.learnerId === routeId);
@@ -2115,7 +2115,7 @@ export default ViewPortfolio;
 //         </div>
 //     );
 
-//     // 🚀 DYNAMIC ROW RENDERER: Supports Flat and Grouped Rows
+//     // DYNAMIC ROW RENDERER: Supports Flat and Grouped Rows
 //     const renderTableRow = (sub: LearnerSubmission, isGrouped: boolean) => {
 //         const isNYC = sub.status === 'moderated' && sub.competency === 'NYC';
 //         const hasPendingAppeal = sub.status === 'appealed' || sub.appeal?.status === 'pending';
@@ -2185,7 +2185,7 @@ export default ViewPortfolio;
 //         );
 //     };
 
-//     // 🚀 DYNAMIC TABLE BODY RENDERER
+//     // DYNAMIC TABLE BODY RENDERER
 //     const renderTableBody = () => {
 //         if (sortBy === 'module') {
 //             // Group by module

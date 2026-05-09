@@ -22,7 +22,7 @@ export const LearnerDirectoryView: React.FC<LearnerDirectoryViewProps> = ({ lear
         const profileMap = new Map<string, any>();
 
         learners.forEach(l => {
-            // 🚀 FIXED: GHOST SHIELD
+            //  GHOST SHIELD
             // Completely ignore any learner record that has no full name or no ID number
             if (!l.fullName || l.fullName.trim() === '' || !l.idNumber || l.idNumber.trim() === '') {
                 return;
@@ -70,7 +70,7 @@ export const LearnerDirectoryView: React.FC<LearnerDirectoryViewProps> = ({ lear
             );
         }
 
-        // 🚀 FIXED: Robust Sorting. Falls back to empty string if undefined to prevent localeCompare crash
+        //  Robust Sorting. Falls back to empty string if undefined to prevent localeCompare crash
         return results.sort((a, b) => {
             const nameA = String(a.fullName || '');
             const nameB = String(b.fullName || '');
