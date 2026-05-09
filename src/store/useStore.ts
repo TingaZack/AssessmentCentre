@@ -160,6 +160,8 @@ interface StoreState extends CohortSlice {
   settings: SystemSettings | null;
   fetchSettings: () => Promise<void>;
 
+  updateSettings: (updates: Partial<SystemSettings>) => Promise<void>;
+
   addLearner: (
     learner: Omit<
       DashboardLearner,
@@ -1932,6 +1934,26 @@ export const useStore = create<StoreState>()(
         }
       } catch (error) {
         console.error("Error fetching system settings:", error);
+      }
+    },
+
+    updateSettings: async (updates: Partial<SystemSettings>) => {
+      try {
+        const docRef = doc(db, "system_settings", "global");
+
+        // 1. Save to Firestore
+        await setDoc(docRef, updates, { merge: true });
+
+        // 2. Update local state
+        set((state) => {
+          state.settings = {
+            ...(state.settings as SystemSettings),
+            ...updates,
+          };
+        });
+      } catch (error) {
+        console.error("Failed to update system settings:", error);
+        throw error;
       }
     },
 

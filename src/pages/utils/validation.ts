@@ -91,3 +91,45 @@ export const generateSorId = (
 
   return `${prefix}-${yearMonth}-${initials}-${randomChars}`;
 };
+
+export const extractSaIdInfo = (idNumber: string) => {
+  // Basic check for 13 digits
+  if (!idNumber || idNumber.length !== 13 || !/^\d+$/.test(idNumber)) {
+    return null;
+  }
+
+  const yearStr = idNumber.substring(0, 2);
+  const monthStr = idNumber.substring(2, 4);
+  const dayStr = idNumber.substring(4, 6);
+  const genderStr = idNumber.substring(6, 10);
+
+  // Calculate full year (assuming anyone born after the current 2-digit year is from the 1900s)
+  const currentYear = new Date().getFullYear() % 100;
+  const fullYear =
+    parseInt(yearStr, 10) > currentYear ? `19${yearStr}` : `20${yearStr}`;
+
+  const dobString = `${fullYear}-${monthStr}-${dayStr}`;
+
+  // Calculate precise age
+  const dob = new Date(
+    parseInt(fullYear),
+    parseInt(monthStr) - 1,
+    parseInt(dayStr),
+  );
+  const ageDifMs = Date.now() - dob.getTime();
+  const ageDate = new Date(ageDifMs);
+  const age = Math.abs(ageDate.getUTCFullYear() - 1970);
+
+  // Determine SA Youth Status (Typically 18 - 35)
+  const isYouth = age >= 18 && age <= 35;
+
+  // Determine Gender (0000-4999 = Female, 5000-9999 = Male)
+  const gender = parseInt(genderStr, 10) < 5000 ? "Female" : "Male";
+
+  return {
+    dateOfBirth: dobString,
+    age,
+    isYouth,
+    gender,
+  };
+};

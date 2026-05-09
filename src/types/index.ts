@@ -37,6 +37,9 @@ export interface SystemSettings {
   phone: string;
   email: string;
   campuses: CampusLocation[];
+  ecosystem?: {
+    eventTypes?: string[];
+  };
   passMarkThreshold: number;
   attendanceRequirement: number;
   defaultCohortMonths: number;
