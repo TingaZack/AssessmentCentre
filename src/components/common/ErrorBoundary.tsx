@@ -29,7 +29,7 @@ export class ErrorBoundary extends Component<Props, State> {
     public render() {
         if (this.state.hasError) {
             return (
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#f8fafc', padding: '2rem', textAlign: 'center' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'absolute', right: 0, left: 0, bottom: 0, top: 0, justifyContent: 'center', height: '100vh', background: '#f8fafc', padding: '2rem', textAlign: 'center' }}>
                     <div style={{ background: '#fef2f2', border: '1px solid #fecdd3', padding: '2rem', borderRadius: '12px', maxWidth: '500px' }}>
                         <AlertTriangle size={48} color="#dc2626" style={{ margin: '0 auto 1rem' }} />
                         <h2 style={{ color: '#991b1b', margin: '0 0 1rem' }}>Something went wrong.</h2>

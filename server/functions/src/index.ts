@@ -633,7 +633,7 @@ export const sendCustomPasswordReset = onCall(
         throw new HttpsError("not-found", "No account found with that email.");
       }
 
-      throw new HttpsError("internal", "Unable to send reset email.");
+      throw new HttpsError("internal", error.message);
     }
   },
 );
@@ -5783,3 +5783,199 @@ export const verifyGuestOTP = onCall(async (request) => {
     );
   }
 });
+
+// ============================================================================
+// TRACEABILITY OF LEARNING: ATTENDANCE & CURRICULUM HANDSHAKE
+// ============================================================================
+
+/**
+ * TRIGGER A: When Attendance is Finalized
+ * Finds all curriculum logs for that day and stamps them with the present/absent lists.
+ */
+export const onAttendanceFinalized = onDocumentCreated(
+  { document: "attendance/{attendanceId}" },
+  async (event) => {
+    const data = event.data?.data();
+    if (!data) return;
+
+    const { cohortId, date, presentLearners, absentLearners } = data;
+    const db = admin.firestore();
+
+    try {
+      // Find all curriculum logs for this cohort on this specific date
+      const logsSnap = await db
+        .collection("curriculum_logs")
+        .where("cohortId", "==", cohortId)
+        .where("coveredAt", "==", date) // We use 'coveredAt' as it represents the batch date
+        .get();
+
+      if (logsSnap.empty) {
+        logger.info(
+          `No curriculum logs found for cohort ${cohortId} on ${date}. Skipping handshake.`,
+        );
+        return;
+      }
+
+      const batch = db.batch();
+
+      logsSnap.docs.forEach((docSnap) => {
+        batch.update(docSnap.ref, {
+          presentLearnerIds: presentLearners || [],
+          absentLearnerIds: absentLearners || [],
+        });
+      });
+
+      await batch.commit();
+      logger.info(
+        `Successfully linked attendance to ${logsSnap.size} curriculum logs for cohort ${cohortId} on ${date}`,
+      );
+    } catch (error) {
+      logger.error("Error in onAttendanceFinalized trigger:", error);
+    }
+  },
+);
+
+/**
+ * TRIGGER B: When a Curriculum Log is Created
+ * Checks if attendance was ALREADY finalized for this date. If yes, it stamps itself.
+ */
+export const onCurriculumLogCreated = onDocumentCreated(
+  { document: "curriculum_logs/{logId}" },
+  async (event) => {
+    const data = event.data?.data();
+    if (!data) return;
+
+    const { cohortId, coveredAt } = data;
+    const db = admin.firestore();
+
+    try {
+      // Check if there is ALREADY a finalized attendance register for this cohort/date
+      const attendanceSnap = await db
+        .collection("attendance")
+        .where("cohortId", "==", cohortId)
+        .where("date", "==", coveredAt)
+        .limit(1)
+        .get();
+
+      // If no attendance register exists yet, do nothing.
+      // Trigger A will catch this log later when attendance is eventually finalized.
+      if (attendanceSnap.empty) return;
+
+      const attendanceData = attendanceSnap.docs[0].data();
+
+      // Update this newly created log with the historical attendance data
+      await event.data?.ref.update({
+        presentLearnerIds: attendanceData.presentLearners || [],
+        absentLearnerIds: attendanceData.absentLearners || [],
+      });
+
+      logger.info(
+        `Retroactively linked attendance to new curriculum log ${event.params.logId}`,
+      );
+    } catch (error) {
+      logger.error("Error in onCurriculumLogCreated trigger:", error);
+    }
+  },
+);
+
+// ============================================================================
+// ONE-OFF MIGRATION SCRIPT: BACKTRACE HISTORICAL TRACEABILITY (FORCE UPDATE)
+// ============================================================================
+export const backtraceAttendanceTraceability = onRequest(
+  {
+    timeoutSeconds: 300,
+    memory: "512MiB",
+  },
+  async (req, res) => {
+    logger.info(
+      "🚀 Initiating Historical Traceability Backtrace (FORCE RUN)...",
+    );
+    const db = admin.firestore();
+
+    try {
+      const logsSnap = await db.collection("curriculum_logs").get();
+
+      let updatedCount = 0;
+      let skippedCount = 0;
+      let operationCount = 0;
+      const batches: Promise<any>[] = [];
+      let currentBatch = db.batch();
+
+      const attendanceCache = new Map<string, any>();
+
+      for (const logDoc of logsSnap.docs) {
+        const logData = logDoc.data();
+
+        // 🚀 NOTICE: The "skip" safeguard has been removed.
+        // We are forcing it to evaluate every single log in the database.
+
+        const cohortId = logData.cohortId;
+        const coveredAt =
+          logData.coveredAt || logData.dateLogged?.split("T")[0];
+
+        if (!cohortId || !coveredAt) {
+          skippedCount++;
+          continue;
+        }
+
+        const cacheKey = `${cohortId}_${coveredAt}`;
+        let attendanceData = attendanceCache.get(cacheKey);
+
+        if (attendanceData === undefined) {
+          const attSnap = await db
+            .collection("attendance")
+            .where("cohortId", "==", cohortId)
+            .where("date", "==", coveredAt)
+            .limit(1)
+            .get();
+
+          if (!attSnap.empty) {
+            attendanceData = attSnap.docs[0].data();
+            attendanceCache.set(cacheKey, attendanceData);
+          } else {
+            attendanceCache.set(cacheKey, null);
+            attendanceData = null;
+          }
+        }
+
+        // If attendance exists for this day, forcefully stamp it!
+        if (attendanceData) {
+          currentBatch.update(logDoc.ref, {
+            presentLearnerIds: attendanceData.presentLearners || [],
+            absentLearnerIds: attendanceData.absentLearners || [],
+          });
+
+          updatedCount++;
+          operationCount++;
+
+          if (operationCount === 490) {
+            batches.push(currentBatch.commit());
+            currentBatch = db.batch();
+            operationCount = 0;
+          }
+        } else {
+          skippedCount++;
+        }
+      }
+
+      if (operationCount > 0) {
+        batches.push(currentBatch.commit());
+      }
+
+      await Promise.all(batches);
+
+      const resultMessage = `✅ Force Backtrace Complete! Successfully refreshed & linked ${updatedCount} logs. Unlinked (No register found): ${skippedCount}.`;
+      logger.info(resultMessage);
+
+      res.status(200).send({
+        success: true,
+        message: resultMessage,
+        updated: updatedCount,
+        skipped: skippedCount,
+      });
+    } catch (error: any) {
+      logger.error("❌ Backtrace Error:", error);
+      res.status(500).send({ success: false, error: error.message });
+    }
+  },
+);
