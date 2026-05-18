@@ -7,9 +7,11 @@ import {
     Hexagon, Mail, ArrowRight
 } from 'lucide-react';
 import { collection, query, where, getDocs } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
-import mLabLogo from '../../assets/logo/mlab_logo.png';
-import '../Login/Login.css';
+import { db } from '../../../../lib/firebase';
+// import mLabLogo from '../../assets/logo/mlab_logo.png';
+// import '../Login/Login.css';
+import mLabLogo from '../../../../assets/logo/mlab_logo.png';
+import '../../../Login/Login.css';
 
 const PublicVerification: React.FC = () => {
     const [searchParams] = useSearchParams();
