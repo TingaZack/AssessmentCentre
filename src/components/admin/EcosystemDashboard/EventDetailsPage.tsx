@@ -218,9 +218,33 @@ export const EventDetailsPage: React.FC = () => {
         });
     }, [checkins, searchTerm, selectedDate]);
 
-    const capacityPercent = event?.maxCapacity && event.maxCapacity > 0
-        ? Math.round((checkins.length / event.maxCapacity) * 100)
-        : 0;
+    // 🚀 THE FIX: Dynamic Capacity Calculation based on Filters
+    const { displayCount, displayLabel, displayPercent } = useMemo(() => {
+        if (!event?.maxCapacity || event.maxCapacity <= 0) {
+            return { displayCount: filteredCheckins.length, displayLabel: "Total Attendees", displayPercent: 0 };
+        }
+
+        if (selectedDate !== 'all') {
+            // Specific Day Math
+            const percent = Math.round((filteredCheckins.length / event.maxCapacity) * 100);
+            return {
+                displayCount: filteredCheckins.length,
+                displayLabel: `Attendees on ${moment(selectedDate).format('D MMM')}`,
+                displayPercent: percent
+            };
+        } else {
+            // All Days Math - Calculate Average Daily Attendance
+            const activeDaysCount = availableDates.length || 1;
+            const avgDailyAttendees = Math.round(checkins.length / activeDaysCount);
+            const avgPercent = Math.round((avgDailyAttendees / event.maxCapacity) * 100);
+
+            return {
+                displayCount: avgDailyAttendees,
+                displayLabel: "Avg Daily Attendees",
+                displayPercent: avgPercent
+            };
+        }
+    }, [checkins, filteredCheckins, event?.maxCapacity, selectedDate, availableDates]);
 
     // ─── CSV EXPORT ──────────────────────────────────────────────────────────
     const exportToCSV = () => {
@@ -282,7 +306,7 @@ export const EventDetailsPage: React.FC = () => {
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.setAttribute("href", url);
-        link.setAttribute("download", `Roster_${event?.eventName.replace(/\s+/g, '_')}_${moment().format('YYYYMMDD')}.csv`);
+        link.setAttribute("download", `Roster_${event?.eventName.replace(/\s+/g, '_')}_${selectedDate === 'all' ? 'All_Dates' : selectedDate}.csv`);
         link.click();
         toast.success("Roster exported to CSV successfully.");
     };
@@ -355,25 +379,26 @@ export const EventDetailsPage: React.FC = () => {
 
                 <div className="cdp-content">
                     <div className="cdp-stat-row">
+                        {/* 🚀 THE FIX: Top Cards are now fully reactive to the Date Filter */}
                         <div className="cdp-stat-card cdp-stat-card--blue">
                             <div className="cdp-stat-card__icon"><Users size={20} /></div>
                             <div className="cdp-stat-card__body">
-                                <span className="cdp-stat-card__value">{checkins.length}</span>
-                                <span className="cdp-stat-card__label">Total Attendees</span>
+                                <span className="cdp-stat-card__value">{displayCount}</span>
+                                <span className="cdp-stat-card__label">{displayLabel}</span>
                             </div>
                         </div>
                         <div className="cdp-stat-card cdp-stat-card--green">
                             <div className="cdp-stat-card__icon"><Calendar size={20} /></div>
                             <div className="cdp-stat-card__body">
-                                <span className="cdp-stat-card__value">{availableDates.length || 1}</span>
-                                <span className="cdp-stat-card__label">Active Days</span>
+                                <span className="cdp-stat-card__value">{selectedDate === 'all' ? availableDates.length || 1 : 1}</span>
+                                <span className="cdp-stat-card__label">{selectedDate === 'all' ? 'Total Active Days' : 'Selected Day'}</span>
                             </div>
                         </div>
                         <div className="cdp-stat-card cdp-stat-card--amber">
                             <div className="cdp-stat-card__icon"><Clock size={20} /></div>
                             <div className="cdp-stat-card__body">
-                                <span className="cdp-stat-card__value">{capacityPercent}%</span>
-                                <span className="cdp-stat-card__label">Capacity Reached</span>
+                                <span className="cdp-stat-card__value">{displayPercent}%</span>
+                                <span className="cdp-stat-card__label">Daily Capacity Usage</span>
                             </div>
                         </div>
                     </div>

@@ -36,6 +36,8 @@ export interface EcosystemEvent {
   currentCheckIns: number;
   createdBy: string; // Admin/Facilitator UID
 
+  linkedTargets?: string[]; // 🚀 NEW: Array of KPI Target IDs this event contributes to
+
   settings: {
     requireIdPassport: GuestIdRequirement;
     allowedProgrammes: string[]; // Deprecated in favor of eventType, but kept for legacy

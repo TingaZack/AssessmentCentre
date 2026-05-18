@@ -480,7 +480,7 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
                     {/* TERM ANALYTICS PANEL (Appears when Cohort Selected) */}
                     {selectedCohortId && cohortStats && (
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginBottom: '1.5rem', animation: 'fade-in 0.3s ease' }}>
-                            <div style={{ background: 'white', padding: '1.25rem', borderRadius: '12px', border: '1px solid var(--mlab-border)', borderLeft: '4px solid var(--mlab-blue)', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                            <div style={{ background: 'white', padding: '1.25rem', border: '1px solid var(--mlab-border)', borderLeft: '4px solid var(--mlab-blue)', display: 'flex', alignItems: 'center', gap: '1rem' }}>
                                 <div style={{ background: 'var(--mlab-light-blue)', padding: '12px', borderRadius: '50%' }}><Target size={24} color="var(--mlab-blue)" /></div>
                                 <div>
                                     <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--mlab-grey)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Term Progress</p>
@@ -490,7 +490,7 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
                                 </div>
                             </div>
 
-                            <div style={{ background: 'white', padding: '1.25rem', borderRadius: '12px', border: '1px solid var(--mlab-border)', borderLeft: '4px solid var(--mlab-green)', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                            <div style={{ background: 'white', padding: '1.25rem', border: '1px solid var(--mlab-border)', borderLeft: '4px solid var(--mlab-green)', display: 'flex', alignItems: 'center', gap: '1rem' }}>
                                 <div style={{ background: 'var(--mlab-green-bg)', padding: '12px', borderRadius: '50%' }}><BarChart2 size={24} color="var(--mlab-green-dark)" /></div>
                                 <div>
                                     <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--mlab-grey)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Average Attendance</p>
@@ -500,7 +500,7 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
                                 </div>
                             </div>
 
-                            <div style={{ background: 'white', padding: '1.25rem', borderRadius: '12px', border: '1px solid var(--mlab-border)', borderLeft: '4px solid #f59e0b', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                            <div style={{ background: 'white', padding: '1.25rem', border: '1px solid var(--mlab-border)', borderLeft: '4px solid #f59e0b', display: 'flex', alignItems: 'center', gap: '1rem' }}>
                                 <div style={{ background: '#fef3c7', padding: '12px', borderRadius: '50%' }}><Coffee size={24} color="#d97706" /></div>
                                 <div>
                                     <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--mlab-grey)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Excluded Days</p>
