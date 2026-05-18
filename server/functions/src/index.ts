@@ -6266,6 +6266,7 @@ export const backtraceAttendanceTraceability = onRequest(
  * Trigger: When an Admin sends a Broadcast message to the notifications collection
  * This function wakes up and sends the actual Firebase Cloud Messaging (FCM) Push to the phones.
  */
+
 export const onBroadcastNotificationCreated = onDocumentCreated(
   { document: "notifications/{notifId}" },
   async (event) => {
@@ -6280,9 +6281,12 @@ export const onBroadcastNotificationCreated = onDocumentCreated(
       (recipientId === "all_learners" || recipientId.startsWith("campus_"))
     ) {
       try {
-        // 1. ENVIRONMENT MAPPING: Target ONLY local development builds (_dev)
-        // This completely protects App Store (_prod) and Firebase App Testers (_beta)
-        const devTopic = `${recipientId}_dev`;
+        // 1. ENVIRONMENT MAPPING: Create a boolean condition to target BOTH live rings
+        // This hits the App Store users (_prod) AND your Firebase App Testers (_beta)
+        // It specifically excludes local development simulators (_dev)
+        const prodTopic = `${recipientId}_prod`;
+        const betaTopic = `${recipientId}_beta`;
+        const targetCondition = `'${prodTopic}' in topics || '${betaTopic}' in topics`;
 
         // 2. HARDWARE ENGINE: Constructing the forced priority blueprint
         const messagePayload: any = {
@@ -6290,7 +6294,7 @@ export const onBroadcastNotificationCreated = onDocumentCreated(
             title: title || "mLab Announcement",
             body: message,
           },
-          topic: devTopic, // 🎯 Targets ONLY the isolated dev channel
+          condition: targetCondition, // 🎯 Replaces 'topic' to allow multi-environment targeting
 
           // Android Specific Enforcement (Forces sound and vibration)
           android: {
@@ -6325,17 +6329,88 @@ export const onBroadcastNotificationCreated = onDocumentCreated(
         await admin.messaging().send(messagePayload);
 
         logger.info(
-          `✅ Successfully broadcasted high-priority push to DEV topic: ${devTopic}`,
+          `✅ Successfully broadcasted high-priority push using condition: ${targetCondition}`,
         );
       } catch (error) {
         logger.error(
-          `❌ Failed to send FCM broadcast for target ${recipientId}_dev`,
+          `❌ Failed to send FCM broadcast for target ${recipientId}`,
           error,
         );
       }
     }
   },
 );
+
+// export const onBroadcastNotificationCreated = onDocumentCreated(
+//   { document: "notifications/{notifId}" },
+//   async (event) => {
+//     const data = event.data?.data();
+//     if (!data) return;
+
+//     const { recipientId, title, message, type } = data;
+
+//     // We ONLY want to send FCM pushes for mass broadcasts to avoid spamming personal DB writes
+//     if (
+//       type === "system" &&
+//       (recipientId === "all_learners" || recipientId.startsWith("campus_"))
+//     ) {
+//       try {
+//         // 1. ENVIRONMENT MAPPING: Target ONLY local development builds (_dev)
+//         // This completely protects App Store (_prod) and Firebase App Testers (_beta)
+//         const devTopic = `${recipientId}_dev`;
+
+//         // 2. HARDWARE ENGINE: Constructing the forced priority blueprint
+//         const messagePayload: any = {
+//           notification: {
+//             title: title || "mLab Announcement",
+//             body: message,
+//           },
+//           topic: devTopic, // 🎯 Targets ONLY the isolated dev channel
+
+//           // Android Specific Enforcement (Forces sound and vibration)
+//           android: {
+//             priority: "high",
+//             notification: {
+//               sound: "default",
+//               channelId: "default",
+//               vibrateTimingsMillis: [0, 500, 250, 500],
+//               defaultVibrateTimings: false,
+//             },
+//           },
+
+//           // iOS/APNs Specific Enforcement (Forces ringer and bypasses battery throttling)
+//           apns: {
+//             payload: {
+//               aps: {
+//                 sound: "default",
+//                 badge: 1,
+//               },
+//             },
+//             headers: {
+//               "apns-priority": "10",
+//             },
+//           },
+
+//           data: {
+//             route: "/notifications", // Deep link payload to open the inbox
+//           },
+//         };
+
+//         // 3. Dispatch to Google's FCM Gateway
+//         await admin.messaging().send(messagePayload);
+
+//         logger.info(
+//           `✅ Successfully broadcasted high-priority push to DEV topic: ${devTopic}`,
+//         );
+//       } catch (error) {
+//         logger.error(
+//           `❌ Failed to send FCM broadcast for target ${recipientId}_dev`,
+//           error,
+//         );
+//       }
+//     }
+//   },
+// );
 
 // /**
 //  * Trigger: When an Admin sends a Broadcast message to the notifications collection
