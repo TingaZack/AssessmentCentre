@@ -50,7 +50,7 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
     // Default to empty string ("All Cohorts")
     const [selectedCohortId, setSelectedCohortId] = useState<string>('');
 
-    // TIME MACHINE STATE 🚀
+    // TIME MACHINE STATE
     const [reconcileDate, setReconcileDate] = useState<string>('');
 
     const fetchFacilitatorLeaveRequests = useStore(s => s.fetchFacilitatorLeaveRequests);

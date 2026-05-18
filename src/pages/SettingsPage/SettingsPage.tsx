@@ -4,9 +4,9 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     Building2, GraduationCap, Link2, Bell,
-    ShieldAlert, User, Save, UploadCloud, Loader2, AlertCircle, Plus, Trash2, MapPin, Database, Lock, CheckCircle2, Edit2, Globe, BookOpen, Wifi, X, Search, Clock
+    ShieldAlert, User, Save, UploadCloud, Loader2, AlertCircle, Plus, Trash2, MapPin, Database, Lock, CheckCircle2, Edit2, Globe, BookOpen, Wifi, X, Search, Clock, Send, MessageSquare, History
 } from 'lucide-react';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, addDoc, serverTimestamp, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db } from '../../lib/firebase';
 import { useStore } from '../../store/useStore';
@@ -44,7 +44,18 @@ const CORE_MAPPINGS = [
     { key: 'credits', label: 'Credits' }
 ];
 
-// Standard Default Times for new Campuses
+const NOTIFICATION_TRIGGERS = [
+    { key: 'checkInStart', label: 'Morning Campus Open', description: 'Fires when check-in opens for the day.' },
+    { key: 'checkInLate', label: 'Late Arrival Warning', description: 'Fires when the late threshold is reached.' },
+    { key: 'lunchSoon', label: 'Lunch Approaching', description: 'Fires 10 mins before lunch starts.' },
+    { key: 'lunchStart', label: 'Lunch Break Starts', description: 'Fires exactly when lunch begins.' },
+    { key: 'lunchEnd', label: 'Lunch Break Ends', description: 'Fires when the afternoon session resumes.' },
+    { key: 'checkoutSoon', label: 'Dismissal Approaching', description: 'Fires 10 mins before checkout is allowed.' },
+    { key: 'checkoutStart', label: 'Campus Closing', description: 'Fires exactly at the checkout start time.' },
+    { key: 'weeklyMonday', label: 'Monday Kickoff', description: 'Fires every Monday at 07:30.' },
+    { key: 'weeklyFriday', label: 'Friday Wrap-up', description: 'Fires every Friday before checkout.' }
+];
+
 const DEFAULT_CAMPUS_TIMES = {
     checkInStart: "06:00",
     checkInLate: "08:00",
@@ -76,6 +87,22 @@ const DEFAULT_SETTINGS: any = {
     eisaLockEnabled: true,
     blockchainNetwork: "polygon_amoy",
     ipfsGateway: "https://gateway.pinata.cloud",
+    notificationSettings: {
+        globalMasterSwitch: true,
+        dailyRemindersEnabled: true,
+        weeklyMotivationEnabled: true
+    },
+    notificationTemplates: {
+        checkInStart: { title: "☀️ Campus is Open", body: "Don't forget to scan the Kiosk once you arrive!" },
+        checkInLate: { title: "⏰ Attendance Check", body: "Just a reminder to scan in for the morning session if you haven't yet." },
+        lunchSoon: { title: "🍔 Lunch Break Soon", body: "Preparing for lunch? Remember to scan out at the Kiosk." },
+        lunchStart: { title: "🍴 Lunch Reminder", body: "Please ensure your lunch break scan is recorded on the Kiosk." },
+        lunchEnd: { title: "👔 Back to Work", body: "Lunch is over! Please remember to scan back in for the afternoon session." },
+        checkoutSoon: { title: "🌙 Wrapping Up", body: "The lab is closing soon. Please prepare for your final scan." },
+        checkoutStart: { title: "👋 Time to Head Out", body: "Don't forget your checkout scan to finalize your hours for today!" },
+        weeklyMonday: { title: "🚀 Kickstart Your Week!", body: "Welcome to a new week at CodeTribe! Set your goals, grab your coffee, and let's build something amazing." },
+        weeklyFriday: { title: "🎉 Week Complete!", body: "Great job this week! Make sure your final scan is done, rest up, and recharge for the weekend." }
+    },
     csvMappings: {
         fullName: "Learner Name",
         idNumber: "ID Number",
@@ -97,21 +124,25 @@ export const SettingsPage: React.FC = () => {
     const navigate = useNavigate();
     const { user, fetchSettings } = useStore();
 
-    // IDENTIFY ROLE
     const isSuperAdmin = (user as any)?.isSuperAdmin === true;
 
-    // Navigation state
     const [activeTab, setActiveTab] = useState<'org' | 'academic' | 'data' | 'web3' | 'notifications' | 'audit' | 'profile'>('org');
 
-    // Data state
     const [formData, setFormData] = useState<any>(DEFAULT_SETTINGS);
     const [originalData, setOriginalData] = useState<any>(DEFAULT_SETTINGS);
 
-    // UI State
     const [isDirty, setIsDirty] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [isUploadingLogo, setIsUploadingLogo] = useState(false);
     const [isUploadingSignature, setIsUploadingSignature] = useState(false);
+
+    // Broadcast State
+    const [broadcastPayload, setBroadcastPayload] = useState({ title: '', message: '', target: 'all_learners', environment: 'dev' });
+    const [isBroadcasting, setIsBroadcasting] = useState(false);
+
+    // Broadcast History State
+    const [recentBroadcasts, setRecentBroadcasts] = useState<any[]>([]);
+    const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
     const [isMapModalOpen, setIsMapModalOpen] = useState(false);
     const [mapTargetId, setMapTargetId] = useState<string | null>(null);
@@ -123,7 +154,6 @@ export const SettingsPage: React.FC = () => {
         googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
     });
 
-    // Load settings from Firestore on mount
     useEffect(() => {
         const initSettings = async () => {
             try {
@@ -163,6 +193,11 @@ export const SettingsPage: React.FC = () => {
                             ...campus,
                             id: finalId,
                             campusTimes: campus.campusTimes || DEFAULT_CAMPUS_TIMES,
+                            notificationSettings: {
+                                globalMasterSwitch: campus.notificationSettings?.globalMasterSwitch ?? true,
+                                dailyRemindersEnabled: campus.notificationSettings?.dailyRemindersEnabled ?? true,
+                                weeklyMotivationEnabled: campus.notificationSettings?.weeklyMotivationEnabled ?? true,
+                            },
                             wifiSettings: {
                                 ...campus.wifiSettings,
                                 allowedBssids: decodedBssids
@@ -173,15 +208,22 @@ export const SettingsPage: React.FC = () => {
                     const mergedData = {
                         ...DEFAULT_SETTINGS,
                         ...data,
+                        notificationSettings: {
+                            ...DEFAULT_SETTINGS.notificationSettings,
+                            ...(data.notificationSettings || {})
+                        },
+                        notificationTemplates: {
+                            ...DEFAULT_SETTINGS.notificationTemplates,
+                            ...(data.notificationTemplates || {})
+                        },
                         campuses: loadedCampuses,
                         csvMappings: safeMappings,
                         customCsvMappings: data.customCsvMappings || []
                     };
 
-                    // Clean up legacy global campusTimes if it exists from our last test
                     if (mergedData.campusTimes) {
                         delete mergedData.campusTimes;
-                        foundDuplicates = true; // Triggers a dirty save to clean it up
+                        foundDuplicates = true;
                     }
 
                     setFormData(mergedData);
@@ -197,6 +239,32 @@ export const SettingsPage: React.FC = () => {
         };
         initSettings();
     }, []);
+
+    // Fetch Broadcast History
+    const fetchBroadcastHistory = async () => {
+        setIsLoadingHistory(true);
+        try {
+            const q = query(
+                collection(db, "notifications"),
+                where("type", "==", "system"),
+                orderBy("timestamp", "desc"),
+                limit(10)
+            );
+            const snap = await getDocs(q);
+            const history = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setRecentBroadcasts(history);
+        } catch (error: any) {
+            console.error("Error fetching broadcast history:", error);
+        } finally {
+            setIsLoadingHistory(false);
+        }
+    };
+
+    useEffect(() => {
+        if (activeTab === 'notifications') {
+            fetchBroadcastHistory();
+        }
+    }, [activeTab]);
 
     useEffect(() => {
         const hasChanged = JSON.stringify(formData) !== JSON.stringify(originalData);
@@ -317,10 +385,24 @@ export const SettingsPage: React.FC = () => {
         setIsDirty(true);
     };
 
-    const updateNested = (category: string, field: string, val: string) => {
+    const updateNested = (category: string, field: string, val: any) => {
         setFormData((prev: any) => ({
             ...prev,
             [category]: { ...(prev[category] || {}), [field]: val }
+        }));
+        setIsDirty(true);
+    };
+
+    const updateNestedTemplate = (triggerKey: string, field: 'title' | 'body', value: string) => {
+        setFormData((prev: any) => ({
+            ...prev,
+            notificationTemplates: {
+                ...prev.notificationTemplates,
+                [triggerKey]: {
+                    ...prev.notificationTemplates?.[triggerKey],
+                    [field]: value
+                }
+            }
         }));
         setIsDirty(true);
     };
@@ -350,7 +432,12 @@ export const SettingsPage: React.FC = () => {
                     siteAccreditationNumber: '',
                     isDefault: prev.campuses.length === 0,
                     wifiSettings: { enforceWifi: false, ssid: '', allowedBssids: [] },
-                    campusTimes: DEFAULT_CAMPUS_TIMES
+                    campusTimes: DEFAULT_CAMPUS_TIMES,
+                    notificationSettings: {
+                        globalMasterSwitch: true,
+                        dailyRemindersEnabled: true,
+                        weeklyMotivationEnabled: true
+                    }
                 }
             ]
         }));
@@ -467,6 +554,50 @@ export const SettingsPage: React.FC = () => {
         }
     };
 
+    const handleSendBroadcast = async () => {
+        if (!broadcastPayload.title.trim() || !broadcastPayload.message.trim()) {
+            alert("Please fill in both title and message to send a broadcast.");
+            return;
+        }
+
+        setIsBroadcasting(true);
+        try {
+            const targetWithEnv = `${broadcastPayload.target}_${broadcastPayload.environment}`;
+
+            await addDoc(collection(db, "notifications"), {
+                recipientId: targetWithEnv,
+                type: "system",
+                title: broadcastPayload.title,
+                message: broadcastPayload.message,
+                timestamp: serverTimestamp(),
+                read: false,
+                sentBy: user?.uid || 'admin'
+            });
+
+            alert(`Broadcast sent successfully to ${targetWithEnv}!`);
+            setBroadcastPayload({ ...broadcastPayload, title: '', message: '' });
+
+            // Refresh history
+            fetchBroadcastHistory();
+
+        } catch (error) {
+            console.error("Broadcast failed:", error);
+            alert("Failed to queue broadcast message. Please check Firestore permissions.");
+        } finally {
+            setIsBroadcasting(false);
+        }
+    };
+
+    // Helper to format history timestamps safely
+    const formatTimestamp = (ts: any) => {
+        if (!ts) return 'Just now';
+        const date = ts.toDate ? ts.toDate() : new Date(ts);
+        return date.toLocaleString('en-ZA', {
+            day: '2-digit', month: 'short', year: 'numeric',
+            hour: '2-digit', minute: '2-digit'
+        });
+    };
+
     const TABS = [
         { id: 'org', label: 'Organization', icon: Building2 },
         { id: 'academic', label: 'Academic Rules', icon: GraduationCap },
@@ -486,11 +617,10 @@ export const SettingsPage: React.FC = () => {
                 onLogout={() => navigate('/login')}
             />
 
-            {/* GOOGLE MAP MODAL OVERLAY (LFM STYLED) */}
+            {/* GOOGLE MAP MODAL OVERLAY */}
             {isMapModalOpen && (
                 <div className="lfm-overlay" onClick={() => setIsMapModalOpen(false)}>
                     <div className="lfm-modal" onClick={(e) => e.stopPropagation()}>
-
                         <div className="lfm-header">
                             <h2 className="lfm-header__title">
                                 <MapPin size={16} /> Adjust Exact Location
@@ -499,13 +629,10 @@ export const SettingsPage: React.FC = () => {
                                 <X size={20} />
                             </button>
                         </div>
-
                         <div className="lfm-body">
                             <p style={{ margin: 0, color: '#64748b', fontSize: '0.9rem' }}>
                                 Use the search bar to jump to an area, then click or drag the red marker to pinpoint the exact building entrance. This strict coordinate is used for the Zero-Trust Geofence security.
                             </p>
-
-                            {/* MODAL SEARCH BAR */}
                             <div style={{ position: 'relative', marginBottom: '4px' }}>
                                 <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--mlab-grey)', zIndex: 10 }} />
                                 <Autocomplete
@@ -519,21 +646,16 @@ export const SettingsPage: React.FC = () => {
                                     style={{ paddingLeft: '38px', borderRadius: '8px', border: '1px solid var(--mlab-border)' }}
                                 />
                             </div>
-
                             <div style={{ width: '100%', height: '400px', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--mlab-border)', position: 'relative' }}>
                                 {isLoaded ? (
                                     <GoogleMap
                                         mapContainerStyle={{ width: '100%', height: '100%' }}
                                         center={tempCoords}
-                                        zoom={18} // High zoom to see buildings
+                                        zoom={18}
                                         onClick={(e) => e.latLng && setTempCoords({ lat: e.latLng.lat(), lng: e.latLng.lng() })}
                                         options={{ disableDefaultUI: false, zoomControl: true, streetViewControl: false, mapTypeControl: false }}
                                     >
-                                        <Marker
-                                            position={tempCoords}
-                                            draggable={true}
-                                            onDragEnd={(e) => e.latLng && setTempCoords({ lat: e.latLng.lat(), lng: e.latLng.lng() })}
-                                        />
+                                        <Marker position={tempCoords} draggable={true} onDragEnd={(e) => e.latLng && setTempCoords({ lat: e.latLng.lat(), lng: e.latLng.lng() })} />
                                     </GoogleMap>
                                 ) : (
                                     <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc' }}>
@@ -541,19 +663,13 @@ export const SettingsPage: React.FC = () => {
                                     </div>
                                 )}
                             </div>
-
                             <div style={{ fontSize: '0.85rem', color: '#64748b', fontFamily: 'monospace', background: 'var(--mlab-bg)', padding: '6px 12px', borderRadius: '4px', border: '1px solid var(--mlab-border)', width: 'max-content' }}>
                                 Lat: {tempCoords.lat.toFixed(6)}, Lng: {tempCoords.lng.toFixed(6)}
                             </div>
                         </div>
-
                         <div className="lfm-footer">
-                            <button type="button" className="lfm-btn lfm-btn--ghost" onClick={() => setIsMapModalOpen(false)}>
-                                Cancel
-                            </button>
-                            <button type="button" className="lfm-btn lfm-btn--primary" onClick={confirmMapCoordinates}>
-                                <Save size={13} /> Save Pin Location
-                            </button>
+                            <button type="button" className="lfm-btn lfm-btn--ghost" onClick={() => setIsMapModalOpen(false)}>Cancel</button>
+                            <button type="button" className="lfm-btn lfm-btn--primary" onClick={confirmMapCoordinates}><Save size={13} /> Save Pin Location</button>
                         </div>
                     </div>
                 </div>
@@ -569,8 +685,6 @@ export const SettingsPage: React.FC = () => {
                 />
 
                 <div className="settings-container">
-
-                    {/* ─── SETTINGS NAVIGATION ─── */}
                     <aside className="settings-sidebar">
                         <nav className="settings-nav">
                             {TABS.map(tab => {
@@ -588,15 +702,12 @@ export const SettingsPage: React.FC = () => {
                         </nav>
                     </aside>
 
-                    {/* ─── SETTINGS CONTENT ─── */}
                     <div className="settings-content">
-
                         {/* 1. ORGANIZATION PROFILE */}
                         {activeTab === 'org' && (
                             <div className="settings-section animate-fade-in">
                                 <h2 className="settings-section__title">Institutional Identity</h2>
                                 <p className="settings-section__desc">Core details used for QCTO LEISA reports and legal declarations.</p>
-
                                 <div className="settings-card">
                                     <div className="settings-form-grid">
                                         <div className="mlab-form-group col-span-2">
@@ -626,7 +737,6 @@ export const SettingsPage: React.FC = () => {
                                                     className="mlab-input search-input"
                                                     placeholder="Search building name, hub, or street..."
                                                 />
-
                                                 <div className="manual-address-edit mt-4 p-4 border rounded-lg bg-slate-50 shadow-sm border-slate-200">
                                                     <div className="address-editor-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                         <div className="editor-title"><Edit2 size={14} /> <span>Official Address Override (QCTO Compliant)</span></div>
@@ -636,7 +746,6 @@ export const SettingsPage: React.FC = () => {
                                                             </div>
                                                         )}
                                                     </div>
-
                                                     <div className="settings-form-grid mt-3">
                                                         <div className="mlab-form-group col-span-2">
                                                             <label>Street Line (Manually insert street number if missing)</label>
@@ -742,12 +851,10 @@ export const SettingsPage: React.FC = () => {
                                                     />
                                                 </div>
 
-                                                {/* CAMPUS CONFIG EDITOR (ADDRESS & WIFI & TIME) */}
                                                 <div className="mlab-form-group col-span-2 bg-slate-50 p-5 rounded-lg mt-2">
                                                     <div style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between' }}>
                                                         <div className="editor-title mb-4" style={{ width: '50%' }}><Edit2 size={14} /> <span>Site Configuration</span></div>
                                                         <div>
-
                                                             <div className="mlab-form-group col-span-2 mt-2" style={{ display: 'flex', gap: '12px', flexDirection: 'row' }}>
                                                                 <button
                                                                     type="button"
@@ -769,7 +876,6 @@ export const SettingsPage: React.FC = () => {
                                                         </div>
                                                     </div>
 
-                                                    {/* Address Overrides */}
                                                     <div className="mlab-form-group mb-4">
                                                         <label className="text-slate-700">Full Address (Edit to add street number)</label>
                                                         <input type="text" className="mlab-input bg-white" value={campus.address} onChange={(e) => handleCampusChange(campus.id, 'address', e.target.value)} />
@@ -794,7 +900,6 @@ export const SettingsPage: React.FC = () => {
 
                                                     <hr className="my-6 border-slate-200" />
 
-                                                    {/* CAMPUS OPERATING HOURS */}
                                                     <div className="editor-title mb-4">
                                                         <Clock size={16} /> CAMPUS OPERATING HOURS (TIME BOUNDARIES)
                                                     </div>
@@ -826,7 +931,54 @@ export const SettingsPage: React.FC = () => {
 
                                                     <hr className="my-6 border-slate-200" />
 
-                                                    {/* Wi-Fi Security Shield */}
+                                                    <div className="editor-title mb-4">
+                                                        <Bell size={16} /> CAMPUS-SPECIFIC NOTIFICATION OVERRIDES
+                                                    </div>
+                                                    <p style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '1rem' }}>
+                                                        Toggle these settings to silence automated mobile app reminders for this campus only (e.g., during power outages or local events).
+                                                    </p>
+                                                    <div className="settings-form-grid" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
+                                                        <div className="mlab-form-group">
+                                                            <label className="text-slate-700">Enable Local Alerts</label>
+                                                            <select
+                                                                className="mlab-input bg-white"
+                                                                value={campus.notificationSettings?.globalMasterSwitch === false ? 'no' : 'yes'}
+                                                                onChange={(e) => handleCampusChange(campus.id, 'notificationSettings', { ...campus.notificationSettings, globalMasterSwitch: e.target.value === 'yes' })}
+                                                            >
+                                                                <option value="yes">Enabled (Normal)</option>
+                                                                <option value="no">Silenced (Muted)</option>
+                                                            </select>
+                                                        </div>
+                                                        <div className="mlab-form-group">
+                                                            <label className="text-slate-700">Daily Reminders</label>
+                                                            <select
+                                                                className="mlab-input bg-white"
+                                                                value={campus.notificationSettings?.dailyRemindersEnabled === false ? 'no' : 'yes'}
+                                                                disabled={campus.notificationSettings?.globalMasterSwitch === false}
+                                                                onChange={(e) => handleCampusChange(campus.id, 'notificationSettings', { ...campus.notificationSettings, dailyRemindersEnabled: e.target.value === 'yes' })}
+                                                                style={{ opacity: campus.notificationSettings?.globalMasterSwitch === false ? 0.5 : 1 }}
+                                                            >
+                                                                <option value="yes">Enabled</option>
+                                                                <option value="no">Disabled</option>
+                                                            </select>
+                                                        </div>
+                                                        <div className="mlab-form-group">
+                                                            <label className="text-slate-700">Weekly Motivation</label>
+                                                            <select
+                                                                className="mlab-input bg-white"
+                                                                value={campus.notificationSettings?.weeklyMotivationEnabled === false ? 'no' : 'yes'}
+                                                                disabled={campus.notificationSettings?.globalMasterSwitch === false}
+                                                                onChange={(e) => handleCampusChange(campus.id, 'notificationSettings', { ...campus.notificationSettings, weeklyMotivationEnabled: e.target.value === 'yes' })}
+                                                                style={{ opacity: campus.notificationSettings?.globalMasterSwitch === false ? 0.5 : 1 }}
+                                                            >
+                                                                <option value="yes">Enabled</option>
+                                                                <option value="no">Disabled</option>
+                                                            </select>
+                                                        </div>
+                                                    </div>
+
+                                                    <hr className="my-6 border-slate-200" />
+
                                                     <div className="editor-title mb-4">
                                                         <Wifi size={16} /> SECURITY: NETWORK SHIELD (WIFI GEOFENCE)
                                                     </div>
@@ -1138,8 +1290,254 @@ export const SettingsPage: React.FC = () => {
                             </div>
                         )}
 
-                        {/* 5. EMPTY TABS */}
-                        {['notifications', 'audit', 'profile'].includes(activeTab) && (
+                        {/* 5. NOTIFICATIONS CENTER */}
+                        {activeTab === 'notifications' && (
+                            <div className="settings-section animate-fade-in">
+                                <h2 className="settings-section__title">Notification Preferences</h2>
+                                <p className="settings-section__desc">Manage automated mobile app reminders and send global live broadcasts.</p>
+
+                                {/* PART A: GLOBAL AUTOMATED SCHEDULES */}
+                                <div className="settings-card">
+                                    <h3 style={{ fontSize: '1.05rem', fontWeight: 600, color: 'var(--mlab-midnight)', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <Clock size={18} /> Automated Scheduling Controls
+                                    </h3>
+
+                                    {/* Global Master Switch */}
+                                    <div className="setting-row-toggle">
+                                        <div className="setting-toggle-text">
+                                            <h4 style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                <ShieldAlert size={16} color="var(--mlab-red)" /> Global Master Switch
+                                            </h4>
+                                            <p>Master kill-switch. Disables all automated schedule-based notifications across all campuses instantly.</p>
+                                        </div>
+                                        <label className="mlab-toggle">
+                                            <input
+                                                type="checkbox"
+                                                checked={formData.notificationSettings?.globalMasterSwitch ?? true}
+                                                onChange={(e) => updateNested('notificationSettings', 'globalMasterSwitch', e.target.checked)}
+                                            />
+                                            <span className="mlab-toggle-slider"></span>
+                                        </label>
+                                    </div>
+
+                                    <hr className="settings-divider mt-6 mb-6" />
+
+                                    {/* Daily Reminders */}
+                                    <div className="setting-row-toggle" style={{ opacity: formData.notificationSettings?.globalMasterSwitch === false ? 0.5 : 1 }}>
+                                        <div className="setting-toggle-text">
+                                            <h4 style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                <Bell size={16} color="var(--mlab-blue)" /> Daily Operational Reminders
+                                            </h4>
+                                            <p>Automated alerts for check-in opens, late thresholds, lunch breaks, and checkout times.</p>
+                                        </div>
+                                        <label className="mlab-toggle">
+                                            <input
+                                                type="checkbox"
+                                                checked={formData.notificationSettings?.dailyRemindersEnabled ?? true}
+                                                disabled={formData.notificationSettings?.globalMasterSwitch === false}
+                                                onChange={(e) => updateNested('notificationSettings', 'dailyRemindersEnabled', e.target.checked)}
+                                            />
+                                            <span className="mlab-toggle-slider"></span>
+                                        </label>
+                                    </div>
+
+                                    <hr className="settings-divider mt-6 mb-6" />
+
+                                    {/* Weekly Motivation */}
+                                    <div className="setting-row-toggle" style={{ opacity: formData.notificationSettings?.globalMasterSwitch === false ? 0.5 : 1 }}>
+                                        <div className="setting-toggle-text">
+                                            <h4 style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                <CheckCircle2 size={16} color="var(--mlab-green)" /> Weekly Motivational Bookends
+                                            </h4>
+                                            <p>High-energy kick-off messages on Monday mornings and wrap-up celebrations on Friday afternoons.</p>
+                                        </div>
+                                        <label className="mlab-toggle">
+                                            <input
+                                                type="checkbox"
+                                                checked={formData.notificationSettings?.weeklyMotivationEnabled ?? true}
+                                                disabled={formData.notificationSettings?.globalMasterSwitch === false}
+                                                onChange={(e) => updateNested('notificationSettings', 'weeklyMotivationEnabled', e.target.checked)}
+                                            />
+                                            <span className="mlab-toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+
+                                {/* PART B: NOTIFICATION TEMPLATES */}
+                                <div className="settings-card mt-6">
+                                    <h3 style={{ fontSize: '1.05rem', fontWeight: 600, color: 'var(--mlab-midnight)', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <MessageSquare size={18} /> Automated Message Templates
+                                    </h3>
+                                    <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '1.5rem' }}>
+                                        Customize the text for automated mobile app reminders.
+                                    </p>
+
+                                    <div className="settings-form-grid" style={{ gap: '2rem' }}>
+                                        {NOTIFICATION_TRIGGERS.map(trigger => (
+                                            <div key={trigger.key} className="mlab-form-group col-span-2 bg-slate-50 p-4 rounded-lg border border-slate-200">
+                                                <div style={{ marginBottom: '1rem' }}>
+                                                    <h4 style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--mlab-midnight)', margin: 0 }}>{trigger.label}</h4>
+                                                    <span style={{ fontSize: '0.75rem', color: '#64748b' }}>{trigger.description}</span>
+                                                </div>
+                                                <div className="settings-form-grid">
+                                                    <div className="mlab-form-group col-span-2">
+                                                        <label>Notification Title</label>
+                                                        <input
+                                                            type="text"
+                                                            className="mlab-input bg-white"
+                                                            value={formData.notificationTemplates?.[trigger.key]?.title || ''}
+                                                            onChange={(e) => updateNestedTemplate(trigger.key, 'title', e.target.value)}
+                                                        />
+                                                    </div>
+                                                    <div className="mlab-form-group col-span-2">
+                                                        <label>Notification Body</label>
+                                                        <textarea
+                                                            className="mlab-input bg-white"
+                                                            rows={2}
+                                                            value={formData.notificationTemplates?.[trigger.key]?.body || ''}
+                                                            onChange={(e) => updateNestedTemplate(trigger.key, 'body', e.target.value)}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* PART C: LIVE PUSH BROADCAST */}
+                                <h2 className="settings-section__title mt-10">Manual Broadcast Center</h2>
+                                <p className="settings-section__desc">Send immediate push notifications to mobile devices via Firebase Cloud Messaging.</p>
+
+                                <div className="settings-card bg-slate-50 border border-slate-200">
+                                    <div className="settings-form-grid">
+
+                                        <div className="mlab-form-group">
+                                            <label>Target Environment</label>
+                                            <select
+                                                className="mlab-input bg-white"
+                                                value={broadcastPayload.environment}
+                                                onChange={(e) => setBroadcastPayload({ ...broadcastPayload, environment: e.target.value })}
+                                            >
+                                                <option value="dev">Development (Safe Local Testing)</option>
+                                                <option value="beta">Beta (Live App Testers)</option>
+                                                <option value="prod">Production (App Store Users)</option>
+                                            </select>
+                                        </div>
+
+                                        <div className="mlab-form-group">
+                                            <label>Broadcast Group</label>
+                                            <select
+                                                className="mlab-input bg-white"
+                                                value={broadcastPayload.target}
+                                                onChange={(e) => setBroadcastPayload({ ...broadcastPayload, target: e.target.value })}
+                                            >
+                                                <option value="all_learners">All Campuses (Global)</option>
+                                                {formData.campuses.map((c: any) => (
+                                                    <option key={c.id} value={`campus_${c.id}`}>{c.name || 'Unnamed'} Campus Only</option>
+                                                ))}
+                                            </select>
+                                        </div>
+
+                                        <div className="mlab-form-group col-span-2">
+                                            <label>Announcement Title</label>
+                                            <input
+                                                type="text"
+                                                className="mlab-input bg-white"
+                                                placeholder="e.g. CodeTribe Hackathon Tomorrow!"
+                                                value={broadcastPayload.title}
+                                                onChange={(e) => setBroadcastPayload({ ...broadcastPayload, title: e.target.value })}
+                                            />
+                                        </div>
+                                        <div className="mlab-form-group col-span-2">
+                                            <label>Message Body</label>
+                                            <textarea
+                                                className="mlab-input bg-white"
+                                                rows={3}
+                                                placeholder="Enter the full message details here..."
+                                                value={broadcastPayload.message}
+                                                onChange={(e) => setBroadcastPayload({ ...broadcastPayload, message: e.target.value })}
+                                            />
+                                        </div>
+                                        <div className="mlab-form-group col-span-2 flex justify-end mt-2">
+                                            <button
+                                                className="mlab-btn mlab-btn--primary"
+                                                onClick={handleSendBroadcast}
+                                                disabled={isBroadcasting || !broadcastPayload.title || !broadcastPayload.message}
+                                            >
+                                                {isBroadcasting ? <Loader2 size={16} className="spin" /> : <Send size={16} />}
+                                                Transmit Push Notification
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* PART D: RECENT BROADCASTS UI */}
+                                <div className="settings-card mt-6">
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
+                                        <h3 style={{ fontSize: '1.05rem', fontWeight: 600, color: 'var(--mlab-midnight)', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+                                            <History size={18} /> Recent Broadcast Log
+                                        </h3>
+                                        <button
+                                            className="mlab-btn mlab-btn--outline-blue mlab-btn--sm"
+                                            onClick={fetchBroadcastHistory}
+                                            disabled={isLoadingHistory}
+                                        >
+                                            {isLoadingHistory ? <Loader2 size={14} className="spin" /> : "Refresh Log"}
+                                        </button>
+                                    </div>
+
+                                    {isLoadingHistory ? (
+                                        <div style={{ padding: '2rem', textAlign: 'center', color: '#94a3b8' }}>Loading history...</div>
+                                    ) : recentBroadcasts.length === 0 ? (
+                                        <div style={{ padding: '2rem', textAlign: 'center', color: '#94a3b8', background: '#f8fafc', borderRadius: '8px' }}>
+                                            No recent broadcasts found in the database.
+                                        </div>
+                                    ) : (
+                                        <div style={{ overflowX: 'auto' }}>
+                                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                                                <thead>
+                                                    <tr style={{ background: '#f1f5f9', color: '#475569', textAlign: 'left' }}>
+                                                        <th style={{ padding: '10px 12px', fontWeight: 600, width: '20%' }}>Sent At</th>
+                                                        <th style={{ padding: '10px 12px', fontWeight: 600, width: '20%' }}>Environment</th>
+                                                        <th style={{ padding: '10px 12px', fontWeight: 600, width: '60%' }}>Announcement Details</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {recentBroadcasts.map((b) => (
+                                                        <tr key={b.id} style={{ borderBottom: '1px solid #e2e8f0', verticalAlign: 'top' }}>
+                                                            <td style={{ padding: '16px 12px', color: '#64748b', whiteSpace: 'nowrap' }}>
+                                                                {formatTimestamp(b.timestamp)}
+                                                            </td>
+                                                            <td style={{ padding: '16px 12px' }}>
+                                                                <span style={{
+                                                                    background: b.recipientId?.includes('_prod') ? '#dcfce7' : (b.recipientId?.includes('_beta') ? '#fef3c7' : '#e0e7ff'),
+                                                                    color: b.recipientId?.includes('_prod') ? '#166534' : (b.recipientId?.includes('_beta') ? '#92400e' : '#3730a3'),
+                                                                    padding: '4px 8px', borderRadius: '4px', fontWeight: 600, fontSize: '0.75rem',
+                                                                    display: 'inline-block'
+                                                                }}>
+                                                                    {b.recipientId}
+                                                                </span>
+                                                            </td>
+                                                            <td style={{ padding: '16px 12px' }}>
+                                                                <div style={{ color: 'var(--mlab-midnight)', fontWeight: 600, marginBottom: '4px', fontSize: '0.9rem' }}>
+                                                                    {b.title}
+                                                                </div>
+                                                                <div style={{ color: '#64748b', lineHeight: '1.4' }}>
+                                                                    {b.message}
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* 6. EMPTY TABS */}
+                        {['audit', 'profile'].includes(activeTab) && (
                             <div className="settings-section animate-fade-in empty-tab-wrapper">
                                 <div className="empty-tab-content">
                                     <IconPlaceholder tab={activeTab} />
@@ -1183,7 +1581,6 @@ export const SettingsPage: React.FC = () => {
 };
 
 const IconPlaceholder = ({ tab }: { tab: string }) => {
-    if (tab === 'notifications') return <Bell size={48} className="empty-icon text-slate-300" />;
     if (tab === 'audit') return <ShieldAlert size={48} className="empty-icon text-slate-300" />;
     return <User size={48} className="empty-icon text-slate-300" />;
 };
@@ -1196,9 +1593,9 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 // import { useNavigate } from 'react-router-dom';
 // import {
 //     Building2, GraduationCap, Link2, Bell,
-//     ShieldAlert, User, Save, UploadCloud, Loader2, AlertCircle, Plus, Trash2, MapPin, Database, Lock, CheckCircle2, Edit2, Globe, BookOpen, Wifi, X, Search
+//     ShieldAlert, User, Save, UploadCloud, Loader2, AlertCircle, Plus, Trash2, MapPin, Database, Lock, CheckCircle2, Edit2, Globe, BookOpen, Wifi, X, Search, Clock, Send, MessageSquare
 // } from 'lucide-react';
-// import { doc, getDoc, setDoc } from 'firebase/firestore';
+// import { doc, getDoc, setDoc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
 // import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 // import { db } from '../../lib/firebase';
 // import { useStore } from '../../store/useStore';
@@ -1208,10 +1605,8 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 // import { GoogleMap, Marker, useJsApiLoader } from '@react-google-maps/api';
 // import './SettingsPage.css';
 
-// // 🚀 Import LearnerFormModal styles for the Map Popup
 // import '../../components/admin/LearnerFormModal/LearnerFormModal.css';
 
-// // Fallback assets
 // import fallbackLogo from '../../assets/logo/mlab_logo.png';
 // import fallbackSignature from '../../assets/Signatue_Zack_.png';
 
@@ -1238,6 +1633,27 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 //     { key: 'credits', label: 'Credits' }
 // ];
 
+// const NOTIFICATION_TRIGGERS = [
+//     { key: 'checkInStart', label: 'Morning Campus Open', description: 'Fires when check-in opens for the day.' },
+//     { key: 'checkInLate', label: 'Late Arrival Warning', description: 'Fires when the late threshold is reached.' },
+//     { key: 'lunchSoon', label: 'Lunch Approaching', description: 'Fires 10 mins before lunch starts.' },
+//     { key: 'lunchStart', label: 'Lunch Break Starts', description: 'Fires exactly when lunch begins.' },
+//     { key: 'lunchEnd', label: 'Lunch Break Ends', description: 'Fires when the afternoon session resumes.' },
+//     { key: 'checkoutSoon', label: 'Dismissal Approaching', description: 'Fires 10 mins before checkout is allowed.' },
+//     { key: 'checkoutStart', label: 'Campus Closing', description: 'Fires exactly at the checkout start time.' },
+//     { key: 'weeklyMonday', label: 'Monday Kickoff', description: 'Fires every Monday at 07:30.' },
+//     { key: 'weeklyFriday', label: 'Friday Wrap-up', description: 'Fires every Friday before checkout.' }
+// ];
+
+// // Standard Default Times for new Campuses
+// const DEFAULT_CAMPUS_TIMES = {
+//     checkInStart: "06:00",
+//     checkInLate: "08:00",
+//     lunchStart: "12:00",
+//     lunchEnd: "13:00",
+//     checkoutStart: "15:30"
+// };
+
 // const DEFAULT_SETTINGS: any = {
 //     institutionName: "",
 //     companyRegistrationNumber: "",
@@ -1261,6 +1677,23 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 //     eisaLockEnabled: true,
 //     blockchainNetwork: "polygon_amoy",
 //     ipfsGateway: "https://gateway.pinata.cloud",
+//     notificationSettings: {
+//         globalMasterSwitch: true,
+//         dailyRemindersEnabled: true,
+//         weeklyMotivationEnabled: true
+//     },
+//     // 🚀 NEW: Notification Templates
+//     notificationTemplates: {
+//         checkInStart: { title: "☀️ Campus is Open", body: "Don't forget to scan the Kiosk once you arrive!" },
+//         checkInLate: { title: "⏰ Attendance Check", body: "Just a reminder to scan in for the morning session if you haven't yet." },
+//         lunchSoon: { title: "🍔 Lunch Break Soon", body: "Preparing for lunch? Remember to scan out at the Kiosk." },
+//         lunchStart: { title: "🍴 Lunch Reminder", body: "Please ensure your lunch break scan is recorded on the Kiosk." },
+//         lunchEnd: { title: "👔 Back to Work", body: "Lunch is over! Please remember to scan back in for the afternoon session." },
+//         checkoutSoon: { title: "🌙 Wrapping Up", body: "The lab is closing soon. Please prepare for your final scan." },
+//         checkoutStart: { title: "👋 Time to Head Out", body: "Don't forget your checkout scan to finalize your hours for today!" },
+//         weeklyMonday: { title: "🚀 Kickstart Your Week!", body: "Welcome to a new week at CodeTribe! Set your goals, grab your coffee, and let's build something amazing." },
+//         weeklyFriday: { title: "🎉 Week Complete!", body: "Great job this week! Make sure your final scan is done, rest up, and recharge for the weekend." }
+//     },
 //     csvMappings: {
 //         fullName: "Learner Name",
 //         idNumber: "ID Number",
@@ -1298,11 +1731,14 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 //     const [isUploadingLogo, setIsUploadingLogo] = useState(false);
 //     const [isUploadingSignature, setIsUploadingSignature] = useState(false);
 
-//     // 🚀 MAP MODAL STATE
+//     // Broadcast State
+//     const [broadcastPayload, setBroadcastPayload] = useState({ title: '', message: '', target: 'all_learners' });
+//     const [isBroadcasting, setIsBroadcasting] = useState(false);
+
 //     const [isMapModalOpen, setIsMapModalOpen] = useState(false);
 //     const [mapTargetId, setMapTargetId] = useState<string | null>(null);
 //     const [tempCoords, setTempCoords] = useState({ lat: -25.7479, lng: 28.2293 });
-//     const [mapSearchText, setMapSearchText] = useState(""); // Holds the prefilled address for the modal search bar
+//     const [mapSearchText, setMapSearchText] = useState("");
 
 //     const { isLoaded } = useJsApiLoader({
 //         id: 'google-map-script',
@@ -1341,7 +1777,6 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 //                         }
 //                         seenIds.add(finalId);
 
-//                         // DECODE BSSIDs from Base64 for viewing in UI
 //                         const decodedBssids = (campus.wifiSettings?.allowedBssids || []).map((b: string) => {
 //                             try { return atob(b); } catch { return b; }
 //                         });
@@ -1349,6 +1784,12 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 //                         return {
 //                             ...campus,
 //                             id: finalId,
+//                             campusTimes: campus.campusTimes || DEFAULT_CAMPUS_TIMES,
+//                             notificationSettings: {
+//                                 globalMasterSwitch: campus.notificationSettings?.globalMasterSwitch ?? true,
+//                                 dailyRemindersEnabled: campus.notificationSettings?.dailyRemindersEnabled ?? true,
+//                                 weeklyMotivationEnabled: campus.notificationSettings?.weeklyMotivationEnabled ?? true,
+//                             },
 //                             wifiSettings: {
 //                                 ...campus.wifiSettings,
 //                                 allowedBssids: decodedBssids
@@ -1359,10 +1800,24 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 //                     const mergedData = {
 //                         ...DEFAULT_SETTINGS,
 //                         ...data,
+//                         notificationSettings: {
+//                             ...DEFAULT_SETTINGS.notificationSettings,
+//                             ...(data.notificationSettings || {})
+//                         },
+//                         // 🚀 Hydrate Templates
+//                         notificationTemplates: {
+//                             ...DEFAULT_SETTINGS.notificationTemplates,
+//                             ...(data.notificationTemplates || {})
+//                         },
 //                         campuses: loadedCampuses,
 //                         csvMappings: safeMappings,
 //                         customCsvMappings: data.customCsvMappings || []
 //                     };
+
+//                     if (mergedData.campusTimes) {
+//                         delete mergedData.campusTimes;
+//                         foundDuplicates = true;
+//                     }
 
 //                     setFormData(mergedData);
 //                     setOriginalData(mergedData);
@@ -1388,7 +1843,6 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 //         window.open(`https://www.google.com/maps?q=${lat},${lng}`, '_blank', 'noopener,noreferrer');
 //     };
 
-//     // 🚀 OPENS THE DRAGGABLE MAP MODAL & PREFILLS SEARCH BAR
 //     const openMapModal = (target: string, lat: number, lng: number, address: string) => {
 //         setMapTargetId(target);
 //         if (lat !== 0 && lng !== 0) {
@@ -1400,7 +1854,6 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 //         setIsMapModalOpen(true);
 //     };
 
-//     // 🚀 SAVES THE DRAGGED PIN BACK TO FORM DATA
 //     const confirmMapCoordinates = () => {
 //         if (mapTargetId === 'main') {
 //             setFormData((prev: any) => ({
@@ -1422,7 +1875,6 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 //         setIsMapModalOpen(false);
 //     };
 
-//     // 🚀 HANDLES SEARCHING INSIDE THE MAP MODAL
 //     const handleModalAddressSelected = (place: any) => {
 //         if (place.geometry && place.geometry.location) {
 //             const newLat = typeof place.geometry.location.lat === 'function' ? place.geometry.location.lat() : place.geometry.location.lat;
@@ -1500,10 +1952,25 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 //         setIsDirty(true);
 //     };
 
-//     const updateNested = (category: string, field: string, val: string) => {
+//     const updateNested = (category: string, field: string, val: any) => {
 //         setFormData((prev: any) => ({
 //             ...prev,
 //             [category]: { ...(prev[category] || {}), [field]: val }
+//         }));
+//         setIsDirty(true);
+//     };
+
+//     // 🚀 NEW: Helper to safely update specific template strings
+//     const updateNestedTemplate = (triggerKey: string, field: 'title' | 'body', value: string) => {
+//         setFormData((prev: any) => ({
+//             ...prev,
+//             notificationTemplates: {
+//                 ...prev.notificationTemplates,
+//                 [triggerKey]: {
+//                     ...prev.notificationTemplates?.[triggerKey],
+//                     [field]: value
+//                 }
+//             }
 //         }));
 //         setIsDirty(true);
 //     };
@@ -1532,7 +1999,13 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 //                     postalCode: '',
 //                     siteAccreditationNumber: '',
 //                     isDefault: prev.campuses.length === 0,
-//                     wifiSettings: { enforceWifi: false, ssid: '', allowedBssids: [] }
+//                     wifiSettings: { enforceWifi: false, ssid: '', allowedBssids: [] },
+//                     campusTimes: DEFAULT_CAMPUS_TIMES,
+//                     notificationSettings: {
+//                         globalMasterSwitch: true,
+//                         dailyRemindersEnabled: true,
+//                         weeklyMotivationEnabled: true
+//                     }
 //                 }
 //             ]
 //         }));
@@ -1617,15 +2090,14 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 //         try {
 //             const docRef = doc(db, "system_settings", "global");
 
-//             // ENCODE BSSIDs before saving to DB
 //             const securedCampuses = formData.campuses.map((c: any) => ({
 //                 ...c,
 //                 wifiSettings: {
 //                     ...c.wifiSettings,
 //                     allowedBssids: (c.wifiSettings?.allowedBssids || [])
-//                         .map((b: string) => b.trim().toLowerCase()) // Double check it's clean
-//                         .filter((b: string) => b !== '') // Strip accidental empties
-//                         .map((b: string) => btoa(b)) // Encode to Base64
+//                         .map((b: string) => b.trim().toLowerCase())
+//                         .filter((b: string) => b !== '')
+//                         .map((b: string) => btoa(b))
 //                 }
 //             }));
 
@@ -1650,6 +2122,35 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 //         }
 //     };
 
+//     const handleSendBroadcast = async () => {
+//         if (!broadcastPayload.title.trim() || !broadcastPayload.message.trim()) {
+//             alert("Please fill in both title and message to send a broadcast.");
+//             return;
+//         }
+
+//         setIsBroadcasting(true);
+//         try {
+//             // Write directly to your existing "notifications" collection
+//             await addDoc(collection(db, "notifications"), {
+//                 recipientId: broadcastPayload.target, // "all_learners" or "campus_ID"
+//                 type: "system", // Will render the globe/campus icon in the app
+//                 title: broadcastPayload.title,
+//                 message: broadcastPayload.message,
+//                 timestamp: serverTimestamp(),
+//                 read: false,
+//                 sentBy: user?.uid || 'admin'
+//             });
+
+//             alert(`Broadcast sent successfully to ${broadcastPayload.target}!`);
+//             setBroadcastPayload({ title: '', message: '', target: 'all_learners' });
+//         } catch (error) {
+//             console.error("Broadcast failed:", error);
+//             alert("Failed to queue broadcast message.");
+//         } finally {
+//             setIsBroadcasting(false);
+//         }
+//     };
+
 //     const TABS = [
 //         { id: 'org', label: 'Organization', icon: Building2 },
 //         { id: 'academic', label: 'Academic Rules', icon: GraduationCap },
@@ -1669,11 +2170,10 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 //                 onLogout={() => navigate('/login')}
 //             />
 
-//             {/* 🚀 GOOGLE MAP MODAL OVERLAY (LFM STYLED) */}
+//             {/* GOOGLE MAP MODAL OVERLAY (LFM STYLED) */}
 //             {isMapModalOpen && (
 //                 <div className="lfm-overlay" onClick={() => setIsMapModalOpen(false)}>
 //                     <div className="lfm-modal" onClick={(e) => e.stopPropagation()}>
-
 //                         <div className="lfm-header">
 //                             <h2 className="lfm-header__title">
 //                                 <MapPin size={16} /> Adjust Exact Location
@@ -1682,17 +2182,14 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 //                                 <X size={20} />
 //                             </button>
 //                         </div>
-
 //                         <div className="lfm-body">
 //                             <p style={{ margin: 0, color: '#64748b', fontSize: '0.9rem' }}>
 //                                 Use the search bar to jump to an area, then click or drag the red marker to pinpoint the exact building entrance. This strict coordinate is used for the Zero-Trust Geofence security.
 //                             </p>
-
-//                             {/* 🚀 MODAL SEARCH BAR */}
 //                             <div style={{ position: 'relative', marginBottom: '4px' }}>
 //                                 <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--mlab-grey)', zIndex: 10 }} />
 //                                 <Autocomplete
-//                                     key={`modal-search-${mapTargetId}`} // Ensures it remounts cleanly between campuses
+//                                     key={`modal-search-${mapTargetId}`}
 //                                     apiKey={import.meta.env.VITE_GOOGLE_MAPS_API_KEY}
 //                                     onPlaceSelected={handleModalAddressSelected}
 //                                     options={{ types: [], componentRestrictions: { country: "za" } }}
@@ -1702,21 +2199,16 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 //                                     style={{ paddingLeft: '38px', borderRadius: '8px', border: '1px solid var(--mlab-border)' }}
 //                                 />
 //                             </div>
-
 //                             <div style={{ width: '100%', height: '400px', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--mlab-border)', position: 'relative' }}>
 //                                 {isLoaded ? (
 //                                     <GoogleMap
 //                                         mapContainerStyle={{ width: '100%', height: '100%' }}
 //                                         center={tempCoords}
-//                                         zoom={18} // High zoom to see buildings
+//                                         zoom={18}
 //                                         onClick={(e) => e.latLng && setTempCoords({ lat: e.latLng.lat(), lng: e.latLng.lng() })}
 //                                         options={{ disableDefaultUI: false, zoomControl: true, streetViewControl: false, mapTypeControl: false }}
 //                                     >
-//                                         <Marker
-//                                             position={tempCoords}
-//                                             draggable={true}
-//                                             onDragEnd={(e) => e.latLng && setTempCoords({ lat: e.latLng.lat(), lng: e.latLng.lng() })}
-//                                         />
+//                                         <Marker position={tempCoords} draggable={true} onDragEnd={(e) => e.latLng && setTempCoords({ lat: e.latLng.lat(), lng: e.latLng.lng() })} />
 //                                     </GoogleMap>
 //                                 ) : (
 //                                     <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc' }}>
@@ -1724,19 +2216,13 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 //                                     </div>
 //                                 )}
 //                             </div>
-
 //                             <div style={{ fontSize: '0.85rem', color: '#64748b', fontFamily: 'monospace', background: 'var(--mlab-bg)', padding: '6px 12px', borderRadius: '4px', border: '1px solid var(--mlab-border)', width: 'max-content' }}>
 //                                 Lat: {tempCoords.lat.toFixed(6)}, Lng: {tempCoords.lng.toFixed(6)}
 //                             </div>
 //                         </div>
-
 //                         <div className="lfm-footer">
-//                             <button type="button" className="lfm-btn lfm-btn--ghost" onClick={() => setIsMapModalOpen(false)}>
-//                                 Cancel
-//                             </button>
-//                             <button type="button" className="lfm-btn lfm-btn--primary" onClick={confirmMapCoordinates}>
-//                                 <Save size={13} /> Save Pin Location
-//                             </button>
+//                             <button type="button" className="lfm-btn lfm-btn--ghost" onClick={() => setIsMapModalOpen(false)}>Cancel</button>
+//                             <button type="button" className="lfm-btn lfm-btn--primary" onClick={confirmMapCoordinates}><Save size={13} /> Save Pin Location</button>
 //                         </div>
 //                     </div>
 //                 </div>
@@ -1752,8 +2238,6 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 //                 />
 
 //                 <div className="settings-container">
-
-//                     {/* ─── SETTINGS NAVIGATION ─── */}
 //                     <aside className="settings-sidebar">
 //                         <nav className="settings-nav">
 //                             {TABS.map(tab => {
@@ -1771,15 +2255,12 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 //                         </nav>
 //                     </aside>
 
-//                     {/* ─── SETTINGS CONTENT ─── */}
 //                     <div className="settings-content">
-
 //                         {/* 1. ORGANIZATION PROFILE */}
 //                         {activeTab === 'org' && (
 //                             <div className="settings-section animate-fade-in">
 //                                 <h2 className="settings-section__title">Institutional Identity</h2>
 //                                 <p className="settings-section__desc">Core details used for QCTO LEISA reports and legal declarations.</p>
-
 //                                 <div className="settings-card">
 //                                     <div className="settings-form-grid">
 //                                         <div className="mlab-form-group col-span-2">
@@ -1809,7 +2290,6 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 //                                                     className="mlab-input search-input"
 //                                                     placeholder="Search building name, hub, or street..."
 //                                                 />
-
 //                                                 <div className="manual-address-edit mt-4 p-4 border rounded-lg bg-slate-50 shadow-sm border-slate-200">
 //                                                     <div className="address-editor-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
 //                                                         <div className="editor-title"><Edit2 size={14} /> <span>Official Address Override (QCTO Compliant)</span></div>
@@ -1819,7 +2299,6 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 //                                                             </div>
 //                                                         )}
 //                                                     </div>
-
 //                                                     <div className="settings-form-grid mt-3">
 //                                                         <div className="mlab-form-group col-span-2">
 //                                                             <label>Street Line (Manually insert street number if missing)</label>
@@ -1853,7 +2332,6 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 //                                                                 type="button"
 //                                                                 className="mlab-btn mlab-btn--outline-blue mlab-btn--sm"
 //                                                                 style={{ color: 'var(--mlab-blue)', borderColor: 'var(--mlab-blue)' }}
-//                                                                 // 🚀 Pass current address
 //                                                                 onClick={() => openMapModal('main', formData.institutionLat, formData.institutionLng, formData.institutionAddress)}
 //                                                             >
 //                                                                 <MapPin size={14} /> <span>Adjust Pin</span>
@@ -1926,12 +2404,10 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 //                                                     />
 //                                                 </div>
 
-//                                                 {/* CAMPUS CONFIG EDITOR (ADDRESS & WIFI SHIELD) */}
 //                                                 <div className="mlab-form-group col-span-2 bg-slate-50 p-5 rounded-lg mt-2">
 //                                                     <div style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between' }}>
-//                                                         <div className="editor-title mb-4" style={{ width: '50%' }}><Edit2 size={14} /> <span>Site Configuration (Address & Security)</span></div>
+//                                                         <div className="editor-title mb-4" style={{ width: '50%' }}><Edit2 size={14} /> <span>Site Configuration</span></div>
 //                                                         <div>
-
 //                                                             <div className="mlab-form-group col-span-2 mt-2" style={{ display: 'flex', gap: '12px', flexDirection: 'row' }}>
 //                                                                 <button
 //                                                                     type="button"
@@ -1953,7 +2429,6 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 //                                                         </div>
 //                                                     </div>
 
-//                                                     {/* Address Overrides */}
 //                                                     <div className="mlab-form-group mb-4">
 //                                                         <label className="text-slate-700">Full Address (Edit to add street number)</label>
 //                                                         <input type="text" className="mlab-input bg-white" value={campus.address} onChange={(e) => handleCampusChange(campus.id, 'address', e.target.value)} />
@@ -1978,7 +2453,85 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 
 //                                                     <hr className="my-6 border-slate-200" />
 
-//                                                     {/* Wi-Fi Security Shield */}
+//                                                     <div className="editor-title mb-4">
+//                                                         <Clock size={16} /> CAMPUS OPERATING HOURS (TIME BOUNDARIES)
+//                                                     </div>
+//                                                     <p style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '1rem' }}>
+//                                                         These boundaries are synced to the Kiosk and Mobile App to enforce check-in and checkout rules dynamically.
+//                                                     </p>
+//                                                     <div className="settings-form-grid">
+//                                                         <div className="mlab-form-group">
+//                                                             <label className="text-slate-700">Check-in Opens</label>
+//                                                             <input type="time" className="mlab-input bg-white" value={campus.campusTimes?.checkInStart || ''} onChange={(e) => handleCampusChange(campus.id, 'campusTimes', { ...campus.campusTimes, checkInStart: e.target.value })} />
+//                                                         </div>
+//                                                         <div className="mlab-form-group">
+//                                                             <label className="text-slate-700">Late Arrival Threshold</label>
+//                                                             <input type="time" className="mlab-input bg-white" value={campus.campusTimes?.checkInLate || ''} onChange={(e) => handleCampusChange(campus.id, 'campusTimes', { ...campus.campusTimes, checkInLate: e.target.value })} />
+//                                                         </div>
+//                                                         <div className="mlab-form-group">
+//                                                             <label className="text-slate-700">Lunch Break Starts</label>
+//                                                             <input type="time" className="mlab-input bg-white" value={campus.campusTimes?.lunchStart || ''} onChange={(e) => handleCampusChange(campus.id, 'campusTimes', { ...campus.campusTimes, lunchStart: e.target.value })} />
+//                                                         </div>
+//                                                         <div className="mlab-form-group">
+//                                                             <label className="text-slate-700">Lunch Break Ends</label>
+//                                                             <input type="time" className="mlab-input bg-white" value={campus.campusTimes?.lunchEnd || ''} onChange={(e) => handleCampusChange(campus.id, 'campusTimes', { ...campus.campusTimes, lunchEnd: e.target.value })} />
+//                                                         </div>
+//                                                         <div className="mlab-form-group">
+//                                                             <label className="text-slate-700">Dismissal (Checkout Allowed)</label>
+//                                                             <input type="time" className="mlab-input bg-white" value={campus.campusTimes?.checkoutStart || ''} onChange={(e) => handleCampusChange(campus.id, 'campusTimes', { ...campus.campusTimes, checkoutStart: e.target.value })} />
+//                                                         </div>
+//                                                     </div>
+
+//                                                     <hr className="my-6 border-slate-200" />
+
+//                                                     <div className="editor-title mb-4">
+//                                                         <Bell size={16} /> CAMPUS-SPECIFIC NOTIFICATION OVERRIDES
+//                                                     </div>
+//                                                     <p style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '1rem' }}>
+//                                                         Toggle these settings to silence automated mobile app reminders for this campus only (e.g., during power outages or local events).
+//                                                     </p>
+//                                                     <div className="settings-form-grid" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
+//                                                         <div className="mlab-form-group">
+//                                                             <label className="text-slate-700">Enable Local Alerts</label>
+//                                                             <select
+//                                                                 className="mlab-input bg-white"
+//                                                                 value={campus.notificationSettings?.globalMasterSwitch === false ? 'no' : 'yes'}
+//                                                                 onChange={(e) => handleCampusChange(campus.id, 'notificationSettings', { ...campus.notificationSettings, globalMasterSwitch: e.target.value === 'yes' })}
+//                                                             >
+//                                                                 <option value="yes">Enabled (Normal)</option>
+//                                                                 <option value="no">Silenced (Muted)</option>
+//                                                             </select>
+//                                                         </div>
+//                                                         <div className="mlab-form-group">
+//                                                             <label className="text-slate-700">Daily Reminders</label>
+//                                                             <select
+//                                                                 className="mlab-input bg-white"
+//                                                                 value={campus.notificationSettings?.dailyRemindersEnabled === false ? 'no' : 'yes'}
+//                                                                 disabled={campus.notificationSettings?.globalMasterSwitch === false}
+//                                                                 onChange={(e) => handleCampusChange(campus.id, 'notificationSettings', { ...campus.notificationSettings, dailyRemindersEnabled: e.target.value === 'yes' })}
+//                                                                 style={{ opacity: campus.notificationSettings?.globalMasterSwitch === false ? 0.5 : 1 }}
+//                                                             >
+//                                                                 <option value="yes">Enabled</option>
+//                                                                 <option value="no">Disabled</option>
+//                                                             </select>
+//                                                         </div>
+//                                                         <div className="mlab-form-group">
+//                                                             <label className="text-slate-700">Weekly Motivation</label>
+//                                                             <select
+//                                                                 className="mlab-input bg-white"
+//                                                                 value={campus.notificationSettings?.weeklyMotivationEnabled === false ? 'no' : 'yes'}
+//                                                                 disabled={campus.notificationSettings?.globalMasterSwitch === false}
+//                                                                 onChange={(e) => handleCampusChange(campus.id, 'notificationSettings', { ...campus.notificationSettings, weeklyMotivationEnabled: e.target.value === 'yes' })}
+//                                                                 style={{ opacity: campus.notificationSettings?.globalMasterSwitch === false ? 0.5 : 1 }}
+//                                                             >
+//                                                                 <option value="yes">Enabled</option>
+//                                                                 <option value="no">Disabled</option>
+//                                                             </select>
+//                                                         </div>
+//                                                     </div>
+
+//                                                     <hr className="my-6 border-slate-200" />
+
 //                                                     <div className="editor-title mb-4">
 //                                                         <Wifi size={16} /> SECURITY: NETWORK SHIELD (WIFI GEOFENCE)
 //                                                     </div>
@@ -2290,8 +2843,177 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 //                             </div>
 //                         )}
 
-//                         {/* 5. EMPTY TABS */}
-//                         {['notifications', 'audit', 'profile'].includes(activeTab) && (
+//                         {/* 5. NOTIFICATIONS CENTER */}
+//                         {activeTab === 'notifications' && (
+//                             <div className="settings-section animate-fade-in">
+//                                 <h2 className="settings-section__title">Notification Preferences</h2>
+//                                 <p className="settings-section__desc">Manage automated mobile app reminders and send global live broadcasts.</p>
+
+//                                 {/* PART A: GLOBAL AUTOMATED SCHEDULES */}
+//                                 <div className="settings-card">
+//                                     <h3 style={{ fontSize: '1.05rem', fontWeight: 600, color: 'var(--mlab-midnight)', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+//                                         <Clock size={18} /> Automated Scheduling Controls
+//                                     </h3>
+
+//                                     {/* Global Master Switch */}
+//                                     <div className="setting-row-toggle">
+//                                         <div className="setting-toggle-text">
+//                                             <h4 style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+//                                                 <ShieldAlert size={16} color="var(--mlab-red)" /> Global Master Switch
+//                                             </h4>
+//                                             <p>Master kill-switch. Disables all automated schedule-based notifications across all campuses instantly.</p>
+//                                         </div>
+//                                         <label className="mlab-toggle">
+//                                             <input
+//                                                 type="checkbox"
+//                                                 checked={formData.notificationSettings?.globalMasterSwitch ?? true}
+//                                                 onChange={(e) => updateNested('notificationSettings', 'globalMasterSwitch', e.target.checked)}
+//                                             />
+//                                             <span className="mlab-toggle-slider"></span>
+//                                         </label>
+//                                     </div>
+
+//                                     <hr className="settings-divider mt-6 mb-6" />
+
+//                                     {/* Daily Reminders */}
+//                                     <div className="setting-row-toggle" style={{ opacity: formData.notificationSettings?.globalMasterSwitch === false ? 0.5 : 1 }}>
+//                                         <div className="setting-toggle-text">
+//                                             <h4 style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+//                                                 <Bell size={16} color="var(--mlab-blue)" /> Daily Operational Reminders
+//                                             </h4>
+//                                             <p>Automated alerts for check-in opens, late thresholds, lunch breaks, and checkout times.</p>
+//                                         </div>
+//                                         <label className="mlab-toggle">
+//                                             <input
+//                                                 type="checkbox"
+//                                                 checked={formData.notificationSettings?.dailyRemindersEnabled ?? true}
+//                                                 disabled={formData.notificationSettings?.globalMasterSwitch === false}
+//                                                 onChange={(e) => updateNested('notificationSettings', 'dailyRemindersEnabled', e.target.checked)}
+//                                             />
+//                                             <span className="mlab-toggle-slider"></span>
+//                                         </label>
+//                                     </div>
+
+//                                     <hr className="settings-divider mt-6 mb-6" />
+
+//                                     {/* Weekly Motivation */}
+//                                     <div className="setting-row-toggle" style={{ opacity: formData.notificationSettings?.globalMasterSwitch === false ? 0.5 : 1 }}>
+//                                         <div className="setting-toggle-text">
+//                                             <h4 style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+//                                                 <CheckCircle2 size={16} color="var(--mlab-green)" /> Weekly Motivational Bookends
+//                                             </h4>
+//                                             <p>High-energy kick-off messages on Monday mornings and wrap-up celebrations on Friday afternoons.</p>
+//                                         </div>
+//                                         <label className="mlab-toggle">
+//                                             <input
+//                                                 type="checkbox"
+//                                                 checked={formData.notificationSettings?.weeklyMotivationEnabled ?? true}
+//                                                 disabled={formData.notificationSettings?.globalMasterSwitch === false}
+//                                                 onChange={(e) => updateNested('notificationSettings', 'weeklyMotivationEnabled', e.target.checked)}
+//                                             />
+//                                             <span className="mlab-toggle-slider"></span>
+//                                         </label>
+//                                     </div>
+//                                 </div>
+
+//                                 {/* PART B: NOTIFICATION TEMPLATES 🚀 NEW */}
+//                                 <div className="settings-card mt-6">
+//                                     <h3 style={{ fontSize: '1.05rem', fontWeight: 600, color: 'var(--mlab-midnight)', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+//                                         <MessageSquare size={18} /> Automated Message Templates
+//                                     </h3>
+//                                     <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '1.5rem' }}>
+//                                         Customize the text for automated mobile app reminders.
+//                                     </p>
+
+//                                     <div className="settings-form-grid" style={{ gap: '2rem' }}>
+//                                         {NOTIFICATION_TRIGGERS.map(trigger => (
+//                                             <div key={trigger.key} className="mlab-form-group col-span-2 bg-slate-50 p-4 rounded-lg border border-slate-200">
+//                                                 <div style={{ marginBottom: '1rem' }}>
+//                                                     <h4 style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--mlab-midnight)', margin: 0 }}>{trigger.label}</h4>
+//                                                     <span style={{ fontSize: '0.75rem', color: '#64748b' }}>{trigger.description}</span>
+//                                                 </div>
+//                                                 <div className="settings-form-grid">
+//                                                     <div className="mlab-form-group col-span-2">
+//                                                         <label>Notification Title</label>
+//                                                         <input
+//                                                             type="text"
+//                                                             className="mlab-input bg-white"
+//                                                             value={formData.notificationTemplates?.[trigger.key]?.title || ''}
+//                                                             onChange={(e) => updateNestedTemplate(trigger.key, 'title', e.target.value)}
+//                                                         />
+//                                                     </div>
+//                                                     <div className="mlab-form-group col-span-2">
+//                                                         <label>Notification Body</label>
+//                                                         <textarea
+//                                                             className="mlab-input bg-white"
+//                                                             rows={2}
+//                                                             value={formData.notificationTemplates?.[trigger.key]?.body || ''}
+//                                                             onChange={(e) => updateNestedTemplate(trigger.key, 'body', e.target.value)}
+//                                                         />
+//                                                     </div>
+//                                                 </div>
+//                                             </div>
+//                                         ))}
+//                                     </div>
+//                                 </div>
+
+//                                 {/* PART C: LIVE PUSH BROADCAST */}
+//                                 <h2 className="settings-section__title mt-10">Manual Broadcast Center</h2>
+//                                 <p className="settings-section__desc">Send immediate push notifications to mobile devices via Firebase Cloud Messaging.</p>
+
+//                                 <div className="settings-card bg-slate-50 border border-slate-200">
+//                                     <div className="settings-form-grid">
+//                                         <div className="mlab-form-group col-span-2">
+//                                             <label>Broadcast Target</label>
+//                                             <select
+//                                                 className="mlab-input bg-white"
+//                                                 value={broadcastPayload.target}
+//                                                 onChange={(e) => setBroadcastPayload({ ...broadcastPayload, target: e.target.value })}
+//                                             >
+//                                                 <option value="all_learners">All Campuses (Global Broadcast)</option>
+//                                                 {formData.campuses.map((c: any) => (
+//                                                     <option key={c.id} value={`campus_${c.id}`}>{c.name || 'Unnamed'} Campus Only</option>
+//                                                 ))}
+//                                             </select>
+//                                         </div>
+//                                         <div className="mlab-form-group col-span-2">
+//                                             <label>Announcement Title</label>
+//                                             <input
+//                                                 type="text"
+//                                                 className="mlab-input bg-white"
+//                                                 placeholder="e.g. CodeTribe Hackathon Tomorrow!"
+//                                                 value={broadcastPayload.title}
+//                                                 onChange={(e) => setBroadcastPayload({ ...broadcastPayload, title: e.target.value })}
+//                                             />
+//                                         </div>
+//                                         <div className="mlab-form-group col-span-2">
+//                                             <label>Message Body</label>
+//                                             <textarea
+//                                                 className="mlab-input bg-white"
+//                                                 rows={3}
+//                                                 placeholder="Enter the full message details here..."
+//                                                 value={broadcastPayload.message}
+//                                                 onChange={(e) => setBroadcastPayload({ ...broadcastPayload, message: e.target.value })}
+//                                             />
+//                                         </div>
+//                                         <div className="mlab-form-group col-span-2 flex justify-end mt-2">
+//                                             <button
+//                                                 className="mlab-btn mlab-btn--primary"
+//                                                 onClick={handleSendBroadcast}
+//                                                 disabled={isBroadcasting || !broadcastPayload.title || !broadcastPayload.message}
+//                                             >
+//                                                 {isBroadcasting ? <Loader2 size={16} className="spin" /> : <Send size={16} />}
+//                                                 Transmit Push Notification
+//                                             </button>
+//                                         </div>
+//                                     </div>
+//                                 </div>
+
+//                             </div>
+//                         )}
+
+//                         {/* 6. EMPTY TABS */}
+//                         {['audit', 'profile'].includes(activeTab) && (
 //                             <div className="settings-section animate-fade-in empty-tab-wrapper">
 //                                 <div className="empty-tab-content">
 //                                     <IconPlaceholder tab={activeTab} />
@@ -2335,7 +3057,6 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 // };
 
 // const IconPlaceholder = ({ tab }: { tab: string }) => {
-//     if (tab === 'notifications') return <Bell size={48} className="empty-icon text-slate-300" />;
 //     if (tab === 'audit') return <ShieldAlert size={48} className="empty-icon text-slate-300" />;
 //     return <User size={48} className="empty-icon text-slate-300" />;
 // };
@@ -2348,18 +3069,20 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 // // import { useNavigate } from 'react-router-dom';
 // // import {
 // //     Building2, GraduationCap, Link2, Bell,
-// //     ShieldAlert, User, Save, UploadCloud, Loader2, AlertCircle, Plus, Trash2, MapPin, Database, Lock, CheckCircle2, Edit2, Globe, BookOpen, Wifi
+// //     ShieldAlert, User, Save, UploadCloud, Loader2, AlertCircle, Plus, Trash2, MapPin, Database, Lock, CheckCircle2, Edit2, Globe, BookOpen, Wifi, X, Search, Clock, Send
 // // } from 'lucide-react';
-// // import { doc, getDoc, setDoc } from 'firebase/firestore';
+// // import { doc, getDoc, setDoc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
 // // import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 // // import { db } from '../../lib/firebase';
 // // import { useStore } from '../../store/useStore';
 // // import { Sidebar } from '../../components/dashboard/Sidebar/Sidebar';
 // // import PageHeader from '../../components/common/PageHeader/PageHeader';
 // // import Autocomplete from "react-google-autocomplete";
+// // import { GoogleMap, Marker, useJsApiLoader } from '@react-google-maps/api';
 // // import './SettingsPage.css';
 
-// // // Fallback assets
+// // import '../../components/admin/LearnerFormModal/LearnerFormModal.css';
+
 // // import fallbackLogo from '../../assets/logo/mlab_logo.png';
 // // import fallbackSignature from '../../assets/Signatue_Zack_.png';
 
@@ -2386,6 +3109,15 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 // //     { key: 'credits', label: 'Credits' }
 // // ];
 
+// // // Standard Default Times for new Campuses
+// // const DEFAULT_CAMPUS_TIMES = {
+// //     checkInStart: "06:00",
+// //     checkInLate: "08:00",
+// //     lunchStart: "12:00",
+// //     lunchEnd: "13:00",
+// //     checkoutStart: "15:30"
+// // };
+
 // // const DEFAULT_SETTINGS: any = {
 // //     institutionName: "",
 // //     companyRegistrationNumber: "",
@@ -2409,6 +3141,12 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 // //     eisaLockEnabled: true,
 // //     blockchainNetwork: "polygon_amoy",
 // //     ipfsGateway: "https://gateway.pinata.cloud",
+// //     // 🚀 NEW: Notification defaults
+// //     notificationSettings: {
+// //         globalMasterSwitch: true,
+// //         dailyRemindersEnabled: true,
+// //         weeklyMotivationEnabled: true
+// //     },
 // //     csvMappings: {
 // //         fullName: "Learner Name",
 // //         idNumber: "ID Number",
@@ -2446,6 +3184,20 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 // //     const [isUploadingLogo, setIsUploadingLogo] = useState(false);
 // //     const [isUploadingSignature, setIsUploadingSignature] = useState(false);
 
+// //     // Broadcast State
+// //     const [broadcastPayload, setBroadcastPayload] = useState({ title: '', message: '', target: 'all_learners' });
+// //     const [isBroadcasting, setIsBroadcasting] = useState(false);
+
+// //     const [isMapModalOpen, setIsMapModalOpen] = useState(false);
+// //     const [mapTargetId, setMapTargetId] = useState<string | null>(null);
+// //     const [tempCoords, setTempCoords] = useState({ lat: -25.7479, lng: 28.2293 });
+// //     const [mapSearchText, setMapSearchText] = useState("");
+
+// //     const { isLoaded } = useJsApiLoader({
+// //         id: 'google-map-script',
+// //         googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
+// //     });
+
 // //     // Load settings from Firestore on mount
 // //     useEffect(() => {
 // //         const initSettings = async () => {
@@ -2478,7 +3230,6 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 // //                         }
 // //                         seenIds.add(finalId);
 
-// //                         // DECODE BSSIDs from Base64 for viewing in UI
 // //                         const decodedBssids = (campus.wifiSettings?.allowedBssids || []).map((b: string) => {
 // //                             try { return atob(b); } catch { return b; }
 // //                         });
@@ -2486,6 +3237,13 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 // //                         return {
 // //                             ...campus,
 // //                             id: finalId,
+// //                             campusTimes: campus.campusTimes || DEFAULT_CAMPUS_TIMES,
+// //                             // Ensure nested notification settings exist on campuses
+// //                             notificationSettings: {
+// //                                 globalMasterSwitch: campus.notificationSettings?.globalMasterSwitch ?? true,
+// //                                 dailyRemindersEnabled: campus.notificationSettings?.dailyRemindersEnabled ?? true,
+// //                                 weeklyMotivationEnabled: campus.notificationSettings?.weeklyMotivationEnabled ?? true,
+// //                             },
 // //                             wifiSettings: {
 // //                                 ...campus.wifiSettings,
 // //                                 allowedBssids: decodedBssids
@@ -2496,10 +3254,20 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 // //                     const mergedData = {
 // //                         ...DEFAULT_SETTINGS,
 // //                         ...data,
+// //                         notificationSettings: {
+// //                             ...DEFAULT_SETTINGS.notificationSettings,
+// //                             ...(data.notificationSettings || {})
+// //                         },
 // //                         campuses: loadedCampuses,
 // //                         csvMappings: safeMappings,
 // //                         customCsvMappings: data.customCsvMappings || []
 // //                     };
+
+// //                     // Clean up legacy global campusTimes if it exists from our last test
+// //                     if (mergedData.campusTimes) {
+// //                         delete mergedData.campusTimes;
+// //                         foundDuplicates = true; // Triggers a dirty save to clean it up
+// //                     }
 
 // //                     setFormData(mergedData);
 // //                     setOriginalData(mergedData);
@@ -2523,6 +3291,46 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 // //     const openInGoogleMaps = (lat: number, lng: number) => {
 // //         if (!lat || !lng || lat === 0 || lng === 0) return;
 // //         window.open(`https://www.google.com/maps?q=${lat},${lng}`, '_blank', 'noopener,noreferrer');
+// //     };
+
+// //     const openMapModal = (target: string, lat: number, lng: number, address: string) => {
+// //         setMapTargetId(target);
+// //         if (lat !== 0 && lng !== 0) {
+// //             setTempCoords({ lat, lng });
+// //         } else {
+// //             setTempCoords({ lat: -25.7479, lng: 28.2293 });
+// //         }
+// //         setMapSearchText(address || "");
+// //         setIsMapModalOpen(true);
+// //     };
+
+// //     const confirmMapCoordinates = () => {
+// //         if (mapTargetId === 'main') {
+// //             setFormData((prev: any) => ({
+// //                 ...prev,
+// //                 institutionLat: tempCoords.lat,
+// //                 institutionLng: tempCoords.lng,
+// //             }));
+// //         } else {
+// //             setFormData((prev: any) => ({
+// //                 ...prev,
+// //                 campuses: prev.campuses.map((c: any) => c.id === mapTargetId ? {
+// //                     ...c,
+// //                     lat: tempCoords.lat,
+// //                     lng: tempCoords.lng
+// //                 } : c)
+// //             }));
+// //         }
+// //         setIsDirty(true);
+// //         setIsMapModalOpen(false);
+// //     };
+
+// //     const handleModalAddressSelected = (place: any) => {
+// //         if (place.geometry && place.geometry.location) {
+// //             const newLat = typeof place.geometry.location.lat === 'function' ? place.geometry.location.lat() : place.geometry.location.lat;
+// //             const newLng = typeof place.geometry.location.lng === 'function' ? place.geometry.location.lng() : place.geometry.location.lng;
+// //             setTempCoords({ lat: newLat, lng: newLng });
+// //         }
 // //     };
 
 // //     const getAddressMetadata = (place: any) => {
@@ -2594,7 +3402,7 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 // //         setIsDirty(true);
 // //     };
 
-// //     const updateNested = (category: string, field: string, val: string) => {
+// //     const updateNested = (category: string, field: string, val: any) => {
 // //         setFormData((prev: any) => ({
 // //             ...prev,
 // //             [category]: { ...(prev[category] || {}), [field]: val }
@@ -2626,7 +3434,13 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 // //                     postalCode: '',
 // //                     siteAccreditationNumber: '',
 // //                     isDefault: prev.campuses.length === 0,
-// //                     wifiSettings: { enforceWifi: false, ssid: '', allowedBssids: [] }
+// //                     wifiSettings: { enforceWifi: false, ssid: '', allowedBssids: [] },
+// //                     campusTimes: DEFAULT_CAMPUS_TIMES,
+// //                     notificationSettings: {
+// //                         globalMasterSwitch: true,
+// //                         dailyRemindersEnabled: true,
+// //                         weeklyMotivationEnabled: true
+// //                     }
 // //                 }
 // //             ]
 // //         }));
@@ -2711,15 +3525,14 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 // //         try {
 // //             const docRef = doc(db, "system_settings", "global");
 
-// //             // ENCODE BSSIDs before saving to DB
 // //             const securedCampuses = formData.campuses.map((c: any) => ({
 // //                 ...c,
 // //                 wifiSettings: {
 // //                     ...c.wifiSettings,
 // //                     allowedBssids: (c.wifiSettings?.allowedBssids || [])
-// //                         .map((b: string) => b.trim().toLowerCase()) // Double check it's clean
-// //                         .filter((b: string) => b !== '') // Strip accidental empties
-// //                         .map((b: string) => btoa(b)) // Encode to Base64
+// //                         .map((b: string) => b.trim().toLowerCase())
+// //                         .filter((b: string) => b !== '')
+// //                         .map((b: string) => btoa(b))
 // //                 }
 // //             }));
 
@@ -2744,6 +3557,35 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 // //         }
 // //     };
 
+// //     // Broadcast Push Notification Handler
+// //     const handleSendBroadcast = async () => {
+// //         if (!broadcastPayload.title.trim() || !broadcastPayload.message.trim()) {
+// //             alert("Please fill in both title and message to send a broadcast.");
+// //             return;
+// //         }
+
+// //         setIsBroadcasting(true);
+// //         try {
+// //             // Save to Firestore to trigger backend Cloud Function for FCM
+// //             await addDoc(collection(db, "broadcast_messages"), {
+// //                 title: broadcastPayload.title,
+// //                 body: broadcastPayload.message,
+// //                 topic: broadcastPayload.target, // e.g. "all_learners" or "campus_XYZ"
+// //                 sentBy: user?.uid || 'admin',
+// //                 sentAt: serverTimestamp(),
+// //                 status: 'pending'
+// //             });
+
+// //             alert(`Broadcast sent successfully to ${broadcastPayload.target}!`);
+// //             setBroadcastPayload({ title: '', message: '', target: 'all_learners' });
+// //         } catch (error) {
+// //             console.error("Broadcast failed:", error);
+// //             alert("Failed to queue broadcast message.");
+// //         } finally {
+// //             setIsBroadcasting(false);
+// //         }
+// //     };
+
 // //     const TABS = [
 // //         { id: 'org', label: 'Organization', icon: Building2 },
 // //         { id: 'academic', label: 'Academic Rules', icon: GraduationCap },
@@ -2762,6 +3604,79 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 // //                 setCurrentNav={() => navigate(`/admin`)}
 // //                 onLogout={() => navigate('/login')}
 // //             />
+
+// //             {/* GOOGLE MAP MODAL OVERLAY (LFM STYLED) */}
+// //             {isMapModalOpen && (
+// //                 <div className="lfm-overlay" onClick={() => setIsMapModalOpen(false)}>
+// //                     <div className="lfm-modal" onClick={(e) => e.stopPropagation()}>
+
+// //                         <div className="lfm-header">
+// //                             <h2 className="lfm-header__title">
+// //                                 <MapPin size={16} /> Adjust Exact Location
+// //                             </h2>
+// //                             <button className="lfm-close-btn" type="button" onClick={() => setIsMapModalOpen(false)}>
+// //                                 <X size={20} />
+// //                             </button>
+// //                         </div>
+
+// //                         <div className="lfm-body">
+// //                             <p style={{ margin: 0, color: '#64748b', fontSize: '0.9rem' }}>
+// //                                 Use the search bar to jump to an area, then click or drag the red marker to pinpoint the exact building entrance. This strict coordinate is used for the Zero-Trust Geofence security.
+// //                             </p>
+
+// //                             {/* MODAL SEARCH BAR */}
+// //                             <div style={{ position: 'relative', marginBottom: '4px' }}>
+// //                                 <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--mlab-grey)', zIndex: 10 }} />
+// //                                 <Autocomplete
+// //                                     key={`modal-search-${mapTargetId}`}
+// //                                     apiKey={import.meta.env.VITE_GOOGLE_MAPS_API_KEY}
+// //                                     onPlaceSelected={handleModalAddressSelected}
+// //                                     options={{ types: [], componentRestrictions: { country: "za" } }}
+// //                                     className="lfm-input"
+// //                                     defaultValue={mapSearchText}
+// //                                     placeholder="Search specific building or street..."
+// //                                     style={{ paddingLeft: '38px', borderRadius: '8px', border: '1px solid var(--mlab-border)' }}
+// //                                 />
+// //                             </div>
+
+// //                             <div style={{ width: '100%', height: '400px', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--mlab-border)', position: 'relative' }}>
+// //                                 {isLoaded ? (
+// //                                     <GoogleMap
+// //                                         mapContainerStyle={{ width: '100%', height: '100%' }}
+// //                                         center={tempCoords}
+// //                                         zoom={18} // High zoom to see buildings
+// //                                         onClick={(e) => e.latLng && setTempCoords({ lat: e.latLng.lat(), lng: e.latLng.lng() })}
+// //                                         options={{ disableDefaultUI: false, zoomControl: true, streetViewControl: false, mapTypeControl: false }}
+// //                                     >
+// //                                         <Marker
+// //                                             position={tempCoords}
+// //                                             draggable={true}
+// //                                             onDragEnd={(e) => e.latLng && setTempCoords({ lat: e.latLng.lat(), lng: e.latLng.lng() })}
+// //                                         />
+// //                                     </GoogleMap>
+// //                                 ) : (
+// //                                     <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc' }}>
+// //                                         <Loader2 size={32} color="var(--mlab-blue)" className="lfm-spin" />
+// //                                     </div>
+// //                                 )}
+// //                             </div>
+
+// //                             <div style={{ fontSize: '0.85rem', color: '#64748b', fontFamily: 'monospace', background: 'var(--mlab-bg)', padding: '6px 12px', borderRadius: '4px', border: '1px solid var(--mlab-border)', width: 'max-content' }}>
+// //                                 Lat: {tempCoords.lat.toFixed(6)}, Lng: {tempCoords.lng.toFixed(6)}
+// //                             </div>
+// //                         </div>
+
+// //                         <div className="lfm-footer">
+// //                             <button type="button" className="lfm-btn lfm-btn--ghost" onClick={() => setIsMapModalOpen(false)}>
+// //                                 Cancel
+// //                             </button>
+// //                             <button type="button" className="lfm-btn lfm-btn--primary" onClick={confirmMapCoordinates}>
+// //                                 <Save size={13} /> Save Pin Location
+// //                             </button>
+// //                         </div>
+// //                     </div>
+// //                 </div>
+// //             )}
 
 // //             <main className="main-wrapper settings-wrapper">
 // //                 <PageHeader
@@ -2832,12 +3747,12 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 // //                                                 />
 
 // //                                                 <div className="manual-address-edit mt-4 p-4 border rounded-lg bg-slate-50 shadow-sm border-slate-200">
-// //                                                     <div className="address-editor-header">
+// //                                                     <div className="address-editor-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
 // //                                                         <div className="editor-title"><Edit2 size={14} /> <span>Official Address Override (QCTO Compliant)</span></div>
 // //                                                         {formData.institutionLat !== 0 && (
-// //                                                             <button type="button" className="verification-pill" onClick={() => openInGoogleMaps(formData.institutionLat, formData.institutionLng)}>
+// //                                                             <div className="verification-pill bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1">
 // //                                                                 <CheckCircle2 size={12} /> <span>GPS Verified</span>
-// //                                                             </button>
+// //                                                             </div>
 // //                                                         )}
 // //                                                     </div>
 
@@ -2861,14 +3776,22 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 // //                                                             <label>Postal Code</label>
 // //                                                             <input type="text" name="institutionPostalCode" className="mlab-input bg-white" value={formData.institutionPostalCode} onChange={handleInputChange} />
 // //                                                         </div>
-// //                                                         <div className="mlab-form-group" style={{ display: 'flex', alignItems: 'flex-end' }}>
+// //                                                         <div className="mlab-form-group col-span-2 mt-2" style={{ display: 'flex', gap: '12px' }}>
 // //                                                             <button
 // //                                                                 type="button"
-// //                                                                 className="v-item-btn"
+// //                                                                 className="mlab-btn mlab-btn--outline-blue mlab-btn--sm"
 // //                                                                 onClick={() => openInGoogleMaps(formData.institutionLat, formData.institutionLng)}
 // //                                                                 disabled={!formData.institutionLat}
 // //                                                             >
-// //                                                                 <Globe size={14} /> <span>View Metadata</span>
+// //                                                                 <Globe size={14} /> <span>View Map</span>
+// //                                                             </button>
+// //                                                             <button
+// //                                                                 type="button"
+// //                                                                 className="mlab-btn mlab-btn--outline-blue mlab-btn--sm"
+// //                                                                 style={{ color: 'var(--mlab-blue)', borderColor: 'var(--mlab-blue)' }}
+// //                                                                 onClick={() => openMapModal('main', formData.institutionLat, formData.institutionLng, formData.institutionAddress)}
+// //                                                             >
+// //                                                                 <MapPin size={14} /> <span>Adjust Pin</span>
 // //                                                             </button>
 // //                                                         </div>
 // //                                                     </div>
@@ -2938,9 +3861,32 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 // //                                                     />
 // //                                                 </div>
 
-// //                                                 {/* CAMPUS CONFIG EDITOR (ADDRESS & WIFI SHIELD) */}
+// //                                                 {/* CAMPUS CONFIG EDITOR (ADDRESS & WIFI & TIME) */}
 // //                                                 <div className="mlab-form-group col-span-2 bg-slate-50 p-5 rounded-lg mt-2">
-// //                                                     <div className="editor-title mb-4"><Edit2 size={14} /> <span>Site Configuration (Address & Security)</span></div>
+// //                                                     <div style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between' }}>
+// //                                                         <div className="editor-title mb-4" style={{ width: '50%' }}><Edit2 size={14} /> <span>Site Configuration</span></div>
+// //                                                         <div>
+
+// //                                                             <div className="mlab-form-group col-span-2 mt-2" style={{ display: 'flex', gap: '12px', flexDirection: 'row' }}>
+// //                                                                 <button
+// //                                                                     type="button"
+// //                                                                     className="mlab-btn mlab-btn--outline-blue mlab-btn--sm"
+// //                                                                     onClick={() => openInGoogleMaps(campus.lat, campus.lng)}
+// //                                                                     disabled={!campus.lat}
+// //                                                                 >
+// //                                                                     <Globe size={14} /> <span>View Map</span>
+// //                                                                 </button>
+// //                                                                 <button
+// //                                                                     type="button"
+// //                                                                     className="mlab-btn mlab-btn--outline-blue mlab-btn--sm"
+// //                                                                     style={{ color: 'var(--mlab-blue)', borderColor: 'var(--mlab-blue)' }}
+// //                                                                     onClick={() => openMapModal(campus.id, campus.lat, campus.lng, campus.address)}
+// //                                                                 >
+// //                                                                     <MapPin size={14} /> <span>Adjust Pin</span>
+// //                                                                 </button>
+// //                                                             </div>
+// //                                                         </div>
+// //                                                     </div>
 
 // //                                                     {/* Address Overrides */}
 // //                                                     <div className="mlab-form-group mb-4">
@@ -2962,6 +3908,87 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 // //                                                         <div className="mlab-form-group">
 // //                                                             <label className="text-slate-700">Postal Code</label>
 // //                                                             <input type="text" className="mlab-input bg-white" value={campus.postalCode || ''} onChange={(e) => handleCampusChange(campus.id, 'postalCode', e.target.value)} />
+// //                                                         </div>
+// //                                                     </div>
+
+// //                                                     <hr className="my-6 border-slate-200" />
+
+// //                                                     {/* CAMPUS OPERATING HOURS */}
+// //                                                     <div className="editor-title mb-4">
+// //                                                         <Clock size={16} /> CAMPUS OPERATING HOURS (TIME BOUNDARIES)
+// //                                                     </div>
+// //                                                     <p style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '1rem' }}>
+// //                                                         These boundaries are synced to the Kiosk and Mobile App to enforce check-in and checkout rules dynamically.
+// //                                                     </p>
+// //                                                     <div className="settings-form-grid">
+// //                                                         <div className="mlab-form-group">
+// //                                                             <label className="text-slate-700">Check-in Opens</label>
+// //                                                             <input type="time" className="mlab-input bg-white" value={campus.campusTimes?.checkInStart || ''} onChange={(e) => handleCampusChange(campus.id, 'campusTimes', { ...campus.campusTimes, checkInStart: e.target.value })} />
+// //                                                         </div>
+// //                                                         <div className="mlab-form-group">
+// //                                                             <label className="text-slate-700">Late Arrival Threshold</label>
+// //                                                             <input type="time" className="mlab-input bg-white" value={campus.campusTimes?.checkInLate || ''} onChange={(e) => handleCampusChange(campus.id, 'campusTimes', { ...campus.campusTimes, checkInLate: e.target.value })} />
+// //                                                         </div>
+// //                                                         <div className="mlab-form-group">
+// //                                                             <label className="text-slate-700">Lunch Break Starts</label>
+// //                                                             <input type="time" className="mlab-input bg-white" value={campus.campusTimes?.lunchStart || ''} onChange={(e) => handleCampusChange(campus.id, 'campusTimes', { ...campus.campusTimes, lunchStart: e.target.value })} />
+// //                                                         </div>
+// //                                                         <div className="mlab-form-group">
+// //                                                             <label className="text-slate-700">Lunch Break Ends</label>
+// //                                                             <input type="time" className="mlab-input bg-white" value={campus.campusTimes?.lunchEnd || ''} onChange={(e) => handleCampusChange(campus.id, 'campusTimes', { ...campus.campusTimes, lunchEnd: e.target.value })} />
+// //                                                         </div>
+// //                                                         <div className="mlab-form-group">
+// //                                                             <label className="text-slate-700">Dismissal (Checkout Allowed)</label>
+// //                                                             <input type="time" className="mlab-input bg-white" value={campus.campusTimes?.checkoutStart || ''} onChange={(e) => handleCampusChange(campus.id, 'campusTimes', { ...campus.campusTimes, checkoutStart: e.target.value })} />
+// //                                                         </div>
+// //                                                     </div>
+
+// //                                                     <hr className="my-6 border-slate-200" />
+
+// //                                                     {/* CAMPUS NOTIFICATION OVERRIDES */}
+// //                                                     <div className="editor-title mb-4">
+// //                                                         <Bell size={16} /> CAMPUS-SPECIFIC NOTIFICATION OVERRIDES
+// //                                                     </div>
+// //                                                     <p style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '1rem' }}>
+// //                                                         Toggle these settings to silence automated mobile app reminders for this campus only (e.g., during power outages or local events).
+// //                                                     </p>
+// //                                                     <div className="settings-form-grid" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
+// //                                                         <div className="mlab-form-group">
+// //                                                             <label className="text-slate-700">Enable Local Alerts</label>
+// //                                                             <select
+// //                                                                 className="mlab-input bg-white"
+// //                                                                 value={campus.notificationSettings?.globalMasterSwitch === false ? 'no' : 'yes'}
+// //                                                                 onChange={(e) => handleCampusChange(campus.id, 'notificationSettings', { ...campus.notificationSettings, globalMasterSwitch: e.target.value === 'yes' })}
+// //                                                             >
+// //                                                                 <option value="yes">Enabled (Normal)</option>
+// //                                                                 <option value="no">Silenced (Muted)</option>
+// //                                                             </select>
+// //                                                         </div>
+// //                                                         <div className="mlab-form-group">
+// //                                                             <label className="text-slate-700">Daily Reminders</label>
+// //                                                             <select
+// //                                                                 className="mlab-input bg-white"
+// //                                                                 value={campus.notificationSettings?.dailyRemindersEnabled === false ? 'no' : 'yes'}
+// //                                                                 disabled={campus.notificationSettings?.globalMasterSwitch === false}
+// //                                                                 onChange={(e) => handleCampusChange(campus.id, 'notificationSettings', { ...campus.notificationSettings, dailyRemindersEnabled: e.target.value === 'yes' })}
+// //                                                                 style={{ opacity: campus.notificationSettings?.globalMasterSwitch === false ? 0.5 : 1 }}
+// //                                                             >
+// //                                                                 <option value="yes">Enabled</option>
+// //                                                                 <option value="no">Disabled</option>
+// //                                                             </select>
+// //                                                         </div>
+// //                                                         <div className="mlab-form-group">
+// //                                                             <label className="text-slate-700">Weekly Motivation</label>
+// //                                                             <select
+// //                                                                 className="mlab-input bg-white"
+// //                                                                 value={campus.notificationSettings?.weeklyMotivationEnabled === false ? 'no' : 'yes'}
+// //                                                                 disabled={campus.notificationSettings?.globalMasterSwitch === false}
+// //                                                                 onChange={(e) => handleCampusChange(campus.id, 'notificationSettings', { ...campus.notificationSettings, weeklyMotivationEnabled: e.target.value === 'yes' })}
+// //                                                                 style={{ opacity: campus.notificationSettings?.globalMasterSwitch === false ? 0.5 : 1 }}
+// //                                                             >
+// //                                                                 <option value="yes">Enabled</option>
+// //                                                                 <option value="no">Disabled</option>
+// //                                                             </select>
 // //                                                         </div>
 // //                                                     </div>
 
@@ -3000,15 +4027,13 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 // //                                                                 className="mlab-input bg-white"
 // //                                                                 style={{ fontFamily: 'monospace' }}
 // //                                                                 placeholder="f4:1e:57:5d:e7:df, a1:b2:c3:d4:e5:f6"
-// //                                                                 value={Array.isArray(campus.wifiSettings?.allowedBssids) ? campus.wifiSettings.allowedBssids.join(',') : ''}
+// //                                                                 value={Array.isArray(campus.wifiSettings?.allowedBssids) ? campus.wifiSettings.allowedBssids.join(', ') : ''}
 // //                                                                 onChange={(e) => handleCampusChange(campus.id, 'wifiSettings', {
 // //                                                                     ...campus.wifiSettings,
-// //                                                                     // 🚀 Just split by comma. Don't trim or filter yet so the user can type!
 // //                                                                     allowedBssids: e.target.value.split(',')
 // //                                                                 })}
 // //                                                                 onBlur={(e) => handleCampusChange(campus.id, 'wifiSettings', {
 // //                                                                     ...campus.wifiSettings,
-// //                                                                     // 🧹 Clean up spaces, make lowercase, and remove empty trailing commas when they click away
 // //                                                                     allowedBssids: e.target.value.split(',').map(s => s.trim().toLowerCase()).filter(s => s !== '')
 // //                                                                 })}
 // //                                                             />
@@ -3281,8 +4306,136 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 // //                             </div>
 // //                         )}
 
-// //                         {/* 5. EMPTY TABS */}
-// //                         {['notifications', 'audit', 'profile'].includes(activeTab) && (
+// //                         {/* 5. NOTIFICATIONS CENTER */}
+// //                         {activeTab === 'notifications' && (
+// //                             <div className="settings-section animate-fade-in">
+// //                                 <h2 className="settings-section__title">Notification Preferences</h2>
+// //                                 <p className="settings-section__desc">Manage automated mobile app reminders and send global live broadcasts.</p>
+
+// //                                 {/* PART A: GLOBAL AUTOMATED SCHEDULES */}
+// //                                 <div className="settings-card">
+// //                                     <h3 style={{ fontSize: '1.05rem', fontWeight: 600, color: 'var(--mlab-midnight)', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+// //                                         <Clock size={18} /> Automated Scheduling Controls
+// //                                     </h3>
+
+// //                                     {/* Global Master Switch */}
+// //                                     <div className="setting-row-toggle">
+// //                                         <div className="setting-toggle-text">
+// //                                             <h4 style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+// //                                                 <ShieldAlert size={16} color="var(--mlab-red)" /> Global Master Switch
+// //                                             </h4>
+// //                                             <p>Master kill-switch. Disables all automated schedule-based notifications across all campuses instantly.</p>
+// //                                         </div>
+// //                                         <label className="mlab-toggle">
+// //                                             <input
+// //                                                 type="checkbox"
+// //                                                 checked={formData.notificationSettings?.globalMasterSwitch ?? true}
+// //                                                 onChange={(e) => updateNested('notificationSettings', 'globalMasterSwitch', e.target.checked)}
+// //                                             />
+// //                                             <span className="mlab-toggle-slider"></span>
+// //                                         </label>
+// //                                     </div>
+
+// //                                     <hr className="settings-divider mt-6 mb-6" />
+
+// //                                     {/* Daily Reminders */}
+// //                                     <div className="setting-row-toggle" style={{ opacity: formData.notificationSettings?.globalMasterSwitch === false ? 0.5 : 1 }}>
+// //                                         <div className="setting-toggle-text">
+// //                                             <h4 style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+// //                                                 <Bell size={16} color="var(--mlab-blue)" /> Daily Operational Reminders
+// //                                             </h4>
+// //                                             <p>Automated alerts for check-in opens, late thresholds, lunch breaks, and checkout times.</p>
+// //                                         </div>
+// //                                         <label className="mlab-toggle">
+// //                                             <input
+// //                                                 type="checkbox"
+// //                                                 checked={formData.notificationSettings?.dailyRemindersEnabled ?? true}
+// //                                                 disabled={formData.notificationSettings?.globalMasterSwitch === false}
+// //                                                 onChange={(e) => updateNested('notificationSettings', 'dailyRemindersEnabled', e.target.checked)}
+// //                                             />
+// //                                             <span className="mlab-toggle-slider"></span>
+// //                                         </label>
+// //                                     </div>
+
+// //                                     <hr className="settings-divider mt-6 mb-6" />
+
+// //                                     {/* Weekly Motivation */}
+// //                                     <div className="setting-row-toggle" style={{ opacity: formData.notificationSettings?.globalMasterSwitch === false ? 0.5 : 1 }}>
+// //                                         <div className="setting-toggle-text">
+// //                                             <h4 style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+// //                                                 <CheckCircle2 size={16} color="var(--mlab-green)" /> Weekly Motivational Bookends
+// //                                             </h4>
+// //                                             <p>High-energy kick-off messages on Monday mornings and wrap-up celebrations on Friday afternoons.</p>
+// //                                         </div>
+// //                                         <label className="mlab-toggle">
+// //                                             <input
+// //                                                 type="checkbox"
+// //                                                 checked={formData.notificationSettings?.weeklyMotivationEnabled ?? true}
+// //                                                 disabled={formData.notificationSettings?.globalMasterSwitch === false}
+// //                                                 onChange={(e) => updateNested('notificationSettings', 'weeklyMotivationEnabled', e.target.checked)}
+// //                                             />
+// //                                             <span className="mlab-toggle-slider"></span>
+// //                                         </label>
+// //                                     </div>
+// //                                 </div>
+
+// //                                 {/* PART B: LIVE PUSH BROADCAST */}
+// //                                 <h2 className="settings-section__title mt-10">Manual Broadcast Center</h2>
+// //                                 <p className="settings-section__desc">Send immediate push notifications to mobile devices via Firebase Cloud Messaging.</p>
+
+// //                                 <div className="settings-card bg-slate-50 border border-slate-200">
+// //                                     <div className="settings-form-grid">
+// //                                         <div className="mlab-form-group col-span-2">
+// //                                             <label>Broadcast Target</label>
+// //                                             <select
+// //                                                 className="mlab-input bg-white"
+// //                                                 value={broadcastPayload.target}
+// //                                                 onChange={(e) => setBroadcastPayload({ ...broadcastPayload, target: e.target.value })}
+// //                                             >
+// //                                                 <option value="all_learners">All Campuses (Global Broadcast)</option>
+// //                                                 {formData.campuses.map((c: any) => (
+// //                                                     <option key={c.id} value={`campus_${c.id}`}>{c.name || 'Unnamed'} Campus Only</option>
+// //                                                 ))}
+// //                                             </select>
+// //                                         </div>
+// //                                         <div className="mlab-form-group col-span-2">
+// //                                             <label>Announcement Title</label>
+// //                                             <input
+// //                                                 type="text"
+// //                                                 className="mlab-input bg-white"
+// //                                                 placeholder="e.g. CodeTribe Hackathon Tomorrow!"
+// //                                                 value={broadcastPayload.title}
+// //                                                 onChange={(e) => setBroadcastPayload({ ...broadcastPayload, title: e.target.value })}
+// //                                             />
+// //                                         </div>
+// //                                         <div className="mlab-form-group col-span-2">
+// //                                             <label>Message Body</label>
+// //                                             <textarea
+// //                                                 className="mlab-input bg-white"
+// //                                                 rows={3}
+// //                                                 placeholder="Enter the full message details here..."
+// //                                                 value={broadcastPayload.message}
+// //                                                 onChange={(e) => setBroadcastPayload({ ...broadcastPayload, message: e.target.value })}
+// //                                             />
+// //                                         </div>
+// //                                         <div className="mlab-form-group col-span-2 flex justify-end mt-2">
+// //                                             <button
+// //                                                 className="mlab-btn mlab-btn--primary"
+// //                                                 onClick={handleSendBroadcast}
+// //                                                 disabled={isBroadcasting || !broadcastPayload.title || !broadcastPayload.message}
+// //                                             >
+// //                                                 {isBroadcasting ? <Loader2 size={16} className="spin" /> : <Send size={16} />}
+// //                                                 Transmit Push Notification
+// //                                             </button>
+// //                                         </div>
+// //                                     </div>
+// //                                 </div>
+
+// //                             </div>
+// //                         )}
+
+// //                         {/* 6. EMPTY TABS */}
+// //                         {['audit', 'profile'].includes(activeTab) && (
 // //                             <div className="settings-section animate-fade-in empty-tab-wrapper">
 // //                                 <div className="empty-tab-content">
 // //                                     <IconPlaceholder tab={activeTab} />
@@ -3326,10 +4479,12 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 // // };
 
 // // const IconPlaceholder = ({ tab }: { tab: string }) => {
-// //     if (tab === 'notifications') return <Bell size={48} className="empty-icon text-slate-300" />;
 // //     if (tab === 'audit') return <ShieldAlert size={48} className="empty-icon text-slate-300" />;
 // //     return <User size={48} className="empty-icon text-slate-300" />;
 // // };
+
+
+
 
 // // // // src/pages/SettingsPage/SettingsPage.tsx
 
@@ -3337,7 +4492,7 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 // // // import { useNavigate } from 'react-router-dom';
 // // // import {
 // // //     Building2, GraduationCap, Link2, Bell,
-// // //     ShieldAlert, User, Save, UploadCloud, Loader2, AlertCircle, Plus, Trash2, MapPin, Database, Lock, CheckCircle2, Edit2, Globe, BookOpen, Wifi
+// // //     ShieldAlert, User, Save, UploadCloud, Loader2, AlertCircle, Plus, Trash2, MapPin, Database, Lock, CheckCircle2, Edit2, Globe, BookOpen, Wifi, X, Search, Clock
 // // // } from 'lucide-react';
 // // // import { doc, getDoc, setDoc } from 'firebase/firestore';
 // // // import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -3346,9 +4501,11 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 // // // import { Sidebar } from '../../components/dashboard/Sidebar/Sidebar';
 // // // import PageHeader from '../../components/common/PageHeader/PageHeader';
 // // // import Autocomplete from "react-google-autocomplete";
+// // // import { GoogleMap, Marker, useJsApiLoader } from '@react-google-maps/api';
 // // // import './SettingsPage.css';
 
-// // // // Fallback assets
+// // // import '../../components/admin/LearnerFormModal/LearnerFormModal.css';
+
 // // // import fallbackLogo from '../../assets/logo/mlab_logo.png';
 // // // import fallbackSignature from '../../assets/Signatue_Zack_.png';
 
@@ -3374,6 +4531,15 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 // // //     { key: 'nqfLevel', label: 'NQF Level' },
 // // //     { key: 'credits', label: 'Credits' }
 // // // ];
+
+// // // // Standard Default Times for new Campuses
+// // // const DEFAULT_CAMPUS_TIMES = {
+// // //     checkInStart: "06:00",
+// // //     checkInLate: "08:00",
+// // //     lunchStart: "12:00",
+// // //     lunchEnd: "13:00",
+// // //     checkoutStart: "15:30"
+// // // };
 
 // // // const DEFAULT_SETTINGS: any = {
 // // //     institutionName: "",
@@ -3435,6 +4601,16 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 // // //     const [isUploadingLogo, setIsUploadingLogo] = useState(false);
 // // //     const [isUploadingSignature, setIsUploadingSignature] = useState(false);
 
+// // //     const [isMapModalOpen, setIsMapModalOpen] = useState(false);
+// // //     const [mapTargetId, setMapTargetId] = useState<string | null>(null);
+// // //     const [tempCoords, setTempCoords] = useState({ lat: -25.7479, lng: 28.2293 });
+// // //     const [mapSearchText, setMapSearchText] = useState("");
+
+// // //     const { isLoaded } = useJsApiLoader({
+// // //         id: 'google-map-script',
+// // //         googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
+// // //     });
+
 // // //     // Load settings from Firestore on mount
 // // //     useEffect(() => {
 // // //         const initSettings = async () => {
@@ -3467,7 +4643,6 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 // // //                         }
 // // //                         seenIds.add(finalId);
 
-// // //                         // DECODE BSSIDs from Base64 for viewing in UI
 // // //                         const decodedBssids = (campus.wifiSettings?.allowedBssids || []).map((b: string) => {
 // // //                             try { return atob(b); } catch { return b; }
 // // //                         });
@@ -3475,6 +4650,7 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 // // //                         return {
 // // //                             ...campus,
 // // //                             id: finalId,
+// // //                             campusTimes: campus.campusTimes || DEFAULT_CAMPUS_TIMES,
 // // //                             wifiSettings: {
 // // //                                 ...campus.wifiSettings,
 // // //                                 allowedBssids: decodedBssids
@@ -3489,6 +4665,12 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 // // //                         csvMappings: safeMappings,
 // // //                         customCsvMappings: data.customCsvMappings || []
 // // //                     };
+
+// // //                     // Clean up legacy global campusTimes if it exists from our last test
+// // //                     if (mergedData.campusTimes) {
+// // //                         delete mergedData.campusTimes;
+// // //                         foundDuplicates = true; // Triggers a dirty save to clean it up
+// // //                     }
 
 // // //                     setFormData(mergedData);
 // // //                     setOriginalData(mergedData);
@@ -3512,6 +4694,46 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 // // //     const openInGoogleMaps = (lat: number, lng: number) => {
 // // //         if (!lat || !lng || lat === 0 || lng === 0) return;
 // // //         window.open(`https://www.google.com/maps?q=${lat},${lng}`, '_blank', 'noopener,noreferrer');
+// // //     };
+
+// // //     const openMapModal = (target: string, lat: number, lng: number, address: string) => {
+// // //         setMapTargetId(target);
+// // //         if (lat !== 0 && lng !== 0) {
+// // //             setTempCoords({ lat, lng });
+// // //         } else {
+// // //             setTempCoords({ lat: -25.7479, lng: 28.2293 });
+// // //         }
+// // //         setMapSearchText(address || "");
+// // //         setIsMapModalOpen(true);
+// // //     };
+
+// // //     const confirmMapCoordinates = () => {
+// // //         if (mapTargetId === 'main') {
+// // //             setFormData((prev: any) => ({
+// // //                 ...prev,
+// // //                 institutionLat: tempCoords.lat,
+// // //                 institutionLng: tempCoords.lng,
+// // //             }));
+// // //         } else {
+// // //             setFormData((prev: any) => ({
+// // //                 ...prev,
+// // //                 campuses: prev.campuses.map((c: any) => c.id === mapTargetId ? {
+// // //                     ...c,
+// // //                     lat: tempCoords.lat,
+// // //                     lng: tempCoords.lng
+// // //                 } : c)
+// // //             }));
+// // //         }
+// // //         setIsDirty(true);
+// // //         setIsMapModalOpen(false);
+// // //     };
+
+// // //     const handleModalAddressSelected = (place: any) => {
+// // //         if (place.geometry && place.geometry.location) {
+// // //             const newLat = typeof place.geometry.location.lat === 'function' ? place.geometry.location.lat() : place.geometry.location.lat;
+// // //             const newLng = typeof place.geometry.location.lng === 'function' ? place.geometry.location.lng() : place.geometry.location.lng;
+// // //             setTempCoords({ lat: newLat, lng: newLng });
+// // //         }
 // // //     };
 
 // // //     const getAddressMetadata = (place: any) => {
@@ -3615,7 +4837,8 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 // // //                     postalCode: '',
 // // //                     siteAccreditationNumber: '',
 // // //                     isDefault: prev.campuses.length === 0,
-// // //                     wifiSettings: { enforceWifi: false, ssid: '', allowedBssids: [] }
+// // //                     wifiSettings: { enforceWifi: false, ssid: '', allowedBssids: [] },
+// // //                     campusTimes: DEFAULT_CAMPUS_TIMES
 // // //                 }
 // // //             ]
 // // //         }));
@@ -3700,12 +4923,14 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 // // //         try {
 // // //             const docRef = doc(db, "system_settings", "global");
 
-// // //             // ENCODE BSSIDs before saving to DB
 // // //             const securedCampuses = formData.campuses.map((c: any) => ({
 // // //                 ...c,
 // // //                 wifiSettings: {
 // // //                     ...c.wifiSettings,
-// // //                     allowedBssids: (c.wifiSettings?.allowedBssids || []).map((b: string) => btoa(b))
+// // //                     allowedBssids: (c.wifiSettings?.allowedBssids || [])
+// // //                         .map((b: string) => b.trim().toLowerCase())
+// // //                         .filter((b: string) => b !== '')
+// // //                         .map((b: string) => btoa(b))
 // // //                 }
 // // //             }));
 
@@ -3748,6 +4973,79 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 // // //                 setCurrentNav={() => navigate(`/admin`)}
 // // //                 onLogout={() => navigate('/login')}
 // // //             />
+
+// // //             {/* GOOGLE MAP MODAL OVERLAY (LFM STYLED) */}
+// // //             {isMapModalOpen && (
+// // //                 <div className="lfm-overlay" onClick={() => setIsMapModalOpen(false)}>
+// // //                     <div className="lfm-modal" onClick={(e) => e.stopPropagation()}>
+
+// // //                         <div className="lfm-header">
+// // //                             <h2 className="lfm-header__title">
+// // //                                 <MapPin size={16} /> Adjust Exact Location
+// // //                             </h2>
+// // //                             <button className="lfm-close-btn" type="button" onClick={() => setIsMapModalOpen(false)}>
+// // //                                 <X size={20} />
+// // //                             </button>
+// // //                         </div>
+
+// // //                         <div className="lfm-body">
+// // //                             <p style={{ margin: 0, color: '#64748b', fontSize: '0.9rem' }}>
+// // //                                 Use the search bar to jump to an area, then click or drag the red marker to pinpoint the exact building entrance. This strict coordinate is used for the Zero-Trust Geofence security.
+// // //                             </p>
+
+// // //                             {/* MODAL SEARCH BAR */}
+// // //                             <div style={{ position: 'relative', marginBottom: '4px' }}>
+// // //                                 <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--mlab-grey)', zIndex: 10 }} />
+// // //                                 <Autocomplete
+// // //                                     key={`modal-search-${mapTargetId}`}
+// // //                                     apiKey={import.meta.env.VITE_GOOGLE_MAPS_API_KEY}
+// // //                                     onPlaceSelected={handleModalAddressSelected}
+// // //                                     options={{ types: [], componentRestrictions: { country: "za" } }}
+// // //                                     className="lfm-input"
+// // //                                     defaultValue={mapSearchText}
+// // //                                     placeholder="Search specific building or street..."
+// // //                                     style={{ paddingLeft: '38px', borderRadius: '8px', border: '1px solid var(--mlab-border)' }}
+// // //                                 />
+// // //                             </div>
+
+// // //                             <div style={{ width: '100%', height: '400px', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--mlab-border)', position: 'relative' }}>
+// // //                                 {isLoaded ? (
+// // //                                     <GoogleMap
+// // //                                         mapContainerStyle={{ width: '100%', height: '100%' }}
+// // //                                         center={tempCoords}
+// // //                                         zoom={18} // High zoom to see buildings
+// // //                                         onClick={(e) => e.latLng && setTempCoords({ lat: e.latLng.lat(), lng: e.latLng.lng() })}
+// // //                                         options={{ disableDefaultUI: false, zoomControl: true, streetViewControl: false, mapTypeControl: false }}
+// // //                                     >
+// // //                                         <Marker
+// // //                                             position={tempCoords}
+// // //                                             draggable={true}
+// // //                                             onDragEnd={(e) => e.latLng && setTempCoords({ lat: e.latLng.lat(), lng: e.latLng.lng() })}
+// // //                                         />
+// // //                                     </GoogleMap>
+// // //                                 ) : (
+// // //                                     <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc' }}>
+// // //                                         <Loader2 size={32} color="var(--mlab-blue)" className="lfm-spin" />
+// // //                                     </div>
+// // //                                 )}
+// // //                             </div>
+
+// // //                             <div style={{ fontSize: '0.85rem', color: '#64748b', fontFamily: 'monospace', background: 'var(--mlab-bg)', padding: '6px 12px', borderRadius: '4px', border: '1px solid var(--mlab-border)', width: 'max-content' }}>
+// // //                                 Lat: {tempCoords.lat.toFixed(6)}, Lng: {tempCoords.lng.toFixed(6)}
+// // //                             </div>
+// // //                         </div>
+
+// // //                         <div className="lfm-footer">
+// // //                             <button type="button" className="lfm-btn lfm-btn--ghost" onClick={() => setIsMapModalOpen(false)}>
+// // //                                 Cancel
+// // //                             </button>
+// // //                             <button type="button" className="lfm-btn lfm-btn--primary" onClick={confirmMapCoordinates}>
+// // //                                 <Save size={13} /> Save Pin Location
+// // //                             </button>
+// // //                         </div>
+// // //                     </div>
+// // //                 </div>
+// // //             )}
 
 // // //             <main className="main-wrapper settings-wrapper">
 // // //                 <PageHeader
@@ -3818,12 +5116,12 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 // // //                                                 />
 
 // // //                                                 <div className="manual-address-edit mt-4 p-4 border rounded-lg bg-slate-50 shadow-sm border-slate-200">
-// // //                                                     <div className="address-editor-header">
+// // //                                                     <div className="address-editor-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
 // // //                                                         <div className="editor-title"><Edit2 size={14} /> <span>Official Address Override (QCTO Compliant)</span></div>
 // // //                                                         {formData.institutionLat !== 0 && (
-// // //                                                             <button type="button" className="verification-pill" onClick={() => openInGoogleMaps(formData.institutionLat, formData.institutionLng)}>
+// // //                                                             <div className="verification-pill bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1">
 // // //                                                                 <CheckCircle2 size={12} /> <span>GPS Verified</span>
-// // //                                                             </button>
+// // //                                                             </div>
 // // //                                                         )}
 // // //                                                     </div>
 
@@ -3847,14 +5145,22 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 // // //                                                             <label>Postal Code</label>
 // // //                                                             <input type="text" name="institutionPostalCode" className="mlab-input bg-white" value={formData.institutionPostalCode} onChange={handleInputChange} />
 // // //                                                         </div>
-// // //                                                         <div className="mlab-form-group" style={{ display: 'flex', alignItems: 'flex-end' }}>
+// // //                                                         <div className="mlab-form-group col-span-2 mt-2" style={{ display: 'flex', gap: '12px' }}>
 // // //                                                             <button
 // // //                                                                 type="button"
-// // //                                                                 className="v-item-btn"
+// // //                                                                 className="mlab-btn mlab-btn--outline-blue mlab-btn--sm"
 // // //                                                                 onClick={() => openInGoogleMaps(formData.institutionLat, formData.institutionLng)}
 // // //                                                                 disabled={!formData.institutionLat}
 // // //                                                             >
-// // //                                                                 <Globe size={14} /> <span>View Metadata</span>
+// // //                                                                 <Globe size={14} /> <span>View Map</span>
+// // //                                                             </button>
+// // //                                                             <button
+// // //                                                                 type="button"
+// // //                                                                 className="mlab-btn mlab-btn--outline-blue mlab-btn--sm"
+// // //                                                                 style={{ color: 'var(--mlab-blue)', borderColor: 'var(--mlab-blue)' }}
+// // //                                                                 onClick={() => openMapModal('main', formData.institutionLat, formData.institutionLng, formData.institutionAddress)}
+// // //                                                             >
+// // //                                                                 <MapPin size={14} /> <span>Adjust Pin</span>
 // // //                                                             </button>
 // // //                                                         </div>
 // // //                                                     </div>
@@ -3924,9 +5230,32 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 // // //                                                     />
 // // //                                                 </div>
 
-// // //                                                 {/* CAMPUS CONFIG EDITOR (ADDRESS & WIFI SHIELD) */}
+// // //                                                 {/* CAMPUS CONFIG EDITOR (ADDRESS & WIFI & TIME) */}
 // // //                                                 <div className="mlab-form-group col-span-2 bg-slate-50 p-5 rounded-lg mt-2">
-// // //                                                     <div className="editor-title mb-4"><Edit2 size={14} /> <span>Site Configuration (Address & Security)</span></div>
+// // //                                                     <div style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between' }}>
+// // //                                                         <div className="editor-title mb-4" style={{ width: '50%' }}><Edit2 size={14} /> <span>Site Configuration</span></div>
+// // //                                                         <div>
+
+// // //                                                             <div className="mlab-form-group col-span-2 mt-2" style={{ display: 'flex', gap: '12px', flexDirection: 'row' }}>
+// // //                                                                 <button
+// // //                                                                     type="button"
+// // //                                                                     className="mlab-btn mlab-btn--outline-blue mlab-btn--sm"
+// // //                                                                     onClick={() => openInGoogleMaps(campus.lat, campus.lng)}
+// // //                                                                     disabled={!campus.lat}
+// // //                                                                 >
+// // //                                                                     <Globe size={14} /> <span>View Map</span>
+// // //                                                                 </button>
+// // //                                                                 <button
+// // //                                                                     type="button"
+// // //                                                                     className="mlab-btn mlab-btn--outline-blue mlab-btn--sm"
+// // //                                                                     style={{ color: 'var(--mlab-blue)', borderColor: 'var(--mlab-blue)' }}
+// // //                                                                     onClick={() => openMapModal(campus.id, campus.lat, campus.lng, campus.address)}
+// // //                                                                 >
+// // //                                                                     <MapPin size={14} /> <span>Adjust Pin</span>
+// // //                                                                 </button>
+// // //                                                             </div>
+// // //                                                         </div>
+// // //                                                     </div>
 
 // // //                                                     {/* Address Overrides */}
 // // //                                                     <div className="mlab-form-group mb-4">
@@ -3948,6 +5277,38 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 // // //                                                         <div className="mlab-form-group">
 // // //                                                             <label className="text-slate-700">Postal Code</label>
 // // //                                                             <input type="text" className="mlab-input bg-white" value={campus.postalCode || ''} onChange={(e) => handleCampusChange(campus.id, 'postalCode', e.target.value)} />
+// // //                                                         </div>
+// // //                                                     </div>
+
+// // //                                                     <hr className="my-6 border-slate-200" />
+
+// // //                                                     {/* CAMPUS OPERATING HOURS */}
+// // //                                                     <div className="editor-title mb-4">
+// // //                                                         <Clock size={16} /> CAMPUS OPERATING HOURS (TIME BOUNDARIES)
+// // //                                                     </div>
+// // //                                                     <p style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '1rem' }}>
+// // //                                                         These boundaries are synced to the Kiosk and Mobile App to enforce check-in and checkout rules dynamically.
+// // //                                                     </p>
+// // //                                                     <div className="settings-form-grid">
+// // //                                                         <div className="mlab-form-group">
+// // //                                                             <label className="text-slate-700">Check-in Opens</label>
+// // //                                                             <input type="time" className="mlab-input bg-white" value={campus.campusTimes?.checkInStart || ''} onChange={(e) => handleCampusChange(campus.id, 'campusTimes', { ...campus.campusTimes, checkInStart: e.target.value })} />
+// // //                                                         </div>
+// // //                                                         <div className="mlab-form-group">
+// // //                                                             <label className="text-slate-700">Late Arrival Threshold</label>
+// // //                                                             <input type="time" className="mlab-input bg-white" value={campus.campusTimes?.checkInLate || ''} onChange={(e) => handleCampusChange(campus.id, 'campusTimes', { ...campus.campusTimes, checkInLate: e.target.value })} />
+// // //                                                         </div>
+// // //                                                         <div className="mlab-form-group">
+// // //                                                             <label className="text-slate-700">Lunch Break Starts</label>
+// // //                                                             <input type="time" className="mlab-input bg-white" value={campus.campusTimes?.lunchStart || ''} onChange={(e) => handleCampusChange(campus.id, 'campusTimes', { ...campus.campusTimes, lunchStart: e.target.value })} />
+// // //                                                         </div>
+// // //                                                         <div className="mlab-form-group">
+// // //                                                             <label className="text-slate-700">Lunch Break Ends</label>
+// // //                                                             <input type="time" className="mlab-input bg-white" value={campus.campusTimes?.lunchEnd || ''} onChange={(e) => handleCampusChange(campus.id, 'campusTimes', { ...campus.campusTimes, lunchEnd: e.target.value })} />
+// // //                                                         </div>
+// // //                                                         <div className="mlab-form-group">
+// // //                                                             <label className="text-slate-700">Dismissal (Checkout Allowed)</label>
+// // //                                                             <input type="time" className="mlab-input bg-white" value={campus.campusTimes?.checkoutStart || ''} onChange={(e) => handleCampusChange(campus.id, 'campusTimes', { ...campus.campusTimes, checkoutStart: e.target.value })} />
 // // //                                                         </div>
 // // //                                                     </div>
 
@@ -3987,7 +5348,14 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 // // //                                                                 style={{ fontFamily: 'monospace' }}
 // // //                                                                 placeholder="f4:1e:57:5d:e7:df, a1:b2:c3:d4:e5:f6"
 // // //                                                                 value={Array.isArray(campus.wifiSettings?.allowedBssids) ? campus.wifiSettings.allowedBssids.join(', ') : ''}
-// // //                                                                 onChange={(e) => handleCampusChange(campus.id, 'wifiSettings', { ...campus.wifiSettings, allowedBssids: e.target.value.split(',').map(s => s.trim().toLowerCase()).filter(s => s !== '') })}
+// // //                                                                 onChange={(e) => handleCampusChange(campus.id, 'wifiSettings', {
+// // //                                                                     ...campus.wifiSettings,
+// // //                                                                     allowedBssids: e.target.value.split(',')
+// // //                                                                 })}
+// // //                                                                 onBlur={(e) => handleCampusChange(campus.id, 'wifiSettings', {
+// // //                                                                     ...campus.wifiSettings,
+// // //                                                                     allowedBssids: e.target.value.split(',').map(s => s.trim().toLowerCase()).filter(s => s !== '')
+// // //                                                                 })}
 // // //                                                             />
 // // //                                                         </div>
 // // //                                                     </div>
@@ -4307,5 +5675,4 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 // // //     if (tab === 'audit') return <ShieldAlert size={48} className="empty-icon text-slate-300" />;
 // // //     return <User size={48} className="empty-icon text-slate-300" />;
 // // // };
-
 

@@ -5053,6 +5053,202 @@ export const acknowledgeCurriculumTopic = onCall(async (request) => {
   }
 });
 
+// Runs every night at Midnight (SAST)
+export const midnightInactivityPenalty = onSchedule(
+  {
+    schedule: "0 0 * * *",
+    timeZone: "Africa/Johannesburg",
+  },
+  async (event) => {
+    const db = admin.firestore();
+    const now = new Date().toISOString();
+
+    console.log("🌙 Running Midnight Penalty Engine...");
+
+    try {
+      // 1. Find all curriculum logs where the deadline has PASSED
+      const overdueLogsSnap = await db
+        .collection("curriculum_logs")
+        .where("deadlineAt", "<", now)
+        .get();
+
+      if (overdueLogsSnap.empty) {
+        console.log("✅ No overdue tasks found.");
+        return;
+      }
+
+      // 2. Track exactly how many points to deduct per learner
+      const penaltiesToApply: Record<string, number> = {};
+
+      overdueLogsSnap.forEach((doc) => {
+        const log = doc.data();
+        const targetLearners = log.targetLearners || []; // The people who NEED to acknowledge
+        const acknowledgedBy = log.acknowledgedBy || [];
+        const penalizedLearners = log.penalizedLearners || []; // Don't penalize twice for the same task
+
+        targetLearners.forEach((learnerId: string) => {
+          // If they haven't acknowledged it, AND haven't been penalized for this specific task yet
+          if (
+            !acknowledgedBy.includes(learnerId) &&
+            !penalizedLearners.includes(learnerId)
+          ) {
+            // Add a penalty mark for this learner
+            if (!penaltiesToApply[learnerId]) penaltiesToApply[learnerId] = 0;
+            penaltiesToApply[learnerId] += 2; // Deduct 2 points per overdue task!
+
+            // Mark them as penalized on the log so we don't hit them again tomorrow for the SAME task
+            doc.ref.update({
+              penalizedLearners:
+                admin.firestore.FieldValue.arrayUnion(learnerId),
+            });
+          }
+        });
+      });
+
+      // 3. Apply the penalties to the actual Learner profiles using a Batch Write
+      const batch = db.batch();
+      let batchCount = 0;
+
+      for (const [learnerId, penaltyPoints] of Object.entries(
+        penaltiesToApply,
+      )) {
+        const learnerRef = db.collection("learners").doc(learnerId);
+
+        // Reset streak to 0, deduct points
+        batch.update(learnerRef, {
+          professionalismScore:
+            admin.firestore.FieldValue.increment(-penaltyPoints),
+          professionalismStreak: 0,
+        });
+
+        batchCount++;
+        console.log(
+          `📉 Penalized Learner ${learnerId}: -${penaltyPoints} points & lost streak.`,
+        );
+      }
+
+      if (batchCount > 0) {
+        await batch.commit();
+        console.log(
+          `💥 Successfully applied penalties to ${batchCount} learners.`,
+        );
+      }
+    } catch (error) {
+      console.error("❌ Midnight Penalty Engine Failed:", error);
+    }
+  },
+);
+
+// Run manually via browser to test the Midnight Penalty Logic
+export const testMidnightPenalty = onRequest(async (req, res) => {
+  const db = admin.firestore();
+
+  // Use current time to check deadlines
+  const now = new Date().toISOString();
+
+  try {
+    console.log("🔍 Scanning for overdue curriculum tasks...");
+
+    // 1. Find all curriculum logs where the deadline has PASSED
+    const overdueLogsSnap = await db
+      .collection("curriculum_logs")
+      .where("deadlineAt", "<", now)
+      .get();
+
+    if (overdueLogsSnap.empty) {
+      res.status(200).json({
+        success: true,
+        message: "No overdue tasks found right now.",
+        penalizedCount: 0,
+      });
+      return;
+    }
+
+    const penaltiesToApply: Record<string, number> = {};
+    const logsUpdated: any[] = [];
+
+    // 2. Loop through every overdue task
+    for (const doc of overdueLogsSnap.docs) {
+      const log = doc.data();
+      const cohortId = log.cohortId;
+      const acknowledgedBy = log.acknowledgedBy || [];
+      const penalizedLearners = log.penalizedLearners || [];
+
+      if (!cohortId) continue;
+
+      // 3. Find all ACTIVE learners in this specific class
+      const enrollsSnap = await db
+        .collection("enrollments")
+        .where("cohortId", "==", cohortId)
+        .where("status", "in", ["active", "in-progress"])
+        .get();
+
+      const cohortLearnerIds = enrollsSnap.docs.map((d) => d.data().learnerId);
+      let logNeedsUpdate = false;
+
+      // 4. Check if each learner is guilty of ghosting this task
+      cohortLearnerIds.forEach((learnerId) => {
+        // If they HAVEN'T acknowledged it AND we HAVEN'T punished them for it yet
+        if (
+          !acknowledgedBy.includes(learnerId) &&
+          !penalizedLearners.includes(learnerId)
+        ) {
+          if (!penaltiesToApply[learnerId]) penaltiesToApply[learnerId] = 0;
+          penaltiesToApply[learnerId] += 2; // 💥 Deduct 2 points per overdue task!
+
+          penalizedLearners.push(learnerId); // Add them to the punished list for this task
+          logNeedsUpdate = true;
+        }
+      });
+
+      // Stage the log document to be saved with the updated 'penalizedLearners' array
+      if (logNeedsUpdate) {
+        logsUpdated.push({ ref: doc.ref, penalizedLearners });
+      }
+    }
+
+    // 5. Apply all the changes at once using a Batch Write
+    const batch = db.batch();
+    let batchCount = 0;
+
+    // Apply the score drops to the Learners
+    for (const [learnerId, penaltyPoints] of Object.entries(penaltiesToApply)) {
+      const learnerRef = db.collection("learners").doc(learnerId);
+
+      batch.update(learnerRef, {
+        professionalismScore:
+          admin.firestore.FieldValue.increment(-penaltyPoints),
+        professionalismStreak: 0, // 💥 Reset streak to 0
+      });
+      batchCount++;
+    }
+
+    // Update the logs so we don't double-penalize them tomorrow
+    for (const logUpdate of logsUpdated) {
+      batch.update(logUpdate.ref, {
+        penalizedLearners: logUpdate.penalizedLearners,
+      });
+    }
+
+    // Commit the batch to Firebase
+    if (batchCount > 0 || logsUpdated.length > 0) {
+      await batch.commit();
+    }
+
+    // 6. Return a beautiful JSON report to your browser!
+    res.status(200).json({
+      success: true,
+      message: "Penalty Engine Ran Successfully!",
+      totalOverdueTasksScanned: overdueLogsSnap.size,
+      learnersPenalized: batchCount,
+      penaltyDetails: penaltiesToApply, // Shows exactly who lost points and how many!
+    });
+  } catch (error: any) {
+    console.error("❌ Penalty Engine Failed:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 export const startAssessment = onCall(async (request) => {
   const auth = request.auth;
   if (!auth || auth.token.role !== "learner") {
@@ -5219,18 +5415,104 @@ export const sendHolidayGoodwill = onSchedule(
         .firestore()
         .collection("notifications")
         .add({
+          recipientId: "all_learners",
           type: "holiday",
           title: `${holidayName}`,
           message: generatedMessage,
-          date: admin.firestore.FieldValue.serverTimestamp(),
-          readBy: [],
+          timestamp: admin.firestore.FieldValue.serverTimestamp(),
+          read: false,
         });
+      // await admin
+      //   .firestore()
+      //   .collection("notifications")
+      //   .add({
+      //     type: "holiday",
+      //     title: `${holidayName}`,
+      //     message: generatedMessage,
+      //     date: admin.firestore.FieldValue.serverTimestamp(),
+      //     readBy: [],
+      //   });
 
       logger.info(
         `Successfully broadcasted ${holidayName} goodwill message to all learners.`,
       );
     } catch (error) {
       logger.error("❌ Error in sendHolidayGoodwill function:", error);
+    }
+  },
+);
+
+// ============================================================================
+// IN-APP NOTIFICATION ENGINE
+// ============================================================================
+
+/**
+ * Trigger: When a Facilitator Approves or Declines a Leave Request
+ */
+export const onLeaveStatusChanged = onDocumentUpdated(
+  { document: "leave_requests/{requestId}" },
+  async (event) => {
+    const beforeData = event.data?.before.data();
+    const afterData = event.data?.after.data();
+
+    if (!beforeData || !afterData) return;
+
+    // Only trigger if it changed FROM Pending TO Approved or Declined
+    if (
+      beforeData.status === "Pending" &&
+      (afterData.status === "Approved" || afterData.status === "Declined")
+    ) {
+      const learnerId = afterData.learnerId;
+      const status = afterData.status;
+      const leaveType = afterData.type || "Leave";
+
+      try {
+        await admin
+          .firestore()
+          .collection("notifications")
+          .add({
+            recipientId: learnerId,
+            type: "leave",
+            title: `Leave ${status}`,
+            message: `Your request for ${leaveType} has been ${status.toLowerCase()} by your facilitator.`,
+            timestamp: admin.firestore.FieldValue.serverTimestamp(),
+            read: false,
+          });
+        logger.info(`✅ Leave notification generated for ${learnerId}`);
+      } catch (error) {
+        logger.error("❌ Failed to generate leave notification", error);
+      }
+    }
+  },
+);
+
+/**
+ * Trigger: When a Learner successfully scans the Kiosk
+ */
+export const onScanLogged = onDocumentCreated(
+  { document: "live_attendance_scans/{scanId}" },
+  async (event) => {
+    const scanData = event.data?.data();
+    if (!scanData) return;
+
+    const learnerId = scanData.learnerId;
+    const isManual = scanData.method === "manual";
+
+    const message = isManual
+      ? "Your facilitator has manually logged your attendance for this session."
+      : "Your attendance scan was recorded successfully.";
+
+    try {
+      await admin.firestore().collection("notifications").add({
+        recipientId: learnerId,
+        type: "scan",
+        title: "Scan Successful",
+        message: message,
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+        read: false,
+      });
+    } catch (error) {
+      logger.error("❌ Failed to generate scan notification", error);
     }
   },
 );
@@ -5979,3 +6261,387 @@ export const backtraceAttendanceTraceability = onRequest(
     }
   },
 );
+
+/**
+ * Trigger: When an Admin sends a Broadcast message to the notifications collection
+ * This function wakes up and sends the actual Firebase Cloud Messaging (FCM) Push to the phones.
+ */
+export const onBroadcastNotificationCreated = onDocumentCreated(
+  { document: "notifications/{notifId}" },
+  async (event) => {
+    const data = event.data?.data();
+    if (!data) return;
+
+    const { recipientId, title, message, type } = data;
+
+    // We ONLY want to send FCM pushes for mass broadcasts to avoid spamming personal DB writes
+    if (
+      type === "system" &&
+      (recipientId === "all_learners" || recipientId.startsWith("campus_"))
+    ) {
+      try {
+        // 1. ENVIRONMENT MAPPING: Target ONLY local development builds (_dev)
+        // This completely protects App Store (_prod) and Firebase App Testers (_beta)
+        const devTopic = `${recipientId}_dev`;
+
+        // 2. HARDWARE ENGINE: Constructing the forced priority blueprint
+        const messagePayload: any = {
+          notification: {
+            title: title || "mLab Announcement",
+            body: message,
+          },
+          topic: devTopic, // 🎯 Targets ONLY the isolated dev channel
+
+          // Android Specific Enforcement (Forces sound and vibration)
+          android: {
+            priority: "high",
+            notification: {
+              sound: "default",
+              channelId: "default",
+              vibrateTimingsMillis: [0, 500, 250, 500],
+              defaultVibrateTimings: false,
+            },
+          },
+
+          // iOS/APNs Specific Enforcement (Forces ringer and bypasses battery throttling)
+          apns: {
+            payload: {
+              aps: {
+                sound: "default",
+                badge: 1,
+              },
+            },
+            headers: {
+              "apns-priority": "10",
+            },
+          },
+
+          data: {
+            route: "/notifications", // Deep link payload to open the inbox
+          },
+        };
+
+        // 3. Dispatch to Google's FCM Gateway
+        await admin.messaging().send(messagePayload);
+
+        logger.info(
+          `✅ Successfully broadcasted high-priority push to DEV topic: ${devTopic}`,
+        );
+      } catch (error) {
+        logger.error(
+          `❌ Failed to send FCM broadcast for target ${recipientId}_dev`,
+          error,
+        );
+      }
+    }
+  },
+);
+
+// /**
+//  * Trigger: When an Admin sends a Broadcast message to the notifications collection
+//  * This function wakes up and sends the actual Firebase Cloud Messaging (FCM) Push to the phones.
+//  */
+// export const onBroadcastNotificationCreated = onDocumentCreated(
+//   { document: "notifications/{notifId}" },
+//   async (event) => {
+//     const data = event.data?.data();
+//     if (!data) return;
+
+//     const { recipientId, title, message, type } = data;
+
+//     // We ONLY want to send FCM pushes for mass broadcasts to avoid spamming personal DB writes
+//     if (
+//       type === "system" &&
+//       (recipientId === "all_learners" || recipientId.startsWith("campus_"))
+//     ) {
+//       try {
+//         // 1. ENVIRONMENT MAPPING: Create a boolean condition to target BOTH live rings
+//         // This hits the App Store users (_prod) AND your Firebase App Testers (_beta)
+//         // It specifically excludes local development simulators (_dev)
+//         const prodTopic = `${recipientId}_prod`;
+//         const betaTopic = `${recipientId}_beta`;
+//         const targetCondition = ` '${prodTopic}' in topics || '${betaTopic}' in topics `;
+
+//         // 2. HARDWARE ENGINE: Constructing the forced priority blueprint
+//         const messagePayload: any = {
+//           notification: {
+//             title: title || "mLab Announcement",
+//             body: message,
+//           },
+//           condition: targetCondition, // 🎯 Replaces 'topic' to allow multi-environment targeting
+
+//           // Android Specific Enforcement (Forces sound and vibration)
+//           android: {
+//             priority: "high",
+//             notification: {
+//               sound: "default",
+//               channelId: "default",
+//               vibrateTimingsMillis: [0, 500, 250, 500],
+//               defaultVibrateTimings: false,
+//             },
+//           },
+
+//           // iOS/APNs Specific Enforcement (Forces ringer and bypasses battery throttling)
+//           apns: {
+//             payload: {
+//               aps: {
+//                 sound: "default",
+//                 badge: 1,
+//               },
+//             },
+//             headers: {
+//               "apns-priority": "10",
+//             },
+//           },
+
+//           data: {
+//             route: "/notifications", // Deep link payload to open the inbox
+//           },
+//         };
+
+//         // 3. Dispatch to Google's FCM Gateway
+//         await admin.messaging().send(messagePayload);
+
+//         logger.info(
+//           `✅ Successfully broadcasted high-priority push using condition: ${targetCondition}`,
+//         );
+//       } catch (error) {
+//         logger.error(
+//           `❌ Failed to send FCM broadcast for target ${recipientId}`,
+//           error,
+//         );
+//       }
+//     }
+//   },
+// );
+
+// export const onBroadcastNotificationCreated = onDocumentCreated(
+//   { document: "notifications/{notifId}" },
+//   async (event) => {
+//     const data = event.data?.data();
+//     if (!data) return;
+
+//     const { recipientId, title, message, type } = data;
+
+//     // We ONLY want to send FCM pushes for mass broadcasts to avoid spamming personal DB writes
+//     if (
+//       type === "system" &&
+//       (recipientId === "all_learners" || recipientId.startsWith("campus_"))
+//     ) {
+//       try {
+//         const messagePayload = {
+//           notification: {
+//             title: title || "mLab Announcement",
+//             body: message,
+//           },
+//           topic: recipientId, // Maps exactly to what the mobile app subscribed to in _layout.tsx
+//           data: {
+//             route: "/notifications", // Deep link payload
+//           },
+//         };
+
+//         await admin.messaging().send(messagePayload);
+//         logger.info(
+//           `✅ Successfully broadcasted push notification to topic: ${recipientId}`,
+//         );
+//       } catch (error) {
+//         logger.error(
+//           `❌ Failed to send FCM broadcast to ${recipientId}`,
+//           error,
+//         );
+//       }
+//     }
+//   },
+// );
+
+// export const testSingleTokenPush = onRequest((req, res) => {
+//   return cors(req, res, async () => {
+//     logger.info("📱 [Single Token Test] Initiating isolated check...");
+
+//     try {
+//       // 1. Extract the token from URL query string or POST body
+//       // const targetToken = req.query.token as string || req.body?.token;
+
+//       const targetToken =
+//         "ctTg0a7_SWG2FPWjD98VXe:APA91bGa98HXfnzQIYt9YUezK-TIL9vPq91WvC8sQ3Z3mBzR8yiOzMalZ1Wfyk0Jurd5V2Y18woeu9S0Pw6fMZDYR77qeCp5kpWXvPMk0SN_g4vTGyhSe6Q";
+
+//       // 🛑 GUARD LAYER: Force a token requirement so you never accidentally broadcast to a topic
+//       if (!targetToken) {
+//         logger.warn(
+//           "⚠️ [Single Token Test] Blocked: No device token provided in request.",
+//         );
+//         res.status(400).send({
+//           success: false,
+//           message:
+//             "Bad Request: You must provide a device token. Example: ?token=YOUR_FCM_TOKEN",
+//         });
+//         return;
+//       }
+
+//       // 2. Build the payload explicitly for a single device token target
+//       const messagePayload = {
+//         token: targetToken.trim(), // Hard target lock
+//         notification: {
+//           title: "🎯 Isolated Token Test",
+//           body: "Bypassed all topics! This was sent directly to your device footprint.",
+//         },
+//         data: {
+//           route: "/notifications",
+//           testMode: "single_token_lock",
+//         },
+//       };
+
+//       // 3. Dispatch directly to FCM
+//       logger.info(`🔑 Dispatching directly to hardware token footprint...`);
+//       const fcmResponse = await admin.messaging().send(messagePayload);
+
+//       logger.info("✅ Direct push successfully accepted by FCM gateway!", {
+//         fcmResponse,
+//       });
+
+//       res.status(200).send({
+//         success: true,
+//         message: "Direct 1-to-1 payload pushed to device.",
+//         fcmMessageId: fcmResponse,
+//         deliveredPayload: messagePayload,
+//       });
+//     } catch (error: any) {
+//       logger.error("❌ Direct single-token push delivery failed:", error);
+//       res.status(500).send({
+//         success: false,
+//         errorMessage: error.message || "FCM route broken.",
+//         errorDetails: error,
+//       });
+//     }
+//   });
+// });
+
+export const testSingleTokenPush = onRequest((req, res) => {
+  return cors(req, res, async () => {
+    logger.info("📱 [Single Token Test] Initiating forced hardware check...");
+
+    try {
+      // const targetToken = req.query.token as string || req.body?.token;
+      const targetToken =
+        "ctTg0a7_SWG2FPWjD98VXe:APA91bGa98HXfnzQIYt9YUezK-TIL9vPq91WvC8sQ3Z3mBzR8yiOzMalZ1Wfyk0Jurd5V2Y18woeu9S0Pw6fMZDYR77qeCp5kpWXvPMk0SN_g4vTGyhSe6Q";
+
+      if (!targetToken) {
+        res.status(400).send({
+          success: false,
+          message: "Bad Request: Missing token parameter.",
+        });
+        return;
+      }
+
+      // 🚀 HARDWARE ENGINE: Constructing the forced priority blueprint
+      const messagePayload = {
+        token: targetToken.trim(),
+        notification: {
+          title: "🔊 Hardware Forced Test",
+          body: "This alert was dispatched with absolute maximum priority flags!",
+        },
+        // Android Specific Enforcement
+        android: {
+          priority: "high" as const,
+          notification: {
+            sound: "default",
+            channelId: "default", // 🎯 MUST match the custom string set in your Expo client code!
+            vibrateTimingsMillis: [0, 500, 250, 500], // [Delay, Vibrate, Pause, Vibrate]
+            defaultVibrateTimings: false,
+          },
+        },
+        // iOS/APNs Specific Enforcement
+        apns: {
+          payload: {
+            aps: {
+              sound: "default", // 🍏 Signals iOS to trigger device ringer immediately
+              badge: 1,
+            },
+          },
+          headers: {
+            "apns-priority": "10", // Forces immediate delivery, skipping background power management throttling
+          },
+        },
+        data: {
+          route: "/notifications",
+          testMode: "forced_vibration",
+        },
+      };
+
+      logger.info(`🔑 Transmitting high-priority direct link payload...`);
+      const fcmResponse = await admin.messaging().send(messagePayload);
+
+      res.status(200).send({
+        success: true,
+        message:
+          "High priority sound & vibration payload dispatched successfully.",
+        fcmMessageId: fcmResponse,
+      });
+    } catch (error: any) {
+      logger.error("❌ Hardware deployment route failed:", error);
+      res.status(500).send({ success: false, errorMessage: error.message });
+    }
+  });
+});
+
+export const testDevTopicPush = onRequest((req, res) => {
+  return cors(req, res, async () => {
+    logger.info(
+      "📡 [Dev Topic Test] Initiating forced hardware check for dev environment...",
+    );
+
+    try {
+      // Target the development topic instead of a single token
+      const targetTopic = "all_learners_dev";
+
+      // 🚀 HARDWARE ENGINE: Constructing the forced priority blueprint
+      const messagePayload = {
+        topic: targetTopic, // <-- 🎯 Switched from token to topic
+        notification: {
+          title: "🛠️ Dev Environment Blast",
+          body: "If you are reading this, your app successfully subscribed to the _dev channel!",
+        },
+        // Android Specific Enforcement
+        android: {
+          priority: "high" as const,
+          notification: {
+            sound: "default",
+            channelId: "default", // MUST match the custom string set in your Expo client code!
+            vibrateTimingsMillis: [0, 500, 250, 500], // [Delay, Vibrate, Pause, Vibrate]
+            defaultVibrateTimings: false,
+          },
+        },
+        // iOS/APNs Specific Enforcement
+        apns: {
+          payload: {
+            aps: {
+              sound: "default", // Signals iOS to trigger device ringer immediately
+              badge: 1,
+            },
+          },
+          headers: {
+            "apns-priority": "10", // Forces immediate delivery
+          },
+        },
+        data: {
+          route: "/notifications",
+          testMode: "dev_topic_blast",
+        },
+      };
+
+      logger.info(
+        `🔑 Transmitting high-priority payload to topic: ${targetTopic}...`,
+      );
+      const fcmResponse = await admin.messaging().send(messagePayload);
+
+      res.status(200).send({
+        success: true,
+        message: `High priority sound & vibration payload dispatched successfully to ${targetTopic}.`,
+        fcmMessageId: fcmResponse,
+      });
+    } catch (error: any) {
+      logger.error("❌ Hardware deployment route failed:", error);
+      res.status(500).send({ success: false, errorMessage: error.message });
+    }
+  });
+});
