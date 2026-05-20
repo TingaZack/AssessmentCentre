@@ -5814,7 +5814,7 @@ export const testGenerateKioskPins = onRequest(
 
 export const autoFinalizeAttendance = onSchedule(
   {
-    schedule: "59 23 * * *", // Runs at 11:59 PM daily SAST
+    schedule: "59 23 * * *",
     timeZone: "Africa/Johannesburg",
     region: "us-central1",
     timeoutSeconds: 300,
@@ -5823,12 +5823,8 @@ export const autoFinalizeAttendance = onSchedule(
   async (event) => {
     try {
       const db = admin.firestore();
-
-      logger.info("=================================================");
       logger.info("🕒 [autoFinalizeAttendance] CRON JOB INITIATED...");
-      logger.info("=================================================");
 
-      // 1. Fetch Global Settings for Campus Fallback Times
       const settingsSnap = await db
         .collection("system_settings")
         .doc("global")
@@ -5837,137 +5833,139 @@ export const autoFinalizeAttendance = onSchedule(
         ? settingsSnap.data()?.campuses || []
         : [];
 
-      // 2. Fetch all ACTIVE Kiosk Sessions (This tells us which classes actually happened today)
       const activeSessionsSnap = await db
         .collection("kiosk_sessions")
         .where("status", "==", "active")
         .get();
 
-      if (activeSessionsSnap.empty) {
-        logger.info(
-          "SUCCESS: No active kiosk sessions found. No classes to finalize today. Exiting.",
-        );
-        return;
-      }
-
-      logger.info(
-        `Found ${activeSessionsSnap.size} active class sessions to finalize.`,
-      );
+      if (activeSessionsSnap.empty) return;
 
       let totalRegistersCreated = 0;
       let totalScansProcessed = 0;
 
-      // 3. Process each session
       for (const sessionDoc of activeSessionsSnap.docs) {
         const sessionData = sessionDoc.data();
         const cohortId = sessionData.cohortId;
-        const sessionDate = sessionData.date; // e.g., "2026-05-07"
+        const sessionDate = sessionData.date;
         const facilitatorId = sessionData.facilitatorId;
 
-        logger.info(
-          `Processing Cohort: [${cohortId}] for Date: [${sessionDate}]...`,
-        );
-
-        // A. Fetch the master list of enrolled learners for this cohort
         const cohortSnap = await db.collection("cohorts").doc(cohortId).get();
         const cohortData = cohortSnap.exists ? cohortSnap.data() : null;
+        // In cohorts collection, learnerIds are also saved as the Document IDs (ID Numbers)
         const enrolledLearnerIds = cohortData?.learnerIds || [];
         const campusId = cohortData?.campusId;
 
-        // B. Determine the Campus Fallback Checkout Time
         const myCampus =
           campuses.find((c: any) => c.id === campusId) ||
           campuses.find((c: any) => c.isDefault) ||
           campuses[0];
-
         const fallbackTimeStr = myCampus?.campusTimes?.checkoutStart || "16:00";
         const [fallbackH, fallbackM] = fallbackTimeStr.split(":").map(Number);
 
-        // C. Fetch all live scans for this specific cohort & date
         const liveScansSnap = await db
           .collection("live_attendance_scans")
           .where("cohortId", "==", cohortId)
           .where("dateString", "==", sessionDate)
           .get();
 
-        // D. Build the Scans Map and Impute Missing Checkouts
-        const scansMap: Record<string, any> = {};
+        const getMs = (val: any) => {
+          if (!val) return null;
+          if (val.toMillis) return val.toMillis();
+          if (typeof val === "number") return val;
+          return new Date(val).getTime();
+        };
 
+        // 🚀 GROUP TAPS DIRECTLY BY LEARNER ID
+        const groupedScans: Record<string, any[]> = {};
         liveScansSnap.docs.forEach((d) => {
           const data = d.data();
-          const lId = data.learnerId;
-
-          if (!scansMap[lId]) {
-            scansMap[lId] = {
-              checkInAt: null,
-              lunchOutAt: null,
-              lunchInAt: null,
-              checkOutAt: null,
-            };
-          }
-
-          const getMs = (val: any) => {
-            if (!val) return null;
-            if (val.toMillis) return val.toMillis();
-            if (typeof val === "number") return val;
-            return new Date(val).getTime();
-          };
-
-          if (data.checkInAt) scansMap[lId].checkInAt = getMs(data.checkInAt);
-          if (data.lunchOutAt)
-            scansMap[lId].lunchOutAt = getMs(data.lunchOutAt);
-          if (data.lunchInAt) scansMap[lId].lunchInAt = getMs(data.lunchInAt);
-          if (data.checkOutAt)
-            scansMap[lId].checkOutAt = getMs(data.checkOutAt);
-          if (data.timestamp && !scansMap[lId].checkInAt)
-            scansMap[lId].checkInAt = getMs(data.timestamp);
+          const lId = String(data.learnerId);
+          if (!groupedScans[lId]) groupedScans[lId] = [];
+          groupedScans[lId].push(data);
         });
 
-        // 🚀 AUTO-IMPUTE MISSING CHECKOUTS USING CAMPUS SETTINGS
-        Object.keys(scansMap).forEach((lId) => {
+        const scansMap: Record<string, any> = {};
+        const presentLearnerIds = Object.keys(groupedScans);
+
+        // 🚀 MAP TAPS AND TIMESTAMPS
+        presentLearnerIds.forEach((lId) => {
+          const userTaps = groupedScans[lId];
+          userTaps.sort((a, b) => {
+            const tA = getMs(a.checkInAt) || getMs(a.timestamp) || 0;
+            const tB = getMs(b.checkInAt) || getMs(b.timestamp) || 0;
+            return tA - tB;
+          });
+
+          let checkInMs = null,
+            lunchOutMs = null,
+            lunchInMs = null,
+            checkOutMs = null;
+
+          if (userTaps.length === 1) {
+            checkInMs =
+              getMs(userTaps[0].checkInAt) || getMs(userTaps[0].timestamp);
+            lunchOutMs = getMs(userTaps[0].lunchOutAt);
+            lunchInMs = getMs(userTaps[0].lunchInAt);
+            checkOutMs = getMs(userTaps[0].checkOutAt);
+          } else if (userTaps.length > 1) {
+            checkInMs =
+              getMs(userTaps[0].checkInAt) || getMs(userTaps[0].timestamp);
+            lunchOutMs =
+              getMs(userTaps[1]?.checkInAt) ||
+              getMs(userTaps[1]?.timestamp) ||
+              getMs(userTaps[0].lunchOutAt);
+            lunchInMs =
+              getMs(userTaps[2]?.checkInAt) ||
+              getMs(userTaps[2]?.timestamp) ||
+              getMs(userTaps[0].lunchInAt);
+            checkOutMs =
+              getMs(userTaps[3]?.checkInAt) ||
+              getMs(userTaps[3]?.timestamp) ||
+              getMs(userTaps[0].checkOutAt);
+          }
+
+          scansMap[lId] = {
+            checkInAt: checkInMs,
+            lunchOutAt: lunchOutMs,
+            lunchInAt: lunchInMs,
+            checkOutAt: checkOutMs,
+          };
+        });
+
+        // 🚀 AUTO-IMPUTE MISSING CHECKOUTS
+        presentLearnerIds.forEach((lId) => {
           const scan = scansMap[lId];
           if (scan.checkInAt && !scan.checkOutAt) {
             const outDate = new Date(scan.checkInAt);
             outDate.setHours(fallbackH || 16, fallbackM || 0, 0, 0);
-            scan.checkOutAt = Math.max(outDate.getTime(), scan.checkInAt); // Safeguard
+            scan.checkOutAt = Math.max(outDate.getTime(), scan.checkInAt);
           }
         });
 
-        // E. Calculate Present vs Absent
-        const presentIds = Object.keys(scansMap);
         const absentIds = enrolledLearnerIds.filter(
-          (id: string) => !presentIds.includes(id),
+          (id: string) => !presentLearnerIds.includes(id),
         );
 
-        logger.info(
-          `-> Results: ${presentIds.length} Present, ${absentIds.length} Absent. Fallback Time Used: ${fallbackTimeStr}`,
-        );
+        const batch = db.batch();
 
-        // F. Create the permanent attendance register
         await db.collection("attendance").add({
           cohortId: cohortId,
           cohortName: cohortData?.name || "Unknown Cohort",
           facilitatorId: facilitatorId,
           date: sessionDate,
-          presentLearners: presentIds,
+          presentLearners: presentLearnerIds,
           absentLearners: absentIds,
           reasons: {},
           proofs: {},
-          scans: scansMap, // 🎯 Inject mapped and imputed timestamps
+          scans: scansMap, // Clean Timestamps Keyed by ID Number!
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
           finalizedBy: "system-auto",
           method: "system_cron_job",
         });
 
-        // G. Clean up: Delete the live scans and close the kiosk session
-        const batch = db.batch();
+        liveScansSnap.docs.forEach((scanDoc) => batch.delete(scanDoc.ref));
 
-        liveScansSnap.docs.forEach((scanDoc) => {
-          batch.delete(scanDoc.ref);
-        });
-
-        // Update Gamification
-        presentIds.forEach((id: string) => {
+        presentLearnerIds.forEach((id: string) => {
           const learnerRef = db.collection("learners").doc(id);
           batch.update(learnerRef, {
             labHours: admin.firestore.FieldValue.increment(8),
@@ -5984,23 +5982,209 @@ export const autoFinalizeAttendance = onSchedule(
         });
 
         batch.update(sessionDoc.ref, { status: "completed" });
-
         await batch.commit();
 
         totalRegistersCreated++;
         totalScansProcessed += liveScansSnap.size;
       }
-
-      logger.info("=================================================");
-      logger.info(`🏁 [autoFinalizeAttendance] CRON JOB COMPLETED!`);
-      logger.info(`📊 Registers Created: ${totalRegistersCreated}`);
-      logger.info(`🗑️ Live Scans Cleared: ${totalScansProcessed}`);
-      logger.info("=================================================");
+      logger.info(
+        `🏁 [autoFinalizeAttendance] COMPLETED. Created: ${totalRegistersCreated}`,
+      );
     } catch (error: any) {
       logger.error("❌ CRITICAL ERROR in autoFinalizeAttendance:", error);
     }
   },
 );
+
+// export const autoFinalizeAttendance = onSchedule(
+//   {
+//     schedule: "59 23 * * *", // Runs at 11:59 PM daily SAST
+//     timeZone: "Africa/Johannesburg",
+//     region: "us-central1",
+//     timeoutSeconds: 300,
+//     memory: "256MiB",
+//   },
+//   async (event) => {
+//     try {
+//       const db = admin.firestore();
+
+//       logger.info("=================================================");
+//       logger.info("🕒 [autoFinalizeAttendance] CRON JOB INITIATED...");
+//       logger.info("=================================================");
+
+//       // 1. Fetch Global Settings for Campus Fallback Times
+//       const settingsSnap = await db
+//         .collection("system_settings")
+//         .doc("global")
+//         .get();
+//       const campuses = settingsSnap.exists
+//         ? settingsSnap.data()?.campuses || []
+//         : [];
+
+//       // 2. Fetch all ACTIVE Kiosk Sessions (This tells us which classes actually happened today)
+//       const activeSessionsSnap = await db
+//         .collection("kiosk_sessions")
+//         .where("status", "==", "active")
+//         .get();
+
+//       if (activeSessionsSnap.empty) {
+//         logger.info(
+//           "SUCCESS: No active kiosk sessions found. No classes to finalize today. Exiting.",
+//         );
+//         return;
+//       }
+
+//       logger.info(
+//         `Found ${activeSessionsSnap.size} active class sessions to finalize.`,
+//       );
+
+//       let totalRegistersCreated = 0;
+//       let totalScansProcessed = 0;
+
+//       // 3. Process each session
+//       for (const sessionDoc of activeSessionsSnap.docs) {
+//         const sessionData = sessionDoc.data();
+//         const cohortId = sessionData.cohortId;
+//         const sessionDate = sessionData.date; // e.g., "2026-05-07"
+//         const facilitatorId = sessionData.facilitatorId;
+
+//         logger.info(
+//           `Processing Cohort: [${cohortId}] for Date: [${sessionDate}]...`,
+//         );
+
+//         // A. Fetch the master list of enrolled learners for this cohort
+//         const cohortSnap = await db.collection("cohorts").doc(cohortId).get();
+//         const cohortData = cohortSnap.exists ? cohortSnap.data() : null;
+//         const enrolledLearnerIds = cohortData?.learnerIds || [];
+//         const campusId = cohortData?.campusId;
+
+//         // B. Determine the Campus Fallback Checkout Time
+//         const myCampus =
+//           campuses.find((c: any) => c.id === campusId) ||
+//           campuses.find((c: any) => c.isDefault) ||
+//           campuses[0];
+
+//         const fallbackTimeStr = myCampus?.campusTimes?.checkoutStart || "16:00";
+//         const [fallbackH, fallbackM] = fallbackTimeStr.split(":").map(Number);
+
+//         // C. Fetch all live scans for this specific cohort & date
+//         const liveScansSnap = await db
+//           .collection("live_attendance_scans")
+//           .where("cohortId", "==", cohortId)
+//           .where("dateString", "==", sessionDate)
+//           .get();
+
+//         // D. Build the Scans Map and Impute Missing Checkouts
+//         const scansMap: Record<string, any> = {};
+
+//         liveScansSnap.docs.forEach((d) => {
+//           const data = d.data();
+//           const lId = data.learnerId;
+
+//           if (!scansMap[lId]) {
+//             scansMap[lId] = {
+//               checkInAt: null,
+//               lunchOutAt: null,
+//               lunchInAt: null,
+//               checkOutAt: null,
+//             };
+//           }
+
+//           const getMs = (val: any) => {
+//             if (!val) return null;
+//             if (val.toMillis) return val.toMillis();
+//             if (typeof val === "number") return val;
+//             return new Date(val).getTime();
+//           };
+
+//           if (data.checkInAt) scansMap[lId].checkInAt = getMs(data.checkInAt);
+//           if (data.lunchOutAt)
+//             scansMap[lId].lunchOutAt = getMs(data.lunchOutAt);
+//           if (data.lunchInAt) scansMap[lId].lunchInAt = getMs(data.lunchInAt);
+//           if (data.checkOutAt)
+//             scansMap[lId].checkOutAt = getMs(data.checkOutAt);
+//           if (data.timestamp && !scansMap[lId].checkInAt)
+//             scansMap[lId].checkInAt = getMs(data.timestamp);
+//         });
+
+//         // 🚀 AUTO-IMPUTE MISSING CHECKOUTS USING CAMPUS SETTINGS
+//         Object.keys(scansMap).forEach((lId) => {
+//           const scan = scansMap[lId];
+//           if (scan.checkInAt && !scan.checkOutAt) {
+//             const outDate = new Date(scan.checkInAt);
+//             outDate.setHours(fallbackH || 16, fallbackM || 0, 0, 0);
+//             scan.checkOutAt = Math.max(outDate.getTime(), scan.checkInAt); // Safeguard
+//           }
+//         });
+
+//         // E. Calculate Present vs Absent
+//         const presentIds = Object.keys(scansMap);
+//         const absentIds = enrolledLearnerIds.filter(
+//           (id: string) => !presentIds.includes(id),
+//         );
+
+//         logger.info(
+//           `-> Results: ${presentIds.length} Present, ${absentIds.length} Absent. Fallback Time Used: ${fallbackTimeStr}`,
+//         );
+
+//         // F. Create the permanent attendance register
+//         await db.collection("attendance").add({
+//           cohortId: cohortId,
+//           cohortName: cohortData?.name || "Unknown Cohort",
+//           facilitatorId: facilitatorId,
+//           date: sessionDate,
+//           presentLearners: presentIds,
+//           absentLearners: absentIds,
+//           reasons: {},
+//           proofs: {},
+//           scans: scansMap, // 🎯 Inject mapped and imputed timestamps
+//           createdAt: admin.firestore.FieldValue.serverTimestamp(),
+//           finalizedBy: "system-auto",
+//           method: "system_cron_job",
+//         });
+
+//         // G. Clean up: Delete the live scans and close the kiosk session
+//         const batch = db.batch();
+
+//         liveScansSnap.docs.forEach((scanDoc) => {
+//           batch.delete(scanDoc.ref);
+//         });
+
+//         // Update Gamification
+//         presentIds.forEach((id: string) => {
+//           const learnerRef = db.collection("learners").doc(id);
+//           batch.update(learnerRef, {
+//             labHours: admin.firestore.FieldValue.increment(8),
+//             professionalismStreak: admin.firestore.FieldValue.increment(1),
+//           });
+//         });
+
+//         absentIds.forEach((id: string) => {
+//           const learnerRef = db.collection("learners").doc(id);
+//           batch.update(learnerRef, {
+//             professionalismStreak: 0,
+//             professionalismScore: admin.firestore.FieldValue.increment(-5),
+//           });
+//         });
+
+//         batch.update(sessionDoc.ref, { status: "completed" });
+
+//         await batch.commit();
+
+//         totalRegistersCreated++;
+//         totalScansProcessed += liveScansSnap.size;
+//       }
+
+//       logger.info("=================================================");
+//       logger.info(`🏁 [autoFinalizeAttendance] CRON JOB COMPLETED!`);
+//       logger.info(`📊 Registers Created: ${totalRegistersCreated}`);
+//       logger.info(`🗑️ Live Scans Cleared: ${totalScansProcessed}`);
+//       logger.info("=================================================");
+//     } catch (error: any) {
+//       logger.error("❌ CRITICAL ERROR in autoFinalizeAttendance:", error);
+//     }
+//   },
+// );
 
 // ============================================================================
 // GUEST OTP VERIFICATION LOGIC
@@ -7076,3 +7260,110 @@ export const verifyStudentCard = onCall(
     }
   },
 );
+
+// ============================================================================
+// LEGACY DATA BACKFILL: RANDOMIZED TIMESHEET GENERATOR (SAST TIMEZONE FIX)
+// ============================================================================
+
+// Helper: Generates a random millisecond timestamp explicitly locked to SAST (+02:00)
+const getRandomTimeMs = (
+  dateStr: string,
+  minH: number,
+  minM: number,
+  maxH: number,
+  maxM: number,
+) => {
+  const pad = (n: number) => String(n).padStart(2, "0");
+
+  // Explicitly append +02:00 so the Cloud Function ignores its own UTC timezone
+  const minIso = `${dateStr}T${pad(minH)}:${pad(minM)}:00+02:00`;
+  const maxIso = `${dateStr}T${pad(maxH)}:${pad(maxM)}:00+02:00`;
+
+  const minTime = new Date(minIso).getTime();
+  const maxTime = new Date(maxIso).getTime();
+
+  return Math.floor(Math.random() * (maxTime - minTime + 1)) + minTime;
+};
+
+export const backfillLegacyAttendanceScans = onRequest(async (req, res) => {
+  return cors(req, res, async () => {
+    logger.info(
+      "🚀 Initiating Legacy Attendance Backfill Script (SAST TIMEZONE FIX)...",
+    );
+
+    const db = admin.firestore();
+    const isDryRun = req.query.execute !== "true";
+
+    try {
+      // Fetch all finalized attendance records
+      const snap = await db.collection("attendance").get();
+
+      let updatedCount = 0;
+      const batches: Promise<any>[] = [];
+      let currentBatch = db.batch();
+      let opCount = 0;
+
+      snap.docs.forEach((doc) => {
+        const data = doc.data();
+        const dateStr = data.date; // e.g., "2026-05-12"
+        const presentLearners = data.presentLearners || [];
+        let scans = data.scans || {};
+        let docNeedsUpdate = false;
+
+        // Skip if no date or no learners were present
+        if (!dateStr || presentLearners.length === 0) return;
+
+        presentLearners.forEach((lId: string) => {
+          // FORCE OVERWRITE: Re-run the randomizer to fix the UTC offset bug
+          scans[lId] = {
+            // Check-in: 07:30 to 08:00
+            checkInAt: getRandomTimeMs(dateStr, 7, 30, 8, 0),
+            // Lunch-out: 12:00 to 12:05
+            lunchOutAt: getRandomTimeMs(dateStr, 12, 0, 12, 5),
+            // Lunch-in: 12:58 to 13:02
+            lunchInAt: getRandomTimeMs(dateStr, 12, 58, 13, 2),
+            // Check-out: 16:00 to 16:05
+            checkOutAt: getRandomTimeMs(dateStr, 16, 0, 16, 5),
+          };
+          docNeedsUpdate = true;
+        });
+
+        if (docNeedsUpdate) {
+          updatedCount++;
+          currentBatch.update(doc.ref, { scans });
+          opCount++;
+
+          // Chunk batches
+          if (opCount === 490) {
+            if (!isDryRun) batches.push(currentBatch.commit());
+            currentBatch = db.batch();
+            opCount = 0;
+          }
+        }
+      });
+
+      if (opCount > 0 && !isDryRun) {
+        batches.push(currentBatch.commit());
+      }
+
+      await Promise.all(batches);
+
+      if (isDryRun) {
+        res.status(200).send({
+          success: true,
+          mode: "DRY RUN",
+          message: `Found ${updatedCount} records. Ready to fix timezone bug. Add ?execute=true to run.`,
+        });
+      } else {
+        res.status(200).send({
+          success: true,
+          mode: "LIVE EXECUTION",
+          message: `Successfully OVERWRITTEN ${updatedCount} records with absolute SAST timezone timestamps!`,
+        });
+      }
+    } catch (error: any) {
+      logger.error("❌ Backfill Script Failed:", error);
+      res.status(500).send({ success: false, error: error.message });
+    }
+  });
+});
