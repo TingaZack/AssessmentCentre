@@ -46,6 +46,8 @@ import { onSchedule } from "firebase-functions/v2/scheduler";
 import { FieldValue } from "firebase-admin/firestore";
 import OpenAI from "openai";
 
+import * as crypto from "crypto";
+
 admin.initializeApp();
 // ================= CONFIGURATION & SECRETS =================
 // // ZARD
@@ -63,6 +65,7 @@ const APP_URL =
 
 const mailgunSecret = defineSecret("MAILGUN_API_KEY");
 const privateKeySecret = defineSecret("INSTITUTION_PRIVATE_KEY");
+const encryptionKeySecret = defineSecret("ENCRYPTION_KEY");
 
 // const openAISecret = defineSecret("OPENAI_API_KEY");
 
@@ -5825,7 +5828,16 @@ export const autoFinalizeAttendance = onSchedule(
       logger.info("🕒 [autoFinalizeAttendance] CRON JOB INITIATED...");
       logger.info("=================================================");
 
-      // 1. Fetch all ACTIVE Kiosk Sessions (This tells us which classes actually happened today)
+      // 1. Fetch Global Settings for Campus Fallback Times
+      const settingsSnap = await db
+        .collection("system_settings")
+        .doc("global")
+        .get();
+      const campuses = settingsSnap.exists
+        ? settingsSnap.data()?.campuses || []
+        : [];
+
+      // 2. Fetch all ACTIVE Kiosk Sessions (This tells us which classes actually happened today)
       const activeSessionsSnap = await db
         .collection("kiosk_sessions")
         .where("status", "==", "active")
@@ -5845,7 +5857,7 @@ export const autoFinalizeAttendance = onSchedule(
       let totalRegistersCreated = 0;
       let totalScansProcessed = 0;
 
-      // 2. Process each session
+      // 3. Process each session
       for (const sessionDoc of activeSessionsSnap.docs) {
         const sessionData = sessionDoc.data();
         const cohortId = sessionData.cohortId;
@@ -5858,53 +5870,119 @@ export const autoFinalizeAttendance = onSchedule(
 
         // A. Fetch the master list of enrolled learners for this cohort
         const cohortSnap = await db.collection("cohorts").doc(cohortId).get();
-        const enrolledLearnerIds = cohortSnap.exists
-          ? cohortSnap.data()?.learnerIds || []
-          : [];
+        const cohortData = cohortSnap.exists ? cohortSnap.data() : null;
+        const enrolledLearnerIds = cohortData?.learnerIds || [];
+        const campusId = cohortData?.campusId;
 
-        // B. Fetch all live scans for this specific cohort & date
+        // B. Determine the Campus Fallback Checkout Time
+        const myCampus =
+          campuses.find((c: any) => c.id === campusId) ||
+          campuses.find((c: any) => c.isDefault) ||
+          campuses[0];
+
+        const fallbackTimeStr = myCampus?.campusTimes?.checkoutStart || "16:00";
+        const [fallbackH, fallbackM] = fallbackTimeStr.split(":").map(Number);
+
+        // C. Fetch all live scans for this specific cohort & date
         const liveScansSnap = await db
           .collection("live_attendance_scans")
           .where("cohortId", "==", cohortId)
           .where("dateString", "==", sessionDate)
           .get();
 
-        // C. Calculate Present vs Absent
-        // We use a Set to ensure we don't count a learner twice if they scanned twice!
-        const presentIds = [
-          ...new Set(liveScansSnap.docs.map((d) => d.data().learnerId)),
-        ];
+        // D. Build the Scans Map and Impute Missing Checkouts
+        const scansMap: Record<string, any> = {};
 
-        // THE MAGIC: If they are enrolled but didn't scan, they are absent!
+        liveScansSnap.docs.forEach((d) => {
+          const data = d.data();
+          const lId = data.learnerId;
+
+          if (!scansMap[lId]) {
+            scansMap[lId] = {
+              checkInAt: null,
+              lunchOutAt: null,
+              lunchInAt: null,
+              checkOutAt: null,
+            };
+          }
+
+          const getMs = (val: any) => {
+            if (!val) return null;
+            if (val.toMillis) return val.toMillis();
+            if (typeof val === "number") return val;
+            return new Date(val).getTime();
+          };
+
+          if (data.checkInAt) scansMap[lId].checkInAt = getMs(data.checkInAt);
+          if (data.lunchOutAt)
+            scansMap[lId].lunchOutAt = getMs(data.lunchOutAt);
+          if (data.lunchInAt) scansMap[lId].lunchInAt = getMs(data.lunchInAt);
+          if (data.checkOutAt)
+            scansMap[lId].checkOutAt = getMs(data.checkOutAt);
+          if (data.timestamp && !scansMap[lId].checkInAt)
+            scansMap[lId].checkInAt = getMs(data.timestamp);
+        });
+
+        // 🚀 AUTO-IMPUTE MISSING CHECKOUTS USING CAMPUS SETTINGS
+        Object.keys(scansMap).forEach((lId) => {
+          const scan = scansMap[lId];
+          if (scan.checkInAt && !scan.checkOutAt) {
+            const outDate = new Date(scan.checkInAt);
+            outDate.setHours(fallbackH || 16, fallbackM || 0, 0, 0);
+            scan.checkOutAt = Math.max(outDate.getTime(), scan.checkInAt); // Safeguard
+          }
+        });
+
+        // E. Calculate Present vs Absent
+        const presentIds = Object.keys(scansMap);
         const absentIds = enrolledLearnerIds.filter(
           (id: string) => !presentIds.includes(id),
         );
 
         logger.info(
-          `-> Results: ${presentIds.length} Present, ${absentIds.length} Absent.`,
+          `-> Results: ${presentIds.length} Present, ${absentIds.length} Absent. Fallback Time Used: ${fallbackTimeStr}`,
         );
 
-        // D. Create the permanent attendance register
+        // F. Create the permanent attendance register
         await db.collection("attendance").add({
           cohortId: cohortId,
+          cohortName: cohortData?.name || "Unknown Cohort",
           facilitatorId: facilitatorId,
           date: sessionDate,
           presentLearners: presentIds,
-          absentLearners: absentIds, // ALL NON-SCANNERS ARE NOW CAUGHT!
+          absentLearners: absentIds,
+          reasons: {},
           proofs: {},
+          scans: scansMap, // 🎯 Inject mapped and imputed timestamps
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
           finalizedBy: "system-auto",
+          method: "system_cron_job",
         });
 
-        // E. Clean up: Delete the live scans and close the kiosk session
+        // G. Clean up: Delete the live scans and close the kiosk session
         const batch = db.batch();
 
-        // Delete all live scans for this class
         liveScansSnap.docs.forEach((scanDoc) => {
           batch.delete(scanDoc.ref);
         });
 
-        // Mark the Kiosk Session as completed so it doesn't get swept again tomorrow
+        // Update Gamification
+        presentIds.forEach((id: string) => {
+          const learnerRef = db.collection("learners").doc(id);
+          batch.update(learnerRef, {
+            labHours: admin.firestore.FieldValue.increment(8),
+            professionalismStreak: admin.firestore.FieldValue.increment(1),
+          });
+        });
+
+        absentIds.forEach((id: string) => {
+          const learnerRef = db.collection("learners").doc(id);
+          batch.update(learnerRef, {
+            professionalismStreak: 0,
+            professionalismScore: admin.firestore.FieldValue.increment(-5),
+          });
+        });
+
         batch.update(sessionDoc.ref, { status: "completed" });
 
         await batch.commit();
@@ -6608,7 +6686,7 @@ export const testSingleTokenPush = onRequest((req, res) => {
         return;
       }
 
-      // 🚀 HARDWARE ENGINE: Constructing the forced priority blueprint
+      // HARDWARE ENGINE: Constructing the forced priority blueprint
       const messagePayload = {
         token: targetToken.trim(),
         notification: {
@@ -6620,7 +6698,7 @@ export const testSingleTokenPush = onRequest((req, res) => {
           priority: "high" as const,
           notification: {
             sound: "default",
-            channelId: "default", // 🎯 MUST match the custom string set in your Expo client code!
+            channelId: "default", // MUST match the custom string set in your Expo client code!
             vibrateTimingsMillis: [0, 500, 250, 500], // [Delay, Vibrate, Pause, Vibrate]
             defaultVibrateTimings: false,
           },
@@ -6653,7 +6731,7 @@ export const testSingleTokenPush = onRequest((req, res) => {
         fcmMessageId: fcmResponse,
       });
     } catch (error: any) {
-      logger.error("❌ Hardware deployment route failed:", error);
+      logger.error("Hardware deployment route failed:", error);
       res.status(500).send({ success: false, errorMessage: error.message });
     }
   });
@@ -6662,16 +6740,16 @@ export const testSingleTokenPush = onRequest((req, res) => {
 export const testDevTopicPush = onRequest((req, res) => {
   return cors(req, res, async () => {
     logger.info(
-      "📡 [Dev Topic Test] Initiating forced hardware check for dev environment...",
+      "[Dev Topic Test] Initiating forced hardware check for dev environment...",
     );
 
     try {
       // Target the development topic instead of a single token
       const targetTopic = "all_learners_dev";
 
-      // 🚀 HARDWARE ENGINE: Constructing the forced priority blueprint
+      // Constructing the forced priority blueprint
       const messagePayload = {
-        topic: targetTopic, // <-- 🎯 Switched from token to topic
+        topic: targetTopic,
         notification: {
           title: "🛠️ Dev Environment Blast",
           body: "If you are reading this, your app successfully subscribed to the _dev channel!",
@@ -6715,8 +6793,286 @@ export const testDevTopicPush = onRequest((req, res) => {
         fcmMessageId: fcmResponse,
       });
     } catch (error: any) {
-      logger.error("❌ Hardware deployment route failed:", error);
+      logger.error("Hardware deployment route failed:", error);
       res.status(500).send({ success: false, errorMessage: error.message });
     }
   });
 });
+
+const encryptId = (text: string, key: string) => {
+  try {
+    console.log(
+      `[CRYPTO-ENCRYPT] Starting encryption for input length: ${text.length}`,
+    );
+    const iv = crypto.randomBytes(16);
+    const cipher = crypto.createCipheriv("aes-256-cbc", Buffer.from(key), iv);
+    let encrypted = cipher.update(text);
+    encrypted = Buffer.concat([encrypted, cipher.final()]);
+
+    const result = `${iv.toString("hex")}-${encrypted.toString("hex")}`;
+    console.log(
+      `[CRYPTO-ENCRYPT] Encryption successful. Output length: ${result.length}`,
+    );
+    return result;
+  } catch (err) {
+    console.error(`[CRYPTO-ENCRYPT] Critical failure during encryption:`, err);
+    throw err;
+  }
+};
+
+const decryptId = (hash: string, key: string) => {
+  try {
+    console.log(`[CRYPTO-DECRYPT] Attempting to decrypt incoming hash...`);
+    const parts = hash.split("-");
+
+    if (parts.length !== 2) {
+      console.warn(
+        `[CRYPTO-DECRYPT] Hash format invalid (Missing IV dash). Returning null.`,
+      );
+      return null;
+    }
+
+    const iv = Buffer.from(parts[0], "hex");
+    const encryptedText = Buffer.from(parts[1], "hex");
+    const decipher = crypto.createDecipheriv(
+      "aes-256-cbc",
+      Buffer.from(key),
+      iv,
+    );
+
+    let decrypted = decipher.update(encryptedText);
+    decrypted = Buffer.concat([decrypted, decipher.final()]);
+
+    console.log(`[CRYPTO-DECRYPT] Decryption successful!`);
+    return decrypted.toString();
+  } catch (e) {
+    console.warn(
+      `[CRYPTO-DECRYPT] Decryption failed (Likely a plain-text fallback URL). Details:`,
+      e,
+    );
+    return null;
+  }
+};
+
+// ─── FOR THE MOBILE APP TO GET THE SECURE QR STRING ───
+export const encryptStudentId = onCall(
+  { secrets: [encryptionKeySecret] },
+  (request) => {
+    console.log(`[ENCRYPT-ENDPOINT] Request received from mobile app.`);
+    const { idNumber } = request.data;
+    const key = encryptionKeySecret.value();
+
+    if (!idNumber) {
+      console.error(`[ENCRYPT-ENDPOINT] Missing idNumber in request payload.`);
+      throw new HttpsError(
+        "invalid-argument",
+        "ID Number is required for encryption.",
+      );
+    }
+
+    const encryptedId = encryptId(idNumber, key);
+    console.log(`[ENCRYPT-ENDPOINT] Returning secure hash to mobile app.`);
+    return { encryptedId };
+  },
+);
+
+// ─── VERIFICATION & DECRYPTION ───
+export const verifyStudentCard = onCall(
+  { secrets: [encryptionKeySecret] },
+  async (request) => {
+    console.log(`[VERIFY-CARD] Initialization started.`);
+    const { code } = request.data;
+    const key = encryptionKeySecret.value();
+
+    if (!code) {
+      console.error(
+        `[VERIFY-CARD] Aborting: No code provided in request data.`,
+      );
+      return { status: "invalid" };
+    }
+
+    const db = admin.firestore();
+
+    console.log(`[VERIFY-CARD] Cleaning incoming code...`);
+    const decodedCode = decodeURIComponent(code);
+
+    // DECRYPT THE CODE FIRST
+    console.log(`[VERIFY-CARD] Routing to Decryption Engine...`);
+    const decryptedString = decryptId(decodedCode, key);
+
+    // If decryption works, use it. Otherwise, assume they scanned an old plain-text QR code.
+    const finalString = decryptedString || decodedCode;
+    console.log(
+      `[VERIFY-CARD] Resolution Strategy: ${decryptedString ? "SECURE_DECRYPTED" : "PLAIN_TEXT_FALLBACK"}`,
+    );
+
+    const targetId = finalString.replace(/[\s-]/g, "").trim();
+    const upperTargetId = targetId.toUpperCase();
+    console.log(
+      `[VERIFY-CARD] Target query string prepared. Length: ${targetId.length}`,
+    );
+
+    try {
+      const learnersRef = db.collection("learners");
+
+      console.log(
+        `[VERIFY-CARD] [DB Query 1] Searching learners collection by idNumber...`,
+      );
+      let learnerSnap = await learnersRef
+        .where("idNumber", "==", targetId)
+        .get();
+
+      if (learnerSnap.empty) {
+        console.log(
+          `[VERIFY-CARD] [DB Query 2] Not found. Falling back to verificationCode (exact match)...`,
+        );
+        learnerSnap = await learnersRef
+          .where("verificationCode", "==", targetId)
+          .get();
+      }
+      if (learnerSnap.empty) {
+        console.log(
+          `[VERIFY-CARD] [DB Query 3] Not found. Falling back to verificationCode (uppercase match)...`,
+        );
+        learnerSnap = await learnersRef
+          .where("verificationCode", "==", upperTargetId)
+          .get();
+      }
+
+      if (learnerSnap.empty) {
+        console.warn(
+          `[VERIFY-CARD] Failure: Learner not found in database matching Target ID.`,
+        );
+        return { status: "invalid" };
+      }
+
+      const learnerId = learnerSnap.docs[0].id;
+      const learnerData = learnerSnap.docs[0].data();
+      console.log(
+        `[VERIFY-CARD] Success: Learner located. Learner UID: ${learnerId}`,
+      );
+
+      console.log(`[VERIFY-CARD] Fetching enrollments for Learner UID...`);
+      const enrollSnap = await db
+        .collection("enrollments")
+        .where("learnerId", "==", learnerId)
+        .get();
+
+      if (enrollSnap.empty) {
+        console.warn(
+          `[VERIFY-CARD] Failure: Learner found, but NO enrollments exist for this user.`,
+        );
+        return { status: "invalid" };
+      }
+
+      const enrollmentsList = enrollSnap.docs.map((d) => d.data());
+      console.log(
+        `[VERIFY-CARD] Found ${enrollmentsList.length} enrollment(s). Evaluating active status...`,
+      );
+
+      const activeEnrollment =
+        enrollmentsList.find((e) => e.status === "active") ||
+        enrollmentsList[0];
+      console.log(
+        `[VERIFY-CARD] Selected Enrollment Status: ${activeEnrollment.status}`,
+      );
+
+      // ─── RESOLVE DYNAMIC METADATA (Cohort & Campus) ───
+      let safeEndDate = activeEnrollment.endDate || null;
+      let cohortName = activeEnrollment.cohortName || "CodeTribe Academy";
+      let campusName =
+        activeEnrollment.campusName ||
+        activeEnrollment.location ||
+        "Unassigned Campus";
+
+      // 1. Fetch Global Settings to get the Campuses Array
+      let globalCampuses: any[] = [];
+      try {
+        const settingsSnap = await db
+          .collection("system_settings")
+          .doc("global")
+          .get();
+        if (settingsSnap.exists) {
+          globalCampuses = settingsSnap.data()?.campuses || [];
+        }
+      } catch (err) {
+        console.error("[VERIFY-CARD] Failed to fetch global settings:", err);
+      }
+
+      // 2. Fetch true Cohort Name, Date, and resolve Campus against Global Settings
+      if (activeEnrollment.cohortId) {
+        try {
+          const cohortSnap = await db
+            .collection("cohorts")
+            .doc(activeEnrollment.cohortId)
+            .get();
+          if (cohortSnap.exists) {
+            const cohortData = cohortSnap.data();
+            if (!safeEndDate && cohortData?.endDate)
+              safeEndDate = cohortData.endDate;
+            if (cohortData?.name) cohortName = cohortData.name;
+
+            // Mirroring the Mobile App: Find the matched campus using the cohort's campusId
+            if (cohortData?.campusId) {
+              const matchedCampus = globalCampuses.find(
+                (c: any) => c.id === cohortData.campusId,
+              );
+              if (matchedCampus && matchedCampus.name) {
+                campusName = matchedCampus.name;
+              }
+            }
+          }
+        } catch (err) {
+          console.error("[VERIFY-CARD] Failed to fetch cohort:", err);
+        }
+      }
+
+      // Safely parse the date for the frontend
+      if (safeEndDate && typeof safeEndDate.toDate === "function") {
+        safeEndDate = safeEndDate.toDate().toISOString();
+      } else if (safeEndDate && safeEndDate.seconds) {
+        safeEndDate = new Date(safeEndDate.seconds * 1000).toISOString();
+      } else if (typeof safeEndDate === "string") {
+        safeEndDate = new Date(safeEndDate).toISOString();
+      }
+
+      console.log(`[VERIFY-CARD] Evaluating expiration date...`);
+      const isPastDate = safeEndDate
+        ? new Date(safeEndDate).getTime() < Date.now()
+        : false;
+      const isExpired = isPastDate || activeEnrollment.status !== "active";
+      console.log(
+        `[VERIFY-CARD] Expiration check result - isExpired: ${isExpired}`,
+      );
+
+      console.log(`[VERIFY-CARD] Reconstructing visual Display ID...`);
+      const uidPart = learnerId.slice(-4).toUpperCase();
+      const idPart = String(learnerData.idNumber || "").slice(-4);
+      const generatedStudentId = learnerData.idNumber
+        ? `${uidPart}CT${idPart}`
+        : activeEnrollment.verificationCode || "PENDING";
+
+      console.log(
+        `[VERIFY-CARD] Generating final payload. Final Status: ${isExpired ? "expired" : "valid"}`,
+      );
+
+      // Return ONLY the public-safe data payload
+      return {
+        status: isExpired ? "expired" : "valid",
+        studentData: {
+          name:
+            learnerData.fullName ||
+            activeEnrollment.learnerName ||
+            "Unknown Learner",
+          cohort: cohortName,
+          campus: campusName,
+          validThru: safeEndDate,
+          studentNumber: generatedStudentId,
+        },
+      };
+    } catch (error) {
+      console.error("[VERIFY-CARD] CRITICAL BACKEND EXCEPTION:", error);
+      return { status: "invalid" };
+    }
+  },
+);

@@ -36,7 +36,10 @@ export interface EcosystemEvent {
   currentCheckIns: number;
   createdBy: string; // Admin/Facilitator UID
 
-  linkedTargets?: string[]; // 🚀 NEW: Array of KPI Target IDs this event contributes to
+  linkedTargets?: string[]; // Array of KPI Target IDs this event contributes to
+
+  // Array of names/IDs of people managing the event
+  responsiblePersons?: string[];
 
   settings: {
     requireIdPassport: GuestIdRequirement;
