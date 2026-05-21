@@ -14,6 +14,7 @@ import { ToastContainer, useToast } from '../../../components/common/Toast/Toast
 import { useStore, type StaffMember } from '../../../store/useStore';
 import type { Employer, DashboardLearner } from '../../../types';
 import './WorkplacesManager.css';
+import { CompanyInsightsView } from './CompanyInsightsView';
 
 /* ─── UPGRADED EMPLOYER MODAL (MANUAL GEO-VALIDATION PATTERN) ─────────────────── */
 interface EmployerModalProps {
@@ -494,6 +495,8 @@ export const WorkplacesManager: React.FC = () => {
     const fetchPlacements = (useStore(s => (s as any).fetchPlacements) || (async () => { })) as any;
     const createPlacement = (useStore(s => (s as any).createPlacement) || (async () => { })) as any;
 
+    const [viewingCompanyInsights, setViewingCompanyInsights] = useState<Employer | null>(null);
+
     const toast = useToast();
     const navigate = useNavigate();
 
@@ -565,7 +568,7 @@ export const WorkplacesManager: React.FC = () => {
     };
 
     const openViewPlacements = (emp: Employer) => {
-        navigate(`/admin/wil?tab=placements&employer=${emp.id}`);
+        setViewingCompanyInsights(emp);
     };
 
     const filteredEmployers = employers.filter(emp =>
@@ -574,6 +577,15 @@ export const WorkplacesManager: React.FC = () => {
             (emp.contactPerson || '').toLowerCase().includes(searchQuery.toLowerCase())
         )
     );
+
+    if (viewingCompanyInsights) {
+        return (
+            <CompanyInsightsView
+                company={viewingCompanyInsights}
+                onBack={() => setViewingCompanyInsights(null)}
+            />
+        );
+    }
 
     return (
         <div className="wm-root animate-fade-in">

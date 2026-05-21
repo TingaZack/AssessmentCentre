@@ -1,6 +1,6 @@
 // src/components/admin/PlacementsDashboard/PlacementsDashboard.tsx
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useSearchParams } from 'react-router-dom';
 import { doc, updateDoc, deleteDoc, writeBatch } from 'firebase/firestore';
@@ -10,10 +10,10 @@ import {
     CheckCircle, Clock, Building2, User, FileText,
     MoreVertical, Edit, X, DownloadCloud, AlertCircle,
     ShieldAlert, Save, Loader2, Award, Trash2,
-    LinkIcon,
-    UploadCloud
+    LinkIcon, UploadCloud, FileSpreadsheet
 } from 'lucide-react';
 import moment from 'moment';
+import * as XLSX from 'xlsx';
 
 import { useStore, type StaffMember } from '../../../store/useStore';
 import type { DashboardLearner, Employer } from '../../../types';
@@ -308,7 +308,6 @@ const GlobalCreatePlacementModal: React.FC<{
     );
 };
 
-
 /* ─── EDIT PLACEMENT MODAL ─────────────────────────────────── */
 const EditPlacementModal: React.FC<{
     placement: any;
@@ -354,7 +353,6 @@ const EditPlacementModal: React.FC<{
             const placementRef = doc(db, 'placements', placement.id);
             const learnerRef = doc(db, 'learners', placement.learnerId);
 
-            // 1. Update Placement Record 
             batch.update(placementRef, {
                 mentorId: form.mentorId,
                 placementType: form.placementType,
@@ -369,15 +367,12 @@ const EditPlacementModal: React.FC<{
                 updatedAt: new Date().toISOString()
             });
 
-            // Safely sync the mentor pointer to the human identity
             batch.update(learnerRef, { mentorId: form.mentorId, updatedAt: new Date().toISOString() });
 
             await batch.commit();
 
-            // 🚀 Fire the success toast explicitly
             toast.success("Placement details and compliance updated successfully!");
 
-            // 🚀 Delay unmounting slightly so the local ToastContainer inside this portal isn't instantly dropped from the DOM
             setTimeout(() => {
                 onSaved();
                 onClose();
@@ -393,7 +388,6 @@ const EditPlacementModal: React.FC<{
 
     return createPortal(
         <div className="wm-overlay animate-fade-in" onClick={onClose} style={{ zIndex: 9999 }}>
-            {/* Local container ensures toast banner visibility stays stacked on top of this overlay window layer */}
             <ToastContainer toasts={toast.toasts} onClose={toast.closeToast} />
 
             <div className="wm-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '550px' }}>
@@ -453,7 +447,6 @@ const EditPlacementModal: React.FC<{
                                     </select>
                                 </div>
 
-                                {/* THE WBLPA MULTI-MODE UPLOAD SECTION */}
                                 <div className="wm-form-group wm-form-group--full" style={{ background: '#f8fafc', padding: '12px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
                                     <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 600, color: 'var(--mlab-midnight)', fontSize: '0.85rem' }}>
                                         <input
@@ -526,9 +519,7 @@ const EditPlacementModal: React.FC<{
                                             )}
                                         </div>
                                     </div>
-
                                 </div>
-
                             </div>
                         </div>
 
@@ -550,8 +541,7 @@ const EditPlacementModal: React.FC<{
     );
 };
 
-
-/* ─── PLACEMENT OPTIONS MODAL (THE 3-DOTS BUTTON) ────────────────────────────── */
+/* ─── PLACEMENT OPTIONS MODAL ────────────────────────────── */
 const PlacementOptionsModal: React.FC<{
     placement: any;
     onClose: () => void;
@@ -656,13 +646,11 @@ const PlacementOptionsModal: React.FC<{
     );
 };
 
-
 /* ═══════════════════════════════════════════════════════════════════════════
    MAIN COMPONENT: PLACEMENTS DASHBOARD
 ═══════════════════════════════════════════════════════════════════════════ */
 export const PlacementsDashboard: React.FC = () => {
     const toast = useToast();
-
     const [searchParams] = useSearchParams();
     const employerUrlParam = searchParams.get('employer');
 
@@ -679,8 +667,6 @@ export const PlacementsDashboard: React.FC = () => {
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [isMentorModalOpen, setIsMentorModalOpen] = useState(false);
     const [activeMentorEmpId, setActiveMentorEmpId] = useState('');
-
-    // NEW: Action Modals State
     const [editingPlacement, setEditingPlacement] = useState<any | null>(null);
     const [optionsPlacement, setOptionsPlacement] = useState<any | null>(null);
 
@@ -688,7 +674,21 @@ export const PlacementsDashboard: React.FC = () => {
     const [searchQuery, setSearchQuery] = useState('');
     const [filterType, setFilterType] = useState('all');
     const [filterEmployer, setFilterEmployer] = useState(employerUrlParam || 'all');
-    const [filterStatus, setFilterStatus] = useState('active');
+    const [activeTab, setActiveTab] = useState<'active' | 'history' | 'all'>('active');
+
+    // Export State
+    const [showExportMenu, setShowExportMenu] = useState(false);
+    const exportMenuRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (exportMenuRef.current && !exportMenuRef.current.contains(event.target as Node)) {
+                setShowExportMenu(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
     useEffect(() => {
         if (employerUrlParam) setFilterEmployer(employerUrlParam);
@@ -709,20 +709,24 @@ export const PlacementsDashboard: React.FC = () => {
 
     const mentors = useMemo(() => staff.filter(s => s.role === 'mentor' && s.status !== 'archived'), [staff]);
 
-    const { activeCount, expiringSoonCount, missingContractsCount, completedCount } = useMemo(() => {
+    const { activeCount, expiringSoonCount, missingContractsCount, completedCount, droppedCount } = useMemo(() => {
         const thirtyDaysFromNow = moment().add(30, 'days');
-        let active = 0, expiring = 0, missingContracts = 0, completed = 0;
+        let active = 0, expiring = 0, missingContracts = 0, completed = 0, dropped = 0;
 
         placements.forEach(p => {
-            if (p.status === 'active') {
+            if (p.status === 'active' || p.status === 'pending_signatures') {
                 active++;
-                if (moment(p.endDate).isBefore(thirtyDaysFromNow)) expiring++;
-                if (!p.compliance?.isAgreementFullyExecuted) missingContracts++;
+                if (p.status === 'active') {
+                    if (moment(p.endDate).isBefore(thirtyDaysFromNow)) expiring++;
+                    if (!p.compliance?.isAgreementFullyExecuted) missingContracts++;
+                }
             } else if (p.status === 'completed') {
                 completed++;
+            } else if (p.status === 'terminated') {
+                dropped++;
             }
         });
-        return { activeCount: active, expiringSoonCount: expiring, missingContractsCount: missingContracts, completedCount: completed };
+        return { activeCount: active, expiringSoonCount: expiring, missingContractsCount: missingContracts, completedCount: completed, droppedCount: dropped };
     }, [placements]);
 
     const enrichedAndFilteredPlacements = useMemo(() => {
@@ -741,19 +745,77 @@ export const PlacementsDashboard: React.FC = () => {
                 };
             })
             .filter(p => {
+                // Apply Tab Filter
+                if (activeTab === 'active' && p.status !== 'active' && p.status !== 'pending_signatures') return false;
+                if (activeTab === 'history' && p.status !== 'completed' && p.status !== 'terminated') return false;
+
+                // Apply Search & Dropdown Filters
                 if (searchQuery) {
                     const q = searchQuery.toLowerCase();
                     if (!(p.learnerName.toLowerCase().includes(q) || p.idNumber.includes(q) || p.employerName.toLowerCase().includes(q))) return false;
                 }
                 if (filterType !== 'all' && p.placementType !== filterType) return false;
                 if (filterEmployer !== 'all' && p.employerId !== filterEmployer) return false;
-                if (filterStatus !== 'all' && p.status !== filterStatus) return false;
+
                 return true;
             })
             .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    }, [placements, learners, employers, mentors, searchQuery, filterType, filterEmployer, filterStatus]);
+    }, [placements, learners, employers, mentors, searchQuery, filterType, filterEmployer, activeTab]);
 
     const formatDate = (dateStr: string) => moment(dateStr).format('DD MMM YYYY');
+
+    // 🚀 EXPORT LOGIC FOR MASTER PLACEMENT DASHBOARD
+    const getExportData = () => {
+        return enrichedAndFilteredPlacements.map(p => ({
+            "Learner Name": p.learnerName,
+            "ID Number": p.idNumber,
+            "Host Company": p.employerName,
+            "Placement Type": p.placementType,
+            "B-BBEE Category": p.compliance?.bbbeeSpendCategory || (p as any).bbbeeSpendCategory || 'Uncategorized',
+            "Start Date": moment(p.startDate).format('YYYY-MM-DD'),
+            "Expected End Date": moment(p.endDate).format('YYYY-MM-DD'),
+            "Assigned Mentor": p.mentorName,
+            "WBLPA Contract Status": p.compliance?.isAgreementFullyExecuted ? "Signed & On File" : "Missing Contract",
+            "Contract Link": p.compliance?.wblpaAgreementUrl || 'Not Uploaded',
+            "Operational Status": p.status.replace('_', ' ').toUpperCase()
+        }));
+    };
+
+    const generateFileName = (extension: string) => {
+        return `Master_Placements_Ledger_${activeTab}_${moment().format('YYYYMMDD')}.${extension}`;
+    };
+
+    const handleExportCSV = () => {
+        const data = getExportData();
+        if (data.length === 0) return;
+
+        const headers = Object.keys(data[0]);
+        const csvRows = data.map(row =>
+            headers.map(header => `"${(row as any)[header]}"`).join(',')
+        );
+        const csvString = [headers.join(','), ...csvRows].join('\n');
+
+        const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.setAttribute('download', generateFileName('csv'));
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setShowExportMenu(false);
+    };
+
+    const handleExportExcel = () => {
+        const data = getExportData();
+        if (data.length === 0) return;
+
+        const worksheet = XLSX.utils.json_to_sheet(data);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Master Ledger");
+
+        XLSX.writeFile(workbook, generateFileName('xlsx'));
+        setShowExportMenu(false);
+    };
 
     if (isInitialLoad || placementsLoading) return <div className="wm-loading"><Loader message="Synchronizing Tripartite Placements Ledger..." /></div>;
 
@@ -875,21 +937,37 @@ export const PlacementsDashboard: React.FC = () => {
                     </select>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', background: 'white', border: '1px solid var(--mlab-border)', borderRadius: '6px', padding: '0 12px' }}>
-                    <Filter size={14} color="var(--mlab-grey)" />
-                    <select style={{ border: 'none', padding: '10px', color: 'grey', outline: 'none', background: 'transparent', cursor: 'pointer', fontSize: '0.85rem' }} value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
-                        <option value="all">All Statuses</option>
-                        <option value="active">Active Only</option>
-                        <option value="pending_signatures">Pending Signatures</option>
-                        <option value="completed">Completed</option>
-                        <option value="terminated">Terminated</option>
-                    </select>
-                </div>
-
                 <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px' }}>
-                    <button type="button" className="cdp-btn cdp-btn--outline" style={{ background: 'white' }}>
-                        <DownloadCloud size={14} /> Export Ledger
-                    </button>
+
+                    {/* 🚀 EXPORT DROPDOWN MENU */}
+                    <div style={{ position: 'relative' }} ref={exportMenuRef}>
+                        <button
+                            onClick={() => setShowExportMenu(!showExportMenu)}
+                            disabled={enrichedAndFilteredPlacements.length === 0}
+                            className="cdp-btn cdp-btn--outline"
+                            style={{ background: 'white', fontSize: '0.8rem', padding: '6px 12px', opacity: enrichedAndFilteredPlacements.length === 0 ? 0.5 : 1, cursor: enrichedAndFilteredPlacements.length === 0 ? 'not-allowed' : 'pointer' }}
+                        >
+                            <DownloadCloud size={14} /> Export Ledger
+                        </button>
+
+                        {showExportMenu && enrichedAndFilteredPlacements.length > 0 && (
+                            <div style={{ position: 'absolute', top: 'calc(100% + 4px)', right: 0, background: 'white', border: '1px solid #cbd5e1', borderRadius: '6px', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', zIndex: 50, minWidth: '180px', overflow: 'hidden' }} className="animate-fade-in">
+                                <button
+                                    onClick={handleExportCSV}
+                                    style={{ width: '100%', textAlign: 'left', padding: '10px 12px', background: 'none', border: 'none', borderBottom: '1px solid #f1f5f9', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.75rem', color: 'var(--mlab-midnight)', fontWeight: 500 }}
+                                >
+                                    <FileText size={14} color="#0ea5e9" /> Download as CSV
+                                </button>
+                                <button
+                                    onClick={handleExportExcel}
+                                    style={{ width: '100%', textAlign: 'left', padding: '10px 12px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.75rem', color: 'var(--mlab-midnight)', fontWeight: 500 }}
+                                >
+                                    <FileSpreadsheet size={14} color="#16a34a" /> Download as Excel (.xlsx)
+                                </button>
+                            </div>
+                        )}
+                    </div>
+
                     <button type="button" className="mlab-btn mlab-btn--primary" onClick={() => setIsCreateModalOpen(true)}>
                         <Plus size={14} /> New Placement
                     </button>
@@ -898,14 +976,36 @@ export const PlacementsDashboard: React.FC = () => {
 
             {/* ── CDP STYLED DATA GRID ── */}
             <div className="cdp-panel animate-fade-in" style={{ border: 'none', background: 'transparent' }}>
-                <div className="vp-card" style={{ marginBottom: 0 }}>
-                    <div className="vp-card-header">
+                <div className="vp-card" style={{ marginBottom: 0, background: 'whitesmoke' }}>
+
+                    <div className="vp-card-header" style={{ borderBottom: 'none', paddingBottom: 0 }}>
                         <div className="vp-card-title-group">
                             <Briefcase size={18} color="var(--mlab-blue)" />
                             <h3 style={{ margin: 0, fontFamily: 'var(--font-heading)', color: 'var(--mlab-blue)', textTransform: 'uppercase' }}>
-                                Placement Ledger ({enrichedAndFilteredPlacements.length})
+                                Global Placement Ledger
                             </h3>
                         </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '1.5rem', padding: '0 1.5rem', borderBottom: '1px solid var(--mlab-border)', marginTop: '1rem', background: '#f8fafc' }}>
+                        <button
+                            onClick={() => setActiveTab('active')}
+                            style={{ padding: '12px 0', border: 'none', background: 'none', color: activeTab === 'active' ? 'var(--mlab-blue)' : '#64748b', fontWeight: activeTab === 'active' ? 700 : 500, fontSize: '0.85rem', cursor: 'pointer', borderBottom: activeTab === 'active' ? '2px solid var(--mlab-blue)' : '2px solid transparent', display: 'flex', alignItems: 'center', gap: '6px' }}
+                        >
+                            Active Interns <span style={{ background: activeTab === 'active' ? '#e0e7ff' : '#f1f5f9', color: activeTab === 'active' ? 'var(--mlab-blue)' : '#94a3b8', padding: '2px 6px', borderRadius: '12px', fontSize: '0.7rem' }}>{activeCount}</span>
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('history')}
+                            style={{ padding: '12px 0', border: 'none', background: 'none', color: activeTab === 'history' ? 'var(--mlab-blue)' : '#64748b', fontWeight: activeTab === 'history' ? 700 : 500, fontSize: '0.85rem', cursor: 'pointer', borderBottom: activeTab === 'history' ? '2px solid var(--mlab-blue)' : '2px solid transparent', display: 'flex', alignItems: 'center', gap: '6px' }}
+                        >
+                            History (Completed / Dropped) <span style={{ background: activeTab === 'history' ? '#e0e7ff' : '#f1f5f9', color: activeTab === 'history' ? 'var(--mlab-blue)' : '#94a3b8', padding: '2px 6px', borderRadius: '12px', fontSize: '0.7rem' }}>{completedCount + droppedCount}</span>
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('all')}
+                            style={{ padding: '12px 0', border: 'none', background: 'none', color: activeTab === 'all' ? 'var(--mlab-blue)' : '#64748b', fontWeight: activeTab === 'all' ? 700 : 500, fontSize: '0.85rem', cursor: 'pointer', borderBottom: activeTab === 'all' ? '2px solid var(--mlab-blue)' : '2px solid transparent', display: 'flex', alignItems: 'center', gap: '6px' }}
+                        >
+                            All Records <span style={{ background: activeTab === 'all' ? '#e0e7ff' : '#f1f5f9', color: activeTab === 'all' ? 'var(--mlab-blue)' : '#94a3b8', padding: '2px 6px', borderRadius: '12px', fontSize: '0.7rem' }}>{placements.length}</span>
+                        </button>
                     </div>
 
                     <div className="mlab-table-wrap">
@@ -1040,7 +1140,7 @@ export const PlacementsDashboard: React.FC = () => {
                                             <Briefcase size={40} style={{ opacity: 0.2, margin: '0 auto 1rem', color: 'var(--mlab-blue)' }} />
                                             <h3 style={{ margin: '0 0 0.5rem', color: 'var(--mlab-midnight)', fontSize: '1.1rem', fontFamily: 'var(--font-heading)' }}>No Placements Found</h3>
                                             <p style={{ margin: 0, color: '#64748b', fontSize: '0.9rem' }}>
-                                                {searchQuery || filterType !== 'all' || filterEmployer !== 'all' || filterStatus !== 'all'
+                                                {searchQuery || filterType !== 'all' || filterEmployer !== 'all' || activeTab !== 'active'
                                                     ? "Try adjusting your filters or search query."
                                                     : "You haven't assigned any learners to host companies yet."}
                                             </p>

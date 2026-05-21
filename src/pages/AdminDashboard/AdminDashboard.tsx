@@ -7,7 +7,7 @@ import { auth, db } from '../../lib/firebase';
 import { doc, writeBatch, updateDoc, collection } from 'firebase/firestore';
 import { Menu, X, ShieldAlert } from 'lucide-react';
 import { useStore, type StaffMember } from '../../store/useStore';
-import type { DashboardLearner, ProgrammeTemplate, Cohort } from '../../types';
+import type { DashboardLearner, ProgrammeTemplate, Cohort, Employer } from '../../types';
 
 // --- CORE DASHBOARD COMPONENTS ---
 import { Sidebar } from '../../components/dashboard/Sidebar/Sidebar';
@@ -22,7 +22,6 @@ import { CohortsView } from '../../components/views/CohortsView/CohortsView';
 import { QualificationsView } from '../../components/views/QualificationsView/QualificationsView';
 import { LearnersView } from '../../components/views/LearnersView/LearnersView';
 import { LearnerDirectoryView } from '../../components/views/LearnerDirectoryView.tsx/LearnerDirectoryView';
-import { WorkplacesManager } from '../../components/admin/WorkplacesManager/WorkplacesManager';
 import { AssessmentManager } from '../FacilitatorDashboard/AssessmentManager/AssessmentManager';
 import { CertificateStudio } from './CertificateStudio/CertificateStudio';
 
@@ -39,10 +38,11 @@ import { NotificationBell } from '../../components/common/NotificationBell/Notif
 
 // --- NEW APP MODULES ---
 import { AttendanceHistoryList } from '../FacilitatorDashboard/AttendanceRegister/AttendanceHistoryList';
-
-import './AdminDashboard.css';
 import { EcosystemDashboard } from '../../components/admin/EcosystemDashboard/EcosystemDashboard';
 import { WorkplaceHub } from '../../components/views/WorkplaceHub/WorkplaceHub';
+import { CompanyInsightsView } from '../../components/admin/WorkplacesManager/CompanyInsightsView'; // 🚀 IMPORT ADDED
+
+import './AdminDashboard.css';
 
 const AdminDashboard: React.FC = () => {
     const navigate = useNavigate();
@@ -51,18 +51,32 @@ const AdminDashboard: React.FC = () => {
     const { user, setUser } = store;
     const toast = useToast();
 
+    // 🚀 Added 'company-profile' to the navigation state
     const [currentNav, setCurrentNav] = useState<
         'directory' | 'learners' | 'staff' | 'qualifications' | 'cohorts' |
         'workplaces' | 'studio' | 'dashboard' | 'profile' | 'access' |
-        'assessments' | 'settings' | 'attendance' | 'ecosystem'
+        'assessments' | 'settings' | 'attendance' | 'ecosystem' | 'company-profile'
     >((location.state as any)?.activeTab || 'dashboard');
 
     // Mobile Sidebar State
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
+    // 🚀 NEW: State to hold the company data when jumping to the Insights View
+    const [selectedCompanyForInsights, setSelectedCompanyForInsights] = useState<Employer | null>(null);
+
     useEffect(() => {
         setIsMobileMenuOpen(false);
     }, [currentNav]);
+
+    // 🚀 NEW: Custom Event Listener to catch "View Ledger" clicks without messy prop-drilling!
+    useEffect(() => {
+        const handleOpenInsights = (e: any) => {
+            setSelectedCompanyForInsights(e.detail);
+            setCurrentNav('company-profile');
+        };
+        window.addEventListener('openCompanyInsights', handleOpenInsights);
+        return () => window.removeEventListener('openCompanyInsights', handleOpenInsights);
+    }, []);
 
     // ----- Modal States -----
     const [showAddLearnerModal, setShowAddLearnerModal] = useState(false);
@@ -270,6 +284,7 @@ const AdminDashboard: React.FC = () => {
                             {currentNav === 'staff' && 'Staff & Mentors'}
                             {currentNav === 'cohorts' && 'Cohort Management'}
                             {currentNav === 'workplaces' && 'Workplace Management'}
+                            {currentNav === 'company-profile' && 'Corporate Partner Insights'} {/* 🚀 Added Title */}
                             {currentNav === 'profile' && 'My Administrator Profile'}
                             {currentNav === 'access' && 'Platform Access Control'}
                             {currentNav === 'settings' && 'Platform Settings'}
@@ -285,6 +300,7 @@ const AdminDashboard: React.FC = () => {
                             {currentNav === 'staff' && 'Manage facilitators, assessors, moderators, and support staff'}
                             {currentNav === 'cohorts' && 'Organize learners into training classes and assign educators'}
                             {currentNav === 'workplaces' && 'Manage employer partners and workplace mentor allocations'}
+                            {currentNav === 'company-profile' && 'View compliance, placement ledgers, and operational analytics for this host company.'} {/* 🚀 Added Description */}
                             {currentNav === 'profile' && 'Manage your institutional compiler and contact details'}
                             {currentNav === 'access' && 'Manage Super Administrator access and permissions'}
                             {currentNav === 'settings' && 'Configure global system preferences and application settings'}
@@ -343,8 +359,19 @@ const AdminDashboard: React.FC = () => {
                             onDelete={(s) => setStaffToDelete(s)}
                         />
                     )}
-                    {/* {currentNav === 'workplaces' && <WorkplacesManager />} */}
+
                     {currentNav === 'workplaces' && <WorkplaceHub />}
+
+                    {/* 🚀 Render the new Company Insights View if active */}
+                    {currentNav === 'company-profile' && selectedCompanyForInsights && (
+                        <CompanyInsightsView
+                            company={selectedCompanyForInsights}
+                            onBack={() => {
+                                setSelectedCompanyForInsights(null);
+                                setCurrentNav('workplaces');
+                            }}
+                        />
+                    )}
 
                     {currentNav === 'cohorts' && (
                         <CohortsView
