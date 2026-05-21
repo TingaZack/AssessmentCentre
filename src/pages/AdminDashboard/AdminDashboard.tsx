@@ -42,6 +42,7 @@ import { AttendanceHistoryList } from '../FacilitatorDashboard/AttendanceRegiste
 
 import './AdminDashboard.css';
 import { EcosystemDashboard } from '../../components/admin/EcosystemDashboard/EcosystemDashboard';
+import { WorkplaceHub } from '../../components/views/WorkplaceHub/WorkplaceHub';
 
 const AdminDashboard: React.FC = () => {
     const navigate = useNavigate();
@@ -342,7 +343,8 @@ const AdminDashboard: React.FC = () => {
                             onDelete={(s) => setStaffToDelete(s)}
                         />
                     )}
-                    {currentNav === 'workplaces' && <WorkplacesManager />}
+                    {/* {currentNav === 'workplaces' && <WorkplacesManager />} */}
+                    {currentNav === 'workplaces' && <WorkplaceHub />}
 
                     {currentNav === 'cohorts' && (
                         <CohortsView

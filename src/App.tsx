@@ -69,6 +69,7 @@ import { LiveAttendanceBoard } from './pages/FacilitatorDashboard/LiveAttendance
 import { EventKioskPage } from './components/admin/EcosystemDashboard/EventKioskPage';
 import { EventDetailsPage } from './components/admin/EcosystemDashboard/EventDetailsPage';
 import { StudentVerification } from './pages/LearnerPortal/public/StudentVerification/StudentVerification';
+import { WorkplaceHub } from './components/views/WorkplaceHub/WorkplaceHub';
 
 // --- TRAFFIC CONTROLLER ---
 const RootRedirect = () => {
@@ -283,6 +284,13 @@ function App() {
                 <CertificateStudio />
               </RoleProtectedRoute>
             } />
+
+            <Route path="/admin/wil" element={
+              <RoleProtectedRoute allowedRoles={['admin']}>
+                <WorkplaceHub />
+              </RoleProtectedRoute>
+            } />
+
             <Route path="/admin/workplaces" element={
               <RoleProtectedRoute allowedRoles={['admin']}>
                 <WorkplacesManager />

@@ -75,13 +75,59 @@ export interface EcosystemGuest {
 
   totalEventsAttended: number;
   lastSeenAt: string;
+
+  // Added for extended demographics flexibility
+  customFields?: Record<string, any>;
+  race?: string;
+  disability?: string;
 }
 
 export interface EventCheckIn {
   id: string;
   eventId: string;
   guestEmail: string;
+  guestPhone: any;
   guestName: string;
+  guestIdNumber: string;
   timestamp: string;
   responses: Record<string, any>;
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// KPI TARGETS & STATE MANAGEMENT INTERFACES
+// ═════════════════════════════════════════════════════════════════════════════
+
+export interface EcosystemTarget {
+  id: string;
+  title: string;
+  startDate: string; // YYYY-MM-DD
+  endDate: string; // YYYY-MM-DD
+  targetAmount: number;
+  offlineCarryover: number;
+  isArchived: boolean;
+  linkedEvents: string[];
+  // Computed fields added at runtime by React components
+  kpiTotalProgress?: number;
+  targetGoal?: number;
+  progressPercent?: number;
+  isStrictMode?: boolean;
+}
+
+export interface EcosystemSliceState {
+  events: EcosystemEvent[];
+  guests: EcosystemGuest[];
+  checkins: EventCheckIn[];
+  targets: EcosystemTarget[];
+  ecosystemLoading: boolean;
+  ecosystemError: string | null;
+
+  // Core Synchronizers
+  fetchEcosystemData: () => Promise<void>;
+  saveEcosystemEvent: (
+    eventData: Partial<EcosystemEvent>,
+    selectedEventId?: string,
+  ) => Promise<void>;
+  saveKpiTarget: (targetForm: EcosystemTarget) => Promise<void>;
+  archiveKpiTarget: (targetId: string) => Promise<void>;
+  deleteKpiTarget: (targetId: string) => Promise<void>;
 }
