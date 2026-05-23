@@ -216,17 +216,19 @@ export const BulkResultsImportModal: React.FC<BulkResultsImportModalProps> = ({
 
     return (
         <div className="mlab-modal-overlay" style={{ zIndex: 1000 }}>
-            <div className="mlab-modal mlab-modal--lg animate-fade-in" style={{ width: step === "review" ? '90vw' : '500px', maxWidth: step === "review" ? '1200px' : '500px', transition: 'all 0.3s ease', background: 'whitesmoke' }}>
-                <div className="mlab-modal__header" style={{ borderBottom: '2px solid var(--mlab-light-blue)' }}>
+            {/* Background set to true white for high contrast */}
+            <div className="mlab-modal mlab-modal--lg animate-fade-in" style={{ width: step === "review" ? '90vw' : '500px', maxWidth: step === "review" ? '1200px' : '500px', transition: 'all 0.3s ease', background: '#ffffff', boxShadow: '0 10px 25px rgba(0,0,0,0.1)' }}>
+
+                <div className="mlab-modal__header" style={{ borderBottom: '1px solid #e2e8f0', padding: '1rem 1.5rem' }}>
                     <div className="mlab-modal__title-group">
-                        <div style={{ background: 'var(--mlab-light-blue)', padding: '8px', borderRadius: '6px', color: 'var(--mlab-blue)' }}>
+                        <div style={{ background: '#e0f2fe', padding: '8px', borderRadius: '6px', color: '#0ea5e9' }}>
                             <FileSpreadsheet size={22} />
                         </div>
                         <div style={{ marginLeft: '12px' }}>
-                            <h2 style={{ fontFamily: 'var(--font-heading)', fontSize: '1.25rem', color: 'var(--mlab-blue)', textTransform: 'uppercase', margin: 0 }}>
+                            <h2 style={{ fontFamily: 'var(--font-heading)', fontSize: '1.25rem', color: '#0f172a', textTransform: 'uppercase', margin: 0 }}>
                                 Bulk Results Importer
                             </h2>
-                            {step === "review" && <span style={{ fontSize: '0.75rem', color: 'var(--mlab-grey)', fontWeight: 600 }}>REVIEWING {parsedData.length} LEARNERS</span>}
+                            {step === "review" && <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>REVIEWING {parsedData.length} LEARNERS</span>}
                         </div>
                     </div>
                     <button className="mlab-modal__close" onClick={onClose} disabled={step === "processing" || step === "saving"}><X size={20} /></button>
@@ -237,16 +239,16 @@ export const BulkResultsImportModal: React.FC<BulkResultsImportModalProps> = ({
                     {step === "upload" && (
                         <div style={{ textAlign: 'center' }}>
                             {errorMsg && <div style={{ background: '#fef2f2', color: '#b91c1c', padding: '10px', borderRadius: '6px', marginBottom: '1rem', fontSize: '0.85rem' }}>{errorMsg}</div>}
-                            <p style={{ color: 'var(--mlab-grey)', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
+                            <p style={{ color: '#475569', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
                                 Upload a multi-sheet Excel file. The system will extract every learner from every tab automatically.
                             </p>
                             <input type="file" accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel" ref={fileInputRef} onChange={handleFileUpload} style={{ display: "none" }} />
                             <div
                                 onClick={() => fileInputRef.current?.click()}
-                                style={{ border: '2px dashed var(--mlab-blue)', borderRadius: '12px', padding: '3rem', cursor: 'pointer', background: '#f8fafc' }}
+                                style={{ border: '2px dashed #0ea5e9', borderRadius: '12px', padding: '3rem', cursor: 'pointer', background: '#f8fafc', transition: 'all 0.2s ease' }}
                             >
-                                <UploadCloud size={48} color="var(--mlab-blue)" style={{ margin: '0 auto 1rem' }} />
-                                <h4>Click to Upload Master Spreadsheet</h4>
+                                <UploadCloud size={48} color="#0ea5e9" style={{ margin: '0 auto 1rem' }} />
+                                <h4 style={{ color: '#334155', fontWeight: 700, margin: '0 0 4px' }}>Click to Upload Master Spreadsheet</h4>
                                 <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Supports .xlsx and .csv</span>
                             </div>
                         </div>
@@ -254,17 +256,18 @@ export const BulkResultsImportModal: React.FC<BulkResultsImportModalProps> = ({
 
                     {(step === "processing" || step === "saving") && (
                         <div style={{ textAlign: "center", padding: "4rem 0" }}>
-                            <Loader2 className="spin" size={48} color="var(--mlab-blue)" style={{ margin: '0 auto 1rem' }} />
-                            <h3 style={{ color: 'var(--mlab-blue)' }}>{step === "processing" ? "Scanning Sheets..." : "Saving Records to Database..."}</h3>
-                            <p style={{ color: 'var(--mlab-grey)' }}>Please do not close this window.</p>
+                            <Loader2 className="spin" size={48} color="#0ea5e9" style={{ margin: '0 auto 1rem' }} />
+                            <h3 style={{ color: '#0f172a', fontWeight: 700 }}>{step === "processing" ? "Scanning Sheets..." : "Saving Records to Database..."}</h3>
+                            <p style={{ color: '#64748b' }}>Please do not close this window.</p>
                         </div>
                     )}
 
                     {step === "review" && (
                         <div style={{ display: 'flex', height: '65vh' }}>
                             {/* SIDEBAR */}
-                            <div style={{ width: '300px', borderRight: '1px solid var(--mlab-border)', background: '#f8fafc', overflowY: 'auto' }}>
-                                <div style={{ padding: '12px 16px', background: 'var(--mlab-bg)', borderBottom: '1px solid var(--mlab-border)', position: 'sticky', top: 0, fontWeight: 'bold', fontSize: '0.8rem', color: 'var(--mlab-grey)' }}>
+                            {/* Sidebar background distinct from main panel */}
+                            <div style={{ width: '300px', borderRight: '1px solid #e2e8f0', background: '#f8fafc', overflowY: 'auto' }}>
+                                <div style={{ padding: '12px 16px', background: '#f1f5f9', borderBottom: '1px solid #e2e8f0', position: 'sticky', top: 0, fontWeight: 'bold', fontSize: '0.75rem', color: '#475569', zIndex: 10 }}>
                                     FOUND IN SPREADSHEET
                                 </div>
                                 {parsedData.map((l, idx) => (
@@ -273,54 +276,58 @@ export const BulkResultsImportModal: React.FC<BulkResultsImportModalProps> = ({
                                         onClick={() => setSelectedIndex(idx)}
                                         style={{
                                             padding: '12px 16px', cursor: 'pointer', borderBottom: '1px solid #e2e8f0',
-                                            background: selectedIndex === idx ? 'var(--mlab-light-blue)' : 'transparent',
-                                            borderLeft: selectedIndex === idx ? '4px solid var(--mlab-blue)' : '4px solid transparent'
+                                            background: selectedIndex === idx ? '#e0f2fe' : 'transparent',
+                                            borderLeft: selectedIndex === idx ? '4px solid #0ea5e9' : '4px solid transparent',
+                                            transition: 'background 0.2s ease'
                                         }}
                                     >
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                            <span style={{ fontWeight: 600, color: 'var(--mlab-blue)', fontSize: '0.9rem' }}>{l.fullName}</span>
+                                            <span style={{ fontWeight: 600, color: '#0f172a', fontSize: '0.9rem' }}>{l.fullName}</span>
                                             {l.isUpdate ? (
                                                 <span title="Existing Learner Found" style={{ display: 'flex' }}>
-                                                    <CheckCircle2 size={14} color="var(--mlab-green)" />
+                                                    <CheckCircle2 size={14} color="#16a34a" />
                                                 </span>
                                             ) : (
                                                 <span title="New Offline Learner" style={{ display: 'flex' }}>
-                                                    <Plus size={14} color="#f59e0b" />
+                                                    <Plus size={14} color="#d97706" />
                                                 </span>
                                             )}
                                         </div>
-                                        <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '4px' }}>ID: {l.idNumber}</div>
+                                        <div style={{ fontSize: '0.75rem', color: '#475569', marginTop: '4px' }}>ID: {l.idNumber}</div>
                                         <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '2px', fontStyle: 'italic' }}>Tab: {l.sheetName}</div>
                                     </div>
                                 ))}
                             </div>
 
                             {/* MAIN STAGE */}
-                            <div style={{ flex: 1, padding: '1.5rem', overflowY: 'auto', background: 'white' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem', paddingBottom: '1rem', borderBottom: '1px solid var(--mlab-border)' }}>
+                            {/* Crisp white background, solid dark slates for text */}
+                            <div style={{ flex: 1, padding: '1.5rem', overflowY: 'auto', background: '#ffffff' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem', paddingBottom: '1rem', borderBottom: '1px solid #e2e8f0' }}>
                                     <div>
-                                        <h2 style={{ margin: '0 0 4px', color: 'var(--mlab-blue)' }}>{activeLearner.fullName}</h2>
-                                        <div style={{ display: 'flex', gap: '12px', fontSize: '0.85rem', color: 'var(--mlab-grey)' }}>
+                                        <h2 style={{ margin: '0 0 6px', color: '#0f172a', fontSize: '1.5rem', fontWeight: 800 }}>{activeLearner.fullName}</h2>
+                                        <div style={{ display: 'flex', gap: '12px', fontSize: '0.85rem', color: '#334155' }}>
                                             <span><strong>ID:</strong> {activeLearner.idNumber}</span>
                                             <span><strong>SAQA:</strong> {activeLearner.qualification.saqaId}</span>
-                                            <span><strong>Status:</strong> {activeLearner.isUpdate ? "Updating Existing Profile" : "Creating New Offline Profile"}</span>
+                                            <span style={{ background: activeLearner.isUpdate ? '#dcfce7' : '#fef3c7', color: activeLearner.isUpdate ? '#166534' : '#b45309', padding: '2px 8px', borderRadius: '12px', fontSize: '0.7rem', fontWeight: 700 }}>
+                                                {activeLearner.isUpdate ? "UPDATING EXISTING" : "NEW OFFLINE PROFILE"}
+                                            </span>
                                         </div>
                                     </div>
                                     <div style={{ textAlign: 'right' }}>
-                                        <div style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--mlab-blue)' }}>{activeLearner.qualification.name}</div>
+                                        <div style={{ fontSize: '0.85rem', fontWeight: 'bold', color: '#0369a1' }}>{activeLearner.qualification.name}</div>
                                         <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Total Modules: {activeLearner.knowledgeModules.length + activeLearner.practicalModules.length + activeLearner.workExperienceModules.length}</div>
                                     </div>
                                 </div>
 
                                 {/* Quick Preview of Modules */}
-                                <h4 style={{ fontSize: '0.85rem', color: '#475569', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}><Layers size={14} /> Extracted Module Results</h4>
-                                <table className="mlab-table" style={{ border: '1px solid var(--mlab-border)', borderRadius: '8px' }}>
+                                <h4 style={{ fontSize: '0.85rem', color: '#0f172a', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}><Layers size={16} /> Extracted Module Results</h4>
+                                <table className="mlab-table" style={{ border: '1px solid #cbd5e1', borderRadius: '8px', width: '100%', borderCollapse: 'collapse' }}>
                                     <thead>
-                                        <tr style={{ background: '#f8fafc' }}>
-                                            <th>Type</th>
-                                            <th>Code</th>
-                                            <th>Module Name</th>
-                                            <th>Achievement</th>
+                                        <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                                            <th style={{ padding: '10px 12px', textAlign: 'left', color: '#475569', fontSize: '0.75rem', textTransform: 'uppercase' }}>Type</th>
+                                            <th style={{ padding: '10px 12px', textAlign: 'left', color: '#475569', fontSize: '0.75rem', textTransform: 'uppercase' }}>Code</th>
+                                            <th style={{ padding: '10px 12px', textAlign: 'left', color: '#475569', fontSize: '0.75rem', textTransform: 'uppercase' }}>Module Name</th>
+                                            <th style={{ padding: '10px 12px', textAlign: 'left', color: '#475569', fontSize: '0.75rem', textTransform: 'uppercase' }}>Achievement</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -329,11 +336,11 @@ export const BulkResultsImportModal: React.FC<BulkResultsImportModalProps> = ({
                                             ...activeLearner.practicalModules.map((m: any) => ({ ...m, t: 'Practical' })),
                                             ...activeLearner.workExperienceModules.map((m: any) => ({ ...m, t: 'Workplace' }))
                                         ].map((mod: any, i: number) => (
-                                            <tr key={i}>
-                                                <td style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b' }}>{mod.t}</td>
-                                                <td style={{ fontSize: '0.8rem' }}>{mod.code}</td>
-                                                <td style={{ fontSize: '0.8rem' }}>{mod.name}</td>
-                                                <td>
+                                            <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                                <td style={{ padding: '10px 12px', fontSize: '0.75rem', fontWeight: 600, color: '#64748b' }}>{mod.t}</td>
+                                                <td style={{ padding: '10px 12px', fontSize: '0.8rem', color: '#0f172a', fontWeight: 500 }}>{mod.code}</td>
+                                                <td style={{ padding: '10px 12px', fontSize: '0.8rem', color: '#334155' }}>{mod.name}</td>
+                                                <td style={{ padding: '10px 12px' }}>
                                                     <span style={{
                                                         padding: '4px 8px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 'bold',
                                                         background: mod.status === 'Competent' ? '#dcfce7' : mod.status === 'Not Yet Competent' ? '#fee2e2' : '#fef9c3',
@@ -352,20 +359,20 @@ export const BulkResultsImportModal: React.FC<BulkResultsImportModalProps> = ({
 
                     {step === "complete" && (
                         <div style={{ textAlign: "center", padding: "3rem 0" }}>
-                            <CheckCircle2 size={64} color="var(--mlab-green)" style={{ margin: '0 auto 1.5rem' }} />
-                            <h3 style={{ color: 'var(--mlab-blue)', textTransform: 'uppercase' }}>Import Successful</h3>
-                            <p style={{ color: 'var(--mlab-grey)' }}>{parsedData.length} learner records have been successfully updated/created.</p>
-                            <button className="mlab-btn mlab-btn--green" style={{ marginTop: '1rem' }} onClick={onClose}>Return to Dashboard</button>
+                            <CheckCircle2 size={64} color="#16a34a" style={{ margin: '0 auto 1.5rem' }} />
+                            <h3 style={{ color: '#0f172a', textTransform: 'uppercase', fontWeight: 800 }}>Import Successful</h3>
+                            <p style={{ color: '#475569' }}>{parsedData.length} learner records have been successfully updated/created.</p>
+                            <button className="mlab-btn mlab-btn--green" style={{ marginTop: '1rem', background: '#16a34a', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '6px', fontWeight: 600, cursor: 'pointer' }} onClick={onClose}>Return to Dashboard</button>
                         </div>
                     )}
                 </div>
 
                 {step === "review" && (
-                    <div className="mlab-modal__footer" style={{ background: 'var(--mlab-bg)', borderTop: '1px solid var(--mlab-border)', display: 'flex', justifyContent: 'space-between', padding: '1rem 1.5rem' }}>
-                        <span style={{ fontSize: '0.8rem', color: '#64748b' }}>Please verify the extracted data before saving.</span>
+                    <div className="mlab-modal__footer" style={{ background: '#f8fafc', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', padding: '1rem 1.5rem', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 500 }}>Please verify the extracted data before saving.</span>
                         <div style={{ display: 'flex', gap: '8px' }}>
-                            <button className="mlab-btn mlab-btn--ghost" onClick={() => setStep("upload")}>Cancel & Re-upload</button>
-                            <button className="mlab-btn mlab-btn--primary" onClick={executeSaveAll}><Save size={14} /> Save All {parsedData.length} Learners</button>
+                            <button className="wm-btn wm-btn--ghost" style={{ border: '1px solid #cbd5e1', color: '#475569' }} onClick={() => setStep("upload")}>Cancel & Re-upload</button>
+                            <button className="wm-btn wm-btn--primary" style={{ background: '#0ea5e9', color: 'white', border: 'none' }} onClick={executeSaveAll}><Save size={14} /> Save All {parsedData.length} Learners</button>
                         </div>
                     </div>
                 )}

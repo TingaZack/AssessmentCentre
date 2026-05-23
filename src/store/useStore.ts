@@ -160,7 +160,12 @@ interface StoreState
   fetchLearners: (force?: boolean) => Promise<void>;
   fetchStagingLearners: () => Promise<void>;
 
-  approveStagingLearners: (learners: DashboardLearner[]) => Promise<void>;
+  // approveStagingLearners: (learners: DashboardLearner[]) => Promise<void>;
+  approveStagingLearners: (
+    learners: DashboardLearner[],
+    mode?: "standard" | "shadow" | "offline",
+  ) => Promise<void>;
+
   inviteLearner: (learner: DashboardLearner) => Promise<void>;
   discardStagingLearners: (ids: string[]) => Promise<void>;
 
@@ -442,7 +447,7 @@ export const useStore = create<StoreState>()(
     fetchLearners: async (force = false) => {
       const { learnersLastFetched, learnersLoading } = get();
 
-      // 1. ⏱️ CACHE SHIELD
+      // CACHE SHIELD
       // Prevent redundant network calls if data was fetched less than 5 minutes ago
       if (
         !force &&
@@ -456,7 +461,7 @@ export const useStore = create<StoreState>()(
       set({ learnersLoading: true, learnersError: null });
 
       try {
-        // 2. 📡 PARALLEL FETCH
+        // PARALLEL FETCH
         // Get the entire Identity database and the entire Registration Ledger simultaneously
         const [profilesSnap, enrollmentsSnap] = await Promise.all([
           getDocs(query(collection(db, "learners"))),
@@ -467,19 +472,19 @@ export const useStore = create<StoreState>()(
         const combinedLearners: DashboardLearner[] = [];
         const usedProfileIds = new Set<string>();
 
-        // 3. 👤 MAP IDENTITIES
+        //  MAP IDENTITIES
         // Every document ID in the 'learners' collection is strictly an idNumber
         profilesSnap.docs.forEach((doc) => {
           profilesMap.set(doc.id, { id: doc.id, ...doc.data() });
         });
 
-        // 4. 📑 PROCESS THE REGISTRATION LEDGER
+        // PROCESS THE REGISTRATION LEDGER
         // Match every enrollment document to its physical human profile
         enrollmentsSnap.docs.forEach((docSnap) => {
           const enrollment = docSnap.data();
           const profile = profilesMap.get(enrollment.learnerId);
 
-          // 🛡️ GHOST SHIELD: We only process the join if the Human Profile exists and is valid
+          // GHOST SHIELD: We only process the join if the Human Profile exists and is valid
           if (profile && (profile.fullName || profile.idNumber)) {
             usedProfileIds.add(profile.id);
 
@@ -493,12 +498,12 @@ export const useStore = create<StoreState>()(
           } else if (!profile) {
             // Log orphan records for system cleanup but do not show in UI
             console.warn(
-              `⚠️ Orphaned Enrollment found: ${docSnap.id} points to missing idNumber ${enrollment.learnerId}`,
+              ` Orphaned Enrollment found: ${docSnap.id} points to missing idNumber ${enrollment.learnerId}`,
             );
           }
         });
 
-        // 5. 💤 INJECT DORMANT PROFILES
+        // INJECT DORMANT PROFILES
         // Find Humans who exist in the 'learners' collection but are not currently enrolled in any class
         profilesMap.forEach((profile, profileId) => {
           if (!usedProfileIds.has(profileId)) {
@@ -515,7 +520,7 @@ export const useStore = create<StoreState>()(
           }
         });
 
-        // 6. 🔡 DETERMINISTIC SORT
+        //  DETERMINISTIC SORT
         // Ensure the directory is always alphabetical for the UI
         combinedLearners.sort((a, b) => {
           const nameA = String(a.fullName || "").toLowerCase();
@@ -537,14 +542,14 @@ export const useStore = create<StoreState>()(
             systemError.message || "Failed to synchronize learner directory.",
           learnersLoading: false,
         });
-        throw systemError; // Allow the calling component to handle the specific error
+        throw systemError;
       }
     },
 
     addLearner: async (payload) => {
       const USER_ID = getAuth().currentUser?.uid || "System";
 
-      // 1.  STRICT VALIDATION: No Fallbacks
+      // STRICT VALIDATION: No Fallbacks
       // We enforce the idNumber as the physical Document ID to prevent ghost duplicates.
       if (!payload.idNumber || payload.idNumber.trim() === "") {
         throw new Error(
@@ -558,7 +563,7 @@ export const useStore = create<StoreState>()(
         const timestamp = now();
         const profileData: any = {};
 
-        // 2. 🗄️ DATA SEPARATION
+        // DATA SEPARATION
         // Extract only keys belonging to the physical Identity Profile
         Object.keys(payload).forEach((key) => {
           if (PROFILE_KEYS.includes(key)) {
@@ -566,7 +571,7 @@ export const useStore = create<StoreState>()(
           }
         });
 
-        // 3. 🛠️ IDENTITY CONSTRUCTION
+        // IDENTITY CONSTRUCTION
         // Anchor the identity with deterministic metadata
         profileData.id = learnerDocId;
         profileData.learnerId = learnerDocId;
@@ -582,7 +587,7 @@ export const useStore = create<StoreState>()(
         // We do NOT use "Unassigned" as a fallback string.
         profileData.cohortId = payload.cohortId || "";
 
-        // 4. 💾 PHYSICAL WRITE: Identity Profile
+        // PHYSICAL WRITE: Identity Profile
         // Using setDoc with the ID Number ensures we anchor to the Human Identity.
         // This prevents the creation of auto-generated "ghost" IDs.
         await setDoc(
@@ -591,14 +596,14 @@ export const useStore = create<StoreState>()(
           { merge: true },
         );
 
-        // 5. RELATIONSHIP SYNC: The Registration Ledger
+        // RELATIONSHIP SYNC: The Registration Ledger
         // We only create an enrollment record if a valid cohortId is provided.
         // This implements the "Importing is not Enrolling" product rule.
         if (payload.cohortId && payload.cohortId !== "") {
           const batch = writeBatch(db);
           const enrollmentId = `${payload.cohortId}_${learnerDocId}`;
 
-          // GENERATE OFFICIAL STUDENT ID 🚀
+          // GENERATE OFFICIAL STUDENT ID
           const studentId = generateStudentId(payload.cohortId, enrollmentId);
 
           const enrollmentData = {
@@ -607,7 +612,7 @@ export const useStore = create<StoreState>()(
             cohortId: payload.cohortId,
             qualification: payload.qualification || {},
             status: "active",
-            verificationCode: (payload as any).verificationCode || studentId, // <-- Added here
+            verificationCode: (payload as any).verificationCode || studentId,
             enrolledAt: timestamp,
             updatedAt: timestamp,
             assignedBy: USER_ID,
@@ -617,35 +622,33 @@ export const useStore = create<StoreState>()(
             workExperienceModules: (payload as any).workExperienceModules || [],
           };
 
-          // A. Create the Ledger Entry
+          // Create the Ledger Entry
           batch.set(
             doc(db, "enrollments", enrollmentId),
             sanitizeForFirestore(enrollmentData),
             { merge: true },
           );
 
-          // B. Update the Cohort Register
+          // Update the Cohort Register
           batch.update(doc(db, "cohorts", payload.cohortId), {
             learnerIds: arrayUnion(learnerDocId),
           });
 
-          // C. Ghost Cleanup
+          // Ghost Cleanup
           batch.delete(doc(db, "enrollments", `Unassigned_${learnerDocId}`));
 
           await batch.commit();
         }
 
-        // 6. 🔄 UI STATE REFRESH
+        //  UI STATE REFRESH
         // Fetch fresh data from the server to ensure local state matches deterministic IDs.
         await get().fetchLearners(true);
         if ((get() as any).fetchCohorts) await (get() as any).fetchCohorts();
 
-        console.log(
-          `✅ System: Successfully initialized profile ${learnerDocId}`,
-        );
+        console.log(`System: Successfully initialized profile ${learnerDocId}`);
       } catch (systemError: any) {
         // Log the raw system error and propagate it to the UI
-        console.error("❌ Critical Failure in addLearner:", systemError);
+        console.error(" Critical Failure in addLearner:", systemError);
         throw systemError;
       }
     },
@@ -755,7 +758,7 @@ export const useStore = create<StoreState>()(
 
         const batch = writeBatch(db);
 
-        // 1. 👤 PREPARE PROFILE UPDATES (Identity)
+        // PREPARE PROFILE UPDATES (Identity)
         const profileUpdates: any = {
           updatedAt: timestamp,
           updatedBy: CURRENT_USER_ID,
@@ -775,7 +778,7 @@ export const useStore = create<StoreState>()(
           { merge: true },
         );
 
-        // 2. 📑 HANDLE RELATIONAL SYNC (The Ledger Logic)
+        // HANDLE RELATIONAL SYNC (The Ledger Logic)
         // Check if a cohort movement or assignment change is happening
         const isCohortChanging =
           newCohortId !== undefined && newCohortId !== oldCohortId;
@@ -855,10 +858,10 @@ export const useStore = create<StoreState>()(
             });
           }
 
-          // C. GHOST PURGE: Delete any legacy "Unassigned" ledger docs for this human
+          // GHOST PURGE: Delete any legacy "Unassigned" ledger docs for this human
           batch.delete(doc(db, "enrollments", `Unassigned_${learnerIdNumber}`));
         } else if (existingRow.enrollmentId) {
-          // 3. 🛠️ STANDARD LEDGER UPDATE (No Class Change)
+          //STANDARD LEDGER UPDATE (No Class Change)
           // Update the existing ledger document if non-relational fields changed
           const enrollmentUpdates: any = {
             updatedAt: timestamp,
@@ -878,11 +881,11 @@ export const useStore = create<StoreState>()(
           );
         }
 
-        // 4. 🧨 ATOMIC COMMIT
+        // ATOMIC COMMIT
         // batch.commit() will throw a system-defined error if security rules fail
         await batch.commit();
 
-        // 5. 🔄 LOCAL STATE SYNCHRONIZATION
+        // LOCAL STATE SYNCHRONIZATION
         set((state) => {
           const index = state.learners.findIndex((l) => l.id === id);
           if (index !== -1) {
@@ -911,7 +914,7 @@ export const useStore = create<StoreState>()(
         if ((get() as any).fetchCohorts) await (get() as any).fetchCohorts();
       } catch (systemError: any) {
         // Log raw system details and propagate the actual Error object to the UI
-        console.error("❌ updateLearner Sync Failure:", systemError);
+        console.error(" updateLearner Sync Failure:", systemError);
         throw systemError;
       }
     },
@@ -996,7 +999,7 @@ export const useStore = create<StoreState>()(
     //   }
     // },
 
-    // STRICT ENROLLMENT GATEKEEPER (The Ledger Sync) 🚀
+    // STRICT ENROLLMENT GATEKEEPER (The Ledger Sync)
     enrollLearnerInCohort: async (
       learnerId: string,
       cohortId: string,
@@ -1029,7 +1032,7 @@ export const useStore = create<StoreState>()(
         // GENERATE OFFICIAL STUDENT ID
         const studentId = generateStudentId(cohortId, enrollmentId);
 
-        // 2. 📑 STEP 1: INITIALIZE REGISTRATION LEDGER
+        // INITIALIZE REGISTRATION LEDGER
         const enrollmentData = {
           id: enrollmentId,
           learnerId: learnerId,
@@ -1048,7 +1051,7 @@ export const useStore = create<StoreState>()(
           sanitizeForFirestore(enrollmentData),
           { merge: true },
         );
-        // 3. 👤 STEP 2: UPDATE HUMAN PROFILE POINTER
+        //  UPDATE HUMAN PROFILE POINTER
         // We update the 'learners' collection so the profile knows which class it belongs to.
         batch.update(doc(db, "learners", learnerId), {
           cohortId: cohortId,
@@ -1056,23 +1059,23 @@ export const useStore = create<StoreState>()(
           updatedBy: USER_ID,
         });
 
-        // 4. 📋 STEP 3: UPDATE COHORT CLASS REGISTER
+        // UPDATE COHORT CLASS REGISTER
         // We ensure the cohort document itself has the learner's ID in its member list.
         batch.update(doc(db, "cohorts", cohortId), {
           learnerIds: arrayUnion(learnerId),
           updatedAt: timestamp,
         });
 
-        // 5. 🧹 STEP 4: GHOST PURGE
+        //  GHOST PURGE
         // If this learner previously had a placeholder "Unassigned" ledger entry,
         // we physically destroy it now to keep the database pristine.
         batch.delete(doc(db, "enrollments", `Unassigned_${learnerId}`));
 
-        // 6. 🧨 ATOMIC COMMIT
+        // ATOMIC COMMIT
         // All three collections are updated or the entire operation fails.
         await batch.commit();
 
-        // 7. 🔄 SYNCHRONIZE LOCAL STATE
+        //  SYNCHRONIZE LOCAL STATE
         // Fetch fresh data for both Learners and Cohorts to ensure the UI reflects the change.
         await get().fetchLearners(true);
         if ((get() as any).fetchCohorts) {
@@ -1080,11 +1083,11 @@ export const useStore = create<StoreState>()(
         }
 
         console.log(
-          `✅ Ledger Sync Complete: Learner ${learnerId} enrolled in ${cohortId}`,
+          `Ledger Sync Complete: Learner ${learnerId} enrolled in ${cohortId}`,
         );
       } catch (systemError: any) {
         // PROPAGATE SYSTEM ERROR: Log raw failure and throw to UI
-        console.error("❌ Critical Enrollment Failure:", {
+        console.error(" Critical Enrollment Failure:", {
           code: systemError.code,
           message: systemError.message,
           learnerId,
@@ -1398,8 +1401,11 @@ export const useStore = create<StoreState>()(
       }
     },
 
-    // BULLETPROOF APPROVAL LOGIC (Strict Identity Only) 🚀
-    approveStagingLearners: async (learnersToApprove) => {
+    // BULLETPROOF APPROVAL LOGIC (Strict Identity Only)
+    approveStagingLearners: async (
+      learnersToApprove,
+      mode: "standard" | "shadow" | "offline" = "standard",
+    ) => {
       set({ learnersLoading: true });
       const USER_ID = getAuth().currentUser?.uid || "System";
       const functions = getFunctions();
@@ -1411,90 +1417,148 @@ export const useStore = create<StoreState>()(
 
         for (const l of learnersToApprove) {
           try {
-            // 1. STRICT VALIDATION: Reject corrupted staged data immediately
+            // STRICT VALIDATION: Reject corrupted staged data immediately
             if (
               !l.idNumber ||
               !l.fullName ||
               l.idNumber.trim() === "" ||
               l.fullName.trim() === ""
             ) {
-              console.warn(
-                "⚠️ Skipping invalid staged learner (missing ID or Name):",
-                l.id,
-              );
+              console.warn(" Skipping invalid staged learner:", l.id);
               continue;
             }
 
             // DETERMINISTIC ANCHOR: The ID Number is the Document ID
             const profileId = l.idNumber.trim();
-            let trueAuthUid = profileId; // Default to ID number if Auth is pending
-            let isNewUser = true;
 
-            // 2. CHECK IF HUMAN ALREADY EXISTS (Prevents duplicates)
-            const existingRef = doc(db, "learners", profileId);
-            const existingSnap = await getDoc(existingRef);
+            if (mode === "shadow") {
+              // =======================================================
+              // BOOTCAMP PATHWAY (SHADOW PROFILES)
+              // =======================================================
+              const targetCohortId = l.cohortId || "Unassigned";
 
-            if (existingSnap.exists()) {
-              const existingData = existingSnap.data();
-              trueAuthUid = existingData.authUid || profileId;
-              isNewUser = false;
-            }
+              const profileData: any = {
+                ...l,
+                id: profileId,
+                learnerId: profileId,
+                authUid: profileId,
+                cohortId: targetCohortId,
+                isBootcamp: true,
+                updatedAt: new Date().toISOString(),
+                updatedBy: USER_ID,
+                createdAt: new Date().toISOString(),
+                createdBy: USER_ID,
+                authStatus: "pending",
+                profileCompleted: false,
+              };
 
-            // 3. SECURE AUTHENTICATION CREATION
-            if (isNewUser && l.email && l.email.trim() !== "") {
-              try {
-                const result = await createAccountFn({
-                  email: l.email,
-                  fullName: l.fullName,
-                  role: "learner",
-                  password: "TemporaryPassword123!",
-                });
-                const data = result.data as any;
-                if (data.success && data.uid) {
-                  trueAuthUid = data.uid;
-                }
-              } catch (authErr) {
-                console.error(
-                  `Auth creation failed for ${l.email}, continuing as pending.`,
-                  authErr,
+              batch.set(
+                doc(db, "learners", profileId),
+                sanitizeForFirestore(profileData),
+                { merge: true },
+              );
+
+              if (targetCohortId !== "Unassigned" && targetCohortId !== "") {
+                const enrollmentId = `${targetCohortId}_${profileId}`;
+                const studentId = generateStudentId(
+                  targetCohortId,
+                  enrollmentId,
                 );
+
+                const enrollmentData: any = {
+                  id: enrollmentId,
+                  learnerId: profileId,
+                  cohortId: targetCohortId,
+                  qualification: l.qualification || {},
+                  status: "active",
+                  verificationCode: l.verificationCode || studentId,
+                  isDraft: false,
+                  isArchived: false,
+                  isBootcamp: true,
+                  enrolledAt: new Date().toISOString(),
+                  updatedAt: new Date().toISOString(),
+                  assignedBy: USER_ID,
+                };
+
+                batch.set(
+                  doc(db, "enrollments", enrollmentId),
+                  sanitizeForFirestore(enrollmentData),
+                  { merge: true },
+                );
+                batch.update(doc(db, "cohorts", targetCohortId), {
+                  learnerIds: arrayUnion(profileId),
+                });
               }
+
+              batch.delete(doc(db, "staging_learners", l.id));
+              approvedIds.add(l.id);
+            } else {
+              // =======================================================
+              // COMBINED PATHWAY (STANDARD & OFFLINE)
+              // -> Your exact original production code stays 100% safe
+              // =======================================================
+              let trueAuthUid = profileId;
+              let isNewUser = true;
+
+              const existingRef = doc(db, "learners", profileId);
+              const existingSnap = await getDoc(existingRef);
+
+              if (existingSnap.exists()) {
+                const existingData = existingSnap.data();
+                trueAuthUid = existingData.authUid || profileId;
+                isNewUser = false;
+              }
+
+              if (isNewUser && l.email && l.email.trim() !== "") {
+                try {
+                  const result = await createAccountFn({
+                    email: l.email,
+                    fullName: l.fullName,
+                    role: "learner",
+                    password: "TemporaryPassword123!",
+                  });
+                  const data = result.data as any;
+                  if (data.success && data.uid) {
+                    trueAuthUid = data.uid;
+                  }
+                } catch (authErr) {
+                  console.error(
+                    `Auth creation failed for ${l.email}, continuing as pending.`,
+                    authErr,
+                  );
+                }
+              }
+
+              const profileData: any = {
+                ...l,
+                id: profileId,
+                learnerId: profileId,
+                authUid: trueAuthUid,
+                cohortId: "",
+                isBootcamp: false,
+                ...(mode === "offline" && { isOffline: true }),
+                updatedAt: new Date().toISOString(),
+                updatedBy: USER_ID,
+              };
+
+              if (isNewUser) {
+                profileData.createdAt = new Date().toISOString();
+                profileData.createdBy = USER_ID;
+                profileData.authStatus =
+                  trueAuthUid !== profileId ? "active" : "pending";
+              }
+
+              const cleanProfile = sanitizeForFirestore(profileData);
+              batch.set(doc(db, "learners", profileId), cleanProfile, {
+                merge: true,
+              });
+
+              // ENROLLMENT LEDGER LOGIC HAS BEEN COMPLETELY REMOVED
+
+              batch.delete(doc(db, "staging_learners", l.id));
+              approvedIds.add(l.id);
             }
-
-            // 4. EXPLICIT PROFILE MAPPING (The Human Identity)
-            // We force cohortId to be empty. They are strictly Dormant upon import.
-            const profileData: any = {
-              ...l, // Spread imported demographics/data
-              id: profileId,
-              learnerId: profileId,
-              authUid: trueAuthUid,
-              cohortId: "", // strictly empty string, no fallbacks
-              updatedAt: new Date().toISOString(),
-              updatedBy: USER_ID,
-            };
-
-            if (isNewUser) {
-              profileData.createdAt = new Date().toISOString();
-              profileData.createdBy = USER_ID;
-              profileData.authStatus =
-                trueAuthUid !== profileId ? "active" : "pending";
-            }
-
-            const cleanProfile = sanitizeForFirestore(profileData);
-
-            // Write to the Learners collection (Anchored to ID Number)
-            batch.set(doc(db, "learners", profileId), cleanProfile, {
-              merge: true,
-            });
-
-            //  STEP 5 ENROLLMENT LEDGER LOGIC HAS BEEN COMPLETELY REMOVED
-
-            // 5. CLEANUP: Delete from Staging
-            batch.delete(doc(db, "staging_learners", l.id));
-
-            approvedIds.add(l.id);
           } catch (itemError) {
-            // Log individual learner errors but continue the loop for others
             console.error(
               `Failed processing staged learner ${l.idNumber}:`,
               itemError,
@@ -1502,10 +1566,8 @@ export const useStore = create<StoreState>()(
           }
         }
 
-        // 6. COMMIT ALL CHANGES ATOMICALLY
         await batch.commit();
 
-        // 7. UPDATE LOCAL STATE
         set((state) => {
           state.stagingLearners = state.stagingLearners.filter(
             (l) => !approvedIds.has(l.id),
@@ -1513,25 +1575,19 @@ export const useStore = create<StoreState>()(
           state.learnersLoading = false;
         });
 
-        // 8. REFRESH LIVE DATABASE VIEW
         await get().fetchLearners(true);
+        if ((get() as any).fetchCohorts) await (get() as any).fetchCohorts();
       } catch (systemError: any) {
-        // CATCH SYSTEM ERROR: Propagate the raw system-defined error object
-        console.error("System Transaction Failed in approveStagingLearners:", {
-          code: systemError.code,
-          message: systemError.message,
-        });
-
+        console.error(
+          "System Transaction Failed in approveStagingLearners:",
+          systemError,
+        );
         set({ learnersLoading: false });
-
-        // Propagate to the UI to handle specific error feedback
         throw systemError;
       }
     },
 
-    // // BULLETPROOF APPROVAL LOGIC (Registration Ledger Pattern) 🚀
-    // // BULLETPROOF APPROVAL LOGIC (Registration Ledger Pattern) 🚀
-    // // BULLETPROOF APPROVAL LOGIC (Registration Ledger Pattern) 🚀
+    // // BULLETPROOF APPROVAL LOGIC (Strict Identity Only)
     // approveStagingLearners: async (learnersToApprove) => {
     //   set({ learnersLoading: true });
     //   const USER_ID = getAuth().currentUser?.uid || "System";
@@ -1552,7 +1608,7 @@ export const useStore = create<StoreState>()(
     //           l.fullName.trim() === ""
     //         ) {
     //           console.warn(
-    //             "⚠️ Skipping invalid staged learner (missing ID or Name):",
+    //             " Skipping invalid staged learner (missing ID or Name):",
     //             l.id,
     //           );
     //           continue;
@@ -1594,18 +1650,14 @@ export const useStore = create<StoreState>()(
     //           }
     //         }
 
-    //         // NO FALLBACKS: cohortId is either a real ID or an empty string (Dormant)
-    //         const targetCohortId =
-    //           l.cohortId && l.cohortId !== "Unassigned" ? l.cohortId : "";
-    //         console.log("CHCHDHECKIGL )): ", targetCohortId);
-
     //         // 4. EXPLICIT PROFILE MAPPING (The Human Identity)
+    //         // We force cohortId to be empty. They are strictly Dormant upon import.
     //         const profileData: any = {
     //           ...l, // Spread imported demographics/data
     //           id: profileId,
     //           learnerId: profileId,
     //           authUid: trueAuthUid,
-    //           cohortId: targetCohortId, // Pointer for UI filtering only
+    //           cohortId: "",
     //           updatedAt: new Date().toISOString(),
     //           updatedBy: USER_ID,
     //         };
@@ -1624,44 +1676,9 @@ export const useStore = create<StoreState>()(
     //           merge: true,
     //         });
 
-    //         // 5. CONDITIONAL ENROLLMENT MAPPING (The Registration Ledger)
-    //         // THE CURE: Only create an enrollment document if they have a real cohortId
-    //         if (targetCohortId !== "") {
-    //           const enrollmentId = `${targetCohortId}_${profileId}`;
-    //           console.log("CHCHDHECKIGL: ", enrollmentId);
+    //         //  STEP 5 ENROLLMENT LEDGER LOGIC HAS BEEN COMPLETELY REMOVED
 
-    //           const enrollmentData: any = {
-    //             id: enrollmentId,
-    //             learnerId: profileId,
-    //             cohortId: targetCohortId,
-    //             qualification: l.qualification || {},
-    //             practicalModules: l.practicalModules || [],
-    //             knowledgeModules: l.knowledgeModules || [],
-    //             workExperienceModules: l.workExperienceModules || [],
-    //             trainingStartDate: l.trainingStartDate || "",
-    //             eisaAdmission: l.eisaAdmission || false,
-    //             issueDate: l.issueDate || "",
-    //             verificationCode: l.verificationCode || "",
-    //             status: "active",
-    //             isDraft: false,
-    //             isArchived: false,
-    //             approvedAt: new Date().toISOString(),
-    //             approvedBy: USER_ID,
-    //             createdAt: new Date().toISOString(),
-    //             createdBy: USER_ID,
-    //           };
-
-    //           const cleanEnrollment = sanitizeForFirestore(enrollmentData);
-    //           const newEnrollmentRef = doc(db, "enrollments", enrollmentId);
-    //           batch.set(newEnrollmentRef, cleanEnrollment, { merge: true });
-
-    //           // Update Class Register in the cohorts collection
-    //           batch.update(doc(db, "cohorts", targetCohortId), {
-    //             learnerIds: arrayUnion(profileId),
-    //           });
-    //         }
-
-    //         // 6. CLEANUP: Delete from Staging
+    //         // 5. CLEANUP: Delete from Staging
     //         batch.delete(doc(db, "staging_learners", l.id));
 
     //         approvedIds.add(l.id);
@@ -1674,11 +1691,10 @@ export const useStore = create<StoreState>()(
     //       }
     //     }
 
-    //     // 7. COMMIT ALL CHANGES ATOMICALLY
-    //     // This throws a system-defined error if security rules or connectivity fail
+    //     // 6. COMMIT ALL CHANGES ATOMICALLY
     //     await batch.commit();
 
-    //     // 8. UPDATE LOCAL STATE
+    //     // 7. UPDATE LOCAL STATE
     //     set((state) => {
     //       state.stagingLearners = state.stagingLearners.filter(
     //         (l) => !approvedIds.has(l.id),
@@ -1686,9 +1702,8 @@ export const useStore = create<StoreState>()(
     //       state.learnersLoading = false;
     //     });
 
-    //     // 9. REFRESH LIVE DATABASE VIEW
+    //     // 8. REFRESH LIVE DATABASE VIEW
     //     await get().fetchLearners(true);
-    //     if ((get() as any).fetchCohorts) await (get() as any).fetchCohorts();
     //   } catch (systemError: any) {
     //     // CATCH SYSTEM ERROR: Propagate the raw system-defined error object
     //     console.error("System Transaction Failed in approveStagingLearners:", {
@@ -1703,167 +1718,341 @@ export const useStore = create<StoreState>()(
     //   }
     // },
 
-    // // BULLETPROOF APPROVAL LOGIC (Registration Ledger Pattern) 🚀
-    // approveStagingLearners: async (learnersToApprove) => {
-    //   set({ learnersLoading: true });
-    //   const USER_ID = getAuth().currentUser?.uid || "UnknownUser";
-    //   const functions = getFunctions();
-    //   const createAccountFn = httpsCallable(functions, "createLearnerAccount");
+    // // // BULLETPROOF APPROVAL LOGIC (Registration Ledger Pattern)
+    // // // BULLETPROOF APPROVAL LOGIC (Registration Ledger Pattern)
+    // // // BULLETPROOF APPROVAL LOGIC (Registration Ledger Pattern)
+    // // approveStagingLearners: async (learnersToApprove) => {
+    // //   set({ learnersLoading: true });
+    // //   const USER_ID = getAuth().currentUser?.uid || "System";
+    // //   const functions = getFunctions();
+    // //   const createAccountFn = httpsCallable(functions, "createLearnerAccount");
 
-    //   try {
-    //     const batch = writeBatch(db);
-    //     const approvedIds = new Set<string>();
+    // //   try {
+    // //     const batch = writeBatch(db);
+    // //     const approvedIds = new Set<string>();
 
-    //     for (const l of learnersToApprove) {
-    //       try {
-    //         // 1. STRICT GHOST SHIELD: Reject corrupted staged data immediately
-    //         if (
-    //           !l.idNumber ||
-    //           !l.fullName ||
-    //           l.idNumber.trim() === "" ||
-    //           l.fullName.trim() === ""
-    //         ) {
-    //           console.warn(
-    //             "⚠️ Skipping invalid staged learner (missing ID or Name):",
-    //             l.id,
-    //           );
-    //           continue;
-    //         }
+    // //     for (const l of learnersToApprove) {
+    // //       try {
+    // //         // 1. STRICT VALIDATION: Reject corrupted staged data immediately
+    // //         if (
+    // //           !l.idNumber ||
+    // //           !l.fullName ||
+    // //           l.idNumber.trim() === "" ||
+    // //           l.fullName.trim() === ""
+    // //         ) {
+    // //           console.warn(
+    // //             " Skipping invalid staged learner (missing ID or Name):",
+    // //             l.id,
+    // //           );
+    // //           continue;
+    // //         }
 
-    //         let profileId = l.idNumber; // Default to ID number if Auth fails
-    //         let trueAuthUid = l.idNumber;
-    //         let isNewUser = true;
+    // //         // DETERMINISTIC ANCHOR: The ID Number is the Document ID
+    // //         const profileId = l.idNumber.trim();
+    // //         let trueAuthUid = profileId; // Default to ID number if Auth is pending
+    // //         let isNewUser = true;
 
-    //         // 2. CHECK IF HUMAN ALREADY EXISTS
-    //         const existingQ = query(
-    //           collection(db, "learners"),
-    //           where("idNumber", "==", l.idNumber),
-    //         );
-    //         const existingSnap = await getDocs(existingQ);
+    // //         // 2. CHECK IF HUMAN ALREADY EXISTS (Prevents duplicates)
+    // //         const existingRef = doc(db, "learners", profileId);
+    // //         const existingSnap = await getDoc(existingRef);
 
-    //         if (!existingSnap.empty) {
-    //           const existingData = existingSnap.docs[0].data();
-    //           profileId = existingSnap.docs[0].id;
-    //           trueAuthUid = existingData.authUid || profileId;
-    //           isNewUser = false;
-    //         }
+    // //         if (existingSnap.exists()) {
+    // //           const existingData = existingSnap.data();
+    // //           trueAuthUid = existingData.authUid || profileId;
+    // //           isNewUser = false;
+    // //         }
 
-    //         // 3. SECURE AUTHENTICATION CREATION
-    //         if (isNewUser && l.email && l.email.trim() !== "") {
-    //           try {
-    //             const result = await createAccountFn({
-    //               email: l.email,
-    //               fullName: l.fullName,
-    //               role: "learner",
-    //               password: "TemporaryPassword123!",
-    //             });
-    //             const data = result.data as any;
-    //             if (data.success && data.uid) {
-    //               profileId = data.uid;
-    //               trueAuthUid = data.uid;
-    //             }
-    //           } catch (authErr) {
-    //             console.error(
-    //               `Auth creation failed for ${l.email}, falling back to ID Number.`,
-    //               authErr,
-    //             );
-    //           }
-    //         }
+    // //         // 3. SECURE AUTHENTICATION CREATION
+    // //         if (isNewUser && l.email && l.email.trim() !== "") {
+    // //           try {
+    // //             const result = await createAccountFn({
+    // //               email: l.email,
+    // //               fullName: l.fullName,
+    // //               role: "learner",
+    // //               password: "TemporaryPassword123!",
+    // //             });
+    // //             const data = result.data as any;
+    // //             if (data.success && data.uid) {
+    // //               trueAuthUid = data.uid;
+    // //             }
+    // //           } catch (authErr) {
+    // //             console.error(
+    // //               `Auth creation failed for ${l.email}, continuing as pending.`,
+    // //               authErr,
+    // //             );
+    // //           }
+    // //         }
 
-    //         const targetCohortId = l.cohortId || "Unassigned";
+    // //         // NO FALLBACKS: cohortId is either a real ID or an empty string (Dormant)
+    // //         const targetCohortId =
+    // //           l.cohortId && l.cohortId !== "Unassigned" ? l.cohortId : "";
+    // //         console.log("CHCHDHECKIGL )): ", targetCohortId);
 
-    //         // 4. EXPLICIT PROFILE MAPPING
-    //         const profileData: any = {
-    //           id: profileId,
-    //           authUid: trueAuthUid,
-    //           idNumber: l.idNumber,
-    //           fullName: l.fullName,
-    //           firstName: l.firstName || "",
-    //           lastName: l.lastName || "",
-    //           email: l.email || "",
-    //           phone: l.phone || l.mobile || "",
-    //           mobile: l.mobile || l.phone || "",
-    //           dateOfBirth: l.dateOfBirth || "",
-    //           demographics: l.demographics || {},
-    //           cohortId: targetCohortId, // UI Pointer
-    //           updatedAt: new Date().toISOString(),
-    //           updatedBy: USER_ID,
-    //         };
+    // //         // 4. EXPLICIT PROFILE MAPPING (The Human Identity)
+    // //         const profileData: any = {
+    // //           ...l, // Spread imported demographics/data
+    // //           id: profileId,
+    // //           learnerId: profileId,
+    // //           authUid: trueAuthUid,
+    // //           cohortId: targetCohortId, // Pointer for UI filtering only
+    // //           updatedAt: new Date().toISOString(),
+    // //           updatedBy: USER_ID,
+    // //         };
 
-    //         if (isNewUser) {
-    //           profileData.createdAt = new Date().toISOString();
-    //           profileData.createdBy = USER_ID;
-    //           profileData.authStatus =
-    //             profileId !== l.idNumber ? "active" : "pending";
-    //         }
+    // //         if (isNewUser) {
+    // //           profileData.createdAt = new Date().toISOString();
+    // //           profileData.createdBy = USER_ID;
+    // //           profileData.authStatus =
+    // //             trueAuthUid !== profileId ? "active" : "pending";
+    // //         }
 
-    //         // 5. EXPLICIT ENROLLMENT MAPPING (The Registration Ledger)
-    //         const enrollmentId =
-    //           targetCohortId !== "Unassigned"
-    //             ? `${targetCohortId}_${profileId}`
-    //             : `Unassigned_${profileId}`;
+    // //         const cleanProfile = sanitizeForFirestore(profileData);
 
-    //         const enrollmentData: any = {
-    //           id: enrollmentId,
-    //           learnerId: profileId,
-    //           cohortId: targetCohortId,
-    //           qualification: l.qualification || {},
-    //           practicalModules: l.practicalModules || [],
-    //           knowledgeModules: l.knowledgeModules || [],
-    //           workExperienceModules: l.workExperienceModules || [],
-    //           trainingStartDate: l.trainingStartDate || "",
-    //           eisaAdmission: l.eisaAdmission || false,
-    //           issueDate: l.issueDate || "",
-    //           verificationCode: l.verificationCode || "",
-    //           status: "active",
-    //           isDraft: false,
-    //           isArchived: false,
-    //           approvedAt: new Date().toISOString(),
-    //           approvedBy: USER_ID,
-    //           createdAt: new Date().toISOString(),
-    //           createdBy: USER_ID,
-    //         };
+    // //         // Write to the Learners collection (Anchored to ID Number)
+    // //         batch.set(doc(db, "learners", profileId), cleanProfile, {
+    // //           merge: true,
+    // //         });
 
-    //         const cleanProfile = sanitizeForFirestore(profileData);
-    //         const cleanEnrollment = sanitizeForFirestore(enrollmentData);
+    // //         // 5. CONDITIONAL ENROLLMENT MAPPING (The Registration Ledger)
+    // //         // THE CURE: Only create an enrollment document if they have a real cohortId
+    // //         if (targetCohortId !== "") {
+    // //           const enrollmentId = `${targetCohortId}_${profileId}`;
+    // //           console.log("CHCHDHECKIGL: ", enrollmentId);
 
-    //         // Write Profile
-    //         batch.set(doc(db, "learners", profileId), cleanProfile, {
-    //           merge: true,
-    //         });
+    // //           const enrollmentData: any = {
+    // //             id: enrollmentId,
+    // //             learnerId: profileId,
+    // //             cohortId: targetCohortId,
+    // //             qualification: l.qualification || {},
+    // //             practicalModules: l.practicalModules || [],
+    // //             knowledgeModules: l.knowledgeModules || [],
+    // //             workExperienceModules: l.workExperienceModules || [],
+    // //             trainingStartDate: l.trainingStartDate || "",
+    // //             eisaAdmission: l.eisaAdmission || false,
+    // //             issueDate: l.issueDate || "",
+    // //             verificationCode: l.verificationCode || "",
+    // //             status: "active",
+    // //             isDraft: false,
+    // //             isArchived: false,
+    // //             approvedAt: new Date().toISOString(),
+    // //             approvedBy: USER_ID,
+    // //             createdAt: new Date().toISOString(),
+    // //             createdBy: USER_ID,
+    // //           };
 
-    //         // Write Enrollment Ledger
-    //         const newEnrollmentRef = doc(db, "enrollments", enrollmentId);
-    //         batch.set(newEnrollmentRef, cleanEnrollment, { merge: true });
+    // //           const cleanEnrollment = sanitizeForFirestore(enrollmentData);
+    // //           const newEnrollmentRef = doc(db, "enrollments", enrollmentId);
+    // //           batch.set(newEnrollmentRef, cleanEnrollment, { merge: true });
 
-    //         // Delete from Staging
-    //         batch.delete(doc(db, "staging_learners", l.id));
+    // //           // Update Class Register in the cohorts collection
+    // //           batch.update(doc(db, "cohorts", targetCohortId), {
+    // //             learnerIds: arrayUnion(profileId),
+    // //           });
+    // //         }
 
-    //         approvedIds.add(l.id);
-    //       } catch (err) {
-    //         console.error(
-    //           `Failed processing staged learner ${l.idNumber}:`,
-    //           err,
-    //         );
-    //       }
-    //     }
+    // //         // 6. CLEANUP: Delete from Staging
+    // //         batch.delete(doc(db, "staging_learners", l.id));
 
-    //     await batch.commit();
+    // //         approvedIds.add(l.id);
+    // //       } catch (itemError) {
+    // //         // Log individual learner errors but continue the loop for others
+    // //         console.error(
+    // //           `Failed processing staged learner ${l.idNumber}:`,
+    // //           itemError,
+    // //         );
+    // //       }
+    // //     }
 
-    //     set((state) => {
-    //       state.stagingLearners = state.stagingLearners.filter(
-    //         (l) => !approvedIds.has(l.id),
-    //       );
-    //       state.learnersLoading = false;
-    //     });
+    // //     // 7. COMMIT ALL CHANGES ATOMICALLY
+    // //     // This throws a system-defined error if security rules or connectivity fail
+    // //     await batch.commit();
 
-    //     await get().fetchLearners(true);
-    //   } catch (e) {
-    //     console.error(e);
-    //     set({ learnersLoading: false });
-    //     throw new Error("Error during approval process.");
-    //   }
-    // },
+    // //     // 8. UPDATE LOCAL STATE
+    // //     set((state) => {
+    // //       state.stagingLearners = state.stagingLearners.filter(
+    // //         (l) => !approvedIds.has(l.id),
+    // //       );
+    // //       state.learnersLoading = false;
+    // //     });
+
+    // //     // 9. REFRESH LIVE DATABASE VIEW
+    // //     await get().fetchLearners(true);
+    // //     if ((get() as any).fetchCohorts) await (get() as any).fetchCohorts();
+    // //   } catch (systemError: any) {
+    // //     // CATCH SYSTEM ERROR: Propagate the raw system-defined error object
+    // //     console.error("System Transaction Failed in approveStagingLearners:", {
+    // //       code: systemError.code,
+    // //       message: systemError.message,
+    // //     });
+
+    // //     set({ learnersLoading: false });
+
+    // //     // Propagate to the UI to handle specific error feedback
+    // //     throw systemError;
+    // //   }
+    // // },
+
+    // // // BULLETPROOF APPROVAL LOGIC (Registration Ledger Pattern)
+    // // approveStagingLearners: async (learnersToApprove) => {
+    // //   set({ learnersLoading: true });
+    // //   const USER_ID = getAuth().currentUser?.uid || "UnknownUser";
+    // //   const functions = getFunctions();
+    // //   const createAccountFn = httpsCallable(functions, "createLearnerAccount");
+
+    // //   try {
+    // //     const batch = writeBatch(db);
+    // //     const approvedIds = new Set<string>();
+
+    // //     for (const l of learnersToApprove) {
+    // //       try {
+    // //         // 1. STRICT GHOST SHIELD: Reject corrupted staged data immediately
+    // //         if (
+    // //           !l.idNumber ||
+    // //           !l.fullName ||
+    // //           l.idNumber.trim() === "" ||
+    // //           l.fullName.trim() === ""
+    // //         ) {
+    // //           console.warn(
+    // //             " Skipping invalid staged learner (missing ID or Name):",
+    // //             l.id,
+    // //           );
+    // //           continue;
+    // //         }
+
+    // //         let profileId = l.idNumber; // Default to ID number if Auth fails
+    // //         let trueAuthUid = l.idNumber;
+    // //         let isNewUser = true;
+
+    // //         // 2. CHECK IF HUMAN ALREADY EXISTS
+    // //         const existingQ = query(
+    // //           collection(db, "learners"),
+    // //           where("idNumber", "==", l.idNumber),
+    // //         );
+    // //         const existingSnap = await getDocs(existingQ);
+
+    // //         if (!existingSnap.empty) {
+    // //           const existingData = existingSnap.docs[0].data();
+    // //           profileId = existingSnap.docs[0].id;
+    // //           trueAuthUid = existingData.authUid || profileId;
+    // //           isNewUser = false;
+    // //         }
+
+    // //         // 3. SECURE AUTHENTICATION CREATION
+    // //         if (isNewUser && l.email && l.email.trim() !== "") {
+    // //           try {
+    // //             const result = await createAccountFn({
+    // //               email: l.email,
+    // //               fullName: l.fullName,
+    // //               role: "learner",
+    // //               password: "TemporaryPassword123!",
+    // //             });
+    // //             const data = result.data as any;
+    // //             if (data.success && data.uid) {
+    // //               profileId = data.uid;
+    // //               trueAuthUid = data.uid;
+    // //             }
+    // //           } catch (authErr) {
+    // //             console.error(
+    // //               `Auth creation failed for ${l.email}, falling back to ID Number.`,
+    // //               authErr,
+    // //             );
+    // //           }
+    // //         }
+
+    // //         const targetCohortId = l.cohortId || "Unassigned";
+
+    // //         // 4. EXPLICIT PROFILE MAPPING
+    // //         const profileData: any = {
+    // //           id: profileId,
+    // //           authUid: trueAuthUid,
+    // //           idNumber: l.idNumber,
+    // //           fullName: l.fullName,
+    // //           firstName: l.firstName || "",
+    // //           lastName: l.lastName || "",
+    // //           email: l.email || "",
+    // //           phone: l.phone || l.mobile || "",
+    // //           mobile: l.mobile || l.phone || "",
+    // //           dateOfBirth: l.dateOfBirth || "",
+    // //           demographics: l.demographics || {},
+    // //           cohortId: targetCohortId, // UI Pointer
+    // //           updatedAt: new Date().toISOString(),
+    // //           updatedBy: USER_ID,
+    // //         };
+
+    // //         if (isNewUser) {
+    // //           profileData.createdAt = new Date().toISOString();
+    // //           profileData.createdBy = USER_ID;
+    // //           profileData.authStatus =
+    // //             profileId !== l.idNumber ? "active" : "pending";
+    // //         }
+
+    // //         // 5. EXPLICIT ENROLLMENT MAPPING (The Registration Ledger)
+    // //         const enrollmentId =
+    // //           targetCohortId !== "Unassigned"
+    // //             ? `${targetCohortId}_${profileId}`
+    // //             : `Unassigned_${profileId}`;
+
+    // //         const enrollmentData: any = {
+    // //           id: enrollmentId,
+    // //           learnerId: profileId,
+    // //           cohortId: targetCohortId,
+    // //           qualification: l.qualification || {},
+    // //           practicalModules: l.practicalModules || [],
+    // //           knowledgeModules: l.knowledgeModules || [],
+    // //           workExperienceModules: l.workExperienceModules || [],
+    // //           trainingStartDate: l.trainingStartDate || "",
+    // //           eisaAdmission: l.eisaAdmission || false,
+    // //           issueDate: l.issueDate || "",
+    // //           verificationCode: l.verificationCode || "",
+    // //           status: "active",
+    // //           isDraft: false,
+    // //           isArchived: false,
+    // //           approvedAt: new Date().toISOString(),
+    // //           approvedBy: USER_ID,
+    // //           createdAt: new Date().toISOString(),
+    // //           createdBy: USER_ID,
+    // //         };
+
+    // //         const cleanProfile = sanitizeForFirestore(profileData);
+    // //         const cleanEnrollment = sanitizeForFirestore(enrollmentData);
+
+    // //         // Write Profile
+    // //         batch.set(doc(db, "learners", profileId), cleanProfile, {
+    // //           merge: true,
+    // //         });
+
+    // //         // Write Enrollment Ledger
+    // //         const newEnrollmentRef = doc(db, "enrollments", enrollmentId);
+    // //         batch.set(newEnrollmentRef, cleanEnrollment, { merge: true });
+
+    // //         // Delete from Staging
+    // //         batch.delete(doc(db, "staging_learners", l.id));
+
+    // //         approvedIds.add(l.id);
+    // //       } catch (err) {
+    // //         console.error(
+    // //           `Failed processing staged learner ${l.idNumber}:`,
+    // //           err,
+    // //         );
+    // //       }
+    // //     }
+
+    // //     await batch.commit();
+
+    // //     set((state) => {
+    // //       state.stagingLearners = state.stagingLearners.filter(
+    // //         (l) => !approvedIds.has(l.id),
+    // //       );
+    // //       state.learnersLoading = false;
+    // //     });
+
+    // //     await get().fetchLearners(true);
+    // //   } catch (e) {
+    // //     console.error(e);
+    // //     set({ learnersLoading: false });
+    // //     throw new Error("Error during approval process.");
+    // //   }
+    // // },
 
     inviteLearner: async (learner: DashboardLearner) => {
       set((state) => {
@@ -2208,7 +2397,7 @@ export const useStore = create<StoreState>()(
       }
     },
 
-    // THE SMART IMPORT ENGINE 🚀
+    // THE SMART IMPORT ENGINE
     // STRICT MVP IMPORT ENGINE (Database-Enforced)
     importUnifiedLearners: async (file: File) => {
       const USER_ID = getAuth().currentUser?.uid || "System";
@@ -2475,7 +2664,7 @@ export const useStore = create<StoreState>()(
       }
     },
 
-    // FIXED: GHOST SPLIT PREVENTION 🚀
+    // FIXED: GHOST SPLIT PREVENTION
     // Correctly routes the update data to the correct profile and enrollment docs
     updateLearnerPlacement: async (enrollmentId, employerId, mentorId) => {
       try {
@@ -3549,7 +3738,7 @@ export const useStore = create<StoreState>()(
 //       }
 //     },
 
-//     // BULLETPROOF APPROVAL LOGIC 🚀
+//     // BULLETPROOF APPROVAL LOGIC
 //     approveStagingLearners: async (learnersToApprove) => {
 //       set({ learnersLoading: true });
 //       const USER_ID = getAuth().currentUser?.uid || "UnknownUser";
@@ -3570,7 +3759,7 @@ export const useStore = create<StoreState>()(
 //               l.fullName.trim() === ""
 //             ) {
 //               console.warn(
-//                 "⚠️ Skipping invalid staged learner (missing ID or Name):",
+//                 " Skipping invalid staged learner (missing ID or Name):",
 //                 l.id,
 //               );
 //               continue;
@@ -4011,7 +4200,7 @@ export const useStore = create<StoreState>()(
 //       }
 //     },
 
-//     // THE SMART IMPORT ENGINE 🚀
+//     // THE SMART IMPORT ENGINE
 //     // Checks for existing users to flag them in the staging UI
 //     // STRICT MVP IMPORT ENGINE (Database-Enforced)
 //     importUnifiedLearners: async (file: File) => {
@@ -4276,7 +4465,7 @@ export const useStore = create<StoreState>()(
 //       }
 //     },
 
-//     // FIXED: GHOST SPLIT PREVENTION 🚀
+//     // FIXED: GHOST SPLIT PREVENTION
 //     // Correctly routes the update data to the correct profile and enrollment docs
 //     updateLearnerPlacement: async (enrollmentId, employerId, mentorId) => {
 //       try {

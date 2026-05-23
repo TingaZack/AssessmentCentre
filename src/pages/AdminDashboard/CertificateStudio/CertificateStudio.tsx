@@ -1,25 +1,31 @@
 // src/pages/AdminDashboard/CertificateStudio/CertificateStudio.tsx
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
 import {
     Award, Loader2, Download, FileCheck, ZoomIn, ZoomOut, RotateCcw,
     Mail, Building2, UserCircle, Image as ImageIcon, Plus, ArrowLeft,
-    FileText, Menu, X, Folder, FolderPlus, ChevronRight, Edit2, Layers
+    FileText, Menu, X, Folder, FolderPlus, ChevronRight, Edit2, Layers,
+    UploadCloud, CheckCircle, ChevronLeft, Send, Search, Trash2
 } from 'lucide-react';
-import { collection, addDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, writeBatch, serverTimestamp, doc } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
+import * as XLSX from 'xlsx';
 import { useStore } from '../../../store/useStore';
-import { useToast } from '../../../components/common/Toast/Toast';
+import { useToast, ToastContainer } from '../../../components/common/Toast/Toast';
 import { Sidebar } from '../../../components/dashboard/Sidebar/Sidebar';
 import { auth, db } from '../../../lib/firebase';
+import { StatusModal } from '../../../components/common/StatusModal/StatusModal';
+import { NotificationBell } from '../../../components/common/NotificationBell/NotificationBell';
+
 import '../../../components/common/CertificateGenerator/CertificateGenerator.css';
 import '../../../components/views/LearnersView/LearnersView.css';
-import '../../../components/admin/WorkplacesManager/WorkplacesManager.css';
+import '../../CohortDetails/CohortDetailsPage.css';
 import '../AdminDashboard.css';
 
 import mLabLogo from '../../../assets/logo/mlab_logo.png';
@@ -37,7 +43,7 @@ const FormSection = ({ title, icon: Icon, children }: any) => (
 );
 
 // ═════════════════════════════════════════════════════════════════════════════
-// TEMPLATE 1: ORIGINAL LUXURY
+// TEMPLATES
 // ═════════════════════════════════════════════════════════════════════════════
 const LuxuryTemplate = ({ data, finalType }: { data: any, finalType: string }) => (
     <>
@@ -105,9 +111,6 @@ const LuxuryTemplate = ({ data, finalType }: { data: any, finalType: string }) =
     </>
 );
 
-// ═════════════════════════════════════════════════════════════════════════════
-// TEMPLATE 2: OFFICIAL STATEMENT
-// ═════════════════════════════════════════════════════════════════════════════
 const OfficialTemplate = ({ data, finalType }: { data: any, finalType: string }) => (
     <div style={{ width: '100%', height: '100%', backgroundColor: '#ffffff', position: 'relative', fontFamily: 'Arial, sans-serif', color: '#333' }}>
         <div style={{ display: 'flex', height: '12px', width: '100%' }}>
@@ -174,9 +177,6 @@ const OfficialTemplate = ({ data, finalType }: { data: any, finalType: string })
     </div>
 );
 
-// ═════════════════════════════════════════════════════════════════════════════
-// TEMPLATE 3: MODERN MINIMALIST
-// ═════════════════════════════════════════════════════════════════════════════
 const ModernTemplate = ({ data, finalType }: { data: any, finalType: string }) => (
     <div style={{ width: '100%', height: '100%', backgroundColor: '#f8fafc', position: 'relative', fontFamily: 'system-ui, sans-serif', display: 'flex' }}>
         <div style={{ width: '280px', backgroundColor: 'var(--mlab-blue)', height: '100%', padding: '60px 40px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', color: 'white', boxSizing: 'border-box' }}>
@@ -238,7 +238,7 @@ export const CertificateStudio: React.FC = () => {
     const navigate = useNavigate();
 
     // ─── VIEW & LAYOUT STATE ───
-    const [view, setView] = useState<'folders' | 'inside-folder' | 'studio'>('folders');
+    const [view, setView] = useState<'folders' | 'inside-folder' | 'studio' | 'bulk-review'>('folders');
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [activeFolder, setActiveFolder] = useState<any>(null);
     const [isLoadingData, setIsLoadingData] = useState(adHocCertificates.length === 0 && certificateGroups.length === 0);
@@ -247,6 +247,10 @@ export const CertificateStudio: React.FC = () => {
     const [newFolderName, setNewFolderName] = useState('');
     const [editingFolderId, setEditingFolderId] = useState<string | null>(null);
     const [editFolderName, setEditFolderName] = useState('');
+
+    const [folderSearchQuery, setFolderSearchQuery] = useState('');
+    const [certSearchQuery, setCertSearchQuery] = useState('');
+    const [folderToDelete, setFolderToDelete] = useState<any>(null);
 
     const [certData, setCertData] = useState({
         template: 'luxury',
@@ -262,6 +266,16 @@ export const CertificateStudio: React.FC = () => {
     const [actionType, setActionType] = useState<'download' | 'email'>('download');
     const [zoom, setZoom] = useState(0.65);
     const certRef = useRef<HTMLDivElement>(null);
+
+    // ─── BULK GENERATOR STATE ───
+    const [showBulkModal, setShowBulkModal] = useState(false);
+    const [isBulkGenerating, setIsBulkGenerating] = useState(false);
+    const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0 });
+
+    const [bulkData, setBulkData] = useState<any[]>([]);
+    const [bulkSettings, setBulkSettings] = useState<any>(null);
+    const [bulkSendEmails, setBulkSendEmails] = useState(false);
+    const [bulkCurrentIndex, setBulkCurrentIndex] = useState(0);
 
     useEffect(() => { if (!settings && fetchSettings) fetchSettings(); }, [settings, fetchSettings]);
 
@@ -289,12 +303,30 @@ export const CertificateStudio: React.FC = () => {
         else setIsLoadingData(false);
     }, [fetchCertificateGroups, fetchAdHocCertificates, adHocCertificates.length, certificateGroups.length]);
 
+    useEffect(() => {
+        if (view === 'bulk-review' && bulkData.length > 0 && bulkSettings) {
+            const row = bulkData[bulkCurrentIndex];
+            const rowName = row.Name || row.name || row['Full Name'] || row.Recipient || 'Unknown';
+            const rowEmail = row.Email || row.email || row['Email Address'] || '';
+            const rowCourse = row.Course || row.course || row.Programme || bulkSettings.programme;
+
+            setCertData(prev => ({
+                ...prev,
+                ...bulkSettings,
+                recipientName: rowName,
+                recipientEmail: rowEmail,
+                programme: rowCourse
+            }));
+        }
+    }, [bulkCurrentIndex, view, bulkData, bulkSettings]);
+
     const handleLogout = async () => { try { await signOut(auth); navigate('/login'); } catch (e) { } };
 
     const handleCreateFolder = async () => {
         if (!newFolderName.trim()) return;
         try {
             if (createCertificateGroup) await createCertificateGroup(newFolderName.trim());
+            if (fetchCertificateGroups) await fetchCertificateGroups(true);
             setNewFolderName(''); setShowNewFolderInput(false); toast.success("Folder created successfully!");
         } catch (error) { toast.error("Failed to create folder"); }
     };
@@ -303,15 +335,62 @@ export const CertificateStudio: React.FC = () => {
         if (!editFolderName.trim()) { setEditingFolderId(null); return; }
         try {
             if (renameCertificateGroup) await renameCertificateGroup(id, editFolderName.trim());
+            if (fetchCertificateGroups) await fetchCertificateGroups(true);
             setEditingFolderId(null); toast.success("Folder renamed!");
         } catch (error) { toast.error("Failed to rename folder"); }
     };
 
+    const triggerDeleteFolder = (e: React.MouseEvent, folder: any) => {
+        e.stopPropagation();
+        setFolderToDelete(folder);
+    };
+
+    const executeDeleteFolder = async () => {
+        if (!folderToDelete) return;
+
+        try {
+            const batch = writeBatch(db);
+
+            const certsToMove = adHocCertificates.filter(c => c.groupId === folderToDelete.id);
+            certsToMove.forEach(cert => {
+                batch.update(doc(db, 'ad_hoc_certificates', cert.id), { groupId: 'general' });
+            });
+
+            batch.delete(doc(db, 'certificate_groups', folderToDelete.id));
+
+            await batch.commit();
+            toast.success(`Folder deleted. ${certsToMove.length} certificates safely moved to General.`);
+
+            if (fetchCertificateGroups) await fetchCertificateGroups(true);
+            if (fetchAdHocCertificates) await fetchAdHocCertificates(true);
+
+        } catch (error) {
+            console.error("Delete Error:", error);
+            toast.error("Failed to delete folder.");
+        } finally {
+            setFolderToDelete(null);
+        }
+    };
+
     const getCertificatesForActiveFolder = () => {
         if (!activeFolder) return [];
-        if (activeFolder.id === 'general') return adHocCertificates.filter(c => !c.groupId || c.groupId === 'general');
-        return adHocCertificates.filter(c => c.groupId === activeFolder.id);
+        let certs = [];
+        if (activeFolder.id === 'general') certs = adHocCertificates.filter(c => !c.groupId || c.groupId === 'general');
+        else certs = adHocCertificates.filter(c => c.groupId === activeFolder.id);
+
+        if (certSearchQuery) {
+            const q = certSearchQuery.toLowerCase();
+            return certs.filter(c =>
+                (c.recipientName || '').toLowerCase().includes(q) ||
+                (c.courseName || '').toLowerCase().includes(q) ||
+                (c.type || '').toLowerCase().includes(q)
+            );
+        }
+        return certs;
     };
+
+    const filteredFolders = certificateGroups.filter(g => g.name.toLowerCase().includes(folderSearchQuery.toLowerCase()));
+    const showGeneralFolder = folderSearchQuery === '' || 'general certificates'.includes(folderSearchQuery.toLowerCase());
 
     const handleZoomIn = () => setZoom(prev => Math.min(prev + 0.1, 1.5));
     const handleZoomOut = () => setZoom(prev => Math.max(prev - 0.1, 0.4));
@@ -376,8 +455,112 @@ export const CertificateStudio: React.FC = () => {
         } finally { setIsGenerating(false); }
     }, [certRef, certData, actionType, toast, zoom, finalCertType, user, fetchAdHocCertificates]);
 
+    const handleStartBulkReview = (rows: any[], settings: any, sendEmails: boolean) => {
+        setShowBulkModal(false);
+        setBulkData(rows);
+        setBulkSettings(settings);
+        setBulkSendEmails(sendEmails);
+        setBulkCurrentIndex(0);
+        setView('bulk-review');
+    };
+
+    const executeFinalBulkProcessing = async () => {
+        setIsBulkGenerating(true);
+        const currentZoom = zoom;
+        setZoom(1);
+
+        let successCount = 0;
+
+        try {
+            for (let i = 0; i < bulkData.length; i++) {
+                setBulkProgress({ current: i + 1, total: bulkData.length });
+                const row = bulkData[i];
+
+                const rowName = row.Name || row.name || row['Full Name'] || row.Recipient || 'Unknown';
+                const rowEmail = row.Email || row.email || row['Email Address'] || '';
+                const rowCourse = row.Course || row.course || row.Programme || bulkSettings.programme;
+
+                setCertData(prev => ({
+                    ...prev,
+                    ...bulkSettings,
+                    recipientName: rowName,
+                    recipientEmail: rowEmail,
+                    programme: rowCourse
+                }));
+
+                await new Promise(r => setTimeout(r, 700));
+
+                if (!certRef.current) continue;
+
+                const canvas = await html2canvas(certRef.current, { scale: 2, useCORS: true, logging: false, backgroundColor: '#ffffff', width: 1123, height: 794 });
+                const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4', compress: true });
+                pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, 297, 210);
+                const pdfBlob = pdf.output('blob');
+
+                const safeName = rowName.replace(/[^a-zA-Z0-9]/g, '_');
+                const fileName = `ad_hoc_certs/bulk_${Date.now()}_${safeName}.pdf`;
+                const storageRef = ref(getStorage(), fileName);
+                await uploadBytes(storageRef, pdfBlob);
+                const downloadUrl = await getDownloadURL(storageRef);
+
+                const newCertRef = await addDoc(collection(db, 'ad_hoc_certificates'), {
+                    recipientName: rowName,
+                    recipientEmail: rowEmail || null,
+                    type: bulkSettings.certType,
+                    courseName: rowCourse,
+                    issueDate: bulkSettings.issueDate,
+                    pdfUrl: downloadUrl,
+                    groupId: bulkSettings.groupId || 'general',
+                    templateUsed: bulkSettings.template,
+                    createdBy: user?.uid || 'Admin',
+                    createdAt: serverTimestamp(),
+                    isEmailed: false,
+                    isBulkUpload: true
+                });
+
+                if (bulkSendEmails && rowEmail) {
+                    const sendAdHocEmail = httpsCallable(getFunctions(), 'sendAdHocCertificate');
+                    await sendAdHocEmail({ email: rowEmail, recipientName: rowName, pdfUrl: downloadUrl, awardTitle: bulkSettings.certType, courseName: rowCourse });
+                    await updateDoc(newCertRef, { isEmailed: true, emailedAt: serverTimestamp() });
+                }
+
+                successCount++;
+            }
+
+            toast.success(`Bulk Operation Complete: ${successCount} certificates generated safely.`);
+            if (fetchAdHocCertificates) fetchAdHocCertificates(true);
+
+        } catch (error) {
+            console.error("Bulk process failed:", error);
+            toast.error("A critical error interrupted the bulk generation loop.");
+        } finally {
+            setZoom(currentZoom);
+            setIsBulkGenerating(false);
+            setBulkData([]);
+            setBulkSettings(null);
+            setBulkProgress({ current: 0, total: 0 });
+            resetForm();
+            setView('folders');
+        }
+    };
+
     return (
-        <div className="admin-layout">
+        <div className="cdp-layout">
+            <ToastContainer toasts={toast.toasts} onClose={toast.closeToast} />
+
+            {folderToDelete && (
+                <div style={{ position: 'relative', zIndex: 999999 }}>
+                    <StatusModal
+                        type="warning"
+                        title="Delete Workspace Folder"
+                        message={`Are you sure you want to delete the folder "${folderToDelete.name}"?\n\nDon't worry! All certificates currently inside this folder will be safely preserved and moved back to the General Certificates workspace.`}
+                        confirmText="Yes, Delete Folder"
+                        onClose={executeDeleteFolder}
+                        onCancel={() => setFolderToDelete(null)}
+                    />
+                </div>
+            )}
+
             <div className="admin-mobile-header">
                 <button className="admin-hamburger-btn" onClick={() => setIsMobileMenuOpen(true)}>
                     <Menu size={24} />
@@ -392,248 +575,411 @@ export const CertificateStudio: React.FC = () => {
                 <Sidebar role={user?.role} currentNav="studio" setCurrentNav={() => { }} onLogout={handleLogout} />
             </div>
 
-            <main className="main-wrapper" style={{ padding: 0, height: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: 'var(--mlab-bg)' }}>
+            <main className="cdp-main" style={{ padding: 0, display: 'flex', flexDirection: 'column' }}>
 
-                <div className="wm-root animate-fade-in" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                {isBulkGenerating && (
+                    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(255,255,255,0.9)', zIndex: 9999, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                        <div className="ap-spinner" style={{ width: '60px', height: '60px', marginBottom: '1.5rem', borderTopColor: 'var(--mlab-blue)' }}></div>
+                        <h2 style={{ fontFamily: 'var(--font-heading)', color: 'var(--mlab-midnight)', fontSize: '2rem', margin: '0 0 0.5rem' }}>Generating Batch Certificates</h2>
+                        <p style={{ color: 'var(--mlab-grey)', fontSize: '1.1rem', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            Processing <span style={{ color: 'var(--mlab-blue)', fontWeight: 'bold' }}>{bulkProgress.current}</span> of {bulkProgress.total}...
+                        </p>
+                        <p style={{ marginTop: '1rem', fontSize: '0.8rem', color: '#ef4444', fontWeight: 600 }}>DO NOT CLOSE THIS TAB OR SWITCH WINDOWS.</p>
+                    </div>
+                )}
 
-                    {/* ── PAGE HEADER (Reusing wm-page-header styling) ── */}
-                    <div className="wm-page-header" style={{ marginBottom: 0 }}>
-                        <div className="wm-page-header__left">
-                            <div className="wm-page-header__icon"><Award size={22} /></div>
-                            <div>
-                                <h1 className="wm-page-header__title">Certificate Studio</h1>
-                                <p className="wm-page-header__desc">Design custom ad-hoc awards and manage your document history.</p>
+                {showBulkModal && (
+                    <BulkGeneratorModal
+                        certificateGroups={certificateGroups}
+                        onClose={() => setShowBulkModal(false)}
+                        onStart={handleStartBulkReview}
+                        onCreateFolder={async (name) => {
+                            try {
+                                const newDocRef = await addDoc(collection(db, 'certificate_groups'), {
+                                    name: name,
+                                    createdAt: serverTimestamp(),
+                                    createdBy: user?.uid || 'Admin'
+                                });
+                                if (fetchCertificateGroups) await fetchCertificateGroups(true);
+                                toast.success("Folder created successfully!");
+                                return newDocRef.id;
+                            } catch (error) {
+                                toast.error("Failed to create folder");
+                                return null;
+                            }
+                        }}
+                    />
+                )}
+
+                {/* ── CDP-ALIGNED PAGE HEADER ── */}
+                {view !== 'bulk-review' && (
+                    <header className="cdp-header">
+                        <div className="cdp-header__left">
+                            {/* <button className="cdp-header__back" onClick={() => navigate('/admin')}>
+                                <ChevronLeft size={14} /> Back to Dashboard
+                            </button> */}
+                            <div className="cdp-header__eyebrow"><Award size={12} /> Institutional Tool</div>
+                            <h1 className="cdp-header__title">Certificate Studio</h1>
+                            <p className="cdp-header__sub">
+                                <Award size={12} className="cdp-header__sub-icon" /> Design custom ad-hoc awards and manage document history.
+                                <span className="cdp-header__status cdp-header__status--active">System Live</span>
+                            </p>
+                        </div>
+                        <div className="cdp-header__right">
+                            <NotificationBell />
+                        </div>
+                    </header>
+                )}
+
+                <div className="cdp-content" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: view === 'bulk-review' ? 0 : '1.5rem 2rem' }}>
+
+                    {/* ── METRICS RIBBON (Only show on Folders view to match CDP style) ── */}
+                    {view === 'folders' && !isLoadingData && (
+                        <div className="cdp-stat-row" style={{ marginBottom: '1.5rem' }}>
+                            <div className="cdp-stat-card cdp-stat-card--blue">
+                                <div className="cdp-stat-card__icon"><Layers size={20} /></div>
+                                <div className="cdp-stat-card__body">
+                                    <span className="cdp-stat-card__value">{certificateGroups.length + 1}</span>
+                                    <span className="cdp-stat-card__label">Total Folders</span>
+                                </div>
+                            </div>
+                            <div className="cdp-stat-card cdp-stat-card--green">
+                                <div className="cdp-stat-card__icon"><Award size={20} /></div>
+                                <div className="cdp-stat-card__body">
+                                    <span className="cdp-stat-card__value">{adHocCertificates.length}</span>
+                                    <span className="cdp-stat-card__label">Issued Certificates</span>
+                                </div>
+                            </div>
+                            <div className="cdp-stat-card cdp-stat-card--amber">
+                                <div className="cdp-stat-card__icon"><Mail size={20} /></div>
+                                <div className="cdp-stat-card__body">
+                                    <span className="cdp-stat-card__value">{adHocCertificates.filter(c => c.isEmailed).length}</span>
+                                    <span className="cdp-stat-card__label">Emailed Successfully</span>
+                                </div>
+                            </div>
+                            <div className="cdp-stat-card cdp-stat-card--grey">
+                                <div className="cdp-stat-card__icon"><FileText size={20} /></div>
+                                <div className="cdp-stat-card__body">
+                                    <span className="cdp-stat-card__value">{adHocCertificates.filter(c => !c.isEmailed).length}</span>
+                                    <span className="cdp-stat-card__label">Downloads Only</span>
+                                </div>
                             </div>
                         </div>
-                    </div>
+                    )}
 
-                    {/* ── TABS (Integrated into Toolbar space) ── */}
-                    <div style={{ padding: '1rem 1.5rem', background: 'white', borderBottom: '1px solid var(--mlab-border)', display: 'flex', gap: '1rem' }}>
-                        <button
-                            className={`mlab-tab ${view === 'folders' || view === 'inside-folder' ? 'mlab-tab--active' : 'mlab-tab--inactive'}`}
-                            onClick={() => { setView('folders'); setActiveFolder(null); }}
-                            style={{ margin: 0 }}
-                        >
-                            Workspace Folders
-                        </button>
-                        <button
-                            className={`mlab-tab ${view === 'studio' ? 'mlab-tab--active' : 'mlab-tab--inactive'}`}
-                            onClick={() => setView('studio')}
-                            style={{ margin: 0 }}
-                        >
-                            Certificate Studio
-                        </button>
-                    </div>
+                    {/* ── TABS (LFM style to match CDP) ── */}
+                    {view !== 'bulk-review' && (
+                        <div className="lfm-tabs" style={{ marginBottom: '1.5rem' }}>
+                            <button
+                                className={`lfm-tab ${view === 'folders' || view === 'inside-folder' ? 'active' : ''}`}
+                                onClick={() => { setView('folders'); setActiveFolder(null); }}
+                            >
+                                <Folder size={16} /> Workspace Folders
+                            </button>
+                            <button
+                                className={`lfm-tab ${view === 'studio' ? 'active' : ''}`}
+                                onClick={() => setView('studio')}
+                            >
+                                <FileCheck size={16} /> Certificate Studio
+                            </button>
+                        </div>
+                    )}
 
-                    {/* ── TOOLBAR (Dynamic based on View) ── */}
-                    <div className="wm-toolbar" style={{ margin: '1.5rem', marginBottom: 0 }}>
+                    {/* ── ADVANCED TOOLBAR (CDP Style) ── */}
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginBottom: view === 'bulk-review' ? 0 : '1.5rem', alignItems: 'center', padding: view === 'bulk-review' ? '1rem 1.5rem' : 0 }}>
                         {view === 'folders' && (
                             <>
+                                <div style={{ flex: '1 1 250px', position: 'relative', display: 'flex', alignItems: 'center', background: 'white', border: '1px solid var(--mlab-border)', borderRadius: '6px', padding: '0 12px' }}>
+                                    <Search size={15} color="var(--mlab-grey)" />
+                                    <input
+                                        type="text"
+                                        placeholder="Search folders..."
+                                        value={folderSearchQuery}
+                                        onChange={e => setFolderSearchQuery(e.target.value)}
+                                        style={{ width: '100%', border: 'none', padding: '10px', outline: 'none', background: 'transparent' }}
+                                    />
+                                    {folderSearchQuery && <button onClick={() => setFolderSearchQuery('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--mlab-grey)' }}><X size={13} /></button>}
+                                </div>
+
                                 <div style={{ display: 'flex', gap: '10px' }}>
                                     {showNewFolderInput ? (
                                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                                             <input
-                                                className="mlab-input"
-                                                style={{ width: '220px', padding: '0.5rem 0.75rem', height: '36px' }}
+                                                className="wm-form-input"
+                                                style={{ width: '220px', padding: '0.5rem 0.75rem', height: '36px', margin: 0 }}
                                                 value={newFolderName}
                                                 onChange={e => setNewFolderName(e.target.value)}
                                                 placeholder="Enter folder name..."
                                                 autoFocus
                                             />
-                                            <button className="wm-btn wm-btn--primary" onClick={handleCreateFolder}>Save</button>
-                                            <button className="wm-btn wm-btn--ghost" onClick={() => setShowNewFolderInput(false)}>Cancel</button>
+                                            <button className="cdp-btn cdp-btn--outline" onClick={handleCreateFolder}>Save</button>
+                                            <button className="cdp-btn cdp-btn--danger" onClick={() => setShowNewFolderInput(false)}>Cancel</button>
                                         </div>
                                     ) : (
-                                        <button className="wm-btn wm-btn--ghost" style={{ background: 'white' }} onClick={() => setShowNewFolderInput(true)}>
-                                            <FolderPlus size={15} /> New Folder
+                                        <button className="cdp-btn cdp-btn--outline" style={{ background: 'white' }} onClick={() => setShowNewFolderInput(true)}>
+                                            <FolderPlus size={14} /> New Folder
                                         </button>
                                     )}
                                 </div>
-                                <button className="wm-btn wm-btn--primary" style={{ marginLeft: 'auto' }} onClick={() => setView('studio')}>
-                                    <Plus size={15} /> Create Certificate
-                                </button>
+                                <div style={{ display: 'flex', gap: '8px', marginLeft: 'auto' }}>
+                                    <button className="cdp-btn cdp-btn--outline" style={{ background: 'white' }} onClick={() => setShowBulkModal(true)}>
+                                        <UploadCloud size={14} /> Import Spreadsheet
+                                    </button>
+                                    <button className="mlab-btn mlab-btn--primary" onClick={() => setView('studio')}>
+                                        <Plus size={14} /> Single Certificate
+                                    </button>
+                                </div>
                             </>
                         )}
 
                         {view === 'inside-folder' && activeFolder && (
                             <>
-                                <button className="wm-btn wm-btn--ghost" onClick={() => setView('folders')} style={{ background: 'white' }}>
-                                    <ArrowLeft size={15} /> Back to Folders
+                                <button className="cdp-btn cdp-btn--outline" onClick={() => setView('folders')} style={{ background: 'white' }}>
+                                    <ArrowLeft size={14} /> Back to Folders
                                 </button>
-                                <h2 style={{ margin: 0, fontFamily: 'var(--font-heading)', color: 'var(--mlab-blue)', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1rem', marginLeft: '1rem' }}>
+                                <h2 style={{ margin: 0, fontFamily: 'var(--font-heading)', color: 'var(--mlab-blue)', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1rem', marginLeft: '1rem', marginRight: '1rem' }}>
                                     <Folder size={18} color="var(--mlab-green)" /> {activeFolder.name}
                                 </h2>
-                                <button className="wm-btn wm-btn--primary" style={{ marginLeft: 'auto' }} onClick={() => { setCertData(prev => ({ ...prev, groupId: activeFolder.id })); setView('studio'); }}>
-                                    <Plus size={15} /> Create in this Folder
+
+                                <div style={{ flex: '1 1 250px', position: 'relative', display: 'flex', alignItems: 'center', background: 'white', border: '1px solid var(--mlab-border)', borderRadius: '6px', padding: '0 12px' }}>
+                                    <Search size={15} color="var(--mlab-grey)" />
+                                    <input
+                                        type="text"
+                                        placeholder="Search names or courses..."
+                                        value={certSearchQuery}
+                                        onChange={e => setCertSearchQuery(e.target.value)}
+                                        style={{ width: '100%', border: 'none', padding: '10px', outline: 'none', background: 'transparent' }}
+                                    />
+                                    {certSearchQuery && <button onClick={() => setCertSearchQuery('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--mlab-grey)' }}><X size={13} /></button>}
+                                </div>
+
+                                <button className="mlab-btn mlab-btn--primary" style={{ marginLeft: 'auto' }} onClick={() => { setCertData(prev => ({ ...prev, groupId: activeFolder.id })); setView('studio'); }}>
+                                    <Plus size={14} /> Create in this Folder
                                 </button>
                             </>
                         )}
 
                         {view === 'studio' && (
                             <>
-                                <button className="wm-btn wm-btn--ghost" onClick={() => setView('folders')} style={{ background: 'white' }}>
-                                    <ArrowLeft size={15} /> Cancel Design
+                                <button className="cdp-btn cdp-btn--outline" onClick={() => setView('folders')} style={{ background: 'white' }}>
+                                    <ArrowLeft size={14} /> Cancel Design
                                 </button>
-                                <div style={{ display: 'flex', gap: '0.75rem', marginLeft: 'auto' }}>
-                                    <button className="wm-btn wm-btn--ghost" style={{ background: 'white' }} disabled={isGenerating} onClick={() => { setActionType('download'); executeGeneration(); }}>
-                                        {isGenerating && actionType === 'download' ? <Loader2 className="spin" size={16} /> : <Download size={15} />}
+                                <div style={{ display: 'flex', gap: '8px', marginLeft: 'auto' }}>
+                                    <button className="cdp-btn cdp-btn--outline" style={{ background: 'white' }} disabled={isGenerating} onClick={() => { setActionType('download'); executeGeneration(); }}>
+                                        {isGenerating && actionType === 'download' ? <Loader2 className="cdp-spinner" size={14} /> : <Download size={14} />}
                                         Download PDF
                                     </button>
-                                    <button className="wm-btn wm-btn--primary" disabled={isGenerating || !certData.recipientEmail} onClick={() => { setActionType('email'); executeGeneration(); }}>
-                                        {isGenerating && actionType === 'email' ? <Loader2 className="spin" size={16} /> : <Mail size={15} />}
+                                    <button className="mlab-btn mlab-btn--primary" disabled={isGenerating || !certData.recipientEmail} onClick={() => { setActionType('email'); executeGeneration(); }}>
+                                        {isGenerating && actionType === 'email' ? <Loader2 className="cdp-spinner" size={14} /> : <Mail size={14} />}
                                         Email Document
                                     </button>
                                 </div>
                             </>
                         )}
+
+                        {view === 'bulk-review' && (
+                            <div style={{ display: 'flex', alignItems: 'center', width: '100%', padding: '0 1rem' }}>
+                                <button className="cdp-btn cdp-btn--danger" onClick={() => { setBulkData([]); setView('folders'); }}>
+                                    <X size={14} /> Cancel Bulk Operation
+                                </button>
+
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', margin: '0 auto', background: 'white', padding: '4px', borderRadius: '8px', border: '1px solid var(--mlab-border)' }}>
+                                    <button
+                                        className="mlab-icon-btn"
+                                        disabled={bulkCurrentIndex === 0}
+                                        onClick={() => setBulkCurrentIndex(p => Math.max(0, p - 1))}
+                                        style={{ background: 'white', border: '1px solid #e2e8f0', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}
+                                    >
+                                        <ChevronLeft color='var(--mlab-midnight)' size={18} />
+                                    </button>
+                                    <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--mlab-midnight)', minWidth: '150px', textAlign: 'center' }}>
+                                        Preview {bulkCurrentIndex + 1} of {bulkData.length}
+                                    </span>
+                                    <button
+                                        className="mlab-icon-btn"
+                                        disabled={bulkCurrentIndex === bulkData.length - 1}
+                                        onClick={() => setBulkCurrentIndex(p => Math.min(bulkData.length - 1, p + 1))}
+                                        style={{ background: 'white', border: '1px solid #e2e8f0', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}
+                                    >
+                                        <ChevronRight color='var(--mlab-midnight)' size={18} />
+                                    </button>
+                                </div>
+
+                                <button className="mlab-btn mlab-btn--primary" onClick={executeFinalBulkProcessing}>
+                                    <Send size={14} /> Approve & Process All ({bulkData.length})
+                                </button>
+                            </div>
+                        )}
                     </div>
 
-                    {/* ── DYNAMIC CONTENT AREA ── */}
-                    <div style={{ flex: 1, overflowY: 'auto', padding: '1.5rem' }}>
+                    {/* ── MAIN CONTENT AREA ── */}
+                    <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
 
-                        {/* FOLDERS VIEW */}
                         {view === 'folders' && (
                             isLoadingData ? (
                                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: '1rem' }}>
-                                    <div className="ap-spinner" />
-                                    <span style={{ fontFamily: 'var(--font-heading)', fontSize: '0.8rem', letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--mlab-grey)' }}>Loading Workspace...</span>
+                                    <div className="cdp-spinner" style={{ color: 'var(--mlab-blue)' }}><Loader2 size={32} /></div>
+                                    <span className="cdp-loading-state__label">Loading Workspace...</span>
                                 </div>
                             ) : (
-                                <div className="wm-grid">
-                                    {/* Static General Folder */}
-                                    <div className="wm-card animate-fade-in" style={{ cursor: 'pointer', display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '1rem', padding: '1.5rem', borderTopColor: 'var(--mlab-grey)' }}
-                                        onClick={() => { setActiveFolder({ id: 'general', name: 'General Certificates' }); setView('inside-folder'); }}>
-                                        <div style={{ background: '#f1f5f9', padding: '12px', borderRadius: '10px', color: 'var(--mlab-blue)' }}><Folder size={24} /></div>
-                                        <div style={{ flex: 1 }}>
-                                            <h4 className="wm-card__name" style={{ fontSize: '1.1rem' }}>General</h4>
-                                            <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: 'var(--mlab-grey)' }}>{adHocCertificates.filter(c => !c.groupId || c.groupId === 'general').length} Documents</p>
-                                        </div>
-                                        <ChevronRight size={18} color="#cbd5e1" />
-                                    </div>
+                                <div className="cdp-panel" style={{ border: 'none', background: 'transparent' }}>
+                                    <div className="wm-grid">
+                                        {showGeneralFolder && (
+                                            <div className="wm-card animate-fade-in" style={{ cursor: 'pointer', display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '1rem', padding: '1.5rem', borderTopColor: 'var(--mlab-grey)' }}
+                                                onClick={() => { setActiveFolder({ id: 'general', name: 'General Certificates' }); setView('inside-folder'); }}>
+                                                <div style={{ background: '#f1f5f9', padding: '12px', borderRadius: '10px', color: 'var(--mlab-blue)' }}><Folder size={24} /></div>
+                                                <div style={{ flex: 1 }}>
+                                                    <h4 className="wm-card__name" style={{ fontSize: '1.1rem' }}>General Certificates</h4>
+                                                    <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: 'var(--mlab-grey)' }}>{adHocCertificates.filter(c => !c.groupId || c.groupId === 'general').length} Documents</p>
+                                                </div>
+                                                <ChevronRight size={18} color="#cbd5e1" />
+                                            </div>
+                                        )}
 
-                                    {/* Dynamic Groups */}
-                                    {certificateGroups.map(group => (
-                                        <div key={group.id} className="wm-card animate-fade-in" style={{ cursor: 'pointer', display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '1rem', padding: '1.5rem', borderTopColor: 'var(--mlab-green)' }}
-                                            onClick={() => { if (editingFolderId !== group.id) { setActiveFolder(group); setView('inside-folder'); } }}>
-                                            <div style={{ background: 'rgba(148, 199, 61, 0.15)', padding: '12px', borderRadius: '10px', color: 'var(--mlab-green-dark)' }}><Folder size={24} /></div>
-                                            <div style={{ flex: 1, overflow: 'hidden' }}>
-                                                {editingFolderId === group.id ? (
-                                                    <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }} onClick={e => e.stopPropagation()}>
-                                                        <input
-                                                            className="mlab-input" style={{ padding: '0.4rem 0.5rem', fontSize: '0.9rem', width: '100%' }} autoFocus
-                                                            value={editFolderName} onChange={e => setEditFolderName(e.target.value)}
-                                                            onKeyDown={e => { if (e.key === 'Enter') handleRenameFolder(group.id); if (e.key === 'Escape') setEditingFolderId(null); }}
-                                                        />
-                                                        <button className="wm-btn wm-btn--primary" style={{ padding: '0.4rem 0.6rem' }} onClick={() => handleRenameFolder(group.id)}>Save</button>
+                                        {filteredFolders.map(group => (
+                                            <div key={group.id} className="wm-card animate-fade-in" style={{ cursor: 'pointer', display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '1rem', padding: '1.5rem', borderTopColor: 'var(--mlab-green)' }}
+                                                onClick={() => { if (editingFolderId !== group.id) { setActiveFolder(group); setView('inside-folder'); } }}>
+                                                <div style={{ background: 'rgba(148, 199, 61, 0.15)', padding: '12px', borderRadius: '10px', color: 'var(--mlab-green-dark)' }}><Folder size={24} /></div>
+                                                <div style={{ flex: 1, overflow: 'hidden' }}>
+                                                    {editingFolderId === group.id ? (
+                                                        <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }} onClick={e => e.stopPropagation()}>
+                                                            <input
+                                                                className="wm-form-input" style={{ padding: '0.4rem 0.5rem', fontSize: '0.9rem', width: '100%', margin: 0 }} autoFocus
+                                                                value={editFolderName} onChange={e => setEditFolderName(e.target.value)}
+                                                                onKeyDown={e => { if (e.key === 'Enter') handleRenameFolder(group.id); if (e.key === 'Escape') setEditingFolderId(null); }}
+                                                            />
+                                                            <button className="cdp-btn cdp-btn--outline" style={{ padding: '0.4rem 0.6rem' }} onClick={() => handleRenameFolder(group.id)}>Save</button>
+                                                        </div>
+                                                    ) : (
+                                                        <>
+                                                            <h4 className="wm-card__name" style={{ fontSize: '1.1rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{group.name}</h4>
+                                                            <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: 'var(--mlab-grey)' }}>{adHocCertificates.filter(c => c.groupId === group.id).length} Documents</p>
+                                                        </>
+                                                    )}
+                                                </div>
+
+                                                {editingFolderId !== group.id && (
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                        <button className="mlab-icon-btn" style={{ border: 'none', background: 'transparent', boxShadow: 'none' }} onClick={(e) => { e.stopPropagation(); setEditingFolderId(group.id); setEditFolderName(group.name); }} title="Rename Folder">
+                                                            <Edit2 size={16} color="var(--mlab-blue)" />
+                                                        </button>
+
+                                                        <button className="mlab-icon-btn" style={{ border: 'none', background: 'transparent', boxShadow: 'none' }} onClick={(e) => triggerDeleteFolder(e, group)} title="Delete Folder">
+                                                            <Trash2 size={16} color="#ef4444" />
+                                                        </button>
+
+                                                        <ChevronRight size={18} color="#cbd5e1" style={{ marginLeft: '4px' }} />
                                                     </div>
-                                                ) : (
-                                                    <>
-                                                        <h4 className="wm-card__name" style={{ fontSize: '1.1rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{group.name}</h4>
-                                                        <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: 'var(--mlab-grey)' }}>{adHocCertificates.filter(c => c.groupId === group.id).length} Documents</p>
-                                                    </>
                                                 )}
                                             </div>
+                                        ))}
 
-                                            {editingFolderId !== group.id && (
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                                    <button className="mlab-icon-btn" style={{ border: 'none', background: 'transparent', boxShadow: 'none' }} onClick={(e) => { e.stopPropagation(); setEditingFolderId(group.id); setEditFolderName(group.name); }} title="Rename Folder">
-                                                        <Edit2 size={16} color="var(--mlab-grey)" />
-                                                    </button>
-                                                    <ChevronRight size={18} color="#cbd5e1" />
-                                                </div>
-                                            )}
-                                        </div>
-                                    ))}
+                                        {filteredFolders.length === 0 && !showGeneralFolder && (
+                                            <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '3rem', color: '#64748b' }}>
+                                                <Search size={32} style={{ opacity: 0.3, margin: '0 auto 1rem' }} />
+                                                <p>No folders match your search.</p>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             )
                         )}
 
-                        {/* INSIDE FOLDER VIEW */}
                         {view === 'inside-folder' && activeFolder && (
-                            getCertificatesForActiveFolder().length === 0 ? (
-                                <div className="wm-empty" style={{ margin: '2rem auto', maxWidth: '600px' }}>
-                                    <div className="wm-empty__icon"><FileText size={36} /></div>
-                                    <p className="wm-empty__title">Folder is Empty</p>
-                                    <p className="wm-empty__desc">No certificates have been saved to this folder yet.</p>
-                                </div>
-                            ) : (
-                                <div className="wm-grid">
-                                    {getCertificatesForActiveFolder().map(cert => (
-                                        <div key={cert.id} className="wm-card animate-fade-in" style={{ padding: 0, overflow: 'hidden' }}>
-                                            <div style={{ height: '120px', background: 'var(--mlab-blue)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
-                                                <Award size={48} color="rgba(255,255,255,0.1)" />
-                                                <div style={{ position: 'absolute', top: '10px', right: '10px', display: 'flex', gap: '6px' }}>
-                                                    {cert.isEmailed && <span className="mlab-badge" style={{ background: 'var(--mlab-green)', color: 'white', border: 'none', display: 'flex', alignItems: 'center', gap: '4px', padding: '0.2rem 0.5rem' }} title={`Emailed to ${cert.recipientEmail}`}><Mail size={10} /> Sent</span>}
-                                                    <span className="mlab-badge mlab-badge--active" style={{ background: 'rgba(255,255,255,0.1)', color: 'white', border: 'none' }}>PDF</span>
+                            <div className="cdp-panel" style={{ border: 'none', background: 'transparent' }}>
+                                {getCertificatesForActiveFolder().length === 0 ? (
+                                    <div className="wm-empty" style={{ margin: '2rem auto', maxWidth: '600px', background: 'white' }}>
+                                        <div className="wm-empty__icon">{certSearchQuery ? <Search size={36} /> : <FileText size={36} />}</div>
+                                        <p className="wm-empty__title">{certSearchQuery ? 'No Results Found' : 'Folder is Empty'}</p>
+                                        <p className="wm-empty__desc">{certSearchQuery ? `No certificates match "${certSearchQuery}".` : 'No certificates have been saved to this folder yet.'}</p>
+                                    </div>
+                                ) : (
+                                    <div className="wm-grid">
+                                        {getCertificatesForActiveFolder().map(cert => (
+                                            <div key={cert.id} className="wm-card animate-fade-in" style={{ padding: 0, overflow: 'hidden' }}>
+                                                <div style={{ height: '120px', background: 'var(--mlab-blue)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+                                                    <Award size={48} color="rgba(255,255,255,0.1)" />
+                                                    <div style={{ position: 'absolute', top: '10px', right: '10px', display: 'flex', gap: '6px' }}>
+                                                        {cert.isEmailed && <span className="cdp-header__status cdp-header__status--active" style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '0.2rem 0.5rem', background: 'var(--mlab-green)', color: 'white', border: 'none' }} title={`Emailed to ${cert.recipientEmail}`}><Mail size={10} /> Sent</span>}
+                                                        <span className="cdp-header__status cdp-header__status--archived" style={{ display: 'flex', alignItems: 'center', padding: '0.2rem 0.5rem' }}>PDF</span>
+                                                    </div>
                                                 </div>
-                                            </div>
-                                            <div style={{ padding: '1.25rem' }}>
-                                                <h4 className="wm-card__name" style={{ marginBottom: '0.5rem' }}>{cert.recipientName}</h4>
-                                                <p style={{ margin: '0 0 12px', fontSize: '0.85rem', color: 'var(--mlab-grey)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                                    <strong>{cert.type}</strong>
-                                                    <span>{cert.courseName}</span>
-                                                </p>
+                                                <div style={{ padding: '1.25rem' }}>
+                                                    <h4 className="wm-card__name" style={{ marginBottom: '0.5rem' }}>{cert.recipientName}</h4>
+                                                    <p style={{ margin: '0 0 12px', fontSize: '0.85rem', color: 'var(--mlab-grey)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                                        <strong>{cert.type}</strong>
+                                                        <span>{cert.courseName}</span>
+                                                    </p>
 
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--mlab-border)', paddingTop: '1rem', marginTop: '1rem' }}>
-                                                    <span style={{ fontSize: '0.75rem', color: 'var(--mlab-grey)', fontWeight: 600 }}>
-                                                        {cert.createdAt ? new Date(cert.createdAt.toDate()).toLocaleDateString() : cert.issueDate}
-                                                    </span>
-                                                    <button className="wm-btn wm-btn--ghost" style={{ padding: '0.4rem 0.8rem', fontSize: '0.75rem' }} onClick={() => window.open(cert.pdfUrl, '_blank')}>
-                                                        <Download size={14} /> View
-                                                    </button>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--mlab-border)', paddingTop: '1rem', marginTop: '1rem' }}>
+                                                        <span style={{ fontSize: '0.75rem', color: 'var(--mlab-grey)', fontWeight: 600 }}>
+                                                            {cert.createdAt ? new Date(cert.createdAt.toDate()).toLocaleDateString() : cert.issueDate}
+                                                        </span>
+                                                        <button className="cdp-btn cdp-btn--outline" onClick={() => window.open(cert.pdfUrl, '_blank')}>
+                                                            <Download size={12} /> View
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
                         )}
 
-                        {/* STUDIO DESIGNER VIEW */}
-                        {view === 'studio' && (
-                            <div style={{ display: 'flex', gap: '1.5rem', height: '100%', paddingBottom: '0.5rem' }}>
-                                {/* Form Settings Panel */}
-                                <div style={{ width: '380px', flexShrink: 0, background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', display: 'flex', flexDirection: 'column', overflowY: 'auto', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-                                    <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                                        <FormSection title="Design Template" icon={Layers}>
-                                            <div className="mlab-select-wrap" style={{ width: '100%', padding: 0 }}><select className="mlab-input" style={{ border: 'none', background: 'transparent' }} value={certData.template} onChange={e => handleChange('template', e.target.value)}><option value="luxury">Luxury (Default)</option><option value="official">Official Statement (SoR)</option><option value="modern">Modern Minimalist</option></select></div>
-                                        </FormSection>
-                                        <FormSection title="Folder Assignment" icon={Folder}>
-                                            <div className="mlab-select-wrap" style={{ width: '100%', padding: 0 }}><select className="mlab-input" style={{ border: 'none', background: 'transparent' }} value={certData.groupId} onChange={e => handleChange('groupId', e.target.value)}><option value="general">General (No Folder)</option>{certificateGroups.map(g => (<option key={g.id} value={g.id}>{g.name}</option>))}</select></div>
-                                        </FormSection>
-                                        <FormSection title="Recipient Details" icon={UserCircle}>
-                                            <input className="mlab-input" placeholder="Full Name *" value={certData.recipientName} onChange={e => handleChange('recipientName', e.target.value)} />
-                                            <input className="mlab-input" type="email" placeholder="Email Address (Optional)" value={certData.recipientEmail} onChange={e => handleChange('recipientEmail', e.target.value)} />
-                                        </FormSection>
-                                        <FormSection title="Award Details" icon={FileCheck}>
-                                            <div className="mlab-select-wrap" style={{ width: '100%', padding: 0 }}><select className="mlab-input" style={{ border: 'none', background: 'transparent' }} value={certData.certType} onChange={e => handleChange('certType', e.target.value)}><option value="Achievement">Certificate of Achievement</option><option value="Attendance">Certificate of Attendance</option><option value="Appreciation">Certificate of Appreciation</option><option value="Excellence">Award of Excellence</option><option value="Other">Custom Title...</option></select></div>
-                                            {certData.certType === 'Other' && <input className="mlab-input" placeholder="Custom Title" value={certData.customType} onChange={e => handleChange('customType', e.target.value)} />}
-                                            <input className="mlab-input" placeholder="Course / Event Name" value={certData.programme} onChange={e => handleChange('programme', e.target.value)} />
-                                            <textarea className="mlab-input" style={{ minHeight: '60px' }} placeholder="Description..." value={certData.description} onChange={e => handleChange('description', e.target.value)} rows={2} />
-                                        </FormSection>
-                                        <FormSection title="Branding & Signatures" icon={Building2}>
-                                            <input className="mlab-input" placeholder="Institution Name" value={certData.institutionName} onChange={e => handleChange('institutionName', e.target.value)} />
-                                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                                                <input className="mlab-input" placeholder="Signatory Name" value={certData.signatoryName} onChange={e => handleChange('signatoryName', e.target.value)} />
-                                                <input className="mlab-input" type="date" value={certData.issueDate} onChange={e => handleChange('issueDate', e.target.value)} />
-                                            </div>
-                                            <input className="mlab-input" placeholder="Signatory Title" value={certData.signatoryTitle} onChange={e => handleChange('signatoryTitle', e.target.value)} />
-                                            <div style={{ display: 'flex', gap: '10px', marginTop: '0.5rem' }}>
-                                                <label className="wm-btn wm-btn--ghost" style={{ flex: 1, justifyContent: 'center', padding: '0.5rem', fontSize: '0.8rem', cursor: 'pointer' }}><ImageIcon size={14} /> Change Logo<input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleImageUpload(e, 'logoUrl')} /></label>
-                                                <label className="wm-btn wm-btn--ghost" style={{ flex: 1, justifyContent: 'center', padding: '0.5rem', fontSize: '0.8rem', cursor: 'pointer' }}><ImageIcon size={14} /> Change Signature<input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleImageUpload(e, 'sigUrl')} /></label>
-                                            </div>
-                                        </FormSection>
-                                    </div>
-                                </div>
+                        {(view === 'studio' || view === 'bulk-review') && (
+                            <div style={{ display: 'flex', gap: '1.5rem', height: '100%', paddingBottom: view === 'bulk-review' ? '0' : '0.5rem' }}>
 
-                                {/* Preview Canvas Panel */}
-                                <div className="cert-preview-container" style={{ flex: 1, position: 'relative', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.02)', overflow: 'hidden' }}>
-                                    <div style={{ position: 'absolute', top: '1.5rem', right: '1.5rem', display: 'flex', gap: '0.5rem', background: 'white', padding: '0.4rem', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', zIndex: 100 }}>
-                                        <button className="mlab-icon-btn" onClick={handleZoomOut}><ZoomOut size={16} color='var(--mlab-green-dark)' /></button>
-                                        <span style={{ display: 'flex', alignItems: 'center', padding: '0 0.5rem', fontFamily: 'var(--font-heading)', color: 'var(--mlab-blue)' }}>{Math.round(zoom * 100)}%</span>
-                                        <button className="mlab-icon-btn" onClick={handleZoomIn}><ZoomIn size={16} color='var(--mlab-green-dark)' /></button>
-                                        <button className="mlab-icon-btn mlab-icon-btn--amber" onClick={handleResetZoom}><RotateCcw size={16} /></button>
+                                {view === 'studio' && (
+                                    <div className="cdp-panel" style={{ width: '380px', flexShrink: 0, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+                                        <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                                            <FormSection title="Design Template" icon={Layers}>
+                                                <select className="wm-form-input" style={{ margin: 0 }} value={certData.template} onChange={e => handleChange('template', e.target.value)}><option value="luxury">Luxury (Default)</option><option value="official">Official Statement (SoR)</option><option value="modern">Modern Minimalist</option></select>
+                                            </FormSection>
+                                            <FormSection title="Folder Assignment" icon={Folder}>
+                                                <select className="wm-form-input" style={{ margin: 0 }} value={certData.groupId} onChange={e => handleChange('groupId', e.target.value)}><option value="general">General (No Folder)</option>{certificateGroups.map(g => (<option key={g.id} value={g.id}>{g.name}</option>))}</select>
+                                            </FormSection>
+                                            <FormSection title="Recipient Details" icon={UserCircle}>
+                                                <input className="wm-form-input" style={{ margin: 0 }} placeholder="Full Name *" value={certData.recipientName} onChange={e => handleChange('recipientName', e.target.value)} />
+                                                <input className="wm-form-input" style={{ margin: 0 }} type="email" placeholder="Email Address (Optional)" value={certData.recipientEmail} onChange={e => handleChange('recipientEmail', e.target.value)} />
+                                            </FormSection>
+                                            <FormSection title="Award Details" icon={FileCheck}>
+                                                <select className="wm-form-input" style={{ margin: 0 }} value={certData.certType} onChange={e => handleChange('certType', e.target.value)}><option value="Achievement">Certificate of Achievement</option><option value="Attendance">Certificate of Attendance</option><option value="Appreciation">Certificate of Appreciation</option><option value="Excellence">Award of Excellence</option><option value="Other">Custom Title...</option></select>
+                                                {certData.certType === 'Other' && <input className="wm-form-input" style={{ margin: 0 }} placeholder="Custom Title" value={certData.customType} onChange={e => handleChange('customType', e.target.value)} />}
+                                                <input className="wm-form-input" style={{ margin: 0 }} placeholder="Course / Event Name" value={certData.programme} onChange={e => handleChange('programme', e.target.value)} />
+                                                <textarea className="wm-form-input" style={{ margin: 0, minHeight: '60px' }} placeholder="Description..." value={certData.description} onChange={e => handleChange('description', e.target.value)} rows={2} />
+                                            </FormSection>
+                                            <FormSection title="Branding & Signatures" icon={Building2}>
+                                                <input className="wm-form-input" style={{ margin: 0 }} placeholder="Institution Name" value={certData.institutionName} onChange={e => handleChange('institutionName', e.target.value)} />
+                                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                                                    <input className="wm-form-input" style={{ margin: 0 }} placeholder="Signatory Name" value={certData.signatoryName} onChange={e => handleChange('signatoryName', e.target.value)} />
+                                                    <input className="wm-form-input" style={{ margin: 0 }} type="date" value={certData.issueDate} onChange={e => handleChange('issueDate', e.target.value)} />
+                                                </div>
+                                                <input className="wm-form-input" style={{ margin: 0 }} placeholder="Signatory Title" value={certData.signatoryTitle} onChange={e => handleChange('signatoryTitle', e.target.value)} />
+                                                <div style={{ display: 'flex', gap: '10px', marginTop: '0.5rem' }}>
+                                                    <label className="cdp-btn cdp-btn--outline" style={{ flex: 1, justifyContent: 'center', padding: '0.5rem', cursor: 'pointer' }}><ImageIcon size={14} /> Change Logo<input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleImageUpload(e, 'logoUrl')} /></label>
+                                                    <label className="cdp-btn cdp-btn--outline" style={{ flex: 1, justifyContent: 'center', padding: '0.5rem', cursor: 'pointer' }}><ImageIcon size={14} /> Change Signature<input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleImageUpload(e, 'sigUrl')} /></label>
+                                                </div>
+                                            </FormSection>
+                                        </div>
                                     </div>
+                                )}
+
+                                <div className="cdp-panel cert-preview-container" style={{ flex: 1, position: 'relative', background: '#e2e8f0', borderRadius: view === 'bulk-review' ? '0' : '8px', border: view === 'bulk-review' ? 'none' : '1px solid var(--mlab-border)', overflow: 'hidden' }}>
+
+                                    <div style={{ position: 'absolute', top: '1.5rem', right: '1.5rem', display: 'flex', gap: '0.5rem', background: 'white', padding: '0.4rem', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', zIndex: 100 }}>
+                                        <button className="mlab-icon-btn" onClick={handleZoomOut} disabled={isBulkGenerating}><ZoomOut size={16} color='var(--mlab-green-dark)' /></button>
+                                        <span style={{ display: 'flex', alignItems: 'center', padding: '0 0.5rem', fontFamily: 'var(--font-heading)', color: 'var(--mlab-blue)' }}>{Math.round(zoom * 100)}%</span>
+                                        <button className="mlab-icon-btn" onClick={handleZoomIn} disabled={isBulkGenerating}><ZoomIn size={16} color='var(--mlab-green-dark)' /></button>
+                                        <button className="mlab-icon-btn mlab-icon-btn--amber" onClick={handleResetZoom} disabled={isBulkGenerating}><RotateCcw size={16} /></button>
+                                    </div>
+
+                                    {view === 'bulk-review' && certData.recipientEmail && bulkSendEmails && (
+                                        <div style={{ position: 'absolute', top: '1.5rem', left: '1.5rem', background: '#dcfce7', color: '#166534', padding: '8px 12px', borderRadius: '8px', fontSize: '0.8rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px', border: '1px solid #bbf7d0', zIndex: 100 }}>
+                                            <Mail size={14} /> Will be emailed to: {certData.recipientEmail}
+                                        </div>
+                                    )}
+
                                     <div className="cert-canvas-wrapper" style={{ height: '100%', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'auto' }}>
                                         <div className="cert-canvas" ref={certRef} style={{ transform: `scale(${zoom})`, transformOrigin: 'center center', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', margin: 'auto', backgroundColor: '#fff', overflow: 'hidden' }}>
                                             {certData.template === 'luxury' && <LuxuryTemplate data={certData} finalType={finalCertType} />}
@@ -641,6 +987,7 @@ export const CertificateStudio: React.FC = () => {
                                             {certData.template === 'modern' && <ModernTemplate data={certData} finalType={finalCertType} />}
                                         </div>
                                     </div>
+
                                 </div>
                             </div>
                         )}
@@ -648,5 +995,222 @@ export const CertificateStudio: React.FC = () => {
                 </div>
             </main>
         </div>
+    );
+};
+
+
+// ═════════════════════════════════════════════════════════════════════════════
+// COMPONENT: BULK GENERATOR MODAL
+// ═════════════════════════════════════════════════════════════════════════════
+const BulkGeneratorModal: React.FC<{
+    certificateGroups: any[],
+    onClose: () => void,
+    onStart: (rows: any[], settings: any, sendEmails: boolean) => void,
+    onCreateFolder: (name: string) => Promise<string | null>
+}> = ({ certificateGroups, onClose, onStart, onCreateFolder }) => {
+
+    const [parsedData, setParsedData] = useState<any[]>([]);
+    const [fileError, setFileError] = useState('');
+    const [sendEmails, setSendEmails] = useState(false);
+
+    const [isCreatingFolder, setIsCreatingFolder] = useState(false);
+    const [isSavingFolder, setIsSavingFolder] = useState(false);
+    const [newFolderName, setNewFolderName] = useState('');
+
+    const [settings, setSettings] = useState({
+        template: 'luxury',
+        groupId: 'general',
+        certType: 'Achievement',
+        programme: '',
+        description: 'has demonstrated exceptional skills and outstanding performance in',
+        issueDate: new Date().toISOString().split('T')[0]
+    });
+
+    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+            try {
+                const bstr = evt.target?.result;
+                const wb = XLSX.read(bstr, { type: 'binary' });
+                const wsname = wb.SheetNames[0];
+                const ws = wb.Sheets[wsname];
+                const data = XLSX.utils.sheet_to_json(ws);
+
+                if (data.length === 0) {
+                    setFileError("The uploaded spreadsheet is empty.");
+                    return;
+                }
+
+                const sample = data[0] as any;
+                const hasName = ('Name' in sample) || ('name' in sample) || ('Full Name' in sample) || ('Recipient' in sample);
+
+                if (!hasName) {
+                    setFileError("Spreadsheet missing a recognizable 'Name' column. Please use a column header like 'Name' or 'Full Name'.");
+                    return;
+                }
+
+                setFileError('');
+                setParsedData(data);
+
+            } catch (err) {
+                setFileError("Failed to parse the file. Ensure it is a valid .csv or .xlsx.");
+            }
+        };
+        reader.readAsBinaryString(file);
+    };
+
+    return createPortal(
+        <div className="wm-overlay animate-fade-in" onClick={onClose} style={{ zIndex: 99999 }}>
+            <div className="wm-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '600px' }}>
+                <div className="wm-modal__header" style={{ borderBottom: '1px solid var(--mlab-border)', paddingBottom: '1rem' }}>
+                    <div className="wm-modal__header-icon" style={{ background: '#e0f2fe', color: '#0ea5e9' }}><Layers size={20} /></div>
+                    <div>
+                        <h2 className="wm-modal__title">Bulk Generate Certificates</h2>
+                        <p className="wm-modal__subtitle">Upload a spreadsheet to automate design and distribution.</p>
+                    </div>
+                    <button className="wm-modal__close" onClick={onClose}><X size={18} /></button>
+                </div>
+
+                <div className="wm-modal__body">
+
+                    {parsedData.length === 0 ? (
+                        <div style={{ border: '2px dashed #cbd5e1', padding: '3rem 2rem', textAlign: 'center', borderRadius: '8px', background: '#f8fafc' }}>
+                            <UploadCloud size={48} color="#94a3b8" style={{ margin: '0 auto 1rem' }} />
+                            <h3 style={{ margin: '0 0 0.5rem', color: 'var(--mlab-midnight)', fontSize: '1rem' }}>Upload Document Template</h3>
+                            <p style={{ margin: '0 0 1.5rem', color: '#64748b', fontSize: '0.85rem' }}>Must contain a "Name" column. Optionally include "Email" or "Course". (.csv or .xlsx)</p>
+                            <label className="mlab-btn mlab-btn--primary" style={{ display: 'inline-flex', cursor: 'pointer' }}>
+                                Browse Files
+                                <input type="file" accept=".csv, .xlsx, .xls" style={{ display: 'none' }} onChange={handleFileUpload} />
+                            </label>
+                            {fileError && <p style={{ color: '#ef4444', fontSize: '0.8rem', marginTop: '1rem', fontWeight: 500 }}>{fileError}</p>}
+                        </div>
+                    ) : (
+                        <div className="wm-form-grid" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', background: '#f0fdf4', padding: '12px 16px', borderRadius: '8px', border: '1px solid #bbf7d0' }}>
+                                <CheckCircle size={24} color="#16a34a" />
+                                <div>
+                                    <h4 style={{ margin: 0, color: '#166534', fontSize: '0.9rem' }}>Spreadsheet Verified!</h4>
+                                    <p style={{ margin: '2px 0 0', color: '#15803d', fontSize: '0.75rem' }}>Successfully extracted <strong>{parsedData.length} records.</strong></p>
+                                </div>
+                                <button className="cdp-btn cdp-btn--outline" style={{ marginLeft: 'auto' }} onClick={() => setParsedData([])}>Change File</button>
+                            </div>
+
+                            <div className="wm-form-section">
+                                <div className="wm-form-section__label"><Layers size={12} /> Default Certificate Settings</div>
+                                <div className="wm-form-grid">
+                                    <div className="wm-form-group wm-form-group--full">
+                                        <label className="wm-form-label">Visual Template</label>
+                                        <select className="wm-form-input" value={settings.template} onChange={e => setSettings(s => ({ ...s, template: e.target.value }))}>
+                                            <option value="luxury">Luxury Classic</option>
+                                            <option value="official">Official Statement (SoR)</option>
+                                            <option value="modern">Modern Minimalist</option>
+                                        </select>
+                                    </div>
+
+                                    <div className="wm-form-group wm-form-group--full">
+                                        <label className="wm-form-label">Save To Folder</label>
+                                        {isCreatingFolder ? (
+                                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                                <input
+                                                    className="wm-form-input"
+                                                    autoFocus
+                                                    placeholder="New folder name..."
+                                                    value={newFolderName}
+                                                    onChange={e => setNewFolderName(e.target.value)}
+                                                    disabled={isSavingFolder}
+                                                    onKeyDown={async (e) => {
+                                                        if (e.key === 'Enter') {
+                                                            e.preventDefault();
+                                                            if (!newFolderName.trim()) return;
+                                                            setIsSavingFolder(true);
+                                                            const newId = await onCreateFolder(newFolderName.trim());
+                                                            if (newId) {
+                                                                setSettings(s => ({ ...s, groupId: newId }));
+                                                                setIsCreatingFolder(false);
+                                                                setNewFolderName('');
+                                                            }
+                                                            setIsSavingFolder(false);
+                                                        }
+                                                    }}
+                                                />
+                                                <button type="button" className="cdp-btn cdp-btn--outline" disabled={isSavingFolder} onClick={async () => {
+                                                    if (!newFolderName.trim()) return;
+                                                    setIsSavingFolder(true);
+                                                    const newId = await onCreateFolder(newFolderName.trim());
+                                                    if (newId) {
+                                                        setSettings(s => ({ ...s, groupId: newId }));
+                                                        setIsCreatingFolder(false);
+                                                        setNewFolderName('');
+                                                    }
+                                                    setIsSavingFolder(false);
+                                                }}>
+                                                    {isSavingFolder ? <Loader2 size={14} className="cdp-spinner" /> : 'Save'}
+                                                </button>
+                                                <button type="button" className="cdp-btn cdp-btn--danger" disabled={isSavingFolder} onClick={() => setIsCreatingFolder(false)}>Cancel</button>
+                                            </div>
+                                        ) : (
+                                            <select className="wm-form-input" value={settings.groupId} onChange={e => {
+                                                if (e.target.value === 'create_new') {
+                                                    setIsCreatingFolder(true);
+                                                } else {
+                                                    setSettings(s => ({ ...s, groupId: e.target.value }));
+                                                }
+                                            }}>
+                                                <option value="general">General (No Folder)</option>
+                                                {certificateGroups.map(g => (<option key={g.id} value={g.id}>{g.name}</option>))}
+
+                                                {settings.groupId !== 'general' && !certificateGroups.find(g => g.id === settings.groupId) && (
+                                                    <option value={settings.groupId}>{newFolderName || 'New Folder...'}</option>
+                                                )}
+
+                                                <option value="create_new" style={{ fontWeight: 'bold', color: 'var(--mlab-blue)' }}>➕ Create New Folder...</option>
+                                            </select>
+                                        )}
+                                    </div>
+
+                                    <div className="wm-form-group wm-form-group--full">
+                                        <label className="wm-form-label">Award Title</label>
+                                        <select className="wm-form-input" value={settings.certType} onChange={e => setSettings(s => ({ ...s, certType: e.target.value }))}>
+                                            <option value="Achievement">Certificate of Achievement</option>
+                                            <option value="Attendance">Certificate of Attendance</option>
+                                            <option value="Excellence">Award of Excellence</option>
+                                            <option value="Participation">Certificate of Participation</option>
+                                        </select>
+                                    </div>
+                                    <div className="wm-form-group wm-form-group--full">
+                                        <label className="wm-form-label">Default Course/Programme Name (Overridden if spreadsheet has 'Course' column)</label>
+                                        <input className="wm-form-input" placeholder="e.g. Advanced AI Bootcamp" value={settings.programme} onChange={e => setSettings(s => ({ ...s, programme: e.target.value }))} />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 600, color: 'var(--mlab-midnight)', fontSize: '0.85rem', background: '#f8fafc', padding: '12px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                                <input type="checkbox" checked={sendEmails} onChange={e => setSendEmails(e.target.checked)} style={{ width: '16px', height: '16px', accentColor: 'var(--mlab-blue)' }} />
+                                Automatically email to recipients
+                                <span style={{ fontWeight: 400, color: '#64748b', fontSize: '0.75rem', marginLeft: 'auto' }}>(Requires 'Email' column in spreadsheet)</span>
+                            </label>
+
+                        </div>
+                    )}
+
+                </div>
+                <div className="wm-modal__footer">
+                    <button type="button" className="wm-btn wm-btn--ghost" onClick={onClose}>Cancel</button>
+                    <button
+                        type="button"
+                        className="mlab-btn mlab-btn--primary"
+                        disabled={parsedData.length === 0 || isCreatingFolder}
+                        onClick={() => onStart(parsedData, settings, sendEmails)}
+                    >
+                        {isCreatingFolder ? "Save Folder First..." : `Stage & Review (${parsedData.length})`}
+                    </button>
+                </div>
+            </div>
+        </div>,
+        document.body
     );
 };

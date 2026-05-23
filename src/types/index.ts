@@ -268,6 +268,7 @@ export interface DashboardLearner
   updatedAt?: string;
   nextEisaDate?: string;
   updatedBy?: string;
+  isBootcamp: any;
 
   campusId?: string;
   certificates?: CertificateRecord[];

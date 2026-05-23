@@ -130,13 +130,13 @@ export const createPlacementSlice: StateCreator<
 
       await batch.commit();
 
-      // 🚀 THE FIX: Use standard immutable update
+      // Use standard immutable update
       set((state) => ({
         placements: [...state.placements, newPlacement],
         placementsLoading: false,
       }));
 
-      console.log(`✅ Successfully created placement ${placementId}`);
+      console.log(`Successfully created placement ${placementId}`);
     } catch (err: any) {
       console.error("Failed to create placement:", err);
       set({ placementsError: err.message, placementsLoading: false });
@@ -151,7 +151,7 @@ export const createPlacementSlice: StateCreator<
 
       await updateDoc(targetRef, { status, updatedAt: timestamp });
 
-      // 🚀 THE FIX: Use standard immutable array mapping
+      // Use standard immutable array mapping
       set((state) => ({
         placements: state.placements.map((p) =>
           p.id === placementId

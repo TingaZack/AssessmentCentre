@@ -40,7 +40,7 @@ import { NotificationBell } from '../../components/common/NotificationBell/Notif
 import { AttendanceHistoryList } from '../FacilitatorDashboard/AttendanceRegister/AttendanceHistoryList';
 import { EcosystemDashboard } from '../../components/admin/EcosystemDashboard/EcosystemDashboard';
 import { WorkplaceHub } from '../../components/views/WorkplaceHub/WorkplaceHub';
-import { CompanyInsightsView } from '../../components/admin/WorkplacesManager/CompanyInsightsView'; // 🚀 IMPORT ADDED
+import { CompanyInsightsView } from '../../components/admin/WorkplacesManager/CompanyInsightsView';
 
 import './AdminDashboard.css';
 
@@ -51,7 +51,6 @@ const AdminDashboard: React.FC = () => {
     const { user, setUser } = store;
     const toast = useToast();
 
-    // 🚀 Added 'company-profile' to the navigation state
     const [currentNav, setCurrentNav] = useState<
         'directory' | 'learners' | 'staff' | 'qualifications' | 'cohorts' |
         'workplaces' | 'studio' | 'dashboard' | 'profile' | 'access' |
@@ -61,14 +60,14 @@ const AdminDashboard: React.FC = () => {
     // Mobile Sidebar State
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-    // 🚀 NEW: State to hold the company data when jumping to the Insights View
+    // State to hold the company data when jumping to the Insights View
     const [selectedCompanyForInsights, setSelectedCompanyForInsights] = useState<Employer | null>(null);
 
     useEffect(() => {
         setIsMobileMenuOpen(false);
     }, [currentNav]);
 
-    // 🚀 NEW: Custom Event Listener to catch "View Ledger" clicks without messy prop-drilling!
+    // Custom Event Listener to catch "View Ledger" clicks without messy prop-drilling!
     useEffect(() => {
         const handleOpenInsights = (e: any) => {
             setSelectedCompanyForInsights(e.detail);
@@ -168,10 +167,20 @@ const AdminDashboard: React.FC = () => {
         toast.success(`${learner.fullName} has been restored.`);
     };
 
-    const handleBulkApprove = async (learnersToApprove: DashboardLearner[]) => {
-        if (!window.confirm(`Approve ${learnersToApprove.length} learner profiles? They will be added to the system directory.`)) return;
-        await store.approveStagingLearners(learnersToApprove);
-        toast.success(`Successfully initialized ${learnersToApprove.length} learner profiles.`);
+    const handleBulkApprove = async (learnersToApprove: DashboardLearner[], mode: 'standard' | 'shadow' | 'offline' = 'standard') => {
+        if (!learnersToApprove || learnersToApprove.length === 0) return;
+
+        const confirmationMessages = {
+            standard: `Approve ${learnersToApprove.length} standard profiles into the system directory? They will remain dormant until manually invited.`,
+            shadow: `Approve ${learnersToApprove.length} profiles straight into live Bootcamp rosters? This will skip authentication setups.`,
+            offline: `Approve ${learnersToApprove.length} profiles as offline RPL records? This skips platform login profiles.`
+        };
+
+        if (!window.confirm(confirmationMessages[mode])) return;
+
+        await store.approveStagingLearners(learnersToApprove, mode as any);
+
+        toast.success(`Successfully processed ${learnersToApprove.length} profiles.`);
     };
 
     const handleInviteLearner = (learner: DashboardLearner) => {
@@ -284,7 +293,7 @@ const AdminDashboard: React.FC = () => {
                             {currentNav === 'staff' && 'Staff & Mentors'}
                             {currentNav === 'cohorts' && 'Cohort Management'}
                             {currentNav === 'workplaces' && 'Workplace Management'}
-                            {currentNav === 'company-profile' && 'Corporate Partner Insights'} {/* 🚀 Added Title */}
+                            {currentNav === 'company-profile' && 'Corporate Partner Insights'}
                             {currentNav === 'profile' && 'My Administrator Profile'}
                             {currentNav === 'access' && 'Platform Access Control'}
                             {currentNav === 'settings' && 'Platform Settings'}
@@ -300,7 +309,7 @@ const AdminDashboard: React.FC = () => {
                             {currentNav === 'staff' && 'Manage facilitators, assessors, moderators, and support staff'}
                             {currentNav === 'cohorts' && 'Organize learners into training classes and assign educators'}
                             {currentNav === 'workplaces' && 'Manage employer partners and workplace mentor allocations'}
-                            {currentNav === 'company-profile' && 'View compliance, placement ledgers, and operational analytics for this host company.'} {/* 🚀 Added Description */}
+                            {currentNav === 'company-profile' && 'View compliance, placement ledgers, and operational analytics for this host company.'}
                             {currentNav === 'profile' && 'Manage your institutional compiler and contact details'}
                             {currentNav === 'access' && 'Manage Super Administrator access and permissions'}
                             {currentNav === 'settings' && 'Configure global system preferences and application settings'}
@@ -362,7 +371,6 @@ const AdminDashboard: React.FC = () => {
 
                     {currentNav === 'workplaces' && <WorkplaceHub />}
 
-                    {/* 🚀 Render the new Company Insights View if active */}
                     {currentNav === 'company-profile' && selectedCompanyForInsights && (
                         <CompanyInsightsView
                             company={selectedCompanyForInsights}

@@ -7,9 +7,9 @@ import {
     Calendar, RotateCcw, ClipboardCheck, AlertTriangle,
     Eye, Archive as ArchiveIcon, Mail,
     Share2, GraduationCap, Users, History,
-    ShieldCheck, X, AlertCircle, Check,
+    ShieldCheck, X, AlertCircle, Check, CheckCircle,
     Loader2, MapPin, Award, FileSpreadsheet, FileText, Layers, Filter, CheckSquare, Square,
-    UserCheck
+    UserCheck, MonitorOff, UserMinus
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { doc, deleteDoc, writeBatch, collection } from 'firebase/firestore';
@@ -37,7 +37,7 @@ interface LearnersViewProps {
     onDeletePermanent?: (learner: DashboardLearner, audit: { reason: string; adminId: string; adminName: string }) => Promise<void>;
     onBulkRestore?: (learners: DashboardLearner[]) => void;
     onBulkArchive?: (learners: DashboardLearner[]) => void;
-    onBulkApprove?: (learners: DashboardLearner[]) => void;
+    onBulkApprove?: (learners: DashboardLearner[], mode: 'standard' | 'shadow' | 'offline') => void;
     onBulkDiscard?: (learners: DashboardLearner[]) => void;
 }
 
@@ -55,7 +55,7 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
     const { user: currentUser, settings, programmes, fetchLearners } = useStore();
 
     // ─── VIEW STATE ───
-    const [viewMode, setViewMode] = useState<'active' | 'staging' | 'offline'>('active');
+    const [viewMode, setViewMode] = useState<'active' | 'bootcamp' | 'offline' | 'staging'>('active');
     const [searchTerm, setSearchTerm] = useState('');
     const [filterStatus, setFilterStatus] = useState('all');
     const [selectedYear, setSelectedYear] = useState<string>('all');
@@ -78,36 +78,22 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
     const [approvingLearners, setApprovingLearners] = useState<DashboardLearner[] | null>(null);
     const [isApproving, setIsApproving] = useState(false);
 
+    const [approvalMode, setApprovalMode] = useState<'standard' | 'shadow' | 'offline'>('standard');
+
     const [certifyingLearner, setCertifyingLearner] = useState<DashboardLearner | null>(null);
 
     const [showBulkResultsImporter, setShowBulkResultsImporter] = useState(false);
 
-    // 🕵️‍♂️ UI DATA RENDER CHECKER
-    useEffect(() => {
-        if (learners.length > 0) {
-            console.log("\n=======================================================");
-            console.log("📊 UI RENDER CHECK: WHAT THE TABLE SEES");
-            console.log("=======================================================");
-            learners.slice(0, 5).forEach(l => {
-                const isDormant = !l.enrollmentId;
-                const progId = (l as any).programmeId;
-                const cohortObj = cohorts.find(c => c.id === l.cohortId);
-                const activeProgId = isDormant ? null : (progId || cohortObj?.programmeId);
-                const resolvedProgName = activeProgId ? programmes?.find(p => p.id === activeProgId)?.name : 'Not Found';
-
-                console.log(`👤 ${l.fullName} (${l.idNumber})`);
-                console.log(`   ├─ Status       : ${isDormant ? '🛑 DORMANT (No Ledger)' : '✅ ACTIVE (Ledger Exists)'}`);
-                console.log(`   ├─ Ledger ID    : '${l.enrollmentId || 'MISSING'}'`);
-                console.log(`   ├─ Cohort ID    : '${l.cohortId || 'MISSING'}'`);
-                console.log(`   ├─ Prog ID      : '${progId || 'MISSING IN LEDGER'}'`);
-                console.log(`   └─ UI Resolves  : '${resolvedProgName}'`);
-            });
-            console.log("=======================================================\n");
-        }
-    }, [learners, cohorts, programmes]);
-
+    // Reset selections and specific filters when changing tabs
     useEffect(() => {
         setSelectedIds(new Set());
+        if (viewMode === 'bootcamp' || viewMode === 'staging') {
+            setWeb3Status('all');
+            setFilterStatus('all');
+        }
+        if (viewMode === 'offline') {
+            setFilterStatus('all');
+        }
     }, [viewMode, showArchived, selectedYear, selectedQualification, selectedCampus, web3Status]);
 
     const learnerCountsById = useMemo(() => {
@@ -124,8 +110,9 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
         let sourceData: DashboardLearner[] = [];
 
         if (viewMode === 'staging') sourceData = stagingLearners;
-        else if (viewMode === 'offline') sourceData = learners.filter(l => l.isOffline === true);
-        else sourceData = learners.filter(l => !l.isOffline);
+        else if (viewMode === 'bootcamp') sourceData = learners.filter(l => l.isBootcamp === true);
+        else if (viewMode === 'offline') sourceData = learners.filter(l => l.isOffline === true && !l.isBootcamp);
+        else sourceData = learners.filter(l => !l.isOffline && !l.isBootcamp); // Standard Active
 
         return sourceData.filter(learner => {
             if (hiddenDraftIds.has(learner.id)) return false;
@@ -133,7 +120,7 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
             const isArchived = learner.isArchived === true;
             const isDormant = !learner.enrollmentId;
 
-            if (viewMode === 'active' || viewMode === 'offline') {
+            if (viewMode !== 'staging') {
                 if (showArchived && !isArchived) return false;
                 if (!showArchived && isArchived) return false;
             }
@@ -147,14 +134,13 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
                 )) return false;
             }
 
-            if ((viewMode === 'active' || viewMode === 'offline') && selectedYear !== 'all') {
+            if (viewMode !== 'staging' && selectedYear !== 'all') {
                 if (isDormant) return false;
 
                 const y = learner.trainingStartDate ? learner.trainingStartDate.substring(0, 4) : 'Unknown';
                 if (y !== selectedYear) return false;
             }
 
-            // RELATIONAL QUALIFICATION FILTER
             if (selectedQualification !== 'all') {
                 const activeProgId = isDormant ? null : ((learner as any).programmeId || cohorts.find(c => c.id === learner.cohortId)?.programmeId);
                 const progObj = activeProgId ? programmes?.find(p => p.id === activeProgId) : null;
@@ -163,7 +149,7 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
                 if (qualName !== selectedQualification) return false;
             }
 
-            if (filterStatus !== 'all') {
+            if (viewMode === 'active' && filterStatus !== 'all') {
                 if (filterStatus === 'pending_setup') {
                     if (learner.profileCompleted) return false;
                 } else if (filterStatus === 'active') {
@@ -173,8 +159,10 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
                 }
             }
 
-            if (web3Status === 'minted' && !learner.isBlockchainVerified) return false;
-            if (web3Status === 'pending' && learner.isBlockchainVerified) return false;
+            if ((viewMode === 'active' || viewMode === 'offline') && web3Status !== 'all') {
+                if (web3Status === 'minted' && !learner.isBlockchainVerified) return false;
+                if (web3Status === 'pending' && learner.isBlockchainVerified) return false;
+            }
 
             if (selectedCampus !== 'all') {
                 if (isDormant) return false;
@@ -213,13 +201,16 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
         return Array.from(quals).sort();
     }, [learners, stagingLearners, programmes]);
 
-    const activeCount = learners.filter(l => !l.isArchived && !l.isOffline).length;
-    const offlineCount = learners.filter(l => !l.isArchived && l.isOffline).length;
+    const activeCount = learners.filter(l => !l.isArchived && !l.isOffline && !l.isBootcamp).length;
+    const bootcampCount = learners.filter(l => !l.isArchived && l.isBootcamp).length;
+    const offlineCount = learners.filter(l => !l.isArchived && l.isOffline && !l.isBootcamp).length;
     const stagingCount = stagingLearners.filter(l => !hiddenDraftIds.has(l.id)).length;
 
     const archivedCount = viewMode === 'offline'
-        ? learners.filter(l => l.isArchived && l.isOffline).length
-        : learners.filter(l => l.isArchived && !l.isOffline).length;
+        ? learners.filter(l => l.isArchived && l.isOffline && !l.isBootcamp).length
+        : viewMode === 'bootcamp'
+            ? learners.filter(l => l.isArchived && l.isBootcamp).length
+            : learners.filter(l => l.isArchived && !l.isOffline && !l.isBootcamp).length;
 
     const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.checked) setSelectedIds(new Set(filteredLearners.map(l => l.id)));
@@ -237,6 +228,7 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
         const selected = sourceList.filter(l => selectedIds.has(l.id));
 
         if (action === 'approve') {
+            setApprovalMode('standard');
             setApprovingLearners(selected);
         } else if (action === 'restore') {
             onBulkRestore?.(selected);
@@ -324,7 +316,7 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
                     const progObj = activeProgId ? programmes?.find(p => p.id === activeProgId) : null;
                     const qualName = progObj ? progObj.name : (l.qualification?.name || 'N/A');
 
-                    const accountStatus = (l.profileCompleted || l.isOffline) ? 'Active' : 'Pending Setup';
+                    const accountStatus = (l.profileCompleted || l.isOffline || l.isBootcamp) ? 'Active' : 'Pending Setup';
 
                     return `"${l.fullName}","${l.idNumber}","${cohortName}","${campusName}","${qualName}","${l.status}","${accountStatus}","${l.trainingStartDate}","${l.profileCompleted ? 'Registered' : 'Pending'}","${l.isBlockchainVerified ? 'Yes' : 'No'}"`;
                 })
@@ -339,9 +331,11 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
     const handleSaveBulkResults = async (parsedLearners: any[]) => {
         try {
             const batch = writeBatch(db);
+            const timestamp = new Date().toISOString();
 
             parsedLearners.forEach(learner => {
                 if (learner.isUpdate && learner.existingId) {
+                    // 1. UPDATE EXISTING ENROLLMENT
                     const targetEnrollmentId = learner.enrollmentId || learner.existingId;
                     const ref = doc(db, "enrollments", targetEnrollmentId);
 
@@ -350,26 +344,52 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
                         practicalModules: learner.practicalModules,
                         workExperienceModules: learner.workExperienceModules,
                         qualification: learner.qualification,
-                        updatedAt: new Date().toISOString()
+                        updatedAt: timestamp
                     }, { merge: true });
                 } else {
-                    const newId = doc(collection(db, "staging_learners")).id;
-                    const ref = doc(db, "staging_learners", newId);
-                    batch.set(ref, {
+                    // 2. BYPASS STAGING: CREATE LIVE OFFLINE/RPL PROFILE
+                    const profileId = learner.idNumber || doc(collection(db, "learners")).id;
+                    const targetCohortId = learner.cohortId || "Unassigned";
+
+                    // Create the Human Profile
+                    const learnerRef = doc(db, "learners", profileId);
+                    batch.set(learnerRef, {
                         ...learner,
-                        id: newId,
-                        learnerId: newId,
+                        id: profileId,
+                        learnerId: profileId,
+                        authUid: profileId,
                         status: "active",
                         authStatus: "pending",
-                        isDraft: true,
-                        createdAt: new Date().toISOString(),
+                        isDraft: false,
+                        isOffline: true,
+                        isBootcamp: false,
+                        createdAt: timestamp,
                         createdBy: currentUser?.uid || "admin"
-                    });
+                    }, { merge: true });
+
+                    // Create the Enrollment Ledger with the Results
+                    const enrollmentId = targetCohortId !== "Unassigned" ? `${targetCohortId}_${profileId}` : `RPL_${profileId}`;
+                    const enrollmentRef = doc(db, "enrollments", enrollmentId);
+
+                    batch.set(enrollmentRef, {
+                        id: enrollmentId,
+                        learnerId: profileId,
+                        cohortId: targetCohortId,
+                        status: "active",
+                        isOffline: true,
+                        qualification: learner.qualification || {},
+                        knowledgeModules: learner.knowledgeModules || [],
+                        practicalModules: learner.practicalModules || [],
+                        workExperienceModules: learner.workExperienceModules || [],
+                        enrolledAt: timestamp,
+                        updatedAt: timestamp,
+                        assignedBy: currentUser?.uid || "admin"
+                    }, { merge: true });
                 }
             });
 
             await batch.commit();
-            if (fetchLearners) await fetchLearners(true); // Force refetch
+            if (fetchLearners) await fetchLearners(true); // Force refetch Live Learners
             setShowBulkResultsImporter(false);
 
         } catch (error) {
@@ -383,7 +403,7 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
         setIsApproving(true);
         try {
             if (onBulkApprove) {
-                await onBulkApprove(approvingLearners);
+                await onBulkApprove(approvingLearners, approvalMode);
             }
             setApprovingLearners(null);
         } catch (err) {
@@ -457,6 +477,16 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
                 >
                     Enrollments (Active)
                     <span className="mlab-tab__count">{activeCount}</span>
+                </button>
+
+                <button
+                    className={`mlab-tab ${viewMode === 'bootcamp' ? 'mlab-tab--active' : 'mlab-tab--inactive'}`}
+                    onClick={() => { setViewMode('bootcamp'); setShowArchived(false); }}
+                >
+                    Bootcamp / Pre-selection
+                    <span className={`mlab-tab__count ${viewMode === 'bootcamp' ? 'mlab-tab__count--alt' : ''}`}>
+                        {bootcampCount}
+                    </span>
                 </button>
 
                 <button
@@ -575,7 +605,7 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
                                 </button>
                             </>
                         )}
-                        {(viewMode === 'active' || viewMode === 'offline') && (
+                        {viewMode !== 'staging' && (
                             showArchived ? (
                                 <button className="wm-btn wm-btn--ghost" style={{ color: 'var(--mlab-green)', borderColor: 'var(--mlab-green)' }} onClick={() => executeBulkAction('restore')}>
                                     <RotateCcw size={14} /> Restore
@@ -590,7 +620,7 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
                 </div>
             ) : (
                 <div className="mlab-standard-actions" style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center', marginBottom: '1.5rem' }}>
-                    {viewMode !== 'active' && (
+                    {viewMode !== 'active' && viewMode !== 'bootcamp' && (
                         <>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.35rem 0.5rem', background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '6px' }}>
                                 <span style={{ fontSize: '0.65rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', paddingRight: '4px', borderRight: '1px solid #cbd5e1' }}>
@@ -624,6 +654,17 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
                                 </button>
                             </div>
                         </>
+                    )}
+
+                    {viewMode === 'bootcamp' && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.35rem 0.5rem', background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '6px' }}>
+                            <button className="wm-btn wm-btn--primary" onClick={onUpload} style={{ background: '#0ea5e9', borderColor: '#0ea5e9', padding: '0.35rem 0.75rem', fontSize: '0.75rem' }} title="Import Bootcamp Applicants">
+                                <Upload size={13} /> Import Applicants
+                            </button>
+                            <button className="wm-btn wm-btn--ghost" onClick={handleExport} style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem', background: 'white' }}>
+                                <Download size={13} /> Export List
+                            </button>
+                        </div>
                     )}
                     <button className="wm-btn wm-btn--primary" onClick={onAdd} style={{ padding: '0.45rem 1rem', marginLeft: 'auto' }}>
                         <Plus size={14} /> Add Single
@@ -679,7 +720,7 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
 
                             const isReturning = learner.idNumber && (learnerCountsById[learner.idNumber] > 1);
 
-                            const isPendingSetup = !learner.profileCompleted && !learner.isOffline && viewMode !== 'staging';
+                            const isPendingSetup = !learner.profileCompleted && !learner.isOffline && !learner.isBootcamp && viewMode !== 'staging';
 
                             return (
                                 <tr key={learner.id} className={rowClass}>
@@ -737,11 +778,12 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
                                     <td>
                                         {learner.isArchived ? <span className="mlab-badge mlab-badge--archived">Archived</span>
                                             : viewMode === 'staging' ? <span className="mlab-badge mlab-badge--draft">Draft</span>
-                                                : learner.isOffline ? <span className="mlab-badge mlab-badge--offline">Offline / RPL</span>
-                                                    : isPendingSetup ? <span className="mlab-badge" style={{ background: '#fffbeb', color: '#b45309', border: '1px solid #fde68a' }}>Pending Setup</span>
-                                                        : learner.status === 'dropped' ? <span className="mlab-badge mlab-badge--archived">Dropped</span>
-                                                            : isDormant ? <span className="mlab-badge" style={{ background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1' }}>Unassigned</span>
-                                                                : <span className="mlab-badge mlab-badge--active">Active</span>
+                                                : learner.isBootcamp ? <span className="mlab-badge" style={{ background: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0' }}>Applicant</span>
+                                                    : learner.isOffline ? <span className="mlab-badge mlab-badge--offline">Offline / RPL</span>
+                                                        : isPendingSetup ? <span className="mlab-badge" style={{ background: '#fffbeb', color: '#b45309', border: '1px solid #fde68a' }}>Pending Setup</span>
+                                                            : learner.status === 'dropped' ? <span className="mlab-badge mlab-badge--archived">Dropped</span>
+                                                                : isDormant ? <span className="mlab-badge" style={{ background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1' }}>Unassigned</span>
+                                                                    : <span className="mlab-badge mlab-badge--active">Active</span>
                                         }
                                     </td>
 
@@ -764,7 +806,10 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
                                             {viewMode === 'staging' && (
                                                 <button
                                                     className="mlab-icon-btn mlab-icon-btn--green"
-                                                    onClick={() => setApprovingLearners([learner])}
+                                                    onClick={() => {
+                                                        setApprovalMode('standard');
+                                                        setApprovingLearners([learner]);
+                                                    }}
                                                     title="Approve & Import"
                                                 >
                                                     <ClipboardCheck size={14} />
@@ -818,13 +863,13 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
                                                 </>
                                             )}
 
-                                            {(viewMode === 'offline' || learner.isArchived) && (
+                                            {(viewMode === 'offline' || viewMode === 'bootcamp' || learner.isArchived) && (
                                                 <button className="mlab-icon-btn mlab-icon-btn--red" onClick={() => setDeletingLearner(learner)} title="Delete Permanently">
                                                     <Trash2 size={14} />
                                                 </button>
                                             )}
 
-                                            {(viewMode === 'active' || viewMode === 'offline') && learner.isArchived && (
+                                            {viewMode !== 'staging' && learner.isArchived && (
                                                 <button className="mlab-icon-btn mlab-icon-btn--emerald" onClick={() => onRestore(learner)} title="Restore">
                                                     <RotateCcw size={14} />
                                                 </button>
@@ -851,35 +896,92 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
                         <p className="wm-empty__desc">
                             {viewMode === 'active'
                                 ? showArchived ? "No archived records found." : "No active learners found matching your criteria."
-                                : viewMode === 'offline'
-                                    ? showArchived ? "No archived offline records found." : "No offline learners found. Upload an SoR CSV to import one."
-                                    : "Staging area is empty. Import a CSV to get started."}
+                                : viewMode === 'bootcamp'
+                                    ? showArchived ? "No archived bootcamp records found." : "No bootcamp applicants found."
+                                    : viewMode === 'offline'
+                                        ? showArchived ? "No archived offline records found." : "No offline learners found. Upload an SoR CSV to import one."
+                                        : "Staging area is empty. Import a CSV to get started."}
                         </p>
                     </div>
                 )}
             </div>
 
             {/* MOUNT THE NEW BULK RESULTS REVIEW CENTER */}
-            {showBulkResultsImporter && (
+            {showBulkResultsImporter && createPortal(
                 <BulkResultsImportModal
                     existingLearners={learners}
                     cohorts={cohorts || []}
                     programmes={programmes || []}
                     onClose={() => setShowBulkResultsImporter(false)}
                     onSaveAll={handleSaveBulkResults}
-                />
+                />,
+                document.body
             )}
 
-            {/* STATUS MODALS WRAPPED IN CREATEPORTAL */}
+            {/* APPROVAL GATEWAY MODAL */}
             {approvingLearners && approvingLearners.length > 0 && createPortal(
-                <StatusModal
-                    type="success"
-                    title={`Approve ${approvingLearners.length} enrollment${approvingLearners.length > 1 ? 's' : ''}?`}
-                    message={`These draft records will be moved from the Staging Area into your live database. If the system detects existing users, it will safely map the new enrollment to their current profile without overriding their existing account.`}
-                    confirmText={isApproving ? "Approving..." : "Yes, Approve"}
-                    onClose={handleConfirmApprove}
-                    onCancel={() => setApprovingLearners(null)}
-                />,
+                <div className="wm-overlay animate-fade-in" onClick={() => setApprovingLearners(null)} style={{ zIndex: 99999 }}>
+                    <div className="wm-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '600px' }}>
+                        <div className="wm-modal__header" style={{ borderBottom: '1px solid var(--mlab-border)', paddingBottom: '1rem' }}>
+                            <div className="wm-modal__header-icon" style={{ background: '#e0f2fe', color: '#0ea5e9' }}><CheckSquare size={20} /></div>
+                            <div>
+                                <h2 className="wm-modal__title">Approve {approvingLearners.length} Enrollment{approvingLearners.length > 1 ? 's' : ''}</h2>
+                                <p className="wm-modal__subtitle">Select how these profiles should be activated in the system.</p>
+                            </div>
+                            <button className="wm-modal__close" onClick={() => setApprovingLearners(null)} disabled={isApproving}><X size={18} /></button>
+                        </div>
+
+                        <div className="wm-modal__body" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+
+                            {/* OPTION 1: STANDARD ACTIVATION */}
+                            <label style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '16px', background: approvalMode === 'standard' ? '#f0fdf4' : '#f8fafc', border: `2px solid ${approvalMode === 'standard' ? '#22c55e' : '#cbd5e1'}`, borderRadius: '8px', cursor: 'pointer', transition: 'all 0.2s ease' }}>
+                                <input type="radio" name="approval_mode" value="standard" checked={approvalMode === 'standard'} onChange={() => setApprovalMode('standard')} style={{ marginTop: '4px', width: '18px', height: '18px', accentColor: '#22c55e' }} />
+                                <div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--mlab-midnight)', fontWeight: 700, fontSize: '1rem', marginBottom: '4px' }}>
+                                        <Mail size={16} color={approvalMode === 'standard' ? '#16a34a' : 'var(--mlab-grey)'} /> Standard Activation
+                                    </div>
+                                    <p style={{ margin: 0, fontSize: '0.85rem', color: '#475569', lineHeight: 1.4 }}>
+                                        Creates live Firebase Auth accounts. Learners will receive an email invitation to set up their password and access the platform.
+                                    </p>
+                                </div>
+                            </label>
+
+                            {/* OPTION 2: SHADOW PROFILES (BOOTCAMP) */}
+                            <label style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '16px', background: approvalMode === 'shadow' ? '#eff6ff' : '#f8fafc', border: `2px solid ${approvalMode === 'shadow' ? '#3b82f6' : '#cbd5e1'}`, borderRadius: '8px', cursor: 'pointer', transition: 'all 0.2s ease' }}>
+                                <input type="radio" name="approval_mode" value="shadow" checked={approvalMode === 'shadow'} onChange={() => setApprovalMode('shadow')} style={{ marginTop: '4px', width: '18px', height: '18px', accentColor: '#3b82f6' }} />
+                                <div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--mlab-midnight)', fontWeight: 700, fontSize: '1rem', marginBottom: '4px' }}>
+                                        <MonitorOff size={16} color={approvalMode === 'shadow' ? '#2563eb' : 'var(--mlab-grey)'} /> Shadow Profiles (Bootcamp)
+                                    </div>
+                                    <p style={{ margin: 0, fontSize: '0.85rem', color: '#475569', lineHeight: 1.4 }}>
+                                        Enrolls them in the active cohort for attendance tracking <strong>without</strong> creating a login account or sending emails.
+                                    </p>
+                                </div>
+                            </label>
+
+                            {/* OPTION 3: OFFLINE / RPL */}
+                            <label style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '16px', background: approvalMode === 'offline' ? '#fdf4ff' : '#f8fafc', border: `2px solid ${approvalMode === 'offline' ? '#d946ef' : '#cbd5e1'}`, borderRadius: '8px', cursor: 'pointer', transition: 'all 0.2s ease' }}>
+                                <input type="radio" name="approval_mode" value="offline" checked={approvalMode === 'offline'} onChange={() => setApprovalMode('offline')} style={{ marginTop: '4px', width: '18px', height: '18px', accentColor: '#d946ef' }} />
+                                <div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--mlab-midnight)', fontWeight: 700, fontSize: '1rem', marginBottom: '4px' }}>
+                                        <UserMinus size={16} color={approvalMode === 'offline' ? '#c026d3' : 'var(--mlab-grey)'} /> Offline / RPL
+                                    </div>
+                                    <p style={{ margin: 0, fontSize: '0.85rem', color: '#475569', lineHeight: 1.4 }}>
+                                        Flags records as purely offline. Skips authentication completely and maps them to the legacy Offline/RPL ledger view.
+                                    </p>
+                                </div>
+                            </label>
+
+                        </div>
+
+                        <div className="wm-modal__footer">
+                            <button className="wm-btn wm-btn--ghost" onClick={() => setApprovingLearners(null)} disabled={isApproving}>Cancel</button>
+                            <button className="wm-btn wm-btn--primary" onClick={handleConfirmApprove} disabled={isApproving}>
+                                {isApproving ? <><Loader2 className="spin" size={16} /> Processing...</> : <><CheckCircle size={16} /> Confirm Import</>}
+                            </button>
+                        </div>
+                    </div>
+                </div>,
                 document.body
             )}
 
@@ -950,3 +1052,4 @@ export const LearnersView: React.FC<LearnersViewProps> = ({
         </div>
     );
 };
+

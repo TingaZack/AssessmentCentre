@@ -257,7 +257,7 @@ export const LiveAttendanceBoard: React.FC = () => {
                 return new Date(val).getTime();
             };
 
-            // 🚀 STEP 1: GROUP MULTIPLE TAPS DIRECTLY BY LEARNER ID (ID Number)
+            // GROUP MULTIPLE TAPS DIRECTLY BY LEARNER ID (ID Number)
             const groupedScans: Record<string, any[]> = {};
             liveSnap.docs.forEach(d => {
                 const data = d.data();
@@ -270,7 +270,7 @@ export const LiveAttendanceBoard: React.FC = () => {
             const scansMap: Record<string, any> = {};
             const presentLearnerIds = Object.keys(groupedScans);
 
-            // 🚀 STEP 2: MAP TO 4-SLOT EXACT TIMESTAMPS
+            //  MAP TO 4-SLOT EXACT TIMESTAMPS
             presentLearnerIds.forEach(lId => {
                 const userTaps = groupedScans[lId];
 
@@ -303,20 +303,20 @@ export const LiveAttendanceBoard: React.FC = () => {
                 };
             });
 
-            // 🚀 STEP 3: AUTO-IMPUTE MISSING CHECKOUTS
+            // AUTO-IMPUTE MISSING CHECKOUTS
             presentLearnerIds.forEach(lId => {
                 const scan = scansMap[lId];
                 if (scan.checkInAt && !scan.checkOutAt) {
                     const outDate = new Date(scan.checkInAt);
                     outDate.setHours(fallbackH || 16, fallbackM || 0, 0, 0);
-                    scan.checkOutAt = Math.max(outDate.getTime(), scan.checkInAt); // Safeguard
+                    scan.checkOutAt = Math.max(outDate.getTime(), scan.checkInAt);
                 }
             });
 
-            const rosterIds = roster.map(l => l.idNumber || l.id); // Ensure we compare against ID Numbers
+            const rosterIds = roster.map(l => l.idNumber || l.id);
             const absentLearnerIds = rosterIds.filter(id => !presentLearnerIds.includes(id));
 
-            // 🚀 STEP 4: SAVE THE FINALIZED REGISTER
+            // SAVE THE FINALIZED REGISTER
             const historyRef = doc(collection(db, 'attendance'));
             batch.set(historyRef, {
                 cohortId: cohortId,
@@ -333,7 +333,7 @@ export const LiveAttendanceBoard: React.FC = () => {
                 method: 'manual_close'
             });
 
-            // 🚀 STEP 5: GAMIFICATION (Directly using ID Number as Document ID)
+            // GAMIFICATION (Directly using ID Number as Document ID)
             presentLearnerIds.forEach((id: string) => {
                 const learnerRef = doc(db, 'learners', id);
                 batch.update(learnerRef, {
@@ -350,7 +350,6 @@ export const LiveAttendanceBoard: React.FC = () => {
                 });
             });
 
-            // Clear the board
             liveSnap.docs.forEach(d => batch.delete(d.ref));
 
             await batch.commit();

@@ -764,7 +764,7 @@ export const PlacementsDashboard: React.FC = () => {
 
     const formatDate = (dateStr: string) => moment(dateStr).format('DD MMM YYYY');
 
-    // 🚀 EXPORT LOGIC FOR MASTER PLACEMENT DASHBOARD
+    // EXPORT LOGIC FOR MASTER PLACEMENT DASHBOARD
     const getExportData = () => {
         return enrichedAndFilteredPlacements.map(p => ({
             "Learner Name": p.learnerName,
@@ -939,7 +939,6 @@ export const PlacementsDashboard: React.FC = () => {
 
                 <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px' }}>
 
-                    {/* 🚀 EXPORT DROPDOWN MENU */}
                     <div style={{ position: 'relative' }} ref={exportMenuRef}>
                         <button
                             onClick={() => setShowExportMenu(!showExportMenu)}

@@ -637,7 +637,6 @@ export const AssessmentBuilder: React.FC = () => {
     const qCount = blocks.filter((b) => ["text", "mcq", "task", "checklist", "qcto_workplace"].includes(b.type)).length;
     const coveredTopicIds = new Set(blocks.map((b) => b.linkedTopicId).filter(Boolean) as string[]);
 
-    // THE ULTRA-SAFE DETERMINISTIC SAVE FUNCTION 🚀
     const handleSave = async (status: AssessmentStatusType | "force_draft", isAutoSave = false) => {
         if (!title.trim() && !isAutoSave) {
             toast.warning("Please enter a Workbook Title.");
@@ -730,8 +729,8 @@ export const AssessmentBuilder: React.FC = () => {
                 targetDocId = baseComposite ? `${baseComposite}_${uniqueTag}` : doc(collection(db, "assessments")).id;
             }
 
-            // GOOGLE CLOUD TASKS: Auto-Sweeper Scheduling 🚀
-            // Crucial Fix: Only schedule the task if it is genuinely published as 'scheduled'.
+            // GOOGLE CLOUD TASKS: Auto-Sweeper Scheduling
+            // Only schedule the task if it is genuinely published as 'scheduled'.
             // If it is 'draft' or 'force_draft', we aggressively cancel existing tasks and do not create new ones.
             let newTaskId = autoCloseTaskId;
             try {
@@ -800,7 +799,7 @@ export const AssessmentBuilder: React.FC = () => {
                 lastUpdated: new Date().toISOString(),
                 lastUpdatedBy: user?.uid,
                 isWorkbook: true,
-                autoCloseTaskId: newTaskId || null, // Save the receipt to Firestore!
+                autoCloseTaskId: newTaskId || null,
             };
 
             if (targetDocId !== assessmentId) {
@@ -930,7 +929,7 @@ export const AssessmentBuilder: React.FC = () => {
             }
 
         } catch (err: any) {
-            console.error("❌ [SAVE ERROR]:", err);
+            console.error("[SAVE ERROR]:", err);
             setSaveStatus("unsaved");
             if (!isAutoSave) toast.error(`Failed to save: ${err.message}`);
         } finally {
@@ -2860,7 +2859,7 @@ export default AssessmentBuilder;
 //                 batch.set(r, { ...payload, createdAt: new Date().toISOString() });
 //             }
 
-//             // 4. THE FIX: DIRECT DB QUERY TO GUARANTEE WORKBOOK CREATION 🚀
+//             // 4. THE FIX: DIRECT DB QUERY TO GUARANTEE WORKBOOK CREATION
 //             if (["active", "scheduled"].includes(finalStatus)) {
 
 //                 const allEnrollments: any[] = [];

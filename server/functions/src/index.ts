@@ -3234,7 +3234,7 @@ export const generateMasterPoE = onDocumentCreated(
       const latestSub = submissions[submissions.length - 1];
       const primaryGradedSub = submissions.find((s) => s.assessorId);
 
-      // 1. THE "DAY 1" SIGNATURE (For POPIA, Induction, and Commitment)
+      // THE "DAY 1" SIGNATURE (For POPIA, Induction, and Commitment)
       let dayOneLearnerSigUrl = null;
       if (
         learnerUserDoc?.signatureHistory &&
@@ -3251,7 +3251,7 @@ export const generateMasterPoE = onDocumentCreated(
           : null;
       }
 
-      // 2. THE "LATEST" SIGNATURE (For the Progress Report cover)
+      // THE "LATEST" SIGNATURE (For the Progress Report cover)
       const latestLearnerSigUrl =
         latestSub?.learnerDeclaration?.signatureUrl ||
         (learner.authUid ? signaturesMap[learner.authUid] : null);
@@ -3272,7 +3272,7 @@ export const generateMasterPoE = onDocumentCreated(
         "https://firebasestorage.googleapis.com/v0/b/testpro-8f08c.appspot.com/o/Mlab-Grey-variation-1.png?alt=media&token=e85e0473-97cc-431d-8c08-7a3445806983";
       const offlineEvidenceFiles: EvidenceFile[] = [];
 
-      // UPDATED: Groups assessments logically under their module header!
+      // Groups assessments logically under their module header!
       const progressRows = (subs: Submission[]) => {
         if (!subs.length)
           return `<tr><td colspan="4" class="empty-state">No modules mapped for this component.</td></tr>`;
@@ -3322,7 +3322,7 @@ export const generateMasterPoE = onDocumentCreated(
         return html;
       };
 
-      // UPDATED: Learning Plan Rows also grouped by Module Code!
+      // Learning Plan Rows also grouped by Module Code!
       const learningPlanRows = (subs: Submission[]) => {
         if (!subs.length)
           return `<tr><td colspan="8" class="empty-state">No modules mapped.</td></tr>`;
@@ -4574,7 +4574,7 @@ export const scheduleAssessmentSweep = onCall(
       return { success: true, taskId: response.name };
     } catch (error: any) {
       logger.error(
-        "❌ Failed to schedule Assessment Sweep to Google Cloud Tasks:",
+        " Failed to schedule Assessment Sweep to Google Cloud Tasks:",
         error,
       );
       throw new HttpsError(
@@ -4604,9 +4604,9 @@ export const executeAssessmentSweep = onRequest((req, res) => {
     const db = admin.firestore();
 
     try {
-      logger.info(`⏳ Executing Assessment Auto-Sweep for ${assessmentId}...`);
+      logger.info(` Executing Assessment Auto-Sweep for ${assessmentId}...`);
 
-      // 1. THE SAFETY NET: Check the Master Assessment
+      // THE SAFETY NET: Check the Master Assessment
       const assessmentSnap = await db
         .collection("assessments")
         .doc(assessmentId)
@@ -4634,7 +4634,7 @@ export const executeAssessmentSweep = onRequest((req, res) => {
         return;
       }
 
-      // 2. THE SWEEP: Find ghost learners
+      // THE SWEEP: Find ghost learners
       const submissionsSnap = await db
         .collection("learner_submissions")
         .where("assessmentId", "==", assessmentId)
@@ -4649,7 +4649,7 @@ export const executeAssessmentSweep = onRequest((req, res) => {
         return;
       }
 
-      // 3. THE EXECUTION: Mark them as missed
+      // THE EXECUTION: Mark them as missed
       const batch = db.batch();
       let sweptCount = 0;
 
@@ -4676,7 +4676,7 @@ export const executeAssessmentSweep = onRequest((req, res) => {
       if (sweptCount > 0) {
         await batch.commit();
         logger.info(
-          `🚨 Successfully swept ${sweptCount} ghost submissions to 'missed' for assessment ${assessmentId}`,
+          `Successfully swept ${sweptCount} ghost submissions to 'missed' for assessment ${assessmentId}`,
         );
       } else {
         logger.info(
@@ -4687,7 +4687,7 @@ export const executeAssessmentSweep = onRequest((req, res) => {
       res.status(200).send(`Swept ${sweptCount} submissions.`);
     } catch (error) {
       logger.error(
-        `❌ Critical error during assessment sweep for ${assessmentId}:`,
+        ` Critical error during assessment sweep for ${assessmentId}:`,
         error,
       );
       res.status(500).send("Internal Server Error during sweep.");
@@ -4720,7 +4720,7 @@ export const cancelAssessmentSweep = onCall(
         );
         return { success: true, message: "Task already executed or deleted." };
       }
-      logger.error(`❌ Failed to cancel task ${taskId}:`, error);
+      logger.error(` Failed to cancel task ${taskId}:`, error);
       throw new HttpsError("internal", "Failed to cancel scheduled task.");
     }
   },
@@ -4729,9 +4729,6 @@ export const cancelAssessmentSweep = onCall(
 // ============================================================================
 // GEMINI AI: SESSION REPORT GENERATORS (DEBUG / TEST MODE)
 // ============================================================================
-
-// ⚠️ DEBUG MODE: Hardcode your test key here to bypass Firebase Secret Manager
-// const TEST_OPENAI_API_KEY = "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";
 
 const openAISecret = defineSecret("OPENAI_API_KEY");
 
@@ -4966,7 +4963,7 @@ export const enforceProfessionalismScores = onSchedule(
         );
       }
     } catch (error) {
-      logger.error("❌ Critical error in Professionalism Sweeper:", error);
+      logger.error(" Critical error in Professionalism Sweeper:", error);
     }
   },
 );
@@ -5006,7 +5003,7 @@ export const autoLockSessionReports = onSchedule(
         `🔒 Auto-locked ${expiredDraftsSnap.size} expired session reports.`,
       );
     } catch (error) {
-      logger.error("❌ Critical error in Session Report Auto-Locker:", error);
+      logger.error(" Critical error in Session Report Auto-Locker:", error);
     }
   },
 );
@@ -5066,28 +5063,28 @@ export const midnightInactivityPenalty = onSchedule(
     const db = admin.firestore();
     const now = new Date().toISOString();
 
-    console.log("🌙 Running Midnight Penalty Engine...");
+    console.log("Running Midnight Penalty Engine...");
 
     try {
-      // 1. Find all curriculum logs where the deadline has PASSED
+      // Find all curriculum logs where the deadline has PASSED
       const overdueLogsSnap = await db
         .collection("curriculum_logs")
         .where("deadlineAt", "<", now)
         .get();
 
       if (overdueLogsSnap.empty) {
-        console.log("✅ No overdue tasks found.");
+        console.log(" No overdue tasks found.");
         return;
       }
 
-      // 2. Track exactly how many points to deduct per learner
+      // Track exactly how many points to deduct per learner
       const penaltiesToApply: Record<string, number> = {};
 
       overdueLogsSnap.forEach((doc) => {
         const log = doc.data();
-        const targetLearners = log.targetLearners || []; // The people who NEED to acknowledge
+        const targetLearners = log.targetLearners || [];
         const acknowledgedBy = log.acknowledgedBy || [];
-        const penalizedLearners = log.penalizedLearners || []; // Don't penalize twice for the same task
+        const penalizedLearners = log.penalizedLearners || [];
 
         targetLearners.forEach((learnerId: string) => {
           // If they haven't acknowledged it, AND haven't been penalized for this specific task yet
@@ -5097,7 +5094,7 @@ export const midnightInactivityPenalty = onSchedule(
           ) {
             // Add a penalty mark for this learner
             if (!penaltiesToApply[learnerId]) penaltiesToApply[learnerId] = 0;
-            penaltiesToApply[learnerId] += 2; // Deduct 2 points per overdue task!
+            penaltiesToApply[learnerId] += 2;
 
             // Mark them as penalized on the log so we don't hit them again tomorrow for the SAME task
             doc.ref.update({
@@ -5108,7 +5105,7 @@ export const midnightInactivityPenalty = onSchedule(
         });
       });
 
-      // 3. Apply the penalties to the actual Learner profiles using a Batch Write
+      // Apply the penalties to the actual Learner profiles using a Batch Write
       const batch = db.batch();
       let batchCount = 0;
 
@@ -5126,18 +5123,18 @@ export const midnightInactivityPenalty = onSchedule(
 
         batchCount++;
         console.log(
-          `📉 Penalized Learner ${learnerId}: -${penaltyPoints} points & lost streak.`,
+          `Penalized Learner ${learnerId}: -${penaltyPoints} points & lost streak.`,
         );
       }
 
       if (batchCount > 0) {
         await batch.commit();
         console.log(
-          `💥 Successfully applied penalties to ${batchCount} learners.`,
+          `Successfully applied penalties to ${batchCount} learners.`,
         );
       }
     } catch (error) {
-      console.error("❌ Midnight Penalty Engine Failed:", error);
+      console.error(" Midnight Penalty Engine Failed:", error);
     }
   },
 );
@@ -5152,7 +5149,7 @@ export const testMidnightPenalty = onRequest(async (req, res) => {
   try {
     console.log("🔍 Scanning for overdue curriculum tasks...");
 
-    // 1. Find all curriculum logs where the deadline has PASSED
+    // Find all curriculum logs where the deadline has PASSED
     const overdueLogsSnap = await db
       .collection("curriculum_logs")
       .where("deadlineAt", "<", now)
@@ -5170,7 +5167,7 @@ export const testMidnightPenalty = onRequest(async (req, res) => {
     const penaltiesToApply: Record<string, number> = {};
     const logsUpdated: any[] = [];
 
-    // 2. Loop through every overdue task
+    // Loop through every overdue task
     for (const doc of overdueLogsSnap.docs) {
       const log = doc.data();
       const cohortId = log.cohortId;
@@ -5179,7 +5176,7 @@ export const testMidnightPenalty = onRequest(async (req, res) => {
 
       if (!cohortId) continue;
 
-      // 3. Find all ACTIVE learners in this specific class
+      // Find all ACTIVE learners in this specific class
       const enrollsSnap = await db
         .collection("enrollments")
         .where("cohortId", "==", cohortId)
@@ -5189,7 +5186,7 @@ export const testMidnightPenalty = onRequest(async (req, res) => {
       const cohortLearnerIds = enrollsSnap.docs.map((d) => d.data().learnerId);
       let logNeedsUpdate = false;
 
-      // 4. Check if each learner is guilty of ghosting this task
+      // Check if each learner is guilty of ghosting this task
       cohortLearnerIds.forEach((learnerId) => {
         // If they HAVEN'T acknowledged it AND we HAVEN'T punished them for it yet
         if (
@@ -5197,9 +5194,9 @@ export const testMidnightPenalty = onRequest(async (req, res) => {
           !penalizedLearners.includes(learnerId)
         ) {
           if (!penaltiesToApply[learnerId]) penaltiesToApply[learnerId] = 0;
-          penaltiesToApply[learnerId] += 2; // 💥 Deduct 2 points per overdue task!
+          penaltiesToApply[learnerId] += 2;
 
-          penalizedLearners.push(learnerId); // Add them to the punished list for this task
+          penalizedLearners.push(learnerId);
           logNeedsUpdate = true;
         }
       });
@@ -5210,7 +5207,7 @@ export const testMidnightPenalty = onRequest(async (req, res) => {
       }
     }
 
-    // 5. Apply all the changes at once using a Batch Write
+    // Apply all the changes at once using a Batch Write
     const batch = db.batch();
     let batchCount = 0;
 
@@ -5238,16 +5235,16 @@ export const testMidnightPenalty = onRequest(async (req, res) => {
       await batch.commit();
     }
 
-    // 6. Return a beautiful JSON report to your browser!
+    // Return a beautiful JSON report to your browser!
     res.status(200).json({
       success: true,
       message: "Penalty Engine Ran Successfully!",
       totalOverdueTasksScanned: overdueLogsSnap.size,
       learnersPenalized: batchCount,
-      penaltyDetails: penaltiesToApply, // Shows exactly who lost points and how many!
+      penaltyDetails: penaltiesToApply,
     });
   } catch (error: any) {
-    console.error("❌ Penalty Engine Failed:", error);
+    console.error(" Penalty Engine Failed:", error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -5276,13 +5273,13 @@ export const startAssessment = onCall(async (request) => {
 
     const subData = subSnap.data();
 
-    // 🛑 QCTO COMPLIANCE GATE (Only runs if it's a Summative)
+    //  QCTO COMPLIANCE GATE (Only runs if it's a Summative)
     if (subData?.type?.toLowerCase().includes("summative")) {
       const cohortId = subData.cohortId;
       const learnerId = subData.learnerId;
       const moduleCode = subData.moduleNumber;
 
-      // Check 1: Are there any pending curriculum topics for this module?
+      // Are there any pending curriculum topics for this module?
       const logsSnap = await admin
         .firestore()
         .collection("curriculum_logs")
@@ -5305,7 +5302,7 @@ export const startAssessment = onCall(async (request) => {
         );
       }
 
-      // Check 2: Did they pass the Formative? (Checking history for a Competent Formative in this module)
+      // Did they pass the Formative? (Checking history for a Competent Formative in this module)
       const formativeSnap = await admin
         .firestore()
         .collection("learner_submissions")
@@ -5346,7 +5343,7 @@ export const startAssessment = onCall(async (request) => {
   }
 });
 
-// ─── 1. SECURELY DECLARE THE SECRET ──────────────────────────────
+// ───SECURELY DECLARE THE SECRET ──────────────────────────────
 
 export const sendHolidayGoodwill = onSchedule(
   {
@@ -5360,7 +5357,7 @@ export const sendHolidayGoodwill = onSchedule(
       const year = today.getFullYear();
       const todayString = `${year}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
 
-      // 1. Check if today is a public holiday in South Africa
+      // Check if today is a public holiday in South Africa
       const response = await fetch(
         `https://date.nager.at/api/v3/PublicHolidays/${year}/ZA`,
       );
@@ -5369,18 +5366,18 @@ export const sendHolidayGoodwill = onSchedule(
       const holidays = await response.json();
       const todayHoliday = holidays.find((h: any) => h.date === todayString);
 
-      if (!todayHoliday) return; // Exit silently if it's a normal day
+      if (!todayHoliday) return;
 
       const holidayName = todayHoliday.localName;
 
-      // 2. Retrieve the secret safely at runtime
+      // Retrieve the secret safely at runtime
       const apiKey = openAISecret.value();
 
       if (!apiKey) throw new Error("Missing OpenAI API Key in Secret Manager");
 
       const openai = new OpenAI({ apiKey });
 
-      // 3. Generate the dynamic, contextual message
+      // Generate the dynamic, contextual message
       const completion = await openai.chat.completions.create({
         model: "gpt-4o",
         messages: [
@@ -5404,7 +5401,7 @@ export const sendHolidayGoodwill = onSchedule(
         completion.choices[0].message.content?.trim() ||
         `Happy ${holidayName}! Keep coding and building the future.`;
 
-      // 4. Send Push Notification via Firebase Cloud Messaging
+      // Send Push Notification via Firebase Cloud Messaging
       const messagePayload = {
         notification: { title: `${holidayName} 🇿🇦`, body: generatedMessage },
         topic: "all_learners",
@@ -5413,7 +5410,7 @@ export const sendHolidayGoodwill = onSchedule(
 
       await admin.messaging().send(messagePayload);
 
-      // 5. Save to Firestore for in-app viewing
+      // Save to Firestore for in-app viewing
       await admin
         .firestore()
         .collection("notifications")
@@ -5425,22 +5422,12 @@ export const sendHolidayGoodwill = onSchedule(
           timestamp: admin.firestore.FieldValue.serverTimestamp(),
           read: false,
         });
-      // await admin
-      //   .firestore()
-      //   .collection("notifications")
-      //   .add({
-      //     type: "holiday",
-      //     title: `${holidayName}`,
-      //     message: generatedMessage,
-      //     date: admin.firestore.FieldValue.serverTimestamp(),
-      //     readBy: [],
-      //   });
 
       logger.info(
         `Successfully broadcasted ${holidayName} goodwill message to all learners.`,
       );
     } catch (error) {
-      logger.error("❌ Error in sendHolidayGoodwill function:", error);
+      logger.error(" Error in sendHolidayGoodwill function:", error);
     }
   },
 );
@@ -5481,9 +5468,9 @@ export const onLeaveStatusChanged = onDocumentUpdated(
             timestamp: admin.firestore.FieldValue.serverTimestamp(),
             read: false,
           });
-        logger.info(`✅ Leave notification generated for ${learnerId}`);
+        logger.info(`Leave notification generated for ${learnerId}`);
       } catch (error) {
-        logger.error("❌ Failed to generate leave notification", error);
+        logger.error(" Failed to generate leave notification", error);
       }
     }
   },
@@ -5515,7 +5502,7 @@ export const onScanLogged = onDocumentCreated(
         read: false,
       });
     } catch (error) {
-      logger.error("❌ Failed to generate scan notification", error);
+      logger.error(" Failed to generate scan notification", error);
     }
   },
 );
@@ -5523,10 +5510,10 @@ export const onScanLogged = onDocumentCreated(
 export const generateDailyKioskPins = onSchedule(
   {
     schedule: "0 6 * * 1-5", // Runs 6:00 AM, Monday to Friday ONLY
-    timeZone: "Africa/Johannesburg", // SAST Timezone
+    timeZone: "Africa/Johannesburg",
     timeoutSeconds: 120,
     memory: "256MiB",
-    secrets: [mailgunSecret], // REQUIRED: Binds the Mailgun API key
+    secrets: [mailgunSecret],
   },
   async (event) => {
     try {
@@ -5576,7 +5563,7 @@ export const generateDailyKioskPins = onSchedule(
 
       logger.info(`Generating Kiosk PINs for: ${todayString}`);
 
-      // 1. Get all active cohorts
+      // Get all active cohorts
       const cohortsSnap = await db
         .collection("cohorts")
         .where("isArchived", "==", false)
@@ -5587,7 +5574,7 @@ export const generateDailyKioskPins = onSchedule(
         return;
       }
 
-      // 2. Initialize Firestore Batch & Promise Array
+      // Initialize Firestore Batch & Promise Array
       const batch = db.batch();
       const emailPromises: Promise<any>[] = [];
       let count = 0;
@@ -5617,7 +5604,7 @@ export const generateDailyKioskPins = onSchedule(
 
         count++;
 
-        // 3. Fetch Facilitator Data to send the email
+        // Fetch Facilitator Data to send the email
         const facSnap = await db
           .collection("users")
           .doc(cohortData.facilitatorId)
@@ -5662,7 +5649,7 @@ export const generateDailyKioskPins = onSchedule(
         }
       }
 
-      // 4. Commit the batch and send emails
+      // Commit the batch and send emails
       if (count > 0) {
         await batch.commit();
         logger.info(
@@ -5703,7 +5690,7 @@ export const testGenerateKioskPins = onRequest(
 
       logger.info(`[TEST MODE] Generating Kiosk PINs for: ${todayString}`);
 
-      // 1. Get all active cohorts
+      // Get all active cohorts
       const cohortsSnap = await db
         .collection("cohorts")
         .where("isArchived", "==", false)
@@ -5717,7 +5704,7 @@ export const testGenerateKioskPins = onRequest(
         return;
       }
 
-      // 2. Initialize Firestore Batch & Promise Array
+      // Initialize Firestore Batch & Promise Array
       const batch = db.batch();
       const emailPromises: Promise<any>[] = [];
       let count = 0;
@@ -5747,7 +5734,7 @@ export const testGenerateKioskPins = onRequest(
 
         count++;
 
-        // 3. Fetch Facilitator Data to get their name, but override the email
+        // Fetch Facilitator Data to get their name, but override the email
         const facSnap = await db
           .collection("users")
           .doc(cohortData.facilitatorId)
@@ -5787,7 +5774,7 @@ export const testGenerateKioskPins = onRequest(
         );
       }
 
-      // 4. Commit the batch and send emails
+      // Commit the batch and send emails
       if (count > 0) {
         await batch.commit();
         logger.info(
@@ -5875,7 +5862,7 @@ export const autoFinalizeAttendance = onSchedule(
           return new Date(val).getTime();
         };
 
-        // 🚀 GROUP TAPS DIRECTLY BY LEARNER ID
+        //  GROUP TAPS DIRECTLY BY LEARNER ID
         const groupedScans: Record<string, any[]> = {};
         liveScansSnap.docs.forEach((d) => {
           const data = d.data();
@@ -5887,7 +5874,7 @@ export const autoFinalizeAttendance = onSchedule(
         const scansMap: Record<string, any> = {};
         const presentLearnerIds = Object.keys(groupedScans);
 
-        // 🚀 MAP TAPS AND TIMESTAMPS
+        // MAP TAPS AND TIMESTAMPS
         presentLearnerIds.forEach((lId) => {
           const userTaps = groupedScans[lId];
           userTaps.sort((a, b) => {
@@ -5932,7 +5919,7 @@ export const autoFinalizeAttendance = onSchedule(
           };
         });
 
-        // 🚀 AUTO-IMPUTE MISSING CHECKOUTS
+        // AUTO-IMPUTE MISSING CHECKOUTS
         presentLearnerIds.forEach((lId) => {
           const scan = scansMap[lId];
           if (scan.checkInAt && !scan.checkOutAt) {
@@ -5957,7 +5944,7 @@ export const autoFinalizeAttendance = onSchedule(
           absentLearners: absentIds,
           reasons: {},
           proofs: {},
-          scans: scansMap, // Clean Timestamps Keyed by ID Number!
+          scans: scansMap,
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
           finalizedBy: "system-auto",
           method: "system_cron_job",
@@ -5991,200 +5978,10 @@ export const autoFinalizeAttendance = onSchedule(
         `🏁 [autoFinalizeAttendance] COMPLETED. Created: ${totalRegistersCreated}`,
       );
     } catch (error: any) {
-      logger.error("❌ CRITICAL ERROR in autoFinalizeAttendance:", error);
+      logger.error(" CRITICAL ERROR in autoFinalizeAttendance:", error);
     }
   },
 );
-
-// export const autoFinalizeAttendance = onSchedule(
-//   {
-//     schedule: "59 23 * * *", // Runs at 11:59 PM daily SAST
-//     timeZone: "Africa/Johannesburg",
-//     region: "us-central1",
-//     timeoutSeconds: 300,
-//     memory: "256MiB",
-//   },
-//   async (event) => {
-//     try {
-//       const db = admin.firestore();
-
-//       logger.info("=================================================");
-//       logger.info("🕒 [autoFinalizeAttendance] CRON JOB INITIATED...");
-//       logger.info("=================================================");
-
-//       // 1. Fetch Global Settings for Campus Fallback Times
-//       const settingsSnap = await db
-//         .collection("system_settings")
-//         .doc("global")
-//         .get();
-//       const campuses = settingsSnap.exists
-//         ? settingsSnap.data()?.campuses || []
-//         : [];
-
-//       // 2. Fetch all ACTIVE Kiosk Sessions (This tells us which classes actually happened today)
-//       const activeSessionsSnap = await db
-//         .collection("kiosk_sessions")
-//         .where("status", "==", "active")
-//         .get();
-
-//       if (activeSessionsSnap.empty) {
-//         logger.info(
-//           "SUCCESS: No active kiosk sessions found. No classes to finalize today. Exiting.",
-//         );
-//         return;
-//       }
-
-//       logger.info(
-//         `Found ${activeSessionsSnap.size} active class sessions to finalize.`,
-//       );
-
-//       let totalRegistersCreated = 0;
-//       let totalScansProcessed = 0;
-
-//       // 3. Process each session
-//       for (const sessionDoc of activeSessionsSnap.docs) {
-//         const sessionData = sessionDoc.data();
-//         const cohortId = sessionData.cohortId;
-//         const sessionDate = sessionData.date; // e.g., "2026-05-07"
-//         const facilitatorId = sessionData.facilitatorId;
-
-//         logger.info(
-//           `Processing Cohort: [${cohortId}] for Date: [${sessionDate}]...`,
-//         );
-
-//         // A. Fetch the master list of enrolled learners for this cohort
-//         const cohortSnap = await db.collection("cohorts").doc(cohortId).get();
-//         const cohortData = cohortSnap.exists ? cohortSnap.data() : null;
-//         const enrolledLearnerIds = cohortData?.learnerIds || [];
-//         const campusId = cohortData?.campusId;
-
-//         // B. Determine the Campus Fallback Checkout Time
-//         const myCampus =
-//           campuses.find((c: any) => c.id === campusId) ||
-//           campuses.find((c: any) => c.isDefault) ||
-//           campuses[0];
-
-//         const fallbackTimeStr = myCampus?.campusTimes?.checkoutStart || "16:00";
-//         const [fallbackH, fallbackM] = fallbackTimeStr.split(":").map(Number);
-
-//         // C. Fetch all live scans for this specific cohort & date
-//         const liveScansSnap = await db
-//           .collection("live_attendance_scans")
-//           .where("cohortId", "==", cohortId)
-//           .where("dateString", "==", sessionDate)
-//           .get();
-
-//         // D. Build the Scans Map and Impute Missing Checkouts
-//         const scansMap: Record<string, any> = {};
-
-//         liveScansSnap.docs.forEach((d) => {
-//           const data = d.data();
-//           const lId = data.learnerId;
-
-//           if (!scansMap[lId]) {
-//             scansMap[lId] = {
-//               checkInAt: null,
-//               lunchOutAt: null,
-//               lunchInAt: null,
-//               checkOutAt: null,
-//             };
-//           }
-
-//           const getMs = (val: any) => {
-//             if (!val) return null;
-//             if (val.toMillis) return val.toMillis();
-//             if (typeof val === "number") return val;
-//             return new Date(val).getTime();
-//           };
-
-//           if (data.checkInAt) scansMap[lId].checkInAt = getMs(data.checkInAt);
-//           if (data.lunchOutAt)
-//             scansMap[lId].lunchOutAt = getMs(data.lunchOutAt);
-//           if (data.lunchInAt) scansMap[lId].lunchInAt = getMs(data.lunchInAt);
-//           if (data.checkOutAt)
-//             scansMap[lId].checkOutAt = getMs(data.checkOutAt);
-//           if (data.timestamp && !scansMap[lId].checkInAt)
-//             scansMap[lId].checkInAt = getMs(data.timestamp);
-//         });
-
-//         // 🚀 AUTO-IMPUTE MISSING CHECKOUTS USING CAMPUS SETTINGS
-//         Object.keys(scansMap).forEach((lId) => {
-//           const scan = scansMap[lId];
-//           if (scan.checkInAt && !scan.checkOutAt) {
-//             const outDate = new Date(scan.checkInAt);
-//             outDate.setHours(fallbackH || 16, fallbackM || 0, 0, 0);
-//             scan.checkOutAt = Math.max(outDate.getTime(), scan.checkInAt); // Safeguard
-//           }
-//         });
-
-//         // E. Calculate Present vs Absent
-//         const presentIds = Object.keys(scansMap);
-//         const absentIds = enrolledLearnerIds.filter(
-//           (id: string) => !presentIds.includes(id),
-//         );
-
-//         logger.info(
-//           `-> Results: ${presentIds.length} Present, ${absentIds.length} Absent. Fallback Time Used: ${fallbackTimeStr}`,
-//         );
-
-//         // F. Create the permanent attendance register
-//         await db.collection("attendance").add({
-//           cohortId: cohortId,
-//           cohortName: cohortData?.name || "Unknown Cohort",
-//           facilitatorId: facilitatorId,
-//           date: sessionDate,
-//           presentLearners: presentIds,
-//           absentLearners: absentIds,
-//           reasons: {},
-//           proofs: {},
-//           scans: scansMap, // 🎯 Inject mapped and imputed timestamps
-//           createdAt: admin.firestore.FieldValue.serverTimestamp(),
-//           finalizedBy: "system-auto",
-//           method: "system_cron_job",
-//         });
-
-//         // G. Clean up: Delete the live scans and close the kiosk session
-//         const batch = db.batch();
-
-//         liveScansSnap.docs.forEach((scanDoc) => {
-//           batch.delete(scanDoc.ref);
-//         });
-
-//         // Update Gamification
-//         presentIds.forEach((id: string) => {
-//           const learnerRef = db.collection("learners").doc(id);
-//           batch.update(learnerRef, {
-//             labHours: admin.firestore.FieldValue.increment(8),
-//             professionalismStreak: admin.firestore.FieldValue.increment(1),
-//           });
-//         });
-
-//         absentIds.forEach((id: string) => {
-//           const learnerRef = db.collection("learners").doc(id);
-//           batch.update(learnerRef, {
-//             professionalismStreak: 0,
-//             professionalismScore: admin.firestore.FieldValue.increment(-5),
-//           });
-//         });
-
-//         batch.update(sessionDoc.ref, { status: "completed" });
-
-//         await batch.commit();
-
-//         totalRegistersCreated++;
-//         totalScansProcessed += liveScansSnap.size;
-//       }
-
-//       logger.info("=================================================");
-//       logger.info(`🏁 [autoFinalizeAttendance] CRON JOB COMPLETED!`);
-//       logger.info(`📊 Registers Created: ${totalRegistersCreated}`);
-//       logger.info(`🗑️ Live Scans Cleared: ${totalScansProcessed}`);
-//       logger.info("=================================================");
-//     } catch (error: any) {
-//       logger.error("❌ CRITICAL ERROR in autoFinalizeAttendance:", error);
-//     }
-//   },
-// );
 
 // ============================================================================
 // GUEST OTP VERIFICATION LOGIC
@@ -6225,7 +6022,7 @@ export const requestGuestOTP = onCall(
       const emailParams = {
         title: "Your mLab Verification Code",
         subtitle: "Secure Event Check-In",
-        recipientName: "Guest", // We don't force them to enter a name before verifying
+        recipientName: "Guest",
         bodyHtml: `
           <p>You are attempting to securely check in to an mLab ecosystem event.</p>
           <p>Please use the following 6-digit verification code to confirm your email address:</p>
@@ -6238,7 +6035,7 @@ export const requestGuestOTP = onCall(
           <p style="font-size: 12px; color: #64748b; margin-top: 20px;">If you did not request this code, you can safely ignore this email.</p>
         `,
         ctaText: "Return to Check-in",
-        ctaLink: APP_URL, // Generic fallback link for the button
+        ctaLink: APP_URL,
         showStepIndicator: false,
       };
 
@@ -6282,7 +6079,7 @@ export const verifyGuestOTP = onCall(async (request) => {
 
       const otpData = otpDoc.data();
 
-      // 1. Check Expiration
+      // Check Expiration
       if (otpData?.expiresAt.toDate() < new Date()) {
         transaction.delete(otpRef);
         throw new HttpsError(
@@ -6291,7 +6088,7 @@ export const verifyGuestOTP = onCall(async (request) => {
         );
       }
 
-      // 2. Anti-Brute-Force Check (Max 3 tries)
+      // Anti-Brute-Force Check (Max 3 tries)
       if (otpData?.attempts >= 3) {
         transaction.delete(otpRef);
         throw new HttpsError(
@@ -6300,7 +6097,7 @@ export const verifyGuestOTP = onCall(async (request) => {
         );
       }
 
-      // 3. Verify the Code
+      // Verify the Code
       if (otpData?.otp !== otp.trim()) {
         transaction.update(otpRef, {
           attempts: admin.firestore.FieldValue.increment(1),
@@ -6350,7 +6147,7 @@ export const onAttendanceFinalized = onDocumentCreated(
       const logsSnap = await db
         .collection("curriculum_logs")
         .where("cohortId", "==", cohortId)
-        .where("coveredAt", "==", date) // We use 'coveredAt' as it represents the batch date
+        .where("coveredAt", "==", date)
         .get();
 
       if (logsSnap.empty) {
@@ -6431,9 +6228,7 @@ export const backtraceAttendanceTraceability = onRequest(
     memory: "512MiB",
   },
   async (req, res) => {
-    logger.info(
-      "🚀 Initiating Historical Traceability Backtrace (FORCE RUN)...",
-    );
+    logger.info(" Initiating Historical Traceability Backtrace (FORCE RUN)...");
     const db = admin.firestore();
 
     try {
@@ -6450,7 +6245,6 @@ export const backtraceAttendanceTraceability = onRequest(
       for (const logDoc of logsSnap.docs) {
         const logData = logDoc.data();
 
-        // 🚀 NOTICE: The "skip" safeguard has been removed.
         // We are forcing it to evaluate every single log in the database.
 
         const cohortId = logData.cohortId;
@@ -6508,7 +6302,7 @@ export const backtraceAttendanceTraceability = onRequest(
 
       await Promise.all(batches);
 
-      const resultMessage = `✅ Force Backtrace Complete! Successfully refreshed & linked ${updatedCount} logs. Unlinked (No register found): ${skippedCount}.`;
+      const resultMessage = `Force Backtrace Complete! Successfully refreshed & linked ${updatedCount} logs. Unlinked (No register found): ${skippedCount}.`;
       logger.info(resultMessage);
 
       res.status(200).send({
@@ -6518,7 +6312,7 @@ export const backtraceAttendanceTraceability = onRequest(
         skipped: skippedCount,
       });
     } catch (error: any) {
-      logger.error("❌ Backtrace Error:", error);
+      logger.error(" Backtrace Error:", error);
       res.status(500).send({ success: false, error: error.message });
     }
   },
@@ -6543,20 +6337,20 @@ export const onBroadcastNotificationCreated = onDocumentCreated(
       (recipientId === "all_learners" || recipientId.startsWith("campus_"))
     ) {
       try {
-        // 1. ENVIRONMENT MAPPING: Create a boolean condition to target BOTH live rings
+        // Create a boolean condition to target BOTH live rings
         // This hits the App Store users (_prod) AND your Firebase App Testers (_beta)
         // It specifically excludes local development simulators (_dev)
         const prodTopic = `${recipientId}_prod`;
         const betaTopic = `${recipientId}_beta`;
         const targetCondition = `'${prodTopic}' in topics || '${betaTopic}' in topics`;
 
-        // 2. HARDWARE ENGINE: Constructing the forced priority blueprint
+        // HARDWARE ENGINE: Constructing the forced priority blueprint
         const messagePayload: any = {
           notification: {
             title: title || "mLab Announcement",
             body: message,
           },
-          condition: targetCondition, // 🎯 Replaces 'topic' to allow multi-environment targeting
+          condition: targetCondition,
 
           // Android Specific Enforcement (Forces sound and vibration)
           android: {
@@ -6583,19 +6377,19 @@ export const onBroadcastNotificationCreated = onDocumentCreated(
           },
 
           data: {
-            route: "/notifications", // Deep link payload to open the inbox
+            route: "/notifications",
           },
         };
 
-        // 3. Dispatch to Google's FCM Gateway
+        // Dispatch to Google's FCM Gateway
         await admin.messaging().send(messagePayload);
 
         logger.info(
-          `✅ Successfully broadcasted high-priority push using condition: ${targetCondition}`,
+          `Successfully broadcasted high-priority push using condition: ${targetCondition}`,
         );
       } catch (error) {
         logger.error(
-          `❌ Failed to send FCM broadcast for target ${recipientId}`,
+          ` Failed to send FCM broadcast for target ${recipientId}`,
           error,
         );
       }
@@ -6603,262 +6397,11 @@ export const onBroadcastNotificationCreated = onDocumentCreated(
   },
 );
 
-// export const onBroadcastNotificationCreated = onDocumentCreated(
-//   { document: "notifications/{notifId}" },
-//   async (event) => {
-//     const data = event.data?.data();
-//     if (!data) return;
-
-//     const { recipientId, title, message, type } = data;
-
-//     // We ONLY want to send FCM pushes for mass broadcasts to avoid spamming personal DB writes
-//     if (
-//       type === "system" &&
-//       (recipientId === "all_learners" || recipientId.startsWith("campus_"))
-//     ) {
-//       try {
-//         // 1. ENVIRONMENT MAPPING: Target ONLY local development builds (_dev)
-//         // This completely protects App Store (_prod) and Firebase App Testers (_beta)
-//         const devTopic = `${recipientId}_dev`;
-
-//         // 2. HARDWARE ENGINE: Constructing the forced priority blueprint
-//         const messagePayload: any = {
-//           notification: {
-//             title: title || "mLab Announcement",
-//             body: message,
-//           },
-//           topic: devTopic, // 🎯 Targets ONLY the isolated dev channel
-
-//           // Android Specific Enforcement (Forces sound and vibration)
-//           android: {
-//             priority: "high",
-//             notification: {
-//               sound: "default",
-//               channelId: "default",
-//               vibrateTimingsMillis: [0, 500, 250, 500],
-//               defaultVibrateTimings: false,
-//             },
-//           },
-
-//           // iOS/APNs Specific Enforcement (Forces ringer and bypasses battery throttling)
-//           apns: {
-//             payload: {
-//               aps: {
-//                 sound: "default",
-//                 badge: 1,
-//               },
-//             },
-//             headers: {
-//               "apns-priority": "10",
-//             },
-//           },
-
-//           data: {
-//             route: "/notifications", // Deep link payload to open the inbox
-//           },
-//         };
-
-//         // 3. Dispatch to Google's FCM Gateway
-//         await admin.messaging().send(messagePayload);
-
-//         logger.info(
-//           `✅ Successfully broadcasted high-priority push to DEV topic: ${devTopic}`,
-//         );
-//       } catch (error) {
-//         logger.error(
-//           `❌ Failed to send FCM broadcast for target ${recipientId}_dev`,
-//           error,
-//         );
-//       }
-//     }
-//   },
-// );
-
-// /**
-//  * Trigger: When an Admin sends a Broadcast message to the notifications collection
-//  * This function wakes up and sends the actual Firebase Cloud Messaging (FCM) Push to the phones.
-//  */
-// export const onBroadcastNotificationCreated = onDocumentCreated(
-//   { document: "notifications/{notifId}" },
-//   async (event) => {
-//     const data = event.data?.data();
-//     if (!data) return;
-
-//     const { recipientId, title, message, type } = data;
-
-//     // We ONLY want to send FCM pushes for mass broadcasts to avoid spamming personal DB writes
-//     if (
-//       type === "system" &&
-//       (recipientId === "all_learners" || recipientId.startsWith("campus_"))
-//     ) {
-//       try {
-//         // 1. ENVIRONMENT MAPPING: Create a boolean condition to target BOTH live rings
-//         // This hits the App Store users (_prod) AND your Firebase App Testers (_beta)
-//         // It specifically excludes local development simulators (_dev)
-//         const prodTopic = `${recipientId}_prod`;
-//         const betaTopic = `${recipientId}_beta`;
-//         const targetCondition = ` '${prodTopic}' in topics || '${betaTopic}' in topics `;
-
-//         // 2. HARDWARE ENGINE: Constructing the forced priority blueprint
-//         const messagePayload: any = {
-//           notification: {
-//             title: title || "mLab Announcement",
-//             body: message,
-//           },
-//           condition: targetCondition, // 🎯 Replaces 'topic' to allow multi-environment targeting
-
-//           // Android Specific Enforcement (Forces sound and vibration)
-//           android: {
-//             priority: "high",
-//             notification: {
-//               sound: "default",
-//               channelId: "default",
-//               vibrateTimingsMillis: [0, 500, 250, 500],
-//               defaultVibrateTimings: false,
-//             },
-//           },
-
-//           // iOS/APNs Specific Enforcement (Forces ringer and bypasses battery throttling)
-//           apns: {
-//             payload: {
-//               aps: {
-//                 sound: "default",
-//                 badge: 1,
-//               },
-//             },
-//             headers: {
-//               "apns-priority": "10",
-//             },
-//           },
-
-//           data: {
-//             route: "/notifications", // Deep link payload to open the inbox
-//           },
-//         };
-
-//         // 3. Dispatch to Google's FCM Gateway
-//         await admin.messaging().send(messagePayload);
-
-//         logger.info(
-//           `✅ Successfully broadcasted high-priority push using condition: ${targetCondition}`,
-//         );
-//       } catch (error) {
-//         logger.error(
-//           `❌ Failed to send FCM broadcast for target ${recipientId}`,
-//           error,
-//         );
-//       }
-//     }
-//   },
-// );
-
-// export const onBroadcastNotificationCreated = onDocumentCreated(
-//   { document: "notifications/{notifId}" },
-//   async (event) => {
-//     const data = event.data?.data();
-//     if (!data) return;
-
-//     const { recipientId, title, message, type } = data;
-
-//     // We ONLY want to send FCM pushes for mass broadcasts to avoid spamming personal DB writes
-//     if (
-//       type === "system" &&
-//       (recipientId === "all_learners" || recipientId.startsWith("campus_"))
-//     ) {
-//       try {
-//         const messagePayload = {
-//           notification: {
-//             title: title || "mLab Announcement",
-//             body: message,
-//           },
-//           topic: recipientId, // Maps exactly to what the mobile app subscribed to in _layout.tsx
-//           data: {
-//             route: "/notifications", // Deep link payload
-//           },
-//         };
-
-//         await admin.messaging().send(messagePayload);
-//         logger.info(
-//           `✅ Successfully broadcasted push notification to topic: ${recipientId}`,
-//         );
-//       } catch (error) {
-//         logger.error(
-//           `❌ Failed to send FCM broadcast to ${recipientId}`,
-//           error,
-//         );
-//       }
-//     }
-//   },
-// );
-
-// export const testSingleTokenPush = onRequest((req, res) => {
-//   return cors(req, res, async () => {
-//     logger.info("📱 [Single Token Test] Initiating isolated check...");
-
-//     try {
-//       // 1. Extract the token from URL query string or POST body
-//       // const targetToken = req.query.token as string || req.body?.token;
-
-//       const targetToken =
-//         "ctTg0a7_SWG2FPWjD98VXe:APA91bGa98HXfnzQIYt9YUezK-TIL9vPq91WvC8sQ3Z3mBzR8yiOzMalZ1Wfyk0Jurd5V2Y18woeu9S0Pw6fMZDYR77qeCp5kpWXvPMk0SN_g4vTGyhSe6Q";
-
-//       // 🛑 GUARD LAYER: Force a token requirement so you never accidentally broadcast to a topic
-//       if (!targetToken) {
-//         logger.warn(
-//           "⚠️ [Single Token Test] Blocked: No device token provided in request.",
-//         );
-//         res.status(400).send({
-//           success: false,
-//           message:
-//             "Bad Request: You must provide a device token. Example: ?token=YOUR_FCM_TOKEN",
-//         });
-//         return;
-//       }
-
-//       // 2. Build the payload explicitly for a single device token target
-//       const messagePayload = {
-//         token: targetToken.trim(), // Hard target lock
-//         notification: {
-//           title: "🎯 Isolated Token Test",
-//           body: "Bypassed all topics! This was sent directly to your device footprint.",
-//         },
-//         data: {
-//           route: "/notifications",
-//           testMode: "single_token_lock",
-//         },
-//       };
-
-//       // 3. Dispatch directly to FCM
-//       logger.info(`🔑 Dispatching directly to hardware token footprint...`);
-//       const fcmResponse = await admin.messaging().send(messagePayload);
-
-//       logger.info("✅ Direct push successfully accepted by FCM gateway!", {
-//         fcmResponse,
-//       });
-
-//       res.status(200).send({
-//         success: true,
-//         message: "Direct 1-to-1 payload pushed to device.",
-//         fcmMessageId: fcmResponse,
-//         deliveredPayload: messagePayload,
-//       });
-//     } catch (error: any) {
-//       logger.error("❌ Direct single-token push delivery failed:", error);
-//       res.status(500).send({
-//         success: false,
-//         errorMessage: error.message || "FCM route broken.",
-//         errorDetails: error,
-//       });
-//     }
-//   });
-// });
-
 export const testSingleTokenPush = onRequest((req, res) => {
   return cors(req, res, async () => {
     logger.info("📱 [Single Token Test] Initiating forced hardware check...");
 
     try {
-      // const targetToken = req.query.token as string || req.body?.token;
       const targetToken =
         "ctTg0a7_SWG2FPWjD98VXe:APA91bGa98HXfnzQIYt9YUezK-TIL9vPq91WvC8sQ3Z3mBzR8yiOzMalZ1Wfyk0Jurd5V2Y18woeu9S0Pw6fMZDYR77qeCp5kpWXvPMk0SN_g4vTGyhSe6Q";
 
@@ -7169,7 +6712,7 @@ export const verifyStudentCard = onCall(
         activeEnrollment.location ||
         "Unassigned Campus";
 
-      // 1. Fetch Global Settings to get the Campuses Array
+      // Fetch Global Settings to get the Campuses Array
       let globalCampuses: any[] = [];
       try {
         const settingsSnap = await db
@@ -7183,7 +6726,7 @@ export const verifyStudentCard = onCall(
         console.error("[VERIFY-CARD] Failed to fetch global settings:", err);
       }
 
-      // 2. Fetch true Cohort Name, Date, and resolve Campus against Global Settings
+      // Fetch true Cohort Name, Date, and resolve Campus against Global Settings
       if (activeEnrollment.cohortId) {
         try {
           const cohortSnap = await db
@@ -7265,7 +6808,7 @@ export const verifyStudentCard = onCall(
 // LEGACY DATA BACKFILL: RANDOMIZED TIMESHEET GENERATOR (SAST TIMEZONE FIX)
 // ============================================================================
 
-// Helper: Generates a random millisecond timestamp explicitly locked to SAST (+02:00)
+// Generates a random millisecond timestamp explicitly locked to SAST (+02:00)
 const getRandomTimeMs = (
   dateStr: string,
   minH: number,
@@ -7288,7 +6831,7 @@ const getRandomTimeMs = (
 export const backfillLegacyAttendanceScans = onRequest(async (req, res) => {
   return cors(req, res, async () => {
     logger.info(
-      "🚀 Initiating Legacy Attendance Backfill Script (SAST TIMEZONE FIX)...",
+      " Initiating Legacy Attendance Backfill Script (SAST TIMEZONE FIX)...",
     );
 
     const db = admin.firestore();
@@ -7305,7 +6848,7 @@ export const backfillLegacyAttendanceScans = onRequest(async (req, res) => {
 
       snap.docs.forEach((doc) => {
         const data = doc.data();
-        const dateStr = data.date; // e.g., "2026-05-12"
+        const dateStr = data.date;
         const presentLearners = data.presentLearners || [];
         let scans = data.scans || {};
         let docNeedsUpdate = false;
@@ -7362,8 +6905,128 @@ export const backfillLegacyAttendanceScans = onRequest(async (req, res) => {
         });
       }
     } catch (error: any) {
-      logger.error("❌ Backfill Script Failed:", error);
+      logger.error(" Backfill Script Failed:", error);
       res.status(500).send({ success: false, error: error.message });
     }
   });
 });
+
+/**
+ * SMART ATTENDANCE BACKFILL
+ * Triggers automatically whenever a new Learner is enrolled in a Cohort.
+ * It looks at all past Zoom sessions for that cohort, checks the raw metadata,
+ * and retroactively awards attendance (or marks them Absent).
+ */
+export const backfillLearnerAttendance = onDocumentCreated(
+  "enrollments/{enrollmentId}",
+  async (event) => {
+    const snapshot = event.data;
+    if (!snapshot) return;
+
+    const enrollment = snapshot.data();
+    const cohortId = enrollment.cohortId;
+    const learnerId = enrollment.learnerId;
+
+    if (!cohortId || !learnerId || cohortId === "Unassigned") return;
+
+    const db = admin.firestore();
+
+    try {
+      // Fetch the physical Learner profile to get their Name & Email
+      const learnerDoc = await db.doc(`learners/${learnerId}`).get();
+      if (!learnerDoc.exists) return;
+
+      const learner = learnerDoc.data();
+      const learnerEmail = learner?.email?.toLowerCase().trim();
+      const learnerName = learner?.fullName?.toLowerCase().trim();
+
+      // Fetch all past Attendance Logs for this specific Cohort
+      const logsSnap = await db
+        .collection("attendance_logs")
+        .where("cohortId", "==", cohortId)
+        .get();
+
+      if (logsSnap.empty) {
+        console.log(
+          `No past attendance logs found for cohort ${cohortId}. Skipping backfill.`,
+        );
+        return;
+      }
+
+      const batch = db.batch();
+      let updatesMade = false;
+
+      // Loop through every past session and calculate attendance
+      logsSnap.docs.forEach((logDoc) => {
+        const logData = logDoc.data();
+        const rawZoomData = logData.rawZoomData || [];
+        const expectedDuration = logData.expectedDuration || 120;
+        const sessionDate = logData.sessionDate;
+
+        // If the log doesn't have the raw Zoom payload, we can't backfill it.
+        if (!Array.isArray(rawZoomData) || rawZoomData.length === 0) return;
+
+        // Attempt to match the new learner against the saved Zoom payload
+        const zoomMatch = rawZoomData.find((z) => {
+          const zEmail = String(z.email || "")
+            .toLowerCase()
+            .trim();
+          const zName = String(z.name || "")
+            .toLowerCase()
+            .trim();
+          return (
+            (learnerEmail && zEmail === learnerEmail) || zName === learnerName
+          );
+        });
+
+        const duration = zoomMatch ? zoomMatch.duration : 0;
+
+        // Calculate compliance Math
+        const pct =
+          expectedDuration > 0 ? (duration / expectedDuration) * 100 : 0;
+        let status = "Absent";
+        if (pct >= 80) status = "Present";
+        else if (pct > 20) status = "Partial";
+
+        // Create the Retroactive Attendance Record
+        const recordId = `${cohortId}_${sessionDate}_${learnerId}`;
+        const recordRef = db.doc(`attendance_records/${recordId}`);
+
+        batch.set(
+          recordRef,
+          {
+            attendanceLogId: logDoc.id,
+            cohortId: cohortId,
+            learnerId: learnerId,
+            sessionDate: sessionDate,
+            expectedDuration: expectedDuration,
+            actualDuration: duration,
+            status: status,
+            compliancePct: Math.round(pct),
+            updatedAt: new Date().toISOString(),
+            isBackfilled: true, // helpful for debugging
+          },
+          { merge: true },
+        );
+
+        // Update the Master Log Totals
+        const logRef = db.doc(`attendance_logs/${logDoc.id}`);
+        batch.update(logRef, {
+          totalEnrolled: admin.firestore.FieldValue.increment(1),
+          [`total${status}`]: admin.firestore.FieldValue.increment(1),
+        });
+
+        updatesMade = true;
+      });
+
+      if (updatesMade) {
+        await batch.commit();
+        console.log(
+          `Successfully backfilled attendance for learner ${learnerId} in cohort ${cohortId}`,
+        );
+      }
+    } catch (error) {
+      console.error("Failed to backfill attendance:", error);
+    }
+  },
+);

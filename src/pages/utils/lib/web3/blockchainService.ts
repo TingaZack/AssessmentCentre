@@ -146,7 +146,7 @@
 //     const isValid = result[1];
 
 //     // console.log("⛓️ On-Chain Fingerprint:", onChainFingerprint);
-//     // console.log("✅ Is Valid Status:", isValid);
+//     // console.log("Is Valid Status:", isValid);
 
 //     // // X-RAY Logging to catch exact character mismatches
 //     // console.log("🛠️ --- FINGERPRINT X-RAY ---");
@@ -189,7 +189,6 @@
 // };
 
 // src/lib/web3/blockchainService.ts
-
 
 import { ethers } from "ethers";
 // @ts-ignore

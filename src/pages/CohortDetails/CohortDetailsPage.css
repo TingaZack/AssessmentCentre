@@ -597,6 +597,7 @@
   padding: 0.38rem 0.8rem;
   border: 2px solid transparent;
   cursor: pointer;
+  border-radius: 0px;
   font-family: var(--font-heading);
   font-weight: 700;
   font-size: 0.65rem;
