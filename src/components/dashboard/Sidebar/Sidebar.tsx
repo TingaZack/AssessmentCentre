@@ -1,7 +1,7 @@
 // src/components/dashboard/Sidebar/Sidebar.tsx
 
 import React from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import {
     LayoutDashboard, Users, BookOpen, UserCheck,
     Settings, LogOut, Layers, ShieldCheck,
@@ -25,6 +25,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, currentNav, setCurrentNa
     const navigate = useNavigate();
     const location = useLocation();
 
+    // Hook into the URL search parameters to sync routing
+    const [searchParams, setSearchParams] = useSearchParams();
+
     const { settings } = useStore();
     const user = useStore((state) => state.user);
     const activeRole = role || user?.role;
@@ -33,6 +36,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, currentNav, setCurrentNa
     const getMenuItems = () => {
         switch (activeRole) {
             case 'admin':
+                // All Admin paths must stay on "/admin" and rely entirely on the ID parameter.
+                // Previously, Studio pointed to "/admin/studio", which broke the URL sync.
                 const adminMenu = [
                     { id: 'dashboard', label: 'Overview', icon: LayoutDashboard, path: '/admin' },
                     { id: 'directory', label: 'Master Directory', icon: Users, path: '/admin' },
@@ -44,7 +49,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, currentNav, setCurrentNa
                     { id: 'staff', label: 'Staff Management', icon: UserCheck, path: '/admin' },
                     { id: 'workplaces', label: 'Workplaces', icon: Building2, path: '/admin' },
                     { id: 'cohorts', label: 'Cohorts (Classes)', icon: Layers, path: '/admin' },
-                    { id: 'studio', label: 'Certificate Studio', icon: Award, path: '/admin/studio' },
+                    { id: 'studio', label: 'Certificate Studio', icon: Award, path: '/admin' },
                     { id: 'profile', label: 'My Profile', icon: UserCircle, path: '/admin' },
                 ];
 
@@ -91,11 +96,28 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, currentNav, setCurrentNa
     const menuItems = getMenuItems();
 
     const handleNavigation = (item: any) => {
-        if (setCurrentNav) {
-            setCurrentNav(item.id);
-            navigate(item.path, { state: { activeTab: item.id }, replace: true });
+        if (setCurrentNav) setCurrentNav(item.id);
+
+        if (activeRole === 'admin' && item.path === '/admin') {
+            const newParams = new URLSearchParams(searchParams);
+
+            // Set the main tab parameter
+            if (item.id === 'dashboard') {
+                newParams.delete('tab');
+            } else {
+                newParams.set('tab', item.id);
+            }
+
+            // Aggressively strip out old sub-parameters so they don't break new pages
+            newParams.delete('view');
+            newParams.delete('cohort');
+            newParams.delete('employer');
+
+            // Push the changes to the URL without changing the actual page path
+            setSearchParams(newParams, { replace: true });
         } else {
-            navigate(item.path);
+            // Fallback for non-admin dashboards
+            navigate(item.path, { state: { activeTab: item.id }, replace: true });
         }
     };
 
@@ -109,18 +131,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, currentNav, setCurrentNa
                         <div className="sidebar-role-tag">{activeRole?.toUpperCase()}</div>
                     )}
                 </div>
-                {/* {user && (
-                    <div className="sidebar-notif-wrapper">
-                        <NotificationBell />
-                    </div>
-                )} */}
             </div>
 
             {/* NAVIGATION MENU */}
             <nav className="sidebar-nav">
                 {menuItems.map((item) => {
                     const Icon = item.icon;
-                    const isActive = currentNav === item.id || (!currentNav && location.pathname === item.path);
+                    // Check if active based on the state variable OR the URL parameter
+                    const isActive = currentNav === item.id || (!currentNav && searchParams.get('tab') === item.id) || (!currentNav && !searchParams.get('tab') && item.id === 'dashboard');
 
                     return (
                         <button
@@ -155,3 +173,5 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, currentNav, setCurrentNa
         </aside>
     );
 };
+
+

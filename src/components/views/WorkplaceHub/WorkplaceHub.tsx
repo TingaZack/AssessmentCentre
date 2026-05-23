@@ -9,29 +9,35 @@ import { WorkplacesManager } from '../../admin/WorkplacesManager/WorkplacesManag
 export const WorkplaceHub: React.FC = () => {
     const [searchParams, setSearchParams] = useSearchParams();
 
-    // Default to placements tab if none is specified
-    const activeTab = searchParams.get('tab') || 'placements';
+    // We now use "view" instead of "tab" so it doesn't fight with the AdminDashboard!
+    // If there is no view specified, it safely defaults to 'placements'.
+    const activeView = searchParams.get('view') || 'placements';
 
-    const handleTabChange = (tab: 'placements' | 'directory') => {
-        // We preserve other params (like employer=123) if switching back, 
-        // or we can just clear them for a fresh start on the tab.
-        setSearchParams({ tab });
+    const handleTabChange = (view: 'placements' | 'directory') => {
+        // We grab the existing URL parameters (like ?tab=workplaces)
+        const params = new URLSearchParams(searchParams);
+
+        // We append or update ONLY the 'view' parameter
+        params.set('view', view);
+
+        // We push the updated parameters back to the URL without destroying the rest!
+        setSearchParams(params, { replace: true });
     };
 
     return (
         <div className="animate-fade-in" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
 
-            {/* ── UNIFIED TAB BAR (Using Standard mLab Classes) ── */}
+            {/* ── UNIFIED TAB BAR ── */}
             <div className="lfm-tabs" style={{ marginBottom: '1.5rem', background: 'transparent' }}>
                 <button
-                    className={`lfm-tab ${activeTab === 'placements' ? 'active' : ''}`}
+                    className={`lfm-tab ${activeView === 'placements' ? 'active' : ''}`}
                     onClick={() => handleTabChange('placements')}
                 >
                     <Briefcase size={16} /> Placements Ledger
                 </button>
 
                 <button
-                    className={`lfm-tab ${activeTab === 'directory' ? 'active' : ''}`}
+                    className={`lfm-tab ${activeView === 'directory' ? 'active' : ''}`}
                     onClick={() => handleTabChange('directory')}
                 >
                     <Building2 size={16} /> Host Companies & Mentors
@@ -40,7 +46,7 @@ export const WorkplaceHub: React.FC = () => {
 
             {/* ── DYNAMIC VIEW RENDERING ── */}
             <div style={{ flex: 1, overflowY: 'auto' }}>
-                {activeTab === 'placements' ? (
+                {activeView === 'placements' ? (
                     <PlacementsDashboard />
                 ) : (
                     <WorkplacesManager />

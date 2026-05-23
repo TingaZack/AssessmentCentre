@@ -282,9 +282,14 @@ interface StoreState
   leaveRequests: any[];
   isFetchingLeaves: boolean;
   fetchFacilitatorLeaveRequests: (facilitatorId: string) => Promise<void>;
+  // updateLeaveStatus: (
+  //   requestId: string,
+  //   status: "Approved" | "Declined",
+  // ) => Promise<void>;
   updateLeaveStatus: (
     requestId: string,
     status: "Approved" | "Declined",
+    reviewerData?: { reviewedBy: string; reviewedByName: string },
   ) => Promise<void>;
 }
 
@@ -2733,7 +2738,7 @@ export const useStore = create<StoreState>()(
     fetchFacilitatorLeaveRequests: async (facilitatorId: string) => {
       set({ isFetchingLeaves: true });
       try {
-        // STEP 1: Find all cohorts this facilitator manages
+        // Find all cohorts this facilitator manages
         const cohortQuery = query(
           collection(db, "cohorts"),
           where("facilitatorId", "==", facilitatorId),
@@ -2746,7 +2751,7 @@ export const useStore = create<StoreState>()(
           return;
         }
 
-        // STEP 2: Fetch leave requests for those cohorts
+        // Fetch leave requests for those cohorts
         const q = query(
           collection(db, "leave_requests"),
           where("cohortId", "in", cohortIds),
@@ -2760,7 +2765,7 @@ export const useStore = create<StoreState>()(
 
         console.log("RAW REQUESTS FROM FIRESTORE:", requests);
 
-        // STEP 3: Fetch Learner Names (NoSQL Join)
+        // Fetch Learner Names (NoSQL Join)
         // Get unique learner IDs from the requests
         const uniqueLearnerIds = [
           ...new Set(requests.map((r) => r.learnerId).filter(Boolean)),
@@ -2809,18 +2814,30 @@ export const useStore = create<StoreState>()(
     updateLeaveStatus: async (
       requestId: string,
       status: "Approved" | "Declined",
+      reviewerData?: { reviewedBy: string; reviewedByName: string },
     ) => {
       try {
         const docRef = doc(db, "leave_requests", requestId);
-        await updateDoc(docRef, {
-          status,
-          updatedAt: new Date(), // Audit trail
-        });
 
-        // Optimistically update the UI
+        // Build the base payload
+        const updatePayload: any = {
+          status,
+          updatedAt: new Date(),
+        };
+
+        // Inject the exact audit trail if provided
+        if (reviewerData) {
+          updatePayload.reviewedBy = reviewerData.reviewedBy;
+          updatePayload.reviewedByName = reviewerData.reviewedByName;
+          updatePayload.reviewedAt = new Date();
+        }
+
+        await updateDoc(docRef, updatePayload);
+
+        // update the UI with the new status AND reviewer details
         set((state) => ({
           leaveRequests: state.leaveRequests.map((req) =>
-            req.id === requestId ? { ...req, status } : req,
+            req.id === requestId ? { ...req, ...updatePayload } : req,
           ),
         }));
       } catch (error) {
