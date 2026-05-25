@@ -444,7 +444,7 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
                             <div className="mlab-search" style={{
                                 minWidth: '250px', maxWidth: '350px', display: 'flex',
                                 alignItems: 'center', gap: '8px', padding: '4px 12px',
-                                background: '#f8fafc', border: '1px solid var(--mlab-border)', borderRadius: '8px',
+                                background: '#f8fafc', border: '1px solid var(--mlab-border)', borderRadius: 0,
                                 height: 35
                             }}>
                                 <Calendar size={18} color="var(--mlab-grey)" />
@@ -473,13 +473,12 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
 
                         </div>
 
-                        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center', borderRadius: 0 }}>
                             <select
                                 value={selectedCohortId}
                                 onChange={(e) => setSelectedCohortId(e.target.value)}
                                 style={{
                                     padding: '8px 12px',
-                                    borderRadius: '8px',
                                     border: '1px solid var(--mlab-border)',
                                     background: 'white',
                                     fontFamily: 'var(--font-body)',
@@ -501,7 +500,7 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
                                 <div style={{
                                     display: 'flex', alignItems: 'center', gap: '8px',
                                     background: '#f1f5f9', padding: '4px 8px',
-                                    borderRadius: '8px', border: '1px solid #cbd5e1'
+                                    borderRadius: 0, border: '1px solid #cbd5e1'
                                 }}>
                                     <History size={16} color="var(--mlab-grey)" />
                                     <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--mlab-grey)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
@@ -785,7 +784,7 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
 
                     <div className="mlab-toolbar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.5rem' }}>
                         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                            <div className="mlab-search" style={{ minWidth: '220px' }}>
+                            <div className="mlab-search" style={{ minWidth: '220px', borderRadius: 0 }}>
                                 <Search size={18} color="var(--mlab-grey)" />
                                 <input
                                     type="text"
@@ -795,7 +794,7 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
                                 />
                             </div>
 
-                            <div className="mlab-select-wrap">
+                            <div className="mlab-select-wrap" style={{ borderRadius: 0 }}>
                                 <Filter size={16} color="var(--mlab-grey)" />
                                 <select value={leaveStatusFilter} onChange={e => setLeaveStatusFilter(e.target.value)}>
                                     <option value="all">All Statuses</option>
@@ -805,7 +804,7 @@ export const AttendanceHistoryList: React.FC<{ facilitatorId?: string }> = ({ fa
                                 </select>
                             </div>
 
-                            <div className="mlab-select-wrap">
+                            <div className="mlab-select-wrap" style={{ borderRadius: 0 }}>
                                 <Filter size={16} color="var(--mlab-grey)" />
                                 <select value={leaveTypeFilter} onChange={e => setLeaveTypeFilter(e.target.value)}>
                                     <option value="all">All Reasons</option>

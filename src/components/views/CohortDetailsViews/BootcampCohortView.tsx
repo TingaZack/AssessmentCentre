@@ -2,9 +2,14 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Users, Calendar, ChevronLeft, Mail, Phone, Award, DownloadCloud, FolderOpen, UserCheck, Clock, CheckCircle2, AlertCircle, XCircle, UploadCloud, Search, X } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import {
+    Users, Calendar, ChevronLeft, Mail, Phone, Award, DownloadCloud,
+    FolderOpen, UserCheck, Clock, CheckCircle2, AlertCircle, XCircle,
+    UploadCloud, Search, X, Info, BarChart2, Target, Activity, UserMinus, Edit2, Loader2, Video
+} from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
 import { useStore } from '../../../store/useStore';
 import { Sidebar } from '../../../components/dashboard/Sidebar/Sidebar';
@@ -23,10 +28,17 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
     // Controls the Zoom Drop Zone popup
     const [isDropZoneOpen, setIsDropZoneOpen] = useState(false);
 
+    // Edit Log Details State
+    const [editingLog, setEditingLog] = useState<any | null>(null);
+    const [editLogTitle, setEditLogTitle] = useState('');
+    const [editLogDesc, setEditLogDesc] = useState('');
+    const [editLogZoomLink, setEditLogZoomLink] = useState('');
+    const [isSavingLog, setIsSavingLog] = useState(false);
+
     const [attendanceLogs, setAttendanceLogs] = useState<any[]>([]);
     const [attendanceRecords, setAttendanceRecords] = useState<any[]>([]);
 
-    // 🚀 NEW: Multi-Date Selection State for Historical Ledger Filter
+    // Multi-Date Selection State for Historical Ledger Filter
     const [ledgerDates, setLedgerDates] = useState<string[]>([]);
 
     //  FILTER STATES
@@ -68,6 +80,7 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
 
     const activeCount = enrolledLearners.filter(l => l.status !== 'dropped').length;
     const droppedCount = enrolledLearners.filter(l => l.status === 'dropped').length;
+    const totalCount = activeCount + droppedCount;
 
     useEffect(() => {
         if (!cohort?.id) return;
@@ -102,18 +115,19 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
     }, [cohort]);
 
     const rosterAttendanceMap = useMemo(() => {
-        const map = new Map<string, { attended: number; total: number; pct: number }>();
+        const map = new Map<string, { attended: number; total: number; pct: number; totalMinutes: number }>();
         const totalSessions = attendanceLogs.length;
 
         attendanceRecords.forEach(rec => {
             if (!rec.learnerId) return;
             if (!map.has(rec.learnerId)) {
-                map.set(rec.learnerId, { attended: 0, total: totalSessions, pct: 0 });
+                map.set(rec.learnerId, { attended: 0, total: totalSessions, pct: 0, totalMinutes: 0 });
             }
             const entry = map.get(rec.learnerId)!;
             if (rec.status === 'Present' || rec.status === 'Partial') {
                 entry.attended += 1;
             }
+            entry.totalMinutes += (rec.actualDuration || rec.durationRecorded || 0);
         });
 
         map.forEach(value => {
@@ -124,10 +138,47 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
         return map;
     }, [attendanceRecords, attendanceLogs.length]);
 
-    //  PIPELINE MATRIX: Computes active searches and filter intersections cleanly
+    const cohortAnalytics = useMemo(() => {
+        let totalCohortHours = 0;
+        let sumActiveAttendancePct = 0;
+        let highPerformers = 0;
+        let atRisk = 0;
+        let ghosting = 0;
+
+        const totalExpectedMinutes = attendanceLogs.reduce((acc, log) => acc + (log.expectedDuration || 120), 0);
+
+        enrolledLearners.forEach(l => {
+            if (l.status !== 'dropped') {
+                const stats = rosterAttendanceMap.get(l.learnerId || l.id) || { pct: 0, totalMinutes: 0 };
+                totalCohortHours += (stats.totalMinutes / 60);
+                sumActiveAttendancePct += stats.pct;
+
+                if (stats.pct >= 80) highPerformers++;
+                if (stats.pct < 50 && attendanceLogs.length > 0) atRisk++;
+
+                if (totalExpectedMinutes > 200 && stats.totalMinutes < 200) {
+                    ghosting++;
+                }
+            }
+        });
+
+        const avgAttendance = activeCount > 0 ? Math.round(sumActiveAttendancePct / activeCount) : 0;
+        const retentionRate = totalCount > 0 ? Math.round((activeCount / totalCount) * 100) : 0;
+        const avgHoursPerLearner = activeCount > 0 ? (totalCohortHours / activeCount).toFixed(1) : "0.0";
+
+        return {
+            totalCohortHours: Math.round(totalCohortHours),
+            avgAttendance,
+            retentionRate,
+            highPerformers,
+            atRisk,
+            ghosting,
+            avgHoursPerLearner
+        };
+    }, [enrolledLearners, rosterAttendanceMap, activeCount, totalCount, attendanceLogs]);
+
     const filteredLearners = useMemo(() => {
         return enrolledLearners.filter(learner => {
-            // Pass 1: Multi-field string text match
             const searchLower = searchTerm.toLowerCase().trim();
             const dbEmail = (learner.email || learner.demographics?.learnerEmailAddress || '').toLowerCase();
             const matchesSearch = !searchLower ||
@@ -135,13 +186,11 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
                 learner.idNumber.includes(searchLower) ||
                 dbEmail.includes(searchLower);
 
-            // Pass 2: Status checking intersection
             const matchesStatus = statusFilter === 'all' ||
                 (statusFilter === 'active' && learner.status !== 'dropped') ||
                 (statusFilter === 'dropped' && learner.status === 'dropped');
 
-            // Pass 3: Compliance threshold metric match
-            const stats = rosterAttendanceMap.get(learner.learnerId) || { attended: 0, total: attendanceLogs.length, pct: 0 };
+            const stats = rosterAttendanceMap.get(learner.learnerId) || { attended: 0, total: attendanceLogs.length, pct: 0, totalMinutes: 0 };
             let matchesAttendance = true;
             if (attendanceFilter === 'high') matchesAttendance = stats.pct >= 75;
             else if (attendanceFilter === 'mid') matchesAttendance = stats.pct >= 40 && stats.pct < 75;
@@ -151,7 +200,6 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
         });
     }, [enrolledLearners, searchTerm, statusFilter, attendanceFilter, rosterAttendanceMap, attendanceLogs.length]);
 
-    // 🚀 NEW: Filter Logic for Historical Ledger Tab
     const filteredAttendanceLogs = useMemo(() => {
         if (ledgerDates.length === 0) return attendanceLogs;
         return attendanceLogs.filter(log => {
@@ -178,13 +226,15 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
         }
 
         const dataRows = filteredLearners.map(l => {
-            const att = rosterAttendanceMap.get(l.learnerId) || { attended: 0, total: attendanceLogs.length, pct: 0 };
+            const att = rosterAttendanceMap.get(l.learnerId) || { attended: 0, total: attendanceLogs.length, pct: 0, totalMinutes: 0 };
             return {
                 "Full Name": l.fullName,
                 "ID Number": l.idNumber,
                 "Email Address": l.email || l.demographics?.learnerEmailAddress || 'N/A',
                 "Phone Number": l.phone || l.mobile || l.demographics?.learnerPhoneNumber || 'N/A',
                 "Attendance Score": `${att.attended}/${att.total} (${att.pct}%)`,
+                "Total Time (Mins)": att.totalMinutes,
+                "Total Time (Hrs)": (att.totalMinutes / 60).toFixed(1),
                 "Status": l.status === 'dropped' ? 'Withdrawn' : 'Active Applicant',
                 "Enrolled Date": l.createdAt?.split('T')[0] || ''
             };
@@ -193,14 +243,117 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
         const ws = XLSX.utils.json_to_sheet(dataRows);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, 'Bootcamp Roster');
-        XLSX.writeFile(wb, `Bootcamp_Applicants_${cohort.name.replace(/\s+/g, '_')}.xlsx`);
+        XLSX.writeFile(wb, `Bootcamp_Analytics_${cohort.name.replace(/\s+/g, '_')}.xlsx`);
         toast.success('Roster exported successfully with tracking metrics.');
+    };
+
+    // 🚀 NEW: Edit Session Details Logic with Zoom Link
+    const openEditModal = (log: any) => {
+        setEditingLog(log);
+        setEditLogTitle(log.sessionTitle || '');
+        setEditLogDesc(log.sessionDescription || '');
+        setEditLogZoomLink(log.sessionZoomLink || '');
+    };
+
+    const handleSaveLogDetails = async () => {
+        if (!editingLog) return;
+
+        // Word count validation
+        const wordCount = editLogDesc.trim().split(/\s+/).filter(w => w.length > 0).length;
+        if (wordCount > 250) {
+            toast.error(`Description is too long (${wordCount} words). Maximum is 250 words.`);
+            return;
+        }
+
+        setIsSavingLog(true);
+        try {
+            await updateDoc(doc(db, 'attendance_logs', editingLog.id), {
+                sessionTitle: editLogTitle.trim(),
+                sessionDescription: editLogDesc.trim(),
+                sessionZoomLink: editLogZoomLink.trim(),
+                lastEditedBy: user?.uid,
+                lastEditedAt: new Date().toISOString()
+            });
+            toast.success("Session details updated successfully.");
+            setEditingLog(null);
+        } catch (err) {
+            toast.error("Failed to update session details.");
+        } finally {
+            setIsSavingLog(false);
+        }
     };
 
     if (!cohort) return null;
 
     return (
         <div className="cdp-layout">
+
+            {/* 🚀 NEW: Edit Session Details Modal */}
+            {editingLog && createPortal(
+                <div className="wm-overlay animate-fade-in" onClick={() => setEditingLog(null)} style={{ zIndex: 99999 }}>
+                    <div className="wm-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '500px' }}>
+                        <div className="wm-modal__header" style={{ borderBottom: '1px solid var(--mlab-border)', paddingBottom: '1rem' }}>
+                            <div className="wm-modal__header-icon" style={{ background: '#e0f2fe', color: '#0ea5e9' }}><Edit2 size={20} /></div>
+                            <div>
+                                <h2 className="wm-modal__title">Edit Session Details</h2>
+                                <p className="wm-modal__subtitle">
+                                    {new Date(editingLog.sessionDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+                                </p>
+                            </div>
+                            <button className="wm-modal__close" onClick={() => setEditingLog(null)}><X size={18} /></button>
+                        </div>
+                        <div className="wm-modal__body" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                            <div>
+                                <label className="wm-form-label" style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                    Session Title
+                                </label>
+                                <input
+                                    type="text"
+                                    className="wm-form-input"
+                                    placeholder="e.g. Intro to MS Word"
+                                    value={editLogTitle}
+                                    onChange={e => setEditLogTitle(e.target.value)}
+                                    maxLength={100}
+                                />
+                            </div>
+                            <div>
+                                <label className="wm-form-label" style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                    Session / Recording Link (Optional)
+                                </label>
+                                <input
+                                    type="url"
+                                    className="wm-form-input"
+                                    placeholder="https://zoom.us/rec/share/..."
+                                    value={editLogZoomLink}
+                                    onChange={e => setEditLogZoomLink(e.target.value)}
+                                />
+                            </div>
+                            <div>
+                                <label className="wm-form-label" style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                    Session Description
+                                    <span style={{ color: editLogDesc.trim().split(/\s+/).filter(w => w.length > 0).length > 250 ? '#ef4444' : 'var(--mlab-grey)' }}>
+                                        {editLogDesc.trim().split(/\s+/).filter(w => w.length > 0).length} / 250 words
+                                    </span>
+                                </label>
+                                <textarea
+                                    className="wm-form-input"
+                                    placeholder="e.g. Covered creating documents, basic formatting, and introduction to Mail Merge..."
+                                    rows={5}
+                                    value={editLogDesc}
+                                    onChange={e => setEditLogDesc(e.target.value)}
+                                />
+                            </div>
+                        </div>
+                        <div className="wm-modal__footer">
+                            <button type="button" className="wm-btn wm-btn--ghost" onClick={() => setEditingLog(null)} disabled={isSavingLog}>Cancel</button>
+                            <button type="button" className="mlab-btn mlab-btn--primary" onClick={handleSaveLogDetails} disabled={isSavingLog}>
+                                {isSavingLog ? <><Loader2 size={16} className="spin" /> Saving...</> : 'Save Details'}
+                            </button>
+                        </div>
+                    </div>
+                </div>,
+                document.body
+            )}
 
             <ZoomAttendanceDropZone
                 isOpen={isDropZoneOpen}
@@ -217,7 +370,7 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
                         <button className="cdp-header__back" onClick={handleBack}>
                             <ChevronLeft size={14} /> {isAdmin ? 'Back to Dashboard' : 'Back'}
                         </button>
-                        <div className="cdp-header__eyebrow"><Users size={12} /> Bootcamp Funnel</div>
+                        <div className="cdp-header__eyebrow"><Users size={12} /> Bootcamp Analytics & Funnel</div>
                         <h1 className="cdp-header__title">{cohort.name}</h1>
                         <p className="cdp-header__sub">
                             <Calendar size={12} className="cdp-header__sub-icon" /> {cohort.startDate} — {cohort.endDate}
@@ -226,21 +379,116 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
                     </div>
                     <div className="cdp-header__right">
                         <button className="cdp-btn cdp-btn--outline" onClick={handleExport}>
-                            <DownloadCloud size={13} /> Export List
+                            <DownloadCloud size={13} /> Export Analytics
                         </button>
                     </div>
                 </header>
 
                 <div className="cdp-content">
-                    <div className="cdp-stat-row">
-                        <div className="cdp-stat-card cdp-stat-card--blue">
-                            <div className="cdp-stat-card__icon"><Users size={20} /></div>
-                            <div className="cdp-stat-card__body"><span className="cdp-stat-card__value">{activeCount}</span><span className="cdp-stat-card__label">Active Applicants</span></div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
+
+                        <div style={{ background: 'white', padding: '1.25rem', border: '1px solid var(--mlab-border)', borderRadius: '8px', borderLeft: '4px solid var(--mlab-blue)' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                                <div>
+                                    <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--mlab-grey)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <Users size={14} /> Pipeline Retention
+                                    </p>
+                                    <h3 style={{ margin: '4px 0 0', color: 'var(--mlab-midnight)', fontSize: '1.8rem' }}>
+                                        {cohortAnalytics.retentionRate}%
+                                    </h3>
+                                </div>
+                                <div style={{ background: '#e0f2fe', color: '#0284c7', padding: '6px 10px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 'bold' }}>
+                                    {activeCount} / {totalCount} Active
+                                </div>
+                            </div>
+                            <div style={{ width: '100%', background: '#f1f5f9', height: '6px', borderRadius: '3px', overflow: 'hidden' }}>
+                                <div style={{ width: `${cohortAnalytics.retentionRate}%`, background: 'var(--mlab-blue)', height: '100%' }}></div>
+                            </div>
+                            <p style={{ margin: '8px 0 0', fontSize: '0.75rem', color: 'var(--mlab-grey)' }}>{droppedCount} withdrawn so far</p>
                         </div>
-                        <div className="cdp-stat-card cdp-stat-card--grey">
-                            <div className="cdp-stat-card__icon"><Award size={20} /></div>
-                            <div className="cdp-stat-card__body"><span className="cdp-stat-card__value">{droppedCount}</span><span className="cdp-stat-card__label">Withdrawn</span></div>
+
+                        <div style={{ background: 'white', padding: '1.25rem', border: '1px solid var(--mlab-border)', borderRadius: '8px', borderLeft: '4px solid var(--mlab-green)' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                                <div>
+                                    <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--mlab-grey)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <BarChart2 size={14} /> Global Attendance
+                                    </p>
+                                    <h3 style={{ margin: '4px 0 0', color: 'var(--mlab-green-dark)', fontSize: '1.8rem' }}>
+                                        {cohortAnalytics.avgAttendance}%
+                                    </h3>
+                                </div>
+                                <div style={{ background: '#dcfce7', color: '#166534', padding: '6px 10px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 'bold' }}>
+                                    Avg. Engagement
+                                </div>
+                            </div>
+                            <div style={{ width: '100%', background: '#f1f5f9', height: '6px', borderRadius: '3px', overflow: 'hidden' }}>
+                                <div style={{ width: `${cohortAnalytics.avgAttendance}%`, background: 'var(--mlab-green)', height: '100%' }}></div>
+                            </div>
+                            <p style={{ margin: '8px 0 0', fontSize: '0.75rem', color: 'var(--mlab-grey)' }}>Across {attendanceLogs.length} tracked sessions</p>
                         </div>
+
+                        <div style={{ background: 'white', padding: '1.25rem', border: '1px solid var(--mlab-border)', borderRadius: '8px', borderLeft: '4px solid #8b5cf6' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                                <div>
+                                    <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--mlab-grey)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <Target size={14} /> Total Training Time
+                                    </p>
+                                    <h3 style={{ margin: '4px 0 0', color: '#6d28d9', fontSize: '1.8rem' }}>
+                                        {cohortAnalytics.totalCohortHours} <span style={{ fontSize: '1rem', color: '#8b5cf6', fontWeight: 600 }}>Hrs</span>
+                                    </h3>
+                                </div>
+                                <div style={{ background: '#f3e8ff', color: '#a21caf', padding: '6px 10px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 'bold' }}>
+                                    Impact
+                                </div>
+                            </div>
+                            <div style={{ width: '100%', background: '#f1f5f9', height: '6px', borderRadius: '3px', overflow: 'hidden' }}>
+                                <div style={{ width: '100%', background: '#8b5cf6', height: '100%', opacity: 0.2 }}></div>
+                            </div>
+                            <p style={{ margin: '8px 0 0', fontSize: '0.75rem', color: 'var(--mlab-grey)' }}>{cohortAnalytics.avgHoursPerLearner} hours logged per active learner</p>
+                        </div>
+
+                        <div style={{ background: 'white', padding: '1.25rem', border: '1px solid var(--mlab-border)', borderRadius: '8px', borderLeft: `4px solid ${cohortAnalytics.atRisk > 0 ? '#f59e0b' : 'var(--mlab-grey-light)'}` }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                                <div>
+                                    <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--mlab-grey)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <Activity size={14} /> Cohort Health
+                                    </p>
+                                    <h3 style={{ margin: '4px 0 0', color: 'var(--mlab-midnight)', fontSize: '1.8rem' }}>
+                                        {cohortAnalytics.highPerformers} <span style={{ fontSize: '0.9rem', color: 'var(--mlab-grey)', fontWeight: 500 }}>High Perf.</span>
+                                    </h3>
+                                </div>
+                                <div style={{ background: cohortAnalytics.atRisk > 0 ? '#fef3c7' : '#f8fafc', color: cohortAnalytics.atRisk > 0 ? '#b45309' : '#94a3b8', padding: '6px 10px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    {cohortAnalytics.atRisk > 0 && <AlertCircle size={12} />}
+                                    {cohortAnalytics.atRisk} At Risk
+                                </div>
+                            </div>
+
+                            <div style={{ width: '100%', background: '#f1f5f9', height: '6px', borderRadius: '3px', overflow: 'hidden', display: 'flex' }}>
+                                <div style={{ width: `${(cohortAnalytics.highPerformers / activeCount) * 100}%`, background: 'var(--mlab-green)', height: '100%' }}></div>
+                                <div style={{ width: `${((activeCount - cohortAnalytics.highPerformers - cohortAnalytics.atRisk) / activeCount) * 100}%`, background: '#fbbf24', height: '100%' }}></div>
+                                <div style={{ width: `${(cohortAnalytics.atRisk / activeCount) * 100}%`, background: '#ef4444', height: '100%' }}></div>
+                            </div>
+
+                            <p style={{ margin: '8px 0 0', fontSize: '0.75rem', color: 'var(--mlab-grey)' }}>Green: &gt;80% | Amber: 50-79% | Red: &lt;50%</p>
+                        </div>
+
+                        <div style={{ background: '#fff1f2', padding: '1.25rem', border: '1px solid #fecaca', borderRadius: '8px', borderLeft: '4px solid #ef4444' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                                <div>
+                                    <p style={{ margin: 0, fontSize: '0.75rem', color: '#991b1b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <UserMinus size={14} /> Early Warning System
+                                    </p>
+                                    <h3 style={{ margin: '4px 0 0', color: '#b91c1c', fontSize: '1.8rem' }}>
+                                        {cohortAnalytics.ghosting} <span style={{ fontSize: '0.9rem', color: '#dc2626', fontWeight: 500 }}>Learners</span>
+                                    </h3>
+                                </div>
+                            </div>
+                            <p style={{ margin: '14px 0 0', fontSize: '0.75rem', color: '#991b1b', lineHeight: 1.4 }}>
+                                <strong>Ghosting Detected:</strong> Active learners with less than 200 minutes of total engagement across the programme.
+                            </p>
+                        </div>
+
                     </div>
 
                     <div className="lfm-tabs" style={{ marginBottom: '1.5rem' }}>
@@ -264,16 +512,10 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
                                     </div>
                                 </div>
 
-                                {/* : MASTER INTEGRATED FILTER CONTROLS BAR */}
                                 <div style={{
-                                    display: 'flex',
-                                    flexWrap: 'wrap',
-                                    gap: '1rem',
-                                    padding: '1rem 1.5rem',
-                                    backgroundColor: '#f8fafc',
-                                    borderBottom: '1px solid var(--mlab-border)',
-                                    alignItems: 'center',
-                                    justifyContent: 'space-between'
+                                    display: 'flex', flexWrap: 'wrap', gap: '1rem', padding: '1rem 1.5rem',
+                                    backgroundColor: '#f8fafc', borderBottom: '1px solid var(--mlab-border)',
+                                    alignItems: 'center', justifyContent: 'space-between'
                                 }}>
                                     <div style={{ position: 'relative', width: '300px', minWidth: '200px' }}>
                                         <Search size={16} color="var(--mlab-grey)" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
@@ -295,7 +537,6 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
                                     </div>
 
                                     <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                                        {/* Status Filtering */}
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                             <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Status:</label>
                                             <select
@@ -309,7 +550,6 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
                                             </select>
                                         </div>
 
-                                        {/* Compliance Metrics Selector */}
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                             <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Attendance:</label>
                                             <select
@@ -333,14 +573,29 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
                                                 <th>Applicant Details</th>
                                                 <th>Contact Information</th>
                                                 <th>Status</th>
-                                                <th>Attendance Score</th>
+                                                <th>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                        Attendance Score
+                                                        <span title="The percentage of Zoom sessions this applicant has attended (marked as Present or Short Hours)." style={{ cursor: 'help', display: 'flex' }}>
+                                                            <Info size={14} color="var(--mlab-grey)" />
+                                                        </span>
+                                                    </div>
+                                                </th>
+                                                <th>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                        Total Time
+                                                        <span title="Total cumulative time the applicant has spent in Zoom sessions across the entire programme." style={{ cursor: 'help', display: 'flex' }}>
+                                                            <Info size={14} color="var(--mlab-grey)" />
+                                                        </span>
+                                                    </div>
+                                                </th>
                                                 <th style={{ textAlign: 'right' }}>Actions</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             {filteredLearners.length === 0 ? (
                                                 <tr>
-                                                    <td colSpan={5} style={{ padding: '3rem', textAlign: 'center', color: 'var(--mlab-grey)' }}>
+                                                    <td colSpan={6} style={{ padding: '3rem', textAlign: 'center', color: 'var(--mlab-grey)' }}>
                                                         <Search size={32} style={{ margin: '0 auto 1rem', opacity: 0.4 }} />
                                                         <p style={{ margin: 0, fontWeight: 500 }}>No applicants match your current query parameter thresholds.</p>
                                                     </td>
@@ -349,7 +604,7 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
                                                 filteredLearners.map(learner => {
                                                     const isDropped = learner.status === 'dropped';
                                                     const routingId = learner.enrollmentId || learner.id;
-                                                    const stats = rosterAttendanceMap.get(learner.learnerId) || { attended: 0, total: attendanceLogs.length, pct: 0 };
+                                                    const stats = rosterAttendanceMap.get(learner.learnerId) || { attended: 0, total: attendanceLogs.length, pct: 0, totalMinutes: 0 };
 
                                                     return (
                                                         <tr key={learner.id} className={isDropped ? 'mlab-tr--dropped' : ''}>
@@ -391,6 +646,17 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
                                                                 </div>
                                                             </td>
 
+                                                            <td>
+                                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                                                    <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--mlab-midnight)' }}>
+                                                                        {stats.totalMinutes} mins
+                                                                    </span>
+                                                                    <span style={{ fontSize: '0.7rem', color: 'var(--mlab-grey)' }}>
+                                                                        {(stats.totalMinutes / 60).toFixed(1)} hrs
+                                                                    </span>
+                                                                </div>
+                                                            </td>
+
                                                             <td style={{ textAlign: 'right' }}>
                                                                 <div className="cdp-actions" style={{ justifyContent: 'flex-end', display: 'flex' }}>
                                                                     <button
@@ -424,9 +690,9 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
                                         </h3>
                                     </div>
 
-                                    {/* 🚀 NEW: Multi-Date Filter UI */}
+                                    {/* Multi-Date Filter UI */}
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'white', border: '1px solid var(--mlab-border)', padding: '6px 12px', borderRadius: '8px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'white', border: '1px solid var(--mlab-border)', padding: '6px 12px' }}>
                                             <Calendar size={16} color="var(--mlab-grey)" />
                                             <span style={{ fontSize: '0.85rem', color: 'var(--mlab-grey)', fontWeight: 600 }}>Filter Dates:</span>
                                             <input
@@ -445,7 +711,7 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
                                     </div>
                                 </div>
 
-                                {/* 🚀 NEW: Selected Date Chips */}
+                                {/* Selected Date Chips */}
                                 {ledgerDates.length > 0 && (
                                     <div style={{ padding: '0.5rem 1.5rem', background: '#f8fafc', borderBottom: '1px solid var(--mlab-border)', display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
                                         <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--mlab-grey)', textTransform: 'uppercase' }}>Showing:</span>
@@ -471,19 +737,79 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
                                         <table className="mlab-table">
                                             <thead>
                                                 <tr>
-                                                    <th style={{ color: 'var(--mlab-midnight)' }}>Session Date</th>
-                                                    <th style={{ color: 'var(--mlab-midnight)' }}>Expected Duration</th>
-                                                    <th style={{ color: 'var(--mlab-midnight)' }}>Total Captured</th>
-                                                    <th style={{ color: 'var(--mlab-midnight)' }}>Present (80%+)</th>
-                                                    <th style={{ color: 'var(--mlab-midnight)' }}>Short Hours</th>
-                                                    <th style={{ color: 'var(--mlab-midnight)' }}>Absent</th>
+                                                    <th>Session Details</th>
+                                                    <th>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                            Expected Duration
+                                                            <span title="Automatically calculated based on the maximum time any single learner spent in this Zoom session." style={{ cursor: 'help', display: 'flex' }}>
+                                                                <Info size={14} color="var(--mlab-grey)" />
+                                                            </span>
+                                                        </div>
+                                                    </th>
+                                                    <th>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                            Total Captured
+                                                            <span title="The total number of applicants mapped and processed for this date." style={{ cursor: 'help', display: 'flex' }}>
+                                                                <Info size={14} color="var(--mlab-grey)" />
+                                                            </span>
+                                                        </div>
+                                                    </th>
+                                                    <th>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                            Present (80%+)
+                                                            <span title="Applicants who stayed for at least 80% of the Expected Duration." style={{ cursor: 'help', display: 'flex' }}>
+                                                                <Info size={14} color="var(--mlab-grey)" />
+                                                            </span>
+                                                        </div>
+                                                    </th>
+                                                    <th>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                            Short Hours
+                                                            <span title="Applicants who dropped off early or joined very late (between 21% and 79% of the session)." style={{ cursor: 'help', display: 'flex' }}>
+                                                                <Info size={14} color="var(--mlab-grey)" />
+                                                            </span>
+                                                        </div>
+                                                    </th>
+                                                    <th>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                            Absent
+                                                            <span title="Applicants who did not attend, or were present for 20% or less of the session." style={{ cursor: 'help', display: 'flex' }}>
+                                                                <Info size={14} color="var(--mlab-grey)" />
+                                                            </span>
+                                                        </div>
+                                                    </th>
+                                                    <th style={{ textAlign: 'right' }}>Actions</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
                                                 {filteredAttendanceLogs.map((log) => (
                                                     <tr key={log.id}>
-                                                        <td style={{ fontWeight: 600, color: 'var(--mlab-midnight)' }}>
-                                                            {new Date(log.sessionDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                                                        <td>
+                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                                                <span style={{ fontWeight: 600, color: 'var(--mlab-midnight)' }}>
+                                                                    {new Date(log.sessionDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                                                                </span>
+                                                                {log.sessionTitle && (
+                                                                    <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--mlab-blue)' }}>
+                                                                        {log.sessionTitle}
+                                                                    </span>
+                                                                )}
+                                                                {log.sessionDescription && (
+                                                                    <span style={{ fontSize: '0.75rem', color: 'var(--mlab-grey)', maxWidth: '250px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={log.sessionDescription}>
+                                                                        {log.sessionDescription}
+                                                                    </span>
+                                                                )}
+                                                                {log.sessionZoomLink && (
+                                                                    <a
+                                                                        href={log.sessionZoomLink}
+                                                                        target="_blank"
+                                                                        rel="noopener noreferrer"
+                                                                        style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', color: '#0ea5e9', textDecoration: 'none', marginTop: '2px', fontWeight: 600 }}
+                                                                    >
+                                                                        <Video size={12} /> View Recording / Link
+                                                                    </a>
+                                                                )}
+                                                            </div>
                                                         </td>
                                                         <td>
                                                             <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', color: 'var(--mlab-grey)' }}>
@@ -506,6 +832,24 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
                                                                 <XCircle size={12} /> {log.totalAbsent || 0}
                                                             </span>
                                                         </td>
+                                                        <td style={{ textAlign: 'right' }}>
+                                                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                                                                <button
+                                                                    className="mlab-icon-btn"
+                                                                    style={{ border: '1px solid #e2e8f0', background: 'white' }}
+                                                                    onClick={() => openEditModal(log)}
+                                                                    title="Edit Session Details"
+                                                                >
+                                                                    <Edit2 size={14} color="var(--mlab-blue)" />
+                                                                </button>
+                                                                <button
+                                                                    className="mlab-btn mlab-btn--sm mlab-btn--ghost"
+                                                                    onClick={() => navigate(`/facilitator/attendance/${cohort.id}?date=${log.sessionDate}`)}
+                                                                >
+                                                                    <FolderOpen size={12} /> View Register
+                                                                </button>
+                                                            </div>
+                                                        </td>
                                                     </tr>
                                                 ))}
                                             </tbody>
@@ -520,6 +864,8 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
         </div>
     );
 };
+
+
 
 
 // export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {

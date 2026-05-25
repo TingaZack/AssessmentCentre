@@ -409,12 +409,50 @@ export const useStore = create<StoreState>()(
     submissions: [],
     enrollments: [],
 
-    fetchAssessments: async () => {
+    // fetchAssessments: async () => {
+    //   try {
+    //     const snap = await getDocs(collection(db, "assessments"));
+    //     set({ assessments: snap.docs.map((d) => ({ id: d.id, ...d.data() })) });
+    //   } catch (e) {
+    //     console.error(e);
+    //   }
+    // },
+    fetchAssessments: async (forceRefresh = false) => {
+      const state = get() as any;
+      if (!forceRefresh && state.assessments.length > 0) return;
+
+      set({ isFetchingAssessments: true });
       try {
-        const snap = await getDocs(collection(db, "assessments"));
-        set({ assessments: snap.docs.map((d) => ({ id: d.id, ...d.data() })) });
+        const user = state.user;
+        let q;
+
+        // Admins see everything. Everyone else sees only what they created or collaborate on.
+        if (user?.role === "admin" || user?.isSuperAdmin) {
+          q = query(collection(db, "assessments"));
+        } else {
+          // Note: Firestore doesn't natively support complex OR queries easily without composite indexes.
+          // For absolute safety and to prevent index errors, we fetch all and filter in memory for non-admins.
+          // If you have thousands of assessments, you should create a Firebase Cloud Function instead.
+          q = query(collection(db, "assessments"));
+        }
+
+        const snap = await getDocs(q);
+        let results = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+        // Memory Filter for Facilitators/Assessors
+        if (user?.role !== "admin" && !user?.isSuperAdmin) {
+          results = results.filter(
+            (a: any) =>
+              a.createdBy === user?.uid ||
+              a.facilitatorId === user?.uid ||
+              (a.collaboratorIds && a.collaboratorIds.includes(user?.uid)),
+          );
+        }
+
+        set({ assessments: results, isFetchingAssessments: false });
       } catch (e) {
-        console.error(e);
+        console.error("Error fetching assessments:", e);
+        set({ isFetchingAssessments: false });
       }
     },
 

@@ -180,7 +180,7 @@ export const FacilitatorDashboard: React.FC = () => {
 
                 <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
                     {activeTab === 'assessments' && (
-                        <button className="mlab-btn mlab-btn--primary" onClick={() => navigate('/facilitator/assessments/builder')}>
+                        <button className="wm-btn wm-btn--primary" onClick={() => navigate('/facilitator/assessments/builder')}>
                             <Plus size={16} /> New Assessment
                         </button>
                     )}

@@ -74,7 +74,7 @@ export const AssessmentManager: React.FC = () => {
     const initiateDelete = (assessment: any) => {
         const isCreator = assessment.createdBy === user?.uid || assessment.facilitatorId === user?.uid;
 
-        if (!isCreator && user?.role !== 'admin') {
+        if (!isCreator && user?.role !== 'admin' && !(user as any)?.isSuperAdmin) {
             toast.error("Access Denied: Only the original creator or an Admin can delete this workbook.");
             return;
         }
@@ -171,7 +171,7 @@ export const AssessmentManager: React.FC = () => {
             <ToastContainer toasts={toast.toasts} onClose={toast.closeToast} />
 
             {/* ── PAGE HEADER ── */}
-            <div className="wm-page-header">
+            {user?.role === 'admin' && <div className="wm-page-header">
                 <div className="wm-page-header__left">
                     <div className="wm-page-header__icon"><FileText size={22} /></div>
                     <div>
@@ -197,12 +197,12 @@ export const AssessmentManager: React.FC = () => {
                         <Plus size={14} /> Create Assessment
                     </button>
                 </div>
-            </div>
+            </div>}
 
             {/* ── TOOLBAR / FILTER SYSTEM ── */}
             <div className="mlab-toolbar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
                 <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                    <div className="mlab-search">
+                    <div className="mlab-search" style={{ borderRadius: 0 }}>
                         <Search size={18} color="var(--mlab-grey)" />
                         <input
                             type="text"
@@ -212,7 +212,7 @@ export const AssessmentManager: React.FC = () => {
                         />
                     </div>
 
-                    <div className="mlab-select-wrap">
+                    <div className="mlab-select-wrap" style={{ borderRadius: 0 }}>
                         <Filter size={16} color="var(--mlab-grey)" />
                         <select value={filterType} onChange={e => updateUrlParam('type', e.target.value)}>
                             <option value="all">All Types</option>
@@ -221,7 +221,7 @@ export const AssessmentManager: React.FC = () => {
                         </select>
                     </div>
 
-                    <div className="mlab-select-wrap">
+                    <div className="mlab-select-wrap" style={{ borderRadius: 0 }}>
                         <Filter size={16} color="var(--mlab-grey)" />
                         <select value={filterStatus} onChange={e => updateUrlParam('status', e.target.value)}>
                             <option value="all">All Statuses</option>
@@ -234,7 +234,7 @@ export const AssessmentManager: React.FC = () => {
                     </div>
 
                     {uniqueProgrammes.length > 0 && (
-                        <div className="mlab-select-wrap">
+                        <div className="mlab-select-wrap" style={{ borderRadius: 0 }}>
                             <GraduationCap size={16} color="var(--mlab-grey)" />
                             <select value={filterProgramme} onChange={e => updateUrlParam('prog', e.target.value)}>
                                 <option value="all">All Programmes</option>
@@ -248,7 +248,7 @@ export const AssessmentManager: React.FC = () => {
                     )}
 
                     {/* SORT BY DROPDOWN */}
-                    <div className="mlab-select-wrap">
+                    <div className="mlab-select-wrap" style={{ borderRadius: 0 }}>
                         <ArrowUpDown size={16} color="var(--mlab-grey)" />
                         <select value={sortBy} onChange={e => updateUrlParam('sort', e.target.value)}>
                             <option value="date">Date Updated</option>
@@ -263,7 +263,7 @@ export const AssessmentManager: React.FC = () => {
                         className="mlab-btn mlab-btn--ghost"
                         onClick={() => updateUrlParam('order', sortOrder === 'asc' ? 'desc' : 'asc')}
                         title={sortOrder === 'asc' ? 'Sort Ascending' : 'Sort Descending'}
-                        style={{ padding: '0 12px', background: 'white', border: '1px solid var(--mlab-border)', borderRadius: '6px', display: 'flex', alignItems: 'center' }}
+                        style={{ padding: '0 12px', background: 'white', border: '1px solid var(--mlab-border)', display: 'flex', alignItems: 'center' }}
                     >
                         {sortOrder === 'asc' ? '↑ Asc' : '↓ Desc'}
                     </button>
@@ -274,7 +274,7 @@ export const AssessmentManager: React.FC = () => {
                             className="mlab-btn mlab-btn--ghost"
                             onClick={handleClearFilters}
                             title="Clear all filters and sorting"
-                            style={{ padding: '0 12px', background: '#fef2f2', color: '#ef4444', border: '1px solid #fecaca', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                            style={{ padding: '0 12px', background: '#fef2f2', color: '#ef4444', border: '1px solid #fecaca', display: 'flex', alignItems: 'center', gap: '4px' }}
                         >
                             <X size={14} /> Clear
                         </button>
@@ -303,6 +303,9 @@ export const AssessmentManager: React.FC = () => {
                                     ? new Date(lastUpdateStr).toLocaleString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
                                     : '—';
 
+                                const isAdminUser = user?.role === 'admin' || (user as any)?.isSuperAdmin === true;
+                                const isCreator = test.createdBy === user?.uid || test.facilitatorId === user?.uid;
+                                const canDelete = isAdminUser || isCreator;
                                 const isCollaborator = test.collaboratorIds?.includes(user?.uid || '');
 
                                 return (
@@ -311,7 +314,7 @@ export const AssessmentManager: React.FC = () => {
                                             <div className="mlab-cell-content">
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                     <span className="mlab-cell-name">{test.title}</span>
-                                                    {isCollaborator && user?.role !== 'admin' && (
+                                                    {isCollaborator && !isAdminUser && (
                                                         <span className="mlab-badge" style={{ background: '#f0f9ff', color: '#0284c7', border: 'none', padding: '2px 6px', fontSize: '0.65rem' }}>
                                                             <Users size={10} style={{ marginRight: '3px' }} /> Shared
                                                         </span>
@@ -372,7 +375,7 @@ export const AssessmentManager: React.FC = () => {
                                                 <button
                                                     className="mlab-icon-btn mlab-icon-btn--blue"
                                                     onClick={() => navigate(`/facilitator/assessments/builder/${test.id}`)}
-                                                    title={isCollaborator ? "Edit Shared Assessment" : "Open in Assessment Builder"}
+                                                    title={isCollaborator && !isCreator ? "Edit Shared Assessment" : "Open in Assessment Builder"}
                                                     disabled={isProcessing}
                                                 >
                                                     <Edit size={14} />
@@ -401,8 +404,9 @@ export const AssessmentManager: React.FC = () => {
                                                 <button
                                                     className="mlab-icon-btn mlab-icon-btn--red"
                                                     onClick={() => initiateDelete(test)}
-                                                    title={isCollaborator && user?.role !== 'admin' ? "You cannot delete a shared assessment" : "Delete"}
-                                                    disabled={isProcessing}
+                                                    title={!canDelete ? "Access Denied: Only the creator or an Admin can delete this." : "Delete Assessment"}
+                                                    disabled={isProcessing || !canDelete}
+                                                    style={!canDelete ? { opacity: 0.4, cursor: 'not-allowed' } : {}}
                                                 >
                                                     <Trash2 size={14} />
                                                 </button>
