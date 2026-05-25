@@ -40,6 +40,10 @@ import {
   createPlacementSlice,
   type PlacementSliceState,
 } from "./slices/placementSlice";
+import {
+  createAssessmentsSlice,
+  type AssessmentsSlice,
+} from "./slices/assessmentsSlice";
 
 const now = () => new Date().toISOString();
 
@@ -141,7 +145,11 @@ export const generateStudentId = (cohortId: string, enrollmentId: string) => {
 };
 
 interface StoreState
-  extends CohortSlice, EcosystemSliceState, PlacementSliceState {
+  extends
+    CohortSlice,
+    EcosystemSliceState,
+    PlacementSliceState,
+    AssessmentsSlice {
   user: UserProfile | null;
   loading: boolean;
   setUser: (user: UserProfile | null) => void;
@@ -300,6 +308,8 @@ export const useStore = create<StoreState>()(
     ...createEcosystemSlice(set as any, get, api as any),
 
     ...createPlacementSlice(set as any, get, api as any),
+
+    ...createAssessmentsSlice(set as any, get, api as any),
 
     user: null,
     loading: true,
@@ -2733,8 +2743,6 @@ export const useStore = create<StoreState>()(
     leaveRequests: [],
     isFetchingLeaves: false,
 
-    // Inside your Zustand store:
-
     fetchFacilitatorLeaveRequests: async (facilitatorId: string) => {
       set({ isFetchingLeaves: true });
       try {
@@ -2751,39 +2759,39 @@ export const useStore = create<StoreState>()(
           return;
         }
 
-        // Fetch leave requests for those cohorts
-        const q = query(
-          collection(db, "leave_requests"),
-          where("cohortId", "in", cohortIds),
-        );
+        // Fetch leave requests safely
+        let requests: any[] = [];
+        const chunks = [];
+        for (let i = 0; i < cohortIds.length; i += 30) {
+          chunks.push(cohortIds.slice(i, i + 30));
+        }
 
-        const snapshot = await getDocs(q);
-        let requests = snapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...(doc.data() as any),
-        }));
-
-        console.log("RAW REQUESTS FROM FIRESTORE:", requests);
+        for (const chunk of chunks) {
+          const q = query(
+            collection(db, "leave_requests"),
+            where("cohortId", "in", chunk),
+          );
+          const snapshot = await getDocs(q);
+          snapshot.docs.forEach((doc) => {
+            requests.push({ id: doc.id, ...(doc.data() as any) });
+          });
+        }
 
         // Fetch Learner Names (NoSQL Join)
-        // Get unique learner IDs from the requests
         const uniqueLearnerIds = [
           ...new Set(requests.map((r) => r.learnerId).filter(Boolean)),
         ];
 
         if (uniqueLearnerIds.length > 0) {
-          // Fetch the profile for each learner (adjust 'learners' or 'users' based on your DB)
           const learnerPromises = uniqueLearnerIds.map((id) =>
-            getDoc(doc(db, "learners", id)),
+            getDoc(doc(db, "learners", String(id))),
           );
           const learnerDocs = await Promise.all(learnerPromises);
 
-          // Create a dictionary of { learnerId: "Full Name" }
           const learnerMap: Record<string, string> = {};
           learnerDocs.forEach((docSnap) => {
             if (docSnap.exists()) {
               const data = docSnap.data();
-              // Handle different name field structures (fullName, or firstName + lastName)
               learnerMap[docSnap.id] =
                 data.fullName ||
                 `${data.firstName || ""} ${data.lastName || ""}`.trim() ||
@@ -2791,18 +2799,24 @@ export const useStore = create<StoreState>()(
             }
           });
 
-          // Attach the names to the requests
+          // Attach the names to the requests safely
           requests = requests.map((req) => ({
             ...req,
-            learnerName: learnerMap[req.learnerId] || req.learnerId, // Fallback to ID if name is missing
+            learnerName:
+              learnerMap[req.learnerId] || req.learnerName || req.learnerId,
           }));
         }
 
-        // Sort descending by submission date
-        requests.sort(
-          (a: any, b: any) =>
-            b.submittedOn?.toMillis() - a.submittedOn?.toMillis(),
-        );
+        // Safely Sort (handling both Firestore Timestamps and ISO Strings)
+        requests.sort((a: any, b: any) => {
+          const timeA = a.submittedOn?.toMillis
+            ? a.submittedOn.toMillis()
+            : new Date(a.submittedOn || 0).getTime();
+          const timeB = b.submittedOn?.toMillis
+            ? b.submittedOn.toMillis()
+            : new Date(b.submittedOn || 0).getTime();
+          return timeB - timeA;
+        });
 
         set({ leaveRequests: requests, isFetchingLeaves: false });
       } catch (error) {
@@ -2810,7 +2824,6 @@ export const useStore = create<StoreState>()(
         set({ isFetchingLeaves: false, leaveRequests: [] });
       }
     },
-
     updateLeaveStatus: async (
       requestId: string,
       status: "Approved" | "Declined",

@@ -8,7 +8,8 @@ import {
     ShieldCheck, Award, Loader2, BarChart2,
     RotateCcw, Download, AlertTriangle, X, Menu, Search,
     Filter, ChevronLeft, ChevronRight,
-    ArrowUpDown, CheckSquare, Square, Printer, Layers, ShieldAlert
+    ArrowUpDown, CheckSquare, Square, Printer, Layers, ShieldAlert,
+    Timer
 } from 'lucide-react';
 import {
     collection, query, where, getDocs, doc,
@@ -27,6 +28,7 @@ import '../../components/views/LearnersView/LearnersView.css';
 import './ViewPortfolio.css';
 import Loader from '../../components/common/Loader/Loader';
 import { RemediationModal } from '../FacilitatorDashboard/SubmissionReview/SubmissionReview/SubmissionReviewModals';
+import moment from 'moment';
 
 interface LearnerSubmission {
     id: string;
@@ -46,6 +48,8 @@ interface LearnerSubmission {
     moduleNumber?: string;
     moduleType?: 'knowledge' | 'practical' | 'workplace' | 'other';
     timeLimit?: number;
+    isScheduled?: boolean;
+    scheduledDate?: string;
     moderation?: { outcome?: 'Endorsed' | 'Returned' };
     appeal?: { status?: 'pending' | 'upheld' | 'rejected', reason?: string, date?: string };
     qualificationName?: string;
@@ -453,19 +457,16 @@ export const ViewPortfolio: React.FC = () => {
                     subs = snap.docs.map(d => ({ id: d.id, ...d.data() } as LearnerSubmission));
                 }
 
-                // ISOLATED AUTO-HYDRATION BLOCK (Prevents silent failures for Facilitators)
+                // FETCH ASSOCIATED ASSESSMENTS TO PATCH SCHEDULE TIMERS
+                const activeAssessments = new Map();
+                const draftAssessmentIds = new Set();
                 try {
                     if (activeCohortId && activeCohortId !== "") {
                         const cohortAssessmentsQ = query(
                             collection(db, 'assessments'),
                             where('cohortIds', 'array-contains', activeCohortId)
                         );
-
                         const cohortAssSnap = await getDocs(cohortAssessmentsQ);
-
-                        const activeAssessments = new Map();
-                        const draftAssessmentIds = new Set();
-
                         cohortAssSnap.forEach(docSnap => {
                             const assData = docSnap.data();
                             if (assData.status === 'active' || assData.status === 'scheduled') {
@@ -474,7 +475,28 @@ export const ViewPortfolio: React.FC = () => {
                                 draftAssessmentIds.add(docSnap.id);
                             }
                         });
+                    }
+                } catch (e) {
+                    console.warn("Failed to fetch assessment metadata for patching timers.", e);
+                }
 
+                // PATCH EXISTING SUBMISSIONS WITH SCHEDULE & TIMER DATA
+                subs = subs.map(sub => {
+                    const matchingAss = activeAssessments.get(sub.assessmentId);
+                    if (matchingAss) {
+                        return {
+                            ...sub,
+                            isScheduled: matchingAss.isScheduled || false,
+                            scheduledDate: matchingAss.scheduledDate || null,
+                            timeLimit: matchingAss.moduleInfo?.timeLimit || sub.timeLimit || 0
+                        };
+                    }
+                    return sub;
+                });
+
+                // ISOLATED AUTO-HYDRATION BLOCK (Prevents silent failures for Facilitators)
+                try {
+                    if (activeCohortId && activeCohortId !== "") {
                         const batch = writeBatch(db);
                         let batchCount = 0;
 
@@ -507,6 +529,9 @@ export const ViewPortfolio: React.FC = () => {
                                     marks: 0,
                                     totalMarks: assData.totalMarks || 0,
                                     moduleNumber: assData.moduleInfo?.moduleNumber || "",
+                                    timeLimit: assData.moduleInfo?.timeLimit || 0,
+                                    isScheduled: assData.isScheduled || false,
+                                    scheduledDate: assData.scheduledDate || null,
                                     createdAt: new Date().toISOString(),
                                     createdBy: "System_AutoHydration"
                                 };
@@ -794,13 +819,35 @@ export const ViewPortfolio: React.FC = () => {
     const renderTableRow = (sub: LearnerSubmission, isGrouped: boolean) => {
         const isNYC = sub.status === 'moderated' && sub.competency === 'NYC';
         const hasPendingAppeal = sub.status === 'appealed' || sub.appeal?.status === 'pending';
+        const isScheduledForFuture = sub.isScheduled && sub.scheduledDate && new Date(sub.scheduledDate).getTime() > Date.now();
 
         return (
             <tr key={sub.id}>
                 <td style={isGrouped ? { paddingLeft: '2.5rem' } : {}}>
                     <div className="vp-assessment-cell">
                         <span className="vp-assessment-title" style={isGrouped ? { fontSize: '0.9rem' } : {}}>{sub.title}</span>
-                        <span className="vp-assessment-meta">Assigned {new Date(sub.assignedAt).toLocaleDateString('en-ZA', { month: 'short', day: 'numeric' })}</span>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '6px' }}>
+                            {/* Schedule & Timing Metdata block */}
+                            {sub.isScheduled && sub.scheduledDate && ['not_started', 'in_progress', 'missed'].includes(sub.status) ? (
+                                <span className="vp-assessment-meta" style={{ color: sub.status === 'missed' ? '#ef4444' : '#0284c7', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    <Clock size={12} />
+                                    {isScheduledForFuture
+                                        ? `Unlocks: ${moment(sub.scheduledDate).format('DD MMM YYYY [at] HH:mm')}`
+                                        : `Scheduled: ${moment(sub.scheduledDate).format('DD MMM YYYY [at] HH:mm')}`}
+                                </span>
+                            ) : (
+                                <span className="vp-assessment-meta">
+                                    Assigned: {moment(sub.assignedAt).format('DD MMM YYYY')}
+                                </span>
+                            )}
+
+                            {(sub.timeLimit && sub.timeLimit > 0) ? (
+                                <span className="vp-assessment-meta" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    <Timer size={12} /> {sub.timeLimit} Min Limit
+                                </span>
+                            ) : null}
+                        </div>
                     </div>
                 </td>
                 {!isGrouped && (

@@ -128,7 +128,7 @@ const AssessmentPlayer: React.FC = () => {
 
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
-    const [isStarting, setIsStarting] = useState(false); // NEW: For start button spinner
+    const [isStarting, setIsStarting] = useState(false);
 
     const [assessment, setAssessment] = useState<any>(null);
     const [submission, setSubmission] = useState<any>(null);
@@ -149,7 +149,6 @@ const AssessmentPlayer: React.FC = () => {
     const [showAppealModal, setShowAppealModal] = useState(false);
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-    // NEW COMPLIANCE STATES
     const [moduleLogs, setModuleLogs] = useState<any[]>([]);
     const [passedFormative, setPassedFormative] = useState(false);
 
@@ -414,48 +413,6 @@ const AssessmentPlayer: React.FC = () => {
 
                     const facId = activeSub.latestCoachingLog?.facilitatorId || activeSub.grading?.facilitatorId;
                     if (facId) { const s = await getDoc(doc(db, 'users', facId)); if (s.exists()) setFacilitatorProfile(s.data()); }
-
-                    const _isAppealUpheld = activeSub.appeal?.status === 'upheld';
-                    const _needsGate = (activeSub.attemptNumber || 1) > 1 && activeSub.latestCoachingLog && !activeSub.latestCoachingLog.acknowledged && !_isAppealUpheld;
-                    const isPrac = assData.moduleType === 'practical' || assData.moduleType === 'workplace';
-
-                    // STRICT REAL-WORLD TIMER ENFORCEMENT ON INITIAL LOAD
-                    if (!isPrac && assData.moduleInfo?.timeLimit > 0 && !_needsGate) {
-                        const extraTime = activeSub.extraTimeGranted || 0;
-                        const totalAllowedTimeMs = (assData.moduleInfo.timeLimit + extraTime) * 60 * 1000;
-                        const now = getSecureNow();
-
-                        if (assData.isScheduled && assData.scheduledDate && !activeSub.overrideUnlock) {
-                            const scheduledStart = moment(assData.scheduledDate).valueOf();
-                            const scheduledEnd = scheduledStart + totalAllowedTimeMs;
-
-                            if (now >= scheduledEnd) {
-                                // Real-world time has expired
-                                if (activeSub.status === 'not_started') {
-                                    activeSub.status = 'missed';
-                                    await updateDoc(doc(db, 'learner_submissions', activeSub.id), {
-                                        status: 'missed',
-                                        systemNote: 'Auto-swept on client load: Learner missed schedule window.'
-                                    });
-                                    setSubmission({ ...activeSub });
-                                } else if (activeSub.status === 'in_progress') {
-                                    setTimeLeft(0);
-                                    forceAutoSubmit(activeSub.id, activeSub.answers || {});
-                                }
-                            } else if (now >= scheduledStart && activeSub.status === 'in_progress') {
-                                // Exam is active, calculate remaining time based on hard deadline
-                                const rem = Math.floor((scheduledEnd - now) / 1000);
-                                setTimeLeft(rem);
-                            }
-                        } else if (activeSub.status === 'in_progress') {
-                            // Non-scheduled (or overridden) logic: based on when THEY started
-                            const start = new Date(activeSub.startedAt).getTime();
-                            const end = start + totalAllowedTimeMs;
-                            const rem = Math.max(0, Math.floor((end - now) / 1000));
-                            setTimeLeft(rem);
-                            if (rem === 0) forceAutoSubmit(activeSub.id, activeSub.answers || {});
-                        }
-                    }
                 } else {
                     toast.error('You are not assigned to this assessment.');
                 }
@@ -595,7 +552,7 @@ const AssessmentPlayer: React.FC = () => {
     }, [moduleLogs, submission]);
     const isFullyCompliant = pendingTopics.length === 0;
 
-    // ─── NEW: CLOUD FUNCTION START EXAM HANDLER ──────────────────────────
+    // ─── START EXAM HANDLER ──────────────────────────
     const handleStartAssessment = async () => {
         if (!startDeclarationChecked || (needsRemediationGate && !coachingAckChecked)) return;
         setIsStarting(true);
@@ -1229,8 +1186,16 @@ const AssessmentPlayer: React.FC = () => {
 
                     <div className="ap-note-block">
                         <div className="ap-note-block__heading"><Info size={12} /> Note to the Learner</div>
-                        <p className="ap-note-block__text">{assessment.instructions || 'This Learner Guide provides a comprehensive overview of the module.'}</p>
-                        {assessment.purpose && (<><div className="ap-note-block__heading"><Info size={12} /> Purpose</div><p className="ap-note-block__text">{assessment.purpose}</p></>)}
+                        {/* 🚀 FIXED HTML PARSING */}
+                        <div className="ap-note-block__text quill-read-only-content" style={{ wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(assessment.instructions || 'This Learner Guide provides a comprehensive overview of the module.') }} />
+
+                        {assessment.purpose && (
+                            <>
+                                <div className="ap-note-block__heading"><Info size={12} /> Purpose</div>
+                                {/* 🚀 FIXED HTML PARSING */}
+                                <div className="ap-note-block__text quill-read-only-content" style={{ wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(assessment.purpose) }} />
+                            </>
+                        )}
                     </div>
                 </div>
 
@@ -1540,9 +1505,16 @@ const AssessmentPlayer: React.FC = () => {
 
                                 <div className="print-page print-page--instructions">
                                     <h2 className="print-section-heading">Note to the Learner</h2>
-                                    <p className="print-body-text">{assessment?.instructions}</p>
-                                    <h2 className="print-section-heading">Purpose of this Module</h2>
-                                    <p className="print-body-text">{assessment?.purpose}</p>
+                                    {/* 🚀 FIXED HTML PARSING FOR PRINT */}
+                                    <div className="print-body-text quill-read-only-content" style={{ wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(assessment?.instructions || '') }} />
+
+                                    {assessment?.purpose && (
+                                        <>
+                                            <h2 className="print-section-heading">Purpose of this Module</h2>
+                                            {/* 🚀 FIXED HTML PARSING FOR PRINT */}
+                                            <div className="print-body-text quill-read-only-content" style={{ wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(assessment?.purpose || '') }} />
+                                        </>
+                                    )}
                                     <h2 className="print-section-heading">Topic Elements Covered</h2>
                                     <table className="print-table print-table--topics">
                                         <thead><tr><th className="print-table__th">Section</th><th className="print-table__th print-table__th--narrow">Weighting</th></tr></thead>
@@ -1616,7 +1588,7 @@ const AssessmentPlayer: React.FC = () => {
                                         <div key={block.id} id={`block-${block.id}`} className="ap-block-section">
                                             <span>{block.title}</span>
                                             {isAssDone && totals && totals.total > 0 && <span className="no-print ap-block-section__score"><BarChart size={13} /> {totals.awarded}/{totals.total}</span>}
-                                            {/* FIXED HTML PARSING */}
+                                            {/* FIXED HTML PARSING FOR SECTION */}
                                             {block.content && <div className="quill-read-only-content ap-block-section__content" style={{ wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.content) }} />}
                                             {renderBlockImage(block)}
                                         </div>
@@ -1627,7 +1599,7 @@ const AssessmentPlayer: React.FC = () => {
                                 if (block.type === 'info') return (
                                     <div key={block.id} id={`block-${block.id}`} className="ap-block-info">
                                         <div className="ap-block-info__label"><Info size={13} /> Reading Material</div>
-                                        {/* FIXED HTML PARSING */}
+                                        {/* FIXED HTML PARSING FOR INFO CONTENT */}
                                         <div className="quill-read-only-content ap-block-info__text" style={{ wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.content) }} />
                                         {renderBlockImage(block)}
                                     </div>
@@ -1920,11 +1892,6 @@ const AssessmentPlayer: React.FC = () => {
                                                                 </div>
                                                             );
                                                         })}
-                                                        <div className="ap-workplace__toggles">
-                                                            {block.requireSelfAssessment !== false && <label className={`ap-workplace__toggle${learnerAns?.selfAssessmentDone ? ' ap-workplace__toggle--checked' : ''}`}><input type="checkbox" disabled={!canEditWorkplace} checked={learnerAns?.selfAssessmentDone || false} onChange={e => handleTaskAnswerChange(block.id, 'selfAssessmentDone', e.target.checked)} style={{ width: '16px', height: '16px', accentColor: '#e11d48' }} /><span className="ap-workplace__toggle-label">I have completed the self-assessment for these tasks.</span></label>}
-                                                            {block.requireGoalPlanning !== false && <label className={`ap-workplace__toggle${learnerAns?.goalPlanningDone ? ' ap-workplace__toggle--checked' : ''}`}><input type="checkbox" disabled={!canEditWorkplace} checked={learnerAns?.goalPlanningDone || false} onChange={e => handleTaskAnswerChange(block.id, 'goalPlanningDone', e.target.checked)} style={{ width: '16px', height: '16px', accentColor: '#e11d48' }} /><span className="ap-workplace__toggle-label">I have updated my goal planning document.</span></label>}
-                                                        </div>
-                                                        <p className="ap-qcto-footnote">* Learners will see a QCTO Checkpoint form mapping their uploads to WA and SE codes, alongside mentor sign-off.</p>
                                                     </div>
                                                 )}
 
@@ -2049,7 +2016,9 @@ const AssessmentPlayer: React.FC = () => {
                                             <>
                                                 {submission.moderation?.moderatorSignatureUrl
                                                     ? <img src={submission.moderation.moderatorSignatureUrl} alt="Moderator Signature" style={{ height: '38px', objectFit: 'contain', mixBlendMode: 'multiply', marginBottom: '6px' }} />
-                                                    : <div className="sr-sig-no-image">No Canvas Signature</div>}
+                                                    : moderatorProfile?.signatureUrl
+                                                        ? <img src={moderatorProfile.signatureUrl} alt="Moderator fallback" />
+                                                        : <div className="sr-sig-no-image">No Canvas Signature</div>}
                                                 <strong className="sr-sig-box__name sr-sig-box__name--mod">{moderatorProfile?.fullName || submission.moderation?.moderatorName || '—'}</strong>
                                                 <em className="sr-sig-box__meta sr-sig-box__meta--mod">Outcome: {submission.moderation?.outcome}</em>
                                                 <em className="sr-sig-box__meta sr-sig-box__meta--mod">Signed: {new Date(submission.moderation.moderatedAt).toLocaleDateString('en-ZA')}</em>

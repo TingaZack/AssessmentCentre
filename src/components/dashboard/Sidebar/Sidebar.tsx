@@ -26,7 +26,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, currentNav, setCurrentNa
     const location = useLocation();
 
     // Hook into the URL search parameters to sync routing
-    const [searchParams, setSearchParams] = useSearchParams();
+    const [searchParams] = useSearchParams();
 
     const { settings } = useStore();
     const user = useStore((state) => state.user);
@@ -37,7 +37,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, currentNav, setCurrentNa
         switch (activeRole) {
             case 'admin':
                 // All Admin paths must stay on "/admin" and rely entirely on the ID parameter.
-                // Previously, Studio pointed to "/admin/studio", which broke the URL sync.
                 const adminMenu = [
                     { id: 'dashboard', label: 'Overview', icon: LayoutDashboard, path: '/admin' },
                     { id: 'directory', label: 'Master Directory', icon: Users, path: '/admin' },
@@ -96,28 +95,34 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, currentNav, setCurrentNa
     const menuItems = getMenuItems();
 
     const handleNavigation = (item: any) => {
+        // Update local state if provided
         if (setCurrentNav) setCurrentNav(item.id);
 
         if (activeRole === 'admin' && item.path === '/admin') {
-            const newParams = new URLSearchParams(searchParams);
+            // Create a fresh URLSearchParams to guarantee we strip out deep-link filters (view, cohort, employer, etc)
+            const newParams = new URLSearchParams();
 
-            // Set the main tab parameter
-            if (item.id === 'dashboard') {
-                newParams.delete('tab');
-            } else {
+            if (item.id !== 'dashboard') {
                 newParams.set('tab', item.id);
             }
 
-            // Aggressively strip out old sub-parameters so they don't break new pages
-            newParams.delete('view');
-            newParams.delete('cohort');
-            newParams.delete('employer');
+            // 🚀 FIXED: Generate absolute destination string so we break out of nested sub-pages
+            const queryString = newParams.toString();
+            const destination = queryString ? `/admin?${queryString}` : '/admin';
 
-            // Push the changes to the URL without changing the actual page path
-            setSearchParams(newParams, { replace: true });
+            navigate(destination, { replace: true });
         } else {
             // Fallback for non-admin dashboards
-            navigate(item.path, { state: { activeTab: item.id }, replace: true });
+            const newParams = new URLSearchParams();
+            if (item.id !== 'dashboard') {
+                newParams.set('tab', item.id);
+            }
+
+            // 🚀 FIXED: Ensure absolute navigation for facilitators/assessors as well
+            const queryString = newParams.toString();
+            const destination = queryString ? `${item.path}?${queryString}` : item.path;
+
+            navigate(destination, { state: { activeTab: item.id }, replace: true });
         }
     };
 
@@ -173,5 +178,3 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, currentNav, setCurrentNa
         </aside>
     );
 };
-
-

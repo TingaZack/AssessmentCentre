@@ -8,7 +8,9 @@ import {
     Award, Loader2, Download, FileCheck, ZoomIn, ZoomOut, RotateCcw,
     Mail, Building2, UserCircle, Image as ImageIcon, Plus, ArrowLeft,
     FileText, Menu, X, Folder, FolderPlus, ChevronRight, Edit2, Layers,
-    UploadCloud, CheckCircle, ChevronLeft, Send, Search, Trash2
+    UploadCloud, CheckCircle, UserPlus, Search, Trash2,
+    ChevronLeft,
+    Send
 } from 'lucide-react';
 import { collection, addDoc, updateDoc, writeBatch, serverTimestamp, doc } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -226,7 +228,104 @@ const ModernTemplate = ({ data, finalType }: { data: any, finalType: string }) =
     </div>
 );
 
+// ═════════════════════════════════════════════════════════════════════════════
+// COMPONENT: SHARE / COLLABORATOR MODAL
+// ═════════════════════════════════════════════════════════════════════════════
+const ShareModal: React.FC<{
+    isOpen: boolean;
+    onClose: () => void;
+    targetId: string;
+    targetType: 'folder' | 'certificate';
+    targetName: string;
+    initialCollaborators: string[];
+    onSave: (id: string, type: 'folder' | 'certificate', collabs: string[]) => Promise<void>;
+}> = ({ isOpen, onClose, targetId, targetType, targetName, initialCollaborators, onSave }) => {
+    const [emails, setEmails] = useState<string[]>(initialCollaborators || []);
+    const [inputValue, setInputValue] = useState('');
+    const [isSaving, setIsSaving] = useState(false);
 
+    const handleAdd = () => {
+        const cleanEmail = inputValue.trim().toLowerCase();
+        if (cleanEmail && !emails.includes(cleanEmail)) {
+            setEmails([...emails, cleanEmail]);
+            setInputValue('');
+        }
+    };
+
+    const handleRemove = (email: string) => {
+        setEmails(emails.filter(e => e !== email));
+    };
+
+    const handleSave = async () => {
+        setIsSaving(true);
+        await onSave(targetId, targetType, emails);
+        setIsSaving(false);
+        onClose();
+    };
+
+    if (!isOpen) return null;
+
+    return createPortal(
+        <div className="wm-overlay animate-fade-in" onClick={onClose} style={{ zIndex: 99999 }}>
+            <div className="wm-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '450px' }}>
+                <div className="wm-modal__header" style={{ borderBottom: '3px solid var(--mlab-green)', paddingBottom: '1rem' }}>
+                    <div className="wm-modal__header-icon" style={{ background: '#e0f2fe', color: '#0ea5e9' }}><UserPlus size={20} /></div>
+                    <div>
+                        <h2 className="wm-modal__title">Share {targetType === 'folder' ? 'Folder' : 'Certificate'}</h2>
+                        <p className="wm-modal__subtitle">Manage access for "{targetName}"</p>
+                    </div>
+                    <button className="wm-modal__close" onClick={onClose}><X size={18} /></button>
+                </div>
+                <div className="wm-modal__body" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                    <div>
+                        <label className="wm-form-label">Add Collaborator (Email)</label>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                            <input
+                                type="email"
+                                className="wm-form-input"
+                                style={{ margin: 0, flex: 1 }}
+                                placeholder="e.g. facilitator@mlab.co.za"
+                                value={inputValue}
+                                onChange={e => setInputValue(e.target.value)}
+                                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAdd(); } }}
+                            />
+                            <button type="button" className="cdp-btn cdp-btn--outline" onClick={handleAdd}>Add</button>
+                        </div>
+                    </div>
+
+                    <div style={{ borderTop: '1px solid var(--mlab-border)', paddingTop: '1rem' }}>
+                        <label className="wm-form-label">Current Collaborators ({emails.length})</label>
+                        {emails.length === 0 ? (
+                            <p style={{ fontSize: '0.85rem', color: 'var(--mlab-grey)', fontStyle: 'italic', margin: '0.5rem 0' }}>No external collaborators added. Only you can view this.</p>
+                        ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '200px', overflowY: 'auto' }}>
+                                {emails.map(email => (
+                                    <div key={email} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--mlab-border)' }}>
+                                        <span style={{ fontSize: '0.85rem', color: 'var(--mlab-midnight)', fontWeight: 500 }}>{email}</span>
+                                        <button className="mlab-icon-btn" style={{ border: 'none', background: 'transparent', padding: 0 }} onClick={() => handleRemove(email)}>
+                                            <Trash2 size={14} color="#ef4444" />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </div>
+                <div className="wm-modal__footer">
+                    <button type="button" className="wm-btn wm-btn--ghost" onClick={onClose}>Cancel</button>
+                    <button type="button" className="mlab-btn mlab-btn--primary" onClick={handleSave} disabled={isSaving}>
+                        {isSaving ? <Loader2 size={14} className="cdp-spinner" /> : 'Save Access Control'}
+                    </button>
+                </div>
+            </div>
+        </div>,
+        document.body
+    );
+};
+
+// ═════════════════════════════════════════════════════════════════════════════
+// COMPONENT: STUDIO MAIN
+// ═════════════════════════════════════════════════════════════════════════════
 export const CertificateStudio: React.FC = () => {
     const {
         settings, user, adHocCertificates = [], certificateGroups = [],
@@ -251,6 +350,15 @@ export const CertificateStudio: React.FC = () => {
     const [folderSearchQuery, setFolderSearchQuery] = useState('');
     const [certSearchQuery, setCertSearchQuery] = useState('');
     const [folderToDelete, setFolderToDelete] = useState<any>(null);
+
+    // ─── SHARE MODAL STATE ───
+    const [shareModalConfig, setShareModalConfig] = useState<{
+        isOpen: boolean;
+        targetId: string;
+        targetType: 'folder' | 'certificate';
+        targetName: string;
+        collaborators: string[];
+    }>({ isOpen: false, targetId: '', targetType: 'folder', targetName: '', collaborators: [] });
 
     const [certData, setCertData] = useState({
         template: 'luxury',
@@ -322,10 +430,27 @@ export const CertificateStudio: React.FC = () => {
 
     const handleLogout = async () => { try { await signOut(auth); navigate('/login'); } catch (e) { } };
 
+    // ─── FILTERING FOR ACCESS CONTROL ───
+    const isSuperAdmin = (user as any)?.isSuperAdmin === true;
+    const userEmail = user?.email?.toLowerCase() || '';
+
+    const myCertificateGroups = certificateGroups.filter(g =>
+        isSuperAdmin || g.createdBy === user?.uid || (g.collaborators || []).includes(userEmail)
+    );
+
+    const myAdHocCertificates = adHocCertificates.filter(c =>
+        isSuperAdmin || c.createdBy === user?.uid || (c.collaborators || []).includes(userEmail)
+    );
+
     const handleCreateFolder = async () => {
         if (!newFolderName.trim()) return;
         try {
+            // Explicitly set collaborators array for security
             if (createCertificateGroup) await createCertificateGroup(newFolderName.trim());
+
+            // To ensure the new field is mapped if we do direct DB creation instead of store func:
+            // await addDoc(collection(db, 'certificate_groups'), { name: newFolderName.trim(), createdBy: user?.uid, collaborators: [] });
+
             if (fetchCertificateGroups) await fetchCertificateGroups(true);
             setNewFolderName(''); setShowNewFolderInput(false); toast.success("Folder created successfully!");
         } catch (error) { toast.error("Failed to create folder"); }
@@ -350,8 +475,7 @@ export const CertificateStudio: React.FC = () => {
 
         try {
             const batch = writeBatch(db);
-
-            const certsToMove = adHocCertificates.filter(c => c.groupId === folderToDelete.id);
+            const certsToMove = myAdHocCertificates.filter(c => c.groupId === folderToDelete.id);
             certsToMove.forEach(cert => {
                 batch.update(doc(db, 'ad_hoc_certificates', cert.id), { groupId: 'general' });
             });
@@ -363,7 +487,6 @@ export const CertificateStudio: React.FC = () => {
 
             if (fetchCertificateGroups) await fetchCertificateGroups(true);
             if (fetchAdHocCertificates) await fetchAdHocCertificates(true);
-
         } catch (error) {
             console.error("Delete Error:", error);
             toast.error("Failed to delete folder.");
@@ -372,11 +495,24 @@ export const CertificateStudio: React.FC = () => {
         }
     };
 
+    const handleSaveCollaborators = async (id: string, type: 'folder' | 'certificate', collaborators: string[]) => {
+        try {
+            const collectionName = type === 'folder' ? 'certificate_groups' : 'ad_hoc_certificates';
+            await updateDoc(doc(db, collectionName, id), { collaborators });
+            toast.success('Access control updated securely.');
+
+            if (type === 'folder' && fetchCertificateGroups) await fetchCertificateGroups(true);
+            if (type === 'certificate' && fetchAdHocCertificates) await fetchAdHocCertificates(true);
+        } catch (err) {
+            toast.error('Failed to update collaborators.');
+        }
+    };
+
     const getCertificatesForActiveFolder = () => {
         if (!activeFolder) return [];
         let certs = [];
-        if (activeFolder.id === 'general') certs = adHocCertificates.filter(c => !c.groupId || c.groupId === 'general');
-        else certs = adHocCertificates.filter(c => c.groupId === activeFolder.id);
+        if (activeFolder.id === 'general') certs = myAdHocCertificates.filter(c => !c.groupId || c.groupId === 'general');
+        else certs = myAdHocCertificates.filter(c => c.groupId === activeFolder.id);
 
         if (certSearchQuery) {
             const q = certSearchQuery.toLowerCase();
@@ -389,7 +525,7 @@ export const CertificateStudio: React.FC = () => {
         return certs;
     };
 
-    const filteredFolders = certificateGroups.filter(g => g.name.toLowerCase().includes(folderSearchQuery.toLowerCase()));
+    const filteredFolders = myCertificateGroups.filter(g => g.name.toLowerCase().includes(folderSearchQuery.toLowerCase()));
     const showGeneralFolder = folderSearchQuery === '' || 'general certificates'.includes(folderSearchQuery.toLowerCase());
 
     const handleZoomIn = () => setZoom(prev => Math.min(prev + 0.1, 1.5));
@@ -434,7 +570,8 @@ export const CertificateStudio: React.FC = () => {
                 recipientName: certData.recipientName, recipientEmail: certData.recipientEmail || null,
                 type: finalCertType, courseName: certData.programme, issueDate: certData.issueDate,
                 pdfUrl: downloadUrl, groupId: certData.groupId || 'general', templateUsed: certData.template,
-                createdBy: user?.uid || 'Admin', createdAt: serverTimestamp(), isEmailed: false
+                createdBy: user?.uid || 'Admin', createdAt: serverTimestamp(), isEmailed: false,
+                collaborators: [] // 🚀 Secure by default
             });
 
             if (actionType === 'email' && certData.recipientEmail) {
@@ -515,7 +652,8 @@ export const CertificateStudio: React.FC = () => {
                     createdBy: user?.uid || 'Admin',
                     createdAt: serverTimestamp(),
                     isEmailed: false,
-                    isBulkUpload: true
+                    isBulkUpload: true,
+                    collaborators: [] // 🚀 Secure by default
                 });
 
                 if (bulkSendEmails && rowEmail) {
@@ -561,6 +699,18 @@ export const CertificateStudio: React.FC = () => {
                 </div>
             )}
 
+            {shareModalConfig.isOpen && (
+                <ShareModal
+                    isOpen={shareModalConfig.isOpen}
+                    onClose={() => setShareModalConfig({ ...shareModalConfig, isOpen: false })}
+                    targetId={shareModalConfig.targetId}
+                    targetType={shareModalConfig.targetType}
+                    targetName={shareModalConfig.targetName}
+                    initialCollaborators={shareModalConfig.collaborators}
+                    onSave={handleSaveCollaborators}
+                />
+            )}
+
             <div className="admin-mobile-header">
                 <button className="admin-hamburger-btn" onClick={() => setIsMobileMenuOpen(true)}>
                     <Menu size={24} />
@@ -590,7 +740,7 @@ export const CertificateStudio: React.FC = () => {
 
                 {showBulkModal && (
                     <BulkGeneratorModal
-                        certificateGroups={certificateGroups}
+                        certificateGroups={myCertificateGroups}
                         onClose={() => setShowBulkModal(false)}
                         onStart={handleStartBulkReview}
                         onCreateFolder={async (name) => {
@@ -598,7 +748,8 @@ export const CertificateStudio: React.FC = () => {
                                 const newDocRef = await addDoc(collection(db, 'certificate_groups'), {
                                     name: name,
                                     createdAt: serverTimestamp(),
-                                    createdBy: user?.uid || 'Admin'
+                                    createdBy: user?.uid || 'Admin',
+                                    collaborators: [] // 🚀 Secure by default
                                 });
                                 if (fetchCertificateGroups) await fetchCertificateGroups(true);
                                 toast.success("Folder created successfully!");
@@ -615,9 +766,6 @@ export const CertificateStudio: React.FC = () => {
                 {view !== 'bulk-review' && (
                     <header className="cdp-header">
                         <div className="cdp-header__left">
-                            {/* <button className="cdp-header__back" onClick={() => navigate('/admin')}>
-                                <ChevronLeft size={14} /> Back to Dashboard
-                            </button> */}
                             <div className="cdp-header__eyebrow"><Award size={12} /> Institutional Tool</div>
                             <h1 className="cdp-header__title">Certificate Studio</h1>
                             <p className="cdp-header__sub">
@@ -639,28 +787,28 @@ export const CertificateStudio: React.FC = () => {
                             <div className="cdp-stat-card cdp-stat-card--blue">
                                 <div className="cdp-stat-card__icon"><Layers size={20} /></div>
                                 <div className="cdp-stat-card__body">
-                                    <span className="cdp-stat-card__value">{certificateGroups.length + 1}</span>
+                                    <span className="cdp-stat-card__value">{myCertificateGroups.length + 1}</span>
                                     <span className="cdp-stat-card__label">Total Folders</span>
                                 </div>
                             </div>
                             <div className="cdp-stat-card cdp-stat-card--green">
                                 <div className="cdp-stat-card__icon"><Award size={20} /></div>
                                 <div className="cdp-stat-card__body">
-                                    <span className="cdp-stat-card__value">{adHocCertificates.length}</span>
+                                    <span className="cdp-stat-card__value">{myAdHocCertificates.length}</span>
                                     <span className="cdp-stat-card__label">Issued Certificates</span>
                                 </div>
                             </div>
                             <div className="cdp-stat-card cdp-stat-card--amber">
                                 <div className="cdp-stat-card__icon"><Mail size={20} /></div>
                                 <div className="cdp-stat-card__body">
-                                    <span className="cdp-stat-card__value">{adHocCertificates.filter(c => c.isEmailed).length}</span>
+                                    <span className="cdp-stat-card__value">{myAdHocCertificates.filter(c => c.isEmailed).length}</span>
                                     <span className="cdp-stat-card__label">Emailed Successfully</span>
                                 </div>
                             </div>
                             <div className="cdp-stat-card cdp-stat-card--grey">
                                 <div className="cdp-stat-card__icon"><FileText size={20} /></div>
                                 <div className="cdp-stat-card__body">
-                                    <span className="cdp-stat-card__value">{adHocCertificates.filter(c => !c.isEmailed).length}</span>
+                                    <span className="cdp-stat-card__value">{myAdHocCertificates.filter(c => !c.isEmailed).length}</span>
                                     <span className="cdp-stat-card__label">Downloads Only</span>
                                 </div>
                             </div>
@@ -753,9 +901,27 @@ export const CertificateStudio: React.FC = () => {
                                     {certSearchQuery && <button onClick={() => setCertSearchQuery('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--mlab-grey)' }}><X size={13} /></button>}
                                 </div>
 
-                                <button className="mlab-btn mlab-btn--primary" style={{ marginLeft: 'auto' }} onClick={() => { setCertData(prev => ({ ...prev, groupId: activeFolder.id })); setView('studio'); }}>
-                                    <Plus size={14} /> Create in this Folder
-                                </button>
+                                <div style={{ display: 'flex', gap: '8px', marginLeft: 'auto' }}>
+                                    <button
+                                        className="cdp-btn cdp-btn--outline"
+                                        style={{ background: 'white' }}
+                                        onClick={() => setShareModalConfig({
+                                            isOpen: true,
+                                            targetId: activeFolder.id,
+                                            targetType: 'folder',
+                                            targetName: activeFolder.name,
+                                            collaborators: activeFolder.collaborators || []
+                                        })}
+                                    >
+                                        <UserPlus size={14} /> Add Collaborator
+                                    </button>
+                                    <button
+                                        className="mlab-btn mlab-btn--primary"
+                                        onClick={() => { setCertData(prev => ({ ...prev, groupId: activeFolder.id })); setView('studio'); }}
+                                    >
+                                        <Plus size={14} /> Create in this Folder
+                                    </button>
+                                </div>
                             </>
                         )}
 
@@ -830,7 +996,7 @@ export const CertificateStudio: React.FC = () => {
                                                 <div style={{ background: '#f1f5f9', padding: '12px', borderRadius: '10px', color: 'var(--mlab-blue)' }}><Folder size={24} /></div>
                                                 <div style={{ flex: 1 }}>
                                                     <h4 className="wm-card__name" style={{ fontSize: '1.1rem' }}>General Certificates</h4>
-                                                    <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: 'var(--mlab-grey)' }}>{adHocCertificates.filter(c => !c.groupId || c.groupId === 'general').length} Documents</p>
+                                                    <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: 'var(--mlab-grey)' }}>{myAdHocCertificates.filter(c => !c.groupId || c.groupId === 'general').length} Documents</p>
                                                 </div>
                                                 <ChevronRight size={18} color="#cbd5e1" />
                                             </div>
@@ -853,7 +1019,7 @@ export const CertificateStudio: React.FC = () => {
                                                     ) : (
                                                         <>
                                                             <h4 className="wm-card__name" style={{ fontSize: '1.1rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{group.name}</h4>
-                                                            <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: 'var(--mlab-grey)' }}>{adHocCertificates.filter(c => c.groupId === group.id).length} Documents</p>
+                                                            <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: 'var(--mlab-grey)' }}>{myAdHocCertificates.filter(c => c.groupId === group.id).length} Documents</p>
                                                         </>
                                                     )}
                                                 </div>
@@ -862,6 +1028,11 @@ export const CertificateStudio: React.FC = () => {
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                         <button className="mlab-icon-btn" style={{ border: 'none', background: 'transparent', boxShadow: 'none' }} onClick={(e) => { e.stopPropagation(); setEditingFolderId(group.id); setEditFolderName(group.name); }} title="Rename Folder">
                                                             <Edit2 size={16} color="var(--mlab-blue)" />
+                                                        </button>
+
+                                                        {/* Dynamic Share Button Access */}
+                                                        <button className="mlab-icon-btn" style={{ border: 'none', background: 'transparent', boxShadow: 'none' }} onClick={(e) => { e.stopPropagation(); setShareModalConfig({ isOpen: true, targetId: group.id, targetType: 'folder', targetName: group.name, collaborators: group.collaborators || [] }); }} title="Share Folder">
+                                                            <UserPlus size={16} color="var(--mlab-green)" />
                                                         </button>
 
                                                         <button className="mlab-icon-btn" style={{ border: 'none', background: 'transparent', boxShadow: 'none' }} onClick={(e) => triggerDeleteFolder(e, group)} title="Delete Folder">
@@ -915,9 +1086,15 @@ export const CertificateStudio: React.FC = () => {
                                                         <span style={{ fontSize: '0.75rem', color: 'var(--mlab-grey)', fontWeight: 600 }}>
                                                             {cert.createdAt ? new Date(cert.createdAt.toDate()).toLocaleDateString() : cert.issueDate}
                                                         </span>
-                                                        <button className="cdp-btn cdp-btn--outline" onClick={() => window.open(cert.pdfUrl, '_blank')}>
-                                                            <Download size={12} /> View
-                                                        </button>
+                                                        <div style={{ display: 'flex', gap: '8px' }}>
+                                                            {/* 🚀 FIXED: Dynamic Share Button Access per individual certificate */}
+                                                            <button className="cdp-btn cdp-btn--outline" onClick={() => setShareModalConfig({ isOpen: true, targetId: cert.id, targetType: 'certificate', targetName: cert.recipientName, collaborators: cert.collaborators || [] })}>
+                                                                <UserPlus size={12} /> Share
+                                                            </button>
+                                                            <button className="cdp-btn cdp-btn--outline" onClick={() => window.open(cert.pdfUrl, '_blank')}>
+                                                                <Download size={12} /> View
+                                                            </button>
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </div>
@@ -937,7 +1114,7 @@ export const CertificateStudio: React.FC = () => {
                                                 <select className="wm-form-input" style={{ margin: 0 }} value={certData.template} onChange={e => handleChange('template', e.target.value)}><option value="luxury">Luxury (Default)</option><option value="official">Official Statement (SoR)</option><option value="modern">Modern Minimalist</option></select>
                                             </FormSection>
                                             <FormSection title="Folder Assignment" icon={Folder}>
-                                                <select className="wm-form-input" style={{ margin: 0 }} value={certData.groupId} onChange={e => handleChange('groupId', e.target.value)}><option value="general">General (No Folder)</option>{certificateGroups.map(g => (<option key={g.id} value={g.id}>{g.name}</option>))}</select>
+                                                <select className="wm-form-input" style={{ margin: 0 }} value={certData.groupId} onChange={e => handleChange('groupId', e.target.value)}><option value="general">General (No Folder)</option>{myCertificateGroups.map(g => (<option key={g.id} value={g.id}>{g.name}</option>))}</select>
                                             </FormSection>
                                             <FormSection title="Recipient Details" icon={UserCircle}>
                                                 <input className="wm-form-input" style={{ margin: 0 }} placeholder="Full Name *" value={certData.recipientName} onChange={e => handleChange('recipientName', e.target.value)} />
