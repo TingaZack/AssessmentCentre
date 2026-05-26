@@ -57,20 +57,3 @@ export const LogbookHoursTally: React.FC<{ entries: any[]; requiredHours?: numbe
     );
 };
 
-// ─── FORMAT TIME SPENT (SECONDS → "Xh Ym" OR "< 1m") ─────────────────────────
-export const formatTimeSpent = (seconds?: number) => {
-    if (seconds === undefined || seconds === null) return '—';
-    const m = Math.floor(seconds / 60);
-    if (m === 0) return '< 1m';
-    const h = Math.floor(m / 60);
-    if (h > 0) return `${h}h ${m % 60}m`;
-    return `${m}m`;
-};
-
-// ─── FORMAT CALENDAR SPREAD (START → END, RETURN HUMAN READABLE SPREAD) ──────
-export const formatCalendarSpread = (startStr?: string, endStr?: string) => {
-    if (!startStr || !endStr) return null;
-    const diffHours = (new Date(endStr).getTime() - new Date(startStr).getTime()) / (1000 * 60 * 60);
-    if (diffHours < 24) return diffHours < 1 ? '< 1 hr spread' : `${Math.floor(diffHours)} hr spread`;
-    return `${Math.floor(diffHours / 24)} day spread`;
-};

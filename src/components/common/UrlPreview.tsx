@@ -1,4 +1,3 @@
-import React from 'react';
 import { LinkIcon, Code } from 'lucide-react';
 
 export const UrlPreview = ({ url }: { url: string }) => {

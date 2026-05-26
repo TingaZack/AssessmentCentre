@@ -56,22 +56,3 @@ export const AppScannerRequired = () => {
         </div>
     );
 }
-
-
-// // src/pages/AppScannerRequired.tsx
-// import { Smartphone } from 'lucide-react';
-
-// export const AppScannerRequired = () => {
-//     return (
-//         <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#f8fafc', padding: '20px', textAlign: 'center' }}>
-//             <Smartphone size={64} color="var(--mlab-blue)" style={{ marginBottom: '20px' }} />
-//             <h1 style={{ fontFamily: 'var(--font-heading)', color: 'var(--mlab-blue)', fontSize: '2rem' }}>
-//                 Please Use the App
-//             </h1>
-//             <p style={{ color: '#475569', maxWidth: '400px', lineHeight: 1.6 }}>
-//                 You cannot clock in using your phone's native camera.
-//                 Please open the <strong>CodeTribe mobile app</strong>, navigate to the Dashboard, and tap <strong>"Open Scanner"</strong> to scan this code.
-//             </p>
-//         </div>
-//     );
-// }

@@ -3,7 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { confirmPasswordReset } from 'firebase/auth';
 import { auth } from '../../lib/firebase';
 import {
-    Lock, AlertCircle, CheckCircle2, Loader2, Eye, EyeOff,
+    Lock, AlertCircle, Loader2, Eye, EyeOff,
     ShieldCheck, Hexagon, ArrowRight, Shield, Server
 } from 'lucide-react';
 import mLabLogo from '../../assets/logo/mlab_logo.png';

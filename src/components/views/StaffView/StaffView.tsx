@@ -227,4 +227,3 @@ export const StaffView: React.FC<StaffViewProps> = ({ staff, onAdd, onEdit, onDe
         </div>
     );
 };
-

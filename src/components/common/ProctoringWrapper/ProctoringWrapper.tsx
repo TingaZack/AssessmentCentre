@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Camera, Maximize, AlertTriangle, MonitorX, ShieldAlert, CheckCircle, Video } from 'lucide-react';
+import { Camera, Maximize, MonitorX, ShieldAlert, CheckCircle, Video } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { doc, setDoc, serverTimestamp, arrayUnion, increment } from 'firebase/firestore';
 import { getStorage, ref as fbStorageRef, uploadString, getDownloadURL } from 'firebase/storage';
@@ -21,7 +21,6 @@ export const ProctoringWrapper: React.FC<ProctoringWrapperProps> = ({ children, 
 
     const [isReady, setIsReady] = useState(!isProctored);
     const [hasCamera, setHasCamera] = useState(false);
-    const [hasMic, setHasMic] = useState(false);
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [violationWarning, setViolationWarning] = useState<string | null>(null);
     const [violationCount, setViolationCount] = useState(0);
@@ -53,7 +52,6 @@ export const ProctoringWrapper: React.FC<ProctoringWrapperProps> = ({ children, 
             }
 
             setHasCamera(true);
-            setHasMic(true);
             toast.success("Camera and Microphone connected securely.");
         } catch (err: any) {
             console.error("Media access error:", err);

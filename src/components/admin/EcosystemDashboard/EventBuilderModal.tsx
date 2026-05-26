@@ -6,7 +6,6 @@ import {
     Settings, ListPlus, Plus, Trash2, Globe, Lock, Tag, Wifi
 } from "lucide-react";
 import Autocomplete from "react-google-autocomplete";
-import { useToast } from "../../../components/common/Toast/Toast";
 import { useStore } from "../../../store/useStore";
 import type { ProgrammeTemplate } from "../../../types";
 import type { EcosystemEvent, GuestFormCustomField, GuestIdRequirement } from "../../../types/ecosystem.types";
@@ -31,11 +30,9 @@ interface EventBuilderModalProps {
 
 export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
     event,
-    programmes,
     onClose,
     onSave
 }) => {
-    const toast = useToast();
     const { settings, updateSettings } = useStore();
 
     const [isSaving, setIsSaving] = useState(false);
@@ -572,4 +569,3 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
         </div>
     );
 };
-

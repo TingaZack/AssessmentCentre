@@ -7,7 +7,6 @@ import {
     Clock,
     Search,
     LogOut,
-    User,
     FileText,
     ChevronRight,
     Activity,
