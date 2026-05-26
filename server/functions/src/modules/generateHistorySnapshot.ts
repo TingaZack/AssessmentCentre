@@ -2,8 +2,8 @@
 
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import * as admin from "firebase-admin";
-const puppeteer = require("puppeteer-core");
-const chromium = require("@sparticuz/chromium");
+import puppeteer from "puppeteer-core";
+import chromium from "@sparticuz/chromium";
 
 export const generateHistorySnapshot = onDocumentCreated(
   {
@@ -128,10 +128,9 @@ export const generateHistorySnapshot = onDocumentCreated(
 
       // 5. Render PDF with Puppeteer
       const browser = await puppeteer.launch({
-        args: chromium.args,
-        defaultViewport: chromium.defaultViewport,
+        args: puppeteer.defaultArgs({ args: chromium.args, headless: "shell" }),
         executablePath: await chromium.executablePath(),
-        headless: chromium.headless,
+        headless: "shell",
       });
       const page = await browser.newPage();
       await page.setContent(html, { waitUntil: "networkidle2" });
