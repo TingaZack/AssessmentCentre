@@ -37,15 +37,6 @@ import { generateSorId } from "../pages/utils/validation";
 
 const now = () => new Date().toISOString();
 
-export interface EnrollmentRecord {
-  cohortId: string;
-  programmeId: string;
-  status: "active" | "dropped" | "completed";
-  dateAssigned: string;
-  exitDate?: string | null;
-  exitReason?: string;
-}
-
 export interface StaffMember {
   id: string;
   fullName: string;
@@ -58,15 +49,6 @@ export interface StaffMember {
   status?: "active" | "archived";
   createdAt?: string;
   updatedAt?: string;
-}
-
-export interface AttendanceRecord {
-  id?: string;
-  cohortId: string;
-  date: string;
-  facilitatorId: string;
-  presentLearners: string[];
-  notes?: string;
 }
 
 // const PROFILE_KEYS = [

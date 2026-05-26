@@ -1,7 +1,7 @@
 // src/types/index.ts
 
 // ---------- Common Types ----------
-export type ModuleStatus =
+type ModuleStatus =
   | "Competent"
   | "Not Competent"
   | "Not Yet Competent"
@@ -10,16 +10,8 @@ export type ModuleStatus =
   | "Not Started"
   | "Pending Grading";
 
-// export interface CampusLocation {
-//   id: string;
-//   name: string;
-//   type: "physical" | "online";
-//   address: string;
-//   siteAccreditationNumber: string;
-//   isDefault: boolean;
-// }
 
-export interface CampusLocation {
+interface CampusLocation {
   id: string;
   name: string;
   type: "physical" | "online";
@@ -81,7 +73,7 @@ export interface SystemSettings {
   // customCsvMappings?: CustomCsvMapping[];
 }
 
-export interface BaseModule {
+interface BaseModule {
   name: string;
   credits: number;
   notionalHours: number;
@@ -91,26 +83,20 @@ export interface BaseModule {
 }
 
 // ---------- Learner‑Specific Module Types ----------
-export interface KnowledgeModule extends BaseModule {
+interface KnowledgeModule extends BaseModule {
   dateAssessed: string;
   status: "Competent" | "Not Yet Competent" | "Not Started" | "Pending Grading";
 }
 
-export interface PracticalModule extends BaseModule {
+interface PracticalModule extends BaseModule {
   dateAssessed: string;
   status: "Pass" | "Fail" | "Not Started" | "Pending Grading";
 }
 
-export interface WorkExperienceModule extends BaseModule {
+interface WorkExperienceModule extends BaseModule {
   dateSignedOff: string;
   status: "Competent" | "Not Yet Competent" | "Not Started" | "Pending Grading";
 }
-
-// Union type for any learner module (used in StatementOfResults)
-export type AnyAssessmentModule =
-  | KnowledgeModule
-  | PracticalModule
-  | WorkExperienceModule;
 
 // ---------- Qualification (embedded in enrollment) ----------
 export interface Qualification {
@@ -151,6 +137,7 @@ export interface LearnerDemographics {
   learnerFaxNumber?: string;
   learnerEmailAddress?: string;
   provinceCode?: string;
+  statssaAreaCode?: string;
   statsaaAreaCode?: string;
   popiActAgree?: string;
   popiActDate?: string;
@@ -169,7 +156,7 @@ export interface LearnerDemographics {
 // ============================================================================
 
 //  IDENTITY: The Human Being (Stored in 'learners' DB collection)
-export interface LearnerProfile {
+interface LearnerProfile {
   id: string; // Global Learner ID
   fullName: string;
   firstName: string;
@@ -195,7 +182,7 @@ export interface LearnerProfile {
 }
 
 // ACADEMIC RECORD: The Course Instance (Stored in 'enrollments' DB collection)
-export interface LearnerEnrollment {
+interface LearnerEnrollment {
   id: string;
   learnerId: string;
   cohortId: string;
@@ -227,7 +214,7 @@ export interface LearnerEnrollment {
 }
 
 // Create the new Enrollment Record Type
-export interface EnrollmentRecord {
+interface EnrollmentRecord {
   cohortId: string;
   programmeId: string;
   status: "active" | "dropped" | "completed";
@@ -237,7 +224,7 @@ export interface EnrollmentRecord {
   exitReason?: string;
 }
 
-export interface CertificateRecord {
+interface CertificateRecord {
   id: string;
   type: string;
   courseName: string;
@@ -291,7 +278,7 @@ export interface DashboardLearner
 // ============================================================================
 
 // ---------- Programme Module (embedded) ----------
-export interface ProgrammeModule {
+interface ProgrammeModule {
   name: string;
   credits: number;
   notionalHours: number;
@@ -322,12 +309,7 @@ export interface ProgrammeTemplate {
 export type ModuleCategory = "knowledge" | "practical" | "workExperience";
 
 // ---------- Statement of Results Types ----------
-export interface IssuedBy {
-  name: string;
-  title: string;
-}
-
-export interface RecessPeriod {
+interface RecessPeriod {
   start: string;
   end: string;
   reason: string;
@@ -364,7 +346,7 @@ export interface Cohort {
   isArchived: boolean;
   createdAt: string;
 }
-export interface StaffHistoryEntry {
+interface StaffHistoryEntry {
   staffId: string;
   role: "facilitator" | "assessor" | "moderator";
   assignedAt: string;

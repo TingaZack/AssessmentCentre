@@ -49,34 +49,3 @@ export interface EcosystemEvent {
   createdAt: string;
   updatedAt?: string;
 }
-
-export interface EcosystemGuest {
-  email: string; // Document ID in Firestore
-  firstName: string;
-  lastName: string;
-  phone: string;
-  gender: string;
-  idNumber?: string;
-  preferredCity: string;
-  persistentToken: string; // The UUID stored in their browser
-  marketingOptIn: boolean;
-
-  // History of every event they've checked into
-  attendanceHistory: {
-    eventId: string;
-    attendedAt: string;
-    responses: Record<string, any>;
-  }[];
-
-  totalEventsAttended: number;
-  lastSeenAt: string;
-}
-
-export interface EventCheckIn {
-  id: string;
-  eventId: string;
-  guestEmail: string;
-  guestName: string;
-  timestamp: string;
-  responses: Record<string, any>;
-}

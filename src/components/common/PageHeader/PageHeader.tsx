@@ -2,16 +2,16 @@ import React from 'react';
 import { ArrowLeft } from 'lucide-react';
 import './PageHeader.css';
 
-export type HeaderVariant = 'default' | 'hero' | 'compact';
-export type StatusVariant = 'active' | 'draft' | 'locked' | 'warning' | 'error';
+type HeaderVariant = 'default' | 'hero' | 'compact';
+type StatusVariant = 'active' | 'draft' | 'locked' | 'warning' | 'error';
 export type HeaderTheme = 'admin' | 'student' | 'assessor' | 'facilitator' | 'moderator' | 'default';
 
-export interface BreadcrumbItem {
+interface BreadcrumbItem {
     label: string;
     onClick?: () => void;
 }
 
-export interface MetaChip {
+interface MetaChip {
     icon?: React.ReactNode;
     label: string;
     /** Optional colour override: 'green' | 'amber' | 'red' */
@@ -170,5 +170,3 @@ const HeaderBtn: React.FC<HeaderBtnProps> = ({
 );
 
 PageHeader.Btn = HeaderBtn;
-export default PageHeader;
-

@@ -39,7 +39,7 @@ const quillModules = {
 };
 const quillFormats = ["bold", "italic", "underline", "code-block", "list", "bullet"];
 
-export type BlockType = "section" | "info" | "mcq" | "text" | "task" | "checklist" | "logbook" | "qcto_workplace";
+type BlockType = "section" | "info" | "mcq" | "text" | "task" | "checklist" | "logbook" | "qcto_workplace";
 type SidebarPanel = "settings" | "module" | "topics" | "guide" | "outline";
 
 interface Topic {
@@ -48,19 +48,19 @@ interface Topic {
     title: string;
     weight: string | number;
 }
-export interface WorkplaceEvidenceItem {
+interface WorkplaceEvidenceItem {
     id: string;
     code: string;
     description: string;
 }
-export interface WorkplaceActivity {
+interface WorkplaceActivity {
     id: string;
     code: string;
     description: string;
     evidenceItems?: WorkplaceEvidenceItem[];
 }
 
-export interface AssessmentBlock {
+interface AssessmentBlock {
     id: string;
     type: BlockType;
     title?: string;
@@ -11919,4 +11919,3 @@ export default AssessmentBuilder;
 // // // // // // );
 
 // // // // // // export default AssessmentBuilder;
-

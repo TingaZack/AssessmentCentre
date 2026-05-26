@@ -10,7 +10,7 @@ import {
 import moment from 'moment';
 import * as XLSX from 'xlsx'; // 🚀 Added XLSX import
 
-export interface CurriculumLogData {
+interface CurriculumLogData {
     id: string;
     title: string;
     moduleCode: string;
