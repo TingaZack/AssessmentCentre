@@ -11,8 +11,8 @@ import { setGlobalOptions } from "firebase-functions";
 import {
   CallableRequest,
   HttpsError,
-  onCall,
-  onRequest,
+  onCall as firebaseOnCall,
+  onRequest as firebaseOnRequest,
 } from "firebase-functions/https";
 import * as logger from "firebase-functions/logger";
 
@@ -20,8 +20,8 @@ setGlobalOptions({ maxInstances: 10 });
 
 import * as admin from "firebase-admin";
 import {
-  onDocumentCreated,
-  onDocumentUpdated,
+  onDocumentCreated as firebaseOnDocumentCreated,
+  onDocumentUpdated as firebaseOnDocumentUpdated,
 } from "firebase-functions/firestore";
 
 import {
@@ -42,9 +42,31 @@ import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 const puppeteer = require("puppeteer-core");
 const chromium = require("@sparticuz/chromium");
 
-import { onSchedule } from "firebase-functions/v2/scheduler";
+import { onSchedule as firebaseOnSchedule } from "firebase-functions/v2/scheduler";
 import { FieldValue } from "firebase-admin/firestore";
 import OpenAI from "openai";
+import {
+  initFunctionsSentry,
+  reportFunctionError,
+  wrapFirebaseHandlerFactory,
+} from "./sentry";
+
+initFunctionsSentry();
+
+const onCall = wrapFirebaseHandlerFactory(firebaseOnCall, "https.onCall");
+const onRequest = wrapFirebaseHandlerFactory(firebaseOnRequest, "https.onRequest");
+const onDocumentCreated = wrapFirebaseHandlerFactory(
+  firebaseOnDocumentCreated,
+  "firestore.onDocumentCreated",
+);
+const onDocumentUpdated = wrapFirebaseHandlerFactory(
+  firebaseOnDocumentUpdated,
+  "firestore.onDocumentUpdated",
+);
+const onSchedule = wrapFirebaseHandlerFactory(
+  firebaseOnSchedule,
+  "scheduler.onSchedule",
+);
 
 admin.initializeApp();
 // ================= CONFIGURATION & SECRETS =================
@@ -497,6 +519,11 @@ export const createLearnerAccount = onRequest(
         });
       } catch (error: any) {
         console.error("Critical Error:", error);
+        await reportFunctionError(error, {
+          functionName: "createLearnerAccount",
+          trigger: "https.onRequest",
+          statusCode: 500,
+        });
         return res
           .status(500)
           .send({ data: { success: false, message: error.message } });
@@ -4687,6 +4714,11 @@ export const executeAssessmentSweep = onRequest((req, res) => {
         `❌ Critical error during assessment sweep for ${assessmentId}:`,
         error,
       );
+      await reportFunctionError(error, {
+        functionName: "executeAssessmentSweep",
+        trigger: "https.onRequest",
+        statusCode: 500,
+      });
       res.status(500).send("Internal Server Error during sweep.");
     }
   });

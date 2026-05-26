@@ -3,12 +3,18 @@
 // Brand: mLab Corporate Identity 2019
 //   Midnight Blue #073f4e · Green #94c73d · Trebuchet MS / Oswald
 
-import { onDocumentCreated } from "firebase-functions/v2/firestore";
+import { onDocumentCreated as firebaseOnDocumentCreated } from "firebase-functions/v2/firestore";
 import * as admin from "firebase-admin";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
+import { wrapFirebaseHandlerFactory } from "../sentry";
 const puppeteer = require("puppeteer-core");
 const chromium = require("@sparticuz/chromium");
 import * as nodemailer from "nodemailer";
+
+const onDocumentCreated = wrapFirebaseHandlerFactory(
+  firebaseOnDocumentCreated,
+  "firestore.onDocumentCreated",
+);
 
 // ─── TYPES & INTERFACES ──────────────────────────────────────────────────────
 
@@ -106,13 +112,17 @@ const fetchFileBuffer = async (url: string): Promise<Buffer | null> => {
   }
 };
 
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: "brndkt@gmail.com",
-    pass: "gwjy wcin rdpl lovi", // Generated App Password
-  },
-});
+const createPoeTransporter = () => {
+  const user = process.env.POE_SMTP_USER;
+  const pass = process.env.POE_SMTP_APP_PASSWORD;
+
+  if (!user || !pass) return null;
+
+  return nodemailer.createTransport({
+    service: "gmail",
+    auth: { user, pass },
+  });
+};
 
 // ─── HTML DESIGN SYSTEM & STYLES ──────────────────────────────────────────────
 
@@ -1466,6 +1476,15 @@ ${dividerPage("9", "Annexures", "Identity documents, supporting compliance files
       });
 
       if (requesterEmail) {
+        const transporter = createPoeTransporter();
+
+        if (!transporter) {
+          console.warn(
+            "Master PoE notification skipped: POE_SMTP_USER or POE_SMTP_APP_PASSWORD is missing.",
+          );
+          return;
+        }
+
         await transporter
           .sendMail({
             from: '"mLab Compliance" <noreply@mlab.co.za>',
@@ -1491,7 +1510,7 @@ ${dividerPage("9", "Annexures", "Identity documents, supporting compliance files
               </div>
             </div>`,
           })
-          .catch((err) => {
+          .catch((err: unknown) => {
             console.warn(
               "Email failed to send, but PoE was generated. Check your secrets.",
               err,
