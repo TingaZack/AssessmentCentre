@@ -116,4 +116,3 @@ export const WorkplacePlacementModal: React.FC<WorkplacePlacementModalProps> = (
         </div>
     );
 };
-

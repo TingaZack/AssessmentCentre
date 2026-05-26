@@ -5,31 +5,6 @@
 
 // export type StatCardColor = 'blue' | 'green' | 'amber' | 'slate' | 'emerald' | 'purple' | 'red';
 
-// interface StatCardProps {
-//     title: string;
-//     value: string | number;
-//     icon: React.ReactNode;
-//     color?: StatCardColor;
-// }
-
-// export const StatCard: React.FC<StatCardProps> = ({
-//     title,
-//     value,
-//     icon,
-//     color = 'blue'
-// }) => {
-//     return (
-//         <div className={`mlab-stat-card mlab-stat-card--${color}`}>
-//             <div className="mlab-stat-icon">
-//                 {icon}
-//             </div>
-//             <div className="mlab-stat-info">
-//                 <span className="mlab-stat-label">{title}</span>
-//                 <span className="mlab-stat-value">{value}</span>
-//             </div>
-//         </div>
-//     );
-// };
 
 // src/components/views/DashboardOverview/DashboardOverview.tsx
 

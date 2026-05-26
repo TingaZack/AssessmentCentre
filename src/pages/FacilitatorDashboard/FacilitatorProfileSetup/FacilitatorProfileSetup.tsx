@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Autocomplete from "react-google-autocomplete";
 import {
     User,
-    Save, ChevronRight, ShieldCheck, Loader2, Camera, Calendar, Fingerprint, Globe, BookOpen, MapPin, Phone, Lock, Plus
+    Save, ChevronRight, ShieldCheck, Camera, Calendar, Fingerprint, Globe, BookOpen, MapPin, Phone, Lock, Plus
 } from 'lucide-react';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -214,7 +214,7 @@ export const FacilitatorProfileSetup: React.FC = () => {
         const addressComponents = place.address_components;
         const getComp = (type: string) => addressComponents?.find((c: any) => c.types.includes(type))?.long_name || "";
 
-        let provString = getComp("administrative_area_level_1");
+        const provString = getComp("administrative_area_level_1");
         const provinceOptions = ["Western Cape", "Eastern Cape", "Northern Cape", "Free State", "KwaZulu-Natal", "North West", "Gauteng", "Mpumalanga", "Limpopo"];
         const matchedProv = provinceOptions.find(p => provString.includes(p)) || '';
 

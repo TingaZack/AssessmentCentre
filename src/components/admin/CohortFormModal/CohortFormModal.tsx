@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-    X, Save, Loader2, ShieldAlert, CheckSquare, Square,
+    X, Save, Loader2, CheckSquare, Square,
     User, Users, BookOpen, Layers, Search, Info, MapPin,
     Calendar, Plus, Trash2
 } from 'lucide-react';
@@ -45,7 +45,7 @@ export const CohortFormModal: React.FC<Props> = ({ cohort, onClose, onSave }) =>
         recessPeriods: [] as { start: string, end: string, reason: string }[],
     });
 
-    const [reasons, setReasons] = useState({
+    const [reasons] = useState({
         facilitator: '', supportFacilitator: '', assessor: '', moderator: '',
     });
 
@@ -421,4 +421,3 @@ export const CohortFormModal: React.FC<Props> = ({ cohort, onClose, onSave }) =>
         </>
     );
 };
-

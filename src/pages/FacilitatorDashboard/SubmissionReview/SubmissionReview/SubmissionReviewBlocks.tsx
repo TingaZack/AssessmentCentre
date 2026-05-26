@@ -3,7 +3,7 @@ import React from 'react';
 import {
     Award, Check, CheckCircle, X, Edit3, Info, Layers, FileText, Mic,
     UploadCloud, Code, Link as LinkIcon, CalendarRange, Timer, Play, Square,
-    ShieldCheck, BarChart, AlertCircle
+    ShieldCheck, BarChart
 } from 'lucide-react';
 import moment from 'moment';
 import { LogbookHoursTally } from './SubmissionReviewHelpers';
@@ -18,7 +18,7 @@ export interface CriterionResult {
     endTime: string;
 }
 
-export interface WorkplaceActivityResult {
+interface WorkplaceActivityResult {
     status: 'C' | 'NYC' | null;
     comment: string;
 }
@@ -726,8 +726,6 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
                                 const assessorResult = aData.activityResults?.[actIdx] || { status: null, comment: '' };
                                 const modResult = mData.activityResults?.[actIdx] || { status: null, comment: '' };
                                 const myResult = activeData.activityResults?.[actIdx] || { status: null, comment: '' };
-
-                                const displayResult = canModerate ? assessorResult : myResult;
 
                                 return (
                                     <div key={wa.id} style={{ marginBottom: '2rem', border: '1px solid #cbd5e1', borderRadius: '8px', background: isActiveRole ? 'white' : '#f8fafc' }}>

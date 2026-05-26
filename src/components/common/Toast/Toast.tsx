@@ -85,4 +85,3 @@ export const useToast = () => {
     };
 };
 
-export default Toast;

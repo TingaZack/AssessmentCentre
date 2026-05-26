@@ -289,7 +289,14 @@ export const CertificateStudio: React.FC = () => {
         else setIsLoadingData(false);
     }, [fetchCertificateGroups, fetchAdHocCertificates, adHocCertificates.length, certificateGroups.length]);
 
-    const handleLogout = async () => { try { await signOut(auth); navigate('/login'); } catch (e) { } };
+    const handleLogout = async () => {
+        try {
+            await signOut(auth);
+            navigate('/login');
+        } catch (error) {
+            console.error("Failed to sign out", error);
+        }
+    };
 
     const handleCreateFolder = async () => {
         if (!newFolderName.trim()) return;
