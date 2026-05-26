@@ -13,6 +13,7 @@ import type { UserProfile, UserRole } from './types/auth.types';
 import Login from './pages/Login/Login';
 import { RoleProtectedRoute } from './auth/RoleProtectedRoute';
 import { auth, db } from './lib/firebase';
+import { getHomePathForRole, getRequiredSetupPath } from './auth/compliance';
 
 // Admin
 import AdminDashboard from './pages/AdminDashboard/AdminDashboard';
@@ -81,64 +82,12 @@ const RootRedirect = () => {
 
   if (!user) return <Navigate to="/login" replace />;
 
-  const rawUploadedDocs = (user as any).uploadedDocuments;
-  const uploadedDocs = Array.isArray(rawUploadedDocs) ? rawUploadedDocs : [];
-  const hasDoc = (docId: string) => uploadedDocs.some((doc: any) => doc.id === docId && typeof doc.url === 'string' && doc.url.trim() !== '');
-
-  // 1. Learner Compliance Logic
-  const isLearnerCompliant = () => {
-    if (user.role !== 'learner') return true;
-    const d = (user as any).demographics || {};
-    const hasDemographics = !!d.equityCode && !!d.provinceCode && (!!d.statssaAreaCode || !!d.statsaaAreaCode) && !!d.learnerTitle;
-    return user.profileCompleted === true && hasDemographics && hasDoc('id') && hasDoc('qual');
-  };
-
-  // 2. Staff Compliance Logic
-  const isStaffCompliant = () => {
-    if (user.role === 'learner') return true;
-    if (!user.profileCompleted) return false;
-
-    const hasStaffProvince = !!(user as any).province;
-    const isForeignNational = (user as any).nationalityType === 'Foreign National';
-    const hasPermitIfForeign = isForeignNational ? hasDoc('permit') : true;
-
-    switch (user.role) {
-      case 'facilitator':
-        return hasStaffProvince && hasDoc('id') && hasDoc('cv') && hasPermitIfForeign;
-      case 'assessor':
-        return hasStaffProvince && hasDoc('id') && hasDoc('assessor_cert') && hasDoc('reg_letter') && hasPermitIfForeign;
-      case 'moderator':
-        return hasStaffProvince && hasDoc('id') && hasDoc('moderator_cert') && hasDoc('reg_letter') && hasPermitIfForeign;
-      case 'admin':
-        if ((user as any).isSuperAdmin) return true;
-        return hasStaffProvince && hasDoc('id') && hasDoc('appointment') && hasPermitIfForeign;
-      case 'mentor':
-        return hasStaffProvince;
-      default:
-        return true;
-    }
-  };
-
-  // 3. APPLY GATES
-  if (user.role === 'learner' && !isLearnerCompliant()) {
-    return <Navigate to="/setup-profile" replace />;
+  const setupPath = getRequiredSetupPath(user);
+  if (setupPath) {
+    return <Navigate to={setupPath} replace />;
   }
 
-  const staffRoles = ['facilitator', 'assessor', 'moderator', 'mentor', 'admin'];
-  if (staffRoles.includes(user.role) && !isStaffCompliant()) {
-    return <Navigate to={`/setup-${user.role}`} replace />;
-  }
-
-  // 4. FINAL TRAFFIC CONTROL (Fully Compliant Users)
-  switch (user.role) {
-    case 'admin': return <Navigate to="/admin" replace />;
-    case 'facilitator': return <Navigate to="/facilitator" replace />;
-    case 'assessor': return <Navigate to="/marking" replace />;
-    case 'moderator': return <Navigate to="/moderation" replace />;
-    case 'mentor': return <Navigate to="/mentor" replace />;
-    case 'learner': return <Navigate to="/portal" replace />;
-    default: return <Navigate to="/login" replace />;
-  }
+  return <Navigate to={getHomePathForRole(user.role)} replace />;
 };
 
 function App() {
@@ -147,18 +96,13 @@ function App() {
   const user = useStore((state) => state.user);
   const fetchSettings = useStore((state) => state.fetchSettings);
 
-  // WIZARD STATE CONTROLLER
-  const [showWizard, setShowWizard] = useState(false);
-
-  useEffect(() => {
-    // Only show the wizard if the user exists, has fully completed their compliance setup,
-    // and has not permanently dismissed the onboarding before.
-    if (user && user.profileCompleted && !(user as any).hasSeenOnboarding) {
-      setShowWizard(true);
-    } else {
-      setShowWizard(false);
-    }
-  }, [user]);
+  const [dismissedWizardForUid, setDismissedWizardForUid] = useState<string | null>(null);
+  const showWizard = Boolean(
+    user &&
+    user.profileCompleted &&
+    !user.hasSeenOnboarding &&
+    dismissedWizardForUid !== user.uid,
+  );
 
   useEffect(() => {
     fetchSettings();
@@ -196,7 +140,7 @@ function App() {
       {showWizard && user && (
         <WelcomeWizard
           user={user}
-          onClose={() => setShowWizard(false)}
+          onClose={() => setDismissedWizardForUid(user.uid)}
         />
       )}
 
