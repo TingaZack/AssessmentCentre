@@ -1,9 +1,15 @@
 // functions/src/generateHistorySnapshot.ts
 
-import { onDocumentCreated } from "firebase-functions/v2/firestore";
+import { onDocumentCreated as firebaseOnDocumentCreated } from "firebase-functions/v2/firestore";
 import * as admin from "firebase-admin";
+import { wrapFirebaseHandlerFactory } from "../sentry";
 const puppeteer = require("puppeteer-core");
 const chromium = require("@sparticuz/chromium");
+
+const onDocumentCreated = wrapFirebaseHandlerFactory(
+  firebaseOnDocumentCreated,
+  "firestore.onDocumentCreated",
+);
 
 export const generateHistorySnapshot = onDocumentCreated(
   {

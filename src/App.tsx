@@ -67,6 +67,9 @@ import '../src/assets/styles/mLabModals.css';
 import { LiveAttendanceBoard } from './pages/FacilitatorDashboard/LiveAttendanceBoard/LiveAttendanceBoard';
 import { EventKioskPage } from './components/admin/EcosystemDashboard/EventKioskPage';
 import { EventDetailsPage } from './components/admin/EcosystemDashboard/EventDetailsPage';
+import { syncSentryUser, withSentryReactRouterV7Routing } from './lib/sentry';
+
+const SentryRoutes = withSentryReactRouterV7Routing(Routes);
 
 // --- TRAFFIC CONTROLLER ---
 const RootRedirect = () => {
@@ -161,6 +164,10 @@ function App() {
   }, [user]);
 
   useEffect(() => {
+    syncSentryUser(user);
+  }, [user]);
+
+  useEffect(() => {
     fetchSettings();
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
@@ -202,7 +209,7 @@ function App() {
 
       <Router>
         <div className="App">
-          <Routes>
+          <SentryRoutes>
             {/* ================= PUBLIC ROUTES ================= */}
             <Route path="/login" element={user ? <Navigate to="/" replace /> : <Login />} />
             <Route path="/reset-password" element={<ResetPassword />} />
@@ -371,7 +378,7 @@ function App() {
             {/* ================= FALLBACKS ================= */}
             <Route path="/" element={<RootRedirect />} />
             <Route path="*" element={<RootRedirect />} />
-          </Routes>
+          </SentryRoutes>
         </div>
       </Router>
     </ErrorBoundary>
