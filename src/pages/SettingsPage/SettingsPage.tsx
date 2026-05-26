@@ -11,7 +11,7 @@ import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db } from '../../lib/firebase';
 import { useStore } from '../../store/useStore';
 import { Sidebar } from '../../components/dashboard/Sidebar/Sidebar';
-import PageHeader from '../../components/common/PageHeader/PageHeader';
+import { PageHeader } from '../../components/common/PageHeader/PageHeader';
 import Autocomplete from "react-google-autocomplete";
 import { GoogleMap, Marker, useJsApiLoader } from '@react-google-maps/api';
 import './SettingsPage.css';
@@ -4307,5 +4307,4 @@ const IconPlaceholder = ({ tab }: { tab: string }) => {
 // // //     if (tab === 'audit') return <ShieldAlert size={48} className="empty-icon text-slate-300" />;
 // // //     return <User size={48} className="empty-icon text-slate-300" />;
 // // // };
-
 

@@ -18,7 +18,7 @@ export interface CriterionResult {
     endTime: string;
 }
 
-export interface WorkplaceActivityResult {
+interface WorkplaceActivityResult {
     status: 'C' | 'NYC' | null;
     comment: string;
 }
