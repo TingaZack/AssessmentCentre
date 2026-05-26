@@ -1,3 +1,5 @@
+import type { LearnerDemographics } from "./index";
+
 export type UserRole =
   | "admin"
   | "learner"
@@ -5,6 +7,12 @@ export type UserRole =
   | "assessor"
   | "moderator"
   | "mentor";
+
+interface UploadedDocument {
+  id: string;
+  name?: string;
+  url: string;
+}
 
 export interface UserProfile {
   uid: string;
@@ -17,6 +25,11 @@ export interface UserProfile {
   createdAt?: string;
   authUid?: string;
   profileCompleted?: boolean;
+  hasSeenOnboarding?: boolean;
+  uploadedDocuments?: UploadedDocument[];
+  demographics?: LearnerDemographics;
+  province?: string;
+  isSuperAdmin?: boolean;
 
   companyName?: string;
   employerId: string;

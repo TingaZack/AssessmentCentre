@@ -151,6 +151,7 @@ export interface LearnerDemographics {
   learnerFaxNumber?: string;
   learnerEmailAddress?: string;
   provinceCode?: string;
+  statssaAreaCode?: string;
   statsaaAreaCode?: string;
   popiActAgree?: string;
   popiActDate?: string;
