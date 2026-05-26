@@ -10,13 +10,12 @@ import './QualificationsView.css';
 interface QualificationsViewProps {
     programmes: ProgrammeTemplate[];
     onAdd: () => void;
-    onUpload: () => void;
     onEdit: (prog: ProgrammeTemplate) => void;
     onArchive: (prog: ProgrammeTemplate) => void;
 }
 
 export const QualificationsView: React.FC<QualificationsViewProps> = ({
-    programmes, onAdd, onUpload, onEdit, onArchive
+    programmes, onAdd, onEdit, onArchive
 }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [filterNqf, setFilterNqf] = useState('all');
@@ -64,10 +63,6 @@ export const QualificationsView: React.FC<QualificationsViewProps> = ({
                     </div>
                 </div>
                 <div style={{ display: 'flex', gap: '10px' }}>
-                    {/* Uncomment this if you want the CSV upload button back!
-                    <button className="wm-btn wm-btn--ghost" onClick={onUpload} style={{ background: 'rgba(255,255,255,0.1)', color: 'white', borderColor: 'rgba(255,255,255,0.2)' }}>
-                        <Upload size={14} /> Upload CSV
-                    </button> */}
                     <button className="wm-btn wm-btn--primary" onClick={onAdd}>
                         <Plus size={14} /> Create Template
                     </button>

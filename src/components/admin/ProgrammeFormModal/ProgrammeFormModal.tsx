@@ -5,8 +5,8 @@
 
 import React, { useState, useRef } from 'react';
 import {
-    X, Save, Upload, Download, Plus, Trash2, ChevronDown, ChevronRight,
-    Layers, FileText, Briefcase, BookOpen, ClipboardPaste, Loader2, AlertCircle, FileSpreadsheet
+    X, Save, Upload, Plus, Trash2, ChevronDown, ChevronRight,
+    Layers, FileText, Briefcase, BookOpen, ClipboardPaste, Loader2, FileSpreadsheet
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import './ProgrammeFormModal.css';
@@ -98,7 +98,7 @@ export const ProgrammeFormModal: React.FC<ProgrammeFormModalProps> = ({
     // ── CORE PARSER TOPIC TITLE EXTRACTION ──
     const processRawTextData = (textToParse: string) => {
         if (!textToParse.trim()) return;
-        let sanitized = textToParse
+        const sanitized = textToParse
             .replace(/pg\.?\s*\d+(-\d+)?/gi, ' ')
             .replace(/P\s*M-/gi, 'PM-').replace(/K\s*M-/gi, 'KM-').replace(/W\s*M-/gi, 'WM-')
             .replace(/Topic elements to be covered include:?/gi, ' ')
@@ -107,9 +107,9 @@ export const ProgrammeFormModal: React.FC<ProgrammeFormModalProps> = ({
         const moduleRegex = /(251201-\d{3}-\d{2}-(KM|PM|WM)-\d{2})/i;
         const moduleTokens = sanitized.split(moduleRegex);
 
-        let kMs: any[] = [...(formData.knowledgeModules || [])];
-        let pMs: any[] = [...(formData.practicalModules || [])];
-        let wMs: any[] = [...(formData.workExperienceModules || [])];
+        const kMs: any[] = [...(formData.knowledgeModules || [])];
+        const pMs: any[] = [...(formData.practicalModules || [])];
+        const wMs: any[] = [...(formData.workExperienceModules || [])];
 
         for (let i = 1; i < moduleTokens.length; i += 3) {
             const mCode = moduleTokens[i];

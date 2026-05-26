@@ -1538,5 +1538,3 @@ export const SubmissionReview: React.FC = () => {
     );
 };
 
-export default SubmissionReview;
-

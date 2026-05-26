@@ -54,7 +54,7 @@ interface ModeratorData {
 
 export const ModeratorProfileSetup: React.FC = () => {
     const navigate = useNavigate();
-    const { user, refreshUser, setUser, settings } = useStore();
+    const { user, refreshUser, setUser } = useStore();
 
     const [step, setStep] = useState(1);
     const [loading, setLoading] = useState(false);
@@ -250,7 +250,7 @@ export const ModeratorProfileSetup: React.FC = () => {
         const addressComponents = place.address_components;
         const getComp = (type: string) => addressComponents?.find((c: any) => c.types.includes(type))?.long_name || "";
 
-        let provString = getComp("administrative_area_level_1");
+        const provString = getComp("administrative_area_level_1");
         const matchedProv = QCTO_PROVINCES.find(p => provString.includes(p)) || '';
 
         setFormData(prev => ({

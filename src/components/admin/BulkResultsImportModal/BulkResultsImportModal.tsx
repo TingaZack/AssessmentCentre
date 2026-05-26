@@ -41,7 +41,7 @@ const normalizeStatus = (status?: string) => {
 };
 
 export const BulkResultsImportModal: React.FC<BulkResultsImportModalProps> = ({
-    existingLearners, cohorts, programmes, onClose, onSaveAll
+    existingLearners, cohorts, onClose, onSaveAll
 }) => {
     const [step, setStep] = useState<"upload" | "processing" | "review" | "saving" | "complete">("upload");
     const [parsedData, setParsedData] = useState<any[]>([]);
@@ -135,7 +135,7 @@ export const BulkResultsImportModal: React.FC<BulkResultsImportModalProps> = ({
 
                 if (col1 && col1.toLowerCase() !== "module name") {
                     const modCode = String(cols[2] || "").trim();
-                    let status = normalizeStatus(String(cols[8] || cols[7] || ""));
+                    const status = normalizeStatus(String(cols[8] || cols[7] || ""));
 
                     const mod = {
                         name: col1.replace(/\n|\r/g, " ").trim(), code: modCode, nqfLevel: parseInt(cols[3]) || nqfLevel || 5,

@@ -358,7 +358,6 @@ const AdminDashboard: React.FC = () => {
                         <QualificationsView
                             programmes={store.programmes}
                             onAdd={() => { setSelectedProg(null); setShowProgModal(true); }}
-                            onUpload={() => { }}
                             onEdit={(p) => { setSelectedProg(p); setShowProgModal(true); }}
                             onArchive={(p) => setProgToArchive(p)}
                         />
@@ -513,7 +512,7 @@ const AdminDashboard: React.FC = () => {
                 <CohortFormModal
                     cohort={selectedCohort || undefined}
                     onClose={() => { setShowCohortModal(false); setSelectedCohort(null); }}
-                    onSave={async (c, reasons) => {
+                    onSave={async (c) => {
                         try {
                             const batch = writeBatch(db);
                             const timestamp = new Date().toISOString();

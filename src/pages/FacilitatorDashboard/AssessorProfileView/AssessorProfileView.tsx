@@ -119,7 +119,7 @@ export const AssessorProfileView: React.FC<ProfileProps> = ({ profile, user, onU
         const addressComponents = place.address_components;
         const getComp = (type: string) => addressComponents?.find((c: any) => c.types.includes(type))?.long_name || "";
 
-        let provString = getComp("administrative_area_level_1");
+        const provString = getComp("administrative_area_level_1");
         const matchedProv = QCTO_PROVINCES.find(p => provString.includes(p.value))?.value || '';
 
         setFormData((prev: any) => ({

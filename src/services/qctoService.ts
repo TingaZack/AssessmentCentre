@@ -5,7 +5,7 @@ export const fetchStatssaCodes = async () => {
 
   try {
     const response = await fetch(URL);
-    let text = await response.text();
+    const text = await response.text();
     const jsonStr = text
       .replace(/^\/\*.*?\*\/\s*google\.visualization\.Query\.setResponse\(/, "")
       .replace(/\);$/, "");
