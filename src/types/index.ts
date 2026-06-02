@@ -1,5 +1,22 @@
 // src/types/index.ts
 
+// ═════════════════════════════════════════════════════════════════════════════
+// ECOSYSTEM & FORM BUILDER TYPES
+// ═════════════════════════════════════════════════════════════════════════════
+
+export interface CustomFieldBlueprint {
+  id: string;
+  label: string;
+  type: "text" | "dropdown" | "checkbox";
+  required: boolean;
+  options?: string[];
+}
+
+export interface EmployerFormBlueprint {
+  coreFieldVisibility: Record<string, boolean>;
+  customFields: CustomFieldBlueprint[];
+}
+
 // ---------- Common Types ----------
 export type ModuleStatus =
   | "Competent"
@@ -9,15 +26,6 @@ export type ModuleStatus =
   | "Fail"
   | "Not Started"
   | "Pending Grading";
-
-// export interface CampusLocation {
-//   id: string;
-//   name: string;
-//   type: "physical" | "online";
-//   address: string;
-//   siteAccreditationNumber: string;
-//   isDefault: boolean;
-// }
 
 export interface CampusLocation {
   id: string;
@@ -40,6 +48,10 @@ export interface SystemSettings {
   ecosystem?: {
     eventTypes?: string[];
   };
+
+  // The Dynamic Blueprint for your Public Form!
+  employerFormBlueprint?: EmployerFormBlueprint;
+
   passMarkThreshold: number;
   attendanceRequirement: number;
   defaultCohortMonths: number;
@@ -48,6 +60,7 @@ export interface SystemSettings {
   blockchainNetwork: string;
   rpcUrl: string;
   ipfsGateway: string;
+
   // Brand Assets stored in Firebase
   logoUrl?: string;
   signatureUrl?: string;
@@ -78,7 +91,6 @@ export interface SystemSettings {
     nqfLevel: string;
     credits: string;
   };
-  // customCsvMappings?: CustomCsvMapping[];
 }
 
 export interface BaseModule {
@@ -168,7 +180,6 @@ export interface LearnerDemographics {
 // RELATIONAL ARCHITECTURE: IDENTITY VS. ACADEMIC RECORD
 // ============================================================================
 
-//  IDENTITY: The Human Being (Stored in 'learners' DB collection)
 export interface LearnerProfile {
   id: string; // Global Learner ID
   fullName: string;
@@ -194,14 +205,18 @@ export interface LearnerProfile {
   updatedBy?: string;
 }
 
-// ACADEMIC RECORD: The Course Instance (Stored in 'enrollments' DB collection)
 export interface LearnerEnrollment {
   id: string;
   learnerId: string;
   cohortId: string;
 
-  // System Statuses
-  status: "active" | "completed" | "dropped" | "in-progress" | "pending";
+  status:
+    | "active"
+    | "completed"
+    | "dropped"
+    | "in-progress"
+    | "pending"
+    | "archived";
   isDraft: boolean;
   isArchived: boolean;
 
@@ -209,13 +224,11 @@ export interface LearnerEnrollment {
   exitDate?: string;
   exitReason?: string;
 
-  // Educational Data (Snapshotted to protect historical records)
   qualification: Qualification;
   knowledgeModules: KnowledgeModule[];
   practicalModules: PracticalModule[];
   workExperienceModules: WorkExperienceModule[];
 
-  // Certification
   eisaAdmission: boolean;
   verificationCode: string;
   issueDate: string | null;
@@ -226,7 +239,6 @@ export interface LearnerEnrollment {
   updatedBy?: string;
 }
 
-// Create the new Enrollment Record Type
 export interface EnrollmentRecord {
   cohortId: string;
   programmeId: string;
@@ -245,9 +257,6 @@ export interface CertificateRecord {
   pdfUrl: string;
 }
 
-// The Combined Table View
-// We merge Profile and Enrollment here so your UI components (like LearnersView)
-// don't break while we migrate the backend.
 export interface DashboardLearner
   extends
     Omit<
@@ -258,40 +267,29 @@ export interface DashboardLearner
       LearnerEnrollment,
       "id" | "createdAt" | "createdBy" | "updatedAt" | "updatedBy"
     > {
-  id: string; // In the UI, this maps to the Enrollment ID (so every row is unique)
-  learnerId: string; // The actual human's profile ID
-  enrollmentId: string; // The academic record's ID
+  id: string;
+  learnerId: string;
+  enrollmentId: string;
 
-  // Shared Audit Trail
   createdAt: string;
   createdBy: string;
   updatedAt?: string;
   nextEisaDate?: string;
   updatedBy?: string;
-  isBootcamp: any;
+  isBootcamp?: boolean;
 
   campusId?: string;
   certificates?: CertificateRecord[];
-
   trainingEndDate?: string;
-
-  // these Web3 / Blockchain properties:
   ipfsHash?: string;
   blockchainFingerprint?: string;
   isBlockchainVerified?: boolean;
-
   isOffline?: boolean;
-
   enrollmentHistory?: EnrollmentRecord[];
-
-  // Workplace Placements linked to this specific enrollment
   employerId?: string;
   mentorId?: string;
 }
 
-// ============================================================================
-
-// ---------- Programme Module (embedded) ----------
 export interface ProgrammeModule {
   name: string;
   credits: number;
@@ -299,9 +297,8 @@ export interface ProgrammeModule {
   nqfLevel: number;
 }
 
-// ---------- Programme Template (with embedded modules) ----------
 export interface ProgrammeTemplate {
-  id: string; // Firestore document ID
+  id: string;
   name: string;
   saqaId: string;
   credits: number;
@@ -312,17 +309,14 @@ export interface ProgrammeTemplate {
   workExperienceModules: ProgrammeModule[];
   isArchived?: boolean;
 
-  // Audit fields
   createdAt: string;
   createdBy: string;
   updatedAt: string;
   updatedBy: string;
 }
 
-// ---------- UI / Form Categories ----------
 export type ModuleCategory = "knowledge" | "practical" | "workExperience";
 
-// ---------- Statement of Results Types ----------
 export interface IssuedBy {
   name: string;
   title: string;
@@ -339,11 +333,9 @@ export interface Cohort {
   name: string;
   startDate: string;
   endDate: string;
-  programmeId: string; // Links to the Qualification Template
+  programmeId: string;
+  campusId: string;
 
-  campusId: string; // Links to settings.campuses[].id
-
-  // The "Triangle of Support" (Staff IDs)
   facilitatorId: string;
   supportFacilitatorId?: string;
   assessorId: string;
@@ -351,41 +343,1189 @@ export interface Cohort {
 
   assessorEmail?: string;
   moderatorEmail?: string;
-
   qualificationId: string;
 
-  // The Students
-  learnerIds: string[]; // Array of Learner IDs
-
-  // STRICTLY TYPED RECESS PERIODS
+  learnerIds: string[];
   recessPeriods?: RecessPeriod[];
-
   staffHistory?: StaffHistoryEntry[];
 
   isArchived: boolean;
   createdAt: string;
 }
+
 export interface StaffHistoryEntry {
   staffId: string;
   role: "facilitator" | "assessor" | "moderator";
   assignedAt: string;
   removedAt: string | null;
   assignedBy: string;
-
-  //Strict Audit Requirement
   changeReason?: string;
 }
 
+// ═════════════════════════════════════════════════════════════════════════════
+// SME / EMPLOYER PARTNER ECOSYSTEM (Unified Master Interface)
+// ═════════════════════════════════════════════════════════════════════════════
+
+export type WorkArrangement = "On-site" | "Remote" | "Hybrid";
+export type ComplianceStatus = "Yes" | "No" | "In progress" | "Somewhat";
+export type RiskRating = "Low" | "Medium" | "High" | "Critical" | "Pending";
+export type SMETier =
+  | "Tier 1 (Enterprise)"
+  | "Tier 2 (Established SME)"
+  | "Tier 3 (Startup/Micro)"
+  | "Pending Assessment";
+
 export interface Employer {
   id: string;
+
+  // Core Identifiers
   name: string;
-  registrationNumber: string;
-  physicalAddress: string;
-  lat?: number | null;
-  lng?: number | null;
   contactPerson: string;
   contactEmail: string;
   contactPhone: string;
-  status: "active" | "archived";
+  mentorId: string;
+
+  // System Metadata
+  status:
+    | "active"
+    | "archived"
+    | "Pending Review"
+    | "Approved"
+    | "Rejected"
+    | "Inactive";
   createdAt: string;
+  updatedAt?: string;
+  createdBy?: string;
+
+  // Extended Ecosystem Fields (Optional so legacy data doesn't break)
+  tradingName?: string;
+  registrationNumber?: string;
+  vatNumber?: string;
+  bbbeeLevel?: string;
+  industrySector?: string[];
+  website?: string;
+  yearEstablished?: string;
+  alternativeContact?: string;
+
+  // Location
+  physicalAddress?: string;
+  province?: string;
+  lat?: number | null;
+  lng?: number | null;
+
+  // Capacity & Environment
+  employeeCount?: number;
+  internCapacity?: number;
+  workArrangement?: WorkArrangement | string;
+  hasDedicatedMentors?: string;
+  workEnvironmentDesc?: string;
+  techStack?: string[];
+
+  // Hosting Intent
+  hostingMotivations?: string[];
+  preferredLearnerLevel?: string[];
+  preferredDisciplines?: string[];
+  expectedStartDate?: string;
+  expectedDuration?: string;
+
+  // Mentorship & Projects
+  supervisorName?: string;
+  mentorExperienceLevel?: string;
+  weeklyCheckIns?: string;
+  projectTypes?: string;
+  productionAccess?: string;
+  contributionAreas?: string[];
+
+  // Compliance & Incentives
+  willingToSignWBL?: boolean;
+  taxCompliant?: ComplianceStatus | string;
+  hasHRPolicies?: boolean;
+  bbbeeAwareness?: ComplianceStatus | string;
+  interestedInBbbee?: boolean;
+  etiAwareness?: boolean;
+  requiresAdvisory?: boolean;
+  dataConsent?: boolean;
+  setaReportingConsent?: boolean;
+
+  // Internal mLab Evaluation
+  mlabTier?: SMETier | string;
+  mlabRiskRating?: RiskRating | string;
+  placementSuitability?: string;
+  recommendedLearnerCount?: number;
+  matchingPriorityScore?: number;
+  internalNotes?: string;
+
+  // Dynamic public form responses mapping
+  customResponses?: Record<string, unknown>;
 }
+
+// ═════════════════════════════════════════════════════════════════════════════
+// PLACEMENT ENGINE (The Matchmaker)
+// ═════════════════════════════════════════════════════════════════════════════
+
+export interface PlacementContract {
+  id: string;
+  learnerId: string;
+  employerId: string;
+  cohortId: string;
+
+  status:
+    | "Pending Match"
+    | "Interviewing"
+    | "Active Placement"
+    | "Completed"
+    | "Terminated"
+    | "absorbed_permanently";
+  workArrangement: WorkArrangement;
+
+  assignedMentorName?: string;
+  assignedMentorEmail?: string;
+
+  stipendAmount?: number;
+  fundedBy: "SETA" | "mLab" | "Host Employer" | "Unfunded";
+
+  startDate: string;
+  endDate: string;
+
+  wblAgreementSigned: boolean;
+  wblAgreementUrl?: string; // Link to uploaded PDF
+
+  learnerRating?: number;
+  employerRating?: number;
+  isAbsorbedPostPlacement: boolean;
+
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string;
+}
+
+// // src/types/index.ts
+
+// // ═════════════════════════════════════════════════════════════════════════════
+// // ECOSYSTEM & FORM BUILDER TYPES
+// // ═════════════════════════════════════════════════════════════════════════════
+
+// export interface CustomFieldBlueprint {
+//   id: string;
+//   label: string;
+//   type: "text" | "dropdown" | "checkbox";
+//   required: boolean;
+//   options?: string[];
+// }
+
+// export interface EmployerFormBlueprint {
+//   coreFieldVisibility: Record<string, boolean>;
+//   customFields: CustomFieldBlueprint[];
+// }
+
+// // ---------- Common Types ----------
+// export type ModuleStatus =
+//   | "Competent"
+//   | "Not Competent"
+//   | "Not Yet Competent"
+//   | "Pass"
+//   | "Fail"
+//   | "Not Started"
+//   | "Pending Grading";
+
+// export interface CampusLocation {
+//   id: string;
+//   name: string;
+//   type: "physical" | "online";
+//   address: string;
+//   city: string;
+//   province: string;
+//   siteAccreditationNumber: string;
+//   isDefault: boolean;
+// }
+
+// // System Settings with CIPC instead of SDP
+// export interface SystemSettings {
+//   institutionName: string;
+//   companyRegistrationNumber: string; // CIPC Number
+//   phone: string;
+//   email: string;
+//   campuses: CampusLocation[];
+//   ecosystem?: {
+//     eventTypes?: string[];
+//   };
+
+//   // The Dynamic Blueprint for your Public Form!
+//   employerFormBlueprint?: EmployerFormBlueprint;
+
+//   passMarkThreshold: number;
+//   attendanceRequirement: number;
+//   defaultCohortMonths: number;
+//   eisaLockEnabled: boolean;
+//   contractAddress: string;
+//   blockchainNetwork: string;
+//   rpcUrl: string;
+//   ipfsGateway: string;
+
+//   // Brand Assets stored in Firebase
+//   logoUrl?: string;
+//   signatureUrl?: string;
+
+//   institutionAddress?: string;
+//   institutionCity?: string;
+//   institutionProvince?: string;
+//   institutionPostalCode?: string;
+//   institutionLat?: number;
+//   institutionLng?: number;
+
+//   contactNumber?: string; // Or 'institutionPhone'
+//   institutionEmail?: string;
+
+//   //Dynamic CSV Column Mappings
+//   csvMappings: {
+//     fullName: string;
+//     idNumber: string;
+//     email: string;
+//     phone: string;
+//     startDate: string;
+//     endDate: string;
+//     issueDate: string;
+//     cohort: string;
+//     sdpCode: string;
+//     qualificationTitle: string;
+//     saqaId: string;
+//     nqfLevel: string;
+//     credits: string;
+//   };
+// }
+
+// export interface BaseModule {
+//   name: string;
+//   credits: number;
+//   notionalHours: number;
+//   nqfLevel: number;
+//   status: ModuleStatus;
+//   code?: string;
+// }
+
+// // ---------- Learner‑Specific Module Types ----------
+// export interface KnowledgeModule extends BaseModule {
+//   dateAssessed: string;
+//   status: "Competent" | "Not Yet Competent" | "Not Started" | "Pending Grading";
+// }
+
+// export interface PracticalModule extends BaseModule {
+//   dateAssessed: string;
+//   status: "Pass" | "Fail" | "Not Started" | "Pending Grading";
+// }
+
+// export interface WorkExperienceModule extends BaseModule {
+//   dateSignedOff: string;
+//   status: "Competent" | "Not Yet Competent" | "Not Started" | "Pending Grading";
+// }
+
+// // Union type for any learner module (used in StatementOfResults)
+// export type AnyAssessmentModule =
+//   | KnowledgeModule
+//   | PracticalModule
+//   | WorkExperienceModule;
+
+// // ---------- Qualification (embedded in enrollment) ----------
+// export interface Qualification {
+//   name: string;
+//   saqaId: string;
+//   credits: number;
+//   totalNotionalHours: number;
+//   nqfLevel: number;
+//   dateAssessed: string;
+// }
+
+// // ---------- QCTO Demographics (optional) ----------
+// export interface LearnerDemographics {
+//   sdpCode?: string;
+//   qualificationId?: string;
+//   learnerAlternateId?: string;
+//   alternativeIdType?: string;
+//   equityCode?: string;
+//   nationalityCode?: string;
+//   homeLanguageCode?: string;
+//   genderCode?: string;
+//   citizenResidentStatusCode?: string;
+//   socioeconomicStatusCode?: string;
+//   disabilityStatusCode?: string;
+//   disabilityRating?: string;
+//   immigrantStatus?: string;
+//   learnerMiddleName?: string;
+//   learnerTitle?: string;
+//   learnerHomeAddress1?: string;
+//   learnerHomeAddress2?: string;
+//   learnerHomeAddress3?: string;
+//   learnerPostalAddress1?: string;
+//   learnerPostalAddress2?: string;
+//   learnerPostalAddress3?: string;
+//   learnerHomeAddressPostalCode?: string;
+//   learnerPostalAddressPostCode?: string;
+//   learnerPhoneNumber?: string;
+//   learnerFaxNumber?: string;
+//   learnerEmailAddress?: string;
+//   provinceCode?: string;
+//   statsaaAreaCode?: string;
+//   popiActAgree?: string;
+//   popiActDate?: string;
+//   expectedTrainingCompletionDate?: string;
+//   statementOfResultsStatus?: string;
+//   statementOfResultsIssueDate?: string;
+//   assessmentCentreCode?: string;
+//   learnerReadinessForEISATypeId?: string;
+//   flc?: string;
+//   flcStatementOfResultNumber?: string;
+//   dateStamp?: string;
+// }
+
+// // ============================================================================
+// // RELATIONAL ARCHITECTURE: IDENTITY VS. ACADEMIC RECORD
+// // ============================================================================
+
+// export interface LearnerProfile {
+//   id: string; // Global Learner ID
+//   fullName: string;
+//   firstName: string;
+//   lastName: string;
+//   idNumber: string;
+//   dateOfBirth: string;
+//   email: string;
+//   phone: string;
+//   mobile?: string;
+//   profilePhotoUrl?: string;
+
+//   profileCompleted?: boolean;
+//   authUid?: string;
+//   uid?: string;
+//   authStatus: "pending" | "invited" | "active";
+
+//   demographics?: LearnerDemographics;
+
+//   createdAt: string;
+//   createdBy: string;
+//   updatedAt?: string;
+//   updatedBy?: string;
+// }
+
+// export interface LearnerEnrollment {
+//   id: string;
+//   learnerId: string;
+//   cohortId: string;
+
+//   status:
+//     | "active"
+//     | "completed"
+//     | "dropped"
+//     | "in-progress"
+//     | "pending"
+//     | "archived";
+//   isDraft: boolean;
+//   isArchived: boolean;
+
+//   trainingStartDate: string;
+//   exitDate?: string;
+//   exitReason?: string;
+
+//   qualification: Qualification;
+//   knowledgeModules: KnowledgeModule[];
+//   practicalModules: PracticalModule[];
+//   workExperienceModules: WorkExperienceModule[];
+
+//   eisaAdmission: boolean;
+//   verificationCode: string;
+//   issueDate: string | null;
+
+//   createdAt: string;
+//   createdBy: string;
+//   updatedAt?: string;
+//   updatedBy?: string;
+// }
+
+// export interface EnrollmentRecord {
+//   cohortId: string;
+//   programmeId: string;
+//   status: "active" | "dropped" | "completed";
+//   dateAssigned: string;
+//   dateCompleted?: string;
+//   exitDate?: string | null;
+//   exitReason?: string;
+// }
+
+// export interface CertificateRecord {
+//   id: string;
+//   type: string;
+//   courseName: string;
+//   issueDate: string;
+//   pdfUrl: string;
+// }
+
+// export interface DashboardLearner
+//   extends
+//     Omit<
+//       LearnerProfile,
+//       "id" | "createdAt" | "createdBy" | "updatedAt" | "updatedBy"
+//     >,
+//     Omit<
+//       LearnerEnrollment,
+//       "id" | "createdAt" | "createdBy" | "updatedAt" | "updatedBy"
+//     > {
+//   id: string;
+//   learnerId: string;
+//   enrollmentId: string;
+
+//   createdAt: string;
+//   createdBy: string;
+//   updatedAt?: string;
+//   nextEisaDate?: string;
+//   updatedBy?: string;
+//   isBootcamp: any;
+
+//   campusId?: string;
+//   certificates?: CertificateRecord[];
+//   trainingEndDate?: string;
+//   ipfsHash?: string;
+//   blockchainFingerprint?: string;
+//   isBlockchainVerified?: boolean;
+//   isOffline?: boolean;
+//   enrollmentHistory?: EnrollmentRecord[];
+//   employerId?: string;
+//   mentorId?: string;
+// }
+
+// export interface ProgrammeModule {
+//   name: string;
+//   credits: number;
+//   notionalHours: number;
+//   nqfLevel: number;
+// }
+
+// export interface ProgrammeTemplate {
+//   id: string;
+//   name: string;
+//   saqaId: string;
+//   credits: number;
+//   totalNotionalHours: number;
+//   nqfLevel: number;
+//   knowledgeModules: ProgrammeModule[];
+//   practicalModules: ProgrammeModule[];
+//   workExperienceModules: ProgrammeModule[];
+//   isArchived?: boolean;
+
+//   createdAt: string;
+//   createdBy: string;
+//   updatedAt: string;
+//   updatedBy: string;
+// }
+
+// export type ModuleCategory = "knowledge" | "practical" | "workExperience";
+
+// export interface IssuedBy {
+//   name: string;
+//   title: string;
+// }
+
+// export interface RecessPeriod {
+//   start: string;
+//   end: string;
+//   reason: string;
+// }
+
+// export interface Cohort {
+//   id: string;
+//   name: string;
+//   startDate: string;
+//   endDate: string;
+//   programmeId: string;
+//   campusId: string;
+
+//   facilitatorId: string;
+//   supportFacilitatorId?: string;
+//   assessorId: string;
+//   moderatorId: string;
+
+//   assessorEmail?: string;
+//   moderatorEmail?: string;
+//   qualificationId: string;
+
+//   learnerIds: string[];
+//   recessPeriods?: RecessPeriod[];
+//   staffHistory?: StaffHistoryEntry[];
+
+//   isArchived: boolean;
+//   createdAt: string;
+// }
+
+// export interface StaffHistoryEntry {
+//   staffId: string;
+//   role: "facilitator" | "assessor" | "moderator";
+//   assignedAt: string;
+//   removedAt: string | null;
+//   assignedBy: string;
+//   changeReason?: string;
+// }
+
+// // ═════════════════════════════════════════════════════════════════════════════
+// // SME / EMPLOYER PARTNER ECOSYSTEM (Unified Master Interface)
+// // ═════════════════════════════════════════════════════════════════════════════
+
+// export type WorkArrangement = "On-site" | "Remote" | "Hybrid";
+// export type ComplianceStatus = "Yes" | "No" | "In progress" | "Somewhat";
+// export type RiskRating = "Low" | "Medium" | "High" | "Critical" | "Pending";
+// export type SMETier =
+//   | "Tier 1 (Enterprise)"
+//   | "Tier 2 (Established SME)"
+//   | "Tier 3 (Startup/Micro)"
+//   | "Pending Assessment";
+
+// export interface Employer {
+//   id: string;
+
+//   // Core Identifiers
+//   name: string;
+//   contactPerson: string;
+//   contactEmail: string;
+//   contactPhone: string;
+
+//   // System Metadata
+//   status:
+//     | "active"
+//     | "archived"
+//     | "Pending Review"
+//     | "Approved"
+//     | "Rejected"
+//     | "Inactive";
+//   createdAt: string;
+//   updatedAt?: string;
+//   createdBy?: string;
+
+//   // Extended Ecosystem Fields (Optional so legacy data doesn't break)
+//   tradingName?: string;
+//   registrationNumber?: string;
+//   vatNumber?: string;
+//   bbbeeLevel?: string;
+//   industrySector?: string[];
+//   website?: string;
+//   yearEstablished?: string;
+//   alternativeContact?: string;
+
+//   // Location
+//   physicalAddress?: string;
+//   province?: string;
+//   lat?: number | null;
+//   lng?: number | null;
+
+//   // Capacity & Environment
+//   employeeCount?: number;
+//   internCapacity?: number;
+//   workArrangement?: WorkArrangement | string;
+//   hasDedicatedMentors?: string;
+//   workEnvironmentDesc?: string;
+//   techStack?: string[];
+
+//   // Hosting Intent
+//   hostingMotivations?: string[];
+//   preferredLearnerLevel?: string[];
+//   preferredDisciplines?: string[];
+//   expectedStartDate?: string;
+//   expectedDuration?: string;
+
+//   // Mentorship & Projects
+//   supervisorName?: string;
+//   mentorExperienceLevel?: string;
+//   weeklyCheckIns?: string;
+//   projectTypes?: string;
+//   productionAccess?: string;
+//   contributionAreas?: string[];
+
+//   // Compliance & Incentives
+//   willingToSignWBL?: boolean;
+//   taxCompliant?: ComplianceStatus | string;
+//   hasHRPolicies?: boolean;
+//   bbbeeAwareness?: ComplianceStatus | string;
+//   interestedInBbbee?: boolean;
+//   etiAwareness?: boolean;
+//   requiresAdvisory?: boolean;
+//   dataConsent?: boolean;
+//   setaReportingConsent?: boolean;
+
+//   // Internal mLab Evaluation
+//   mlabTier?: SMETier | string;
+//   mlabRiskRating?: RiskRating | string;
+//   placementSuitability?: string;
+//   recommendedLearnerCount?: number;
+//   matchingPriorityScore?: number;
+//   internalNotes?: string;
+
+//   // Dynamic public form responses mapping
+//   customResponses?: Record<string, any>;
+// }
+
+// // ═════════════════════════════════════════════════════════════════════════════
+// // PLACEMENT ENGINE (The Matchmaker)
+// // ═════════════════════════════════════════════════════════════════════════════
+
+// export interface PlacementContract {
+//   id: string;
+//   learnerId: string;
+//   employerId: string;
+//   cohortId: string;
+
+//   status:
+//     | "Pending Match"
+//     | "Interviewing"
+//     | "Active Placement"
+//     | "Completed"
+//     | "Terminated";
+//   workArrangement: WorkArrangement;
+
+//   assignedMentorName?: string;
+//   assignedMentorEmail?: string;
+
+//   stipendAmount?: number;
+//   fundedBy: "SETA" | "mLab" | "Host Employer" | "Unfunded";
+
+//   startDate: string;
+//   endDate: string;
+
+//   wblAgreementSigned: boolean;
+//   wblAgreementUrl?: string; // Link to uploaded PDF
+
+//   learnerRating?: number;
+//   employerRating?: number;
+//   isAbsorbedPostPlacement: boolean;
+
+//   createdAt: string;
+//   updatedAt: string;
+//   createdBy: string;
+// }
+
+// // // src/types/index.ts
+
+// // // ---------- Common Types ----------
+// // export type ModuleStatus =
+// //   | "Competent"
+// //   | "Not Competent"
+// //   | "Not Yet Competent"
+// //   | "Pass"
+// //   | "Fail"
+// //   | "Not Started"
+// //   | "Pending Grading";
+
+// // // export interface CampusLocation {
+// // //   id: string;
+// // //   name: string;
+// // //   type: "physical" | "online";
+// // //   address: string;
+// // //   siteAccreditationNumber: string;
+// // //   isDefault: boolean;
+// // // }
+
+// // export interface CampusLocation {
+// //   id: string;
+// //   name: string;
+// //   type: "physical" | "online";
+// //   address: string;
+// //   city: string;
+// //   province: string;
+// //   siteAccreditationNumber: string;
+// //   isDefault: boolean;
+// // }
+
+// // // System Settings with CIPC instead of SDP
+// // export interface SystemSettings {
+// //   institutionName: string;
+// //   companyRegistrationNumber: string; // CIPC Number
+// //   phone: string;
+// //   email: string;
+// //   campuses: CampusLocation[];
+// //   ecosystem?: {
+// //     eventTypes?: string[];
+// //   };
+// //   employerFormBlueprint?: EmployerFormBlueprint;
+// //   passMarkThreshold: number;
+// //   attendanceRequirement: number;
+// //   defaultCohortMonths: number;
+// //   eisaLockEnabled: boolean;
+// //   contractAddress: string;
+// //   blockchainNetwork: string;
+// //   rpcUrl: string;
+// //   ipfsGateway: string;
+// //   // Brand Assets stored in Firebase
+// //   logoUrl?: string;
+// //   signatureUrl?: string;
+
+// //   institutionAddress?: string;
+// //   institutionCity?: string;
+// //   institutionProvince?: string;
+// //   institutionPostalCode?: string;
+// //   institutionLat?: number;
+// //   institutionLng?: number;
+
+// //   contactNumber?: string; // Or 'institutionPhone'
+// //   institutionEmail?: string;
+
+// //   //Dynamic CSV Column Mappings
+// //   csvMappings: {
+// //     fullName: string;
+// //     idNumber: string;
+// //     email: string;
+// //     phone: string;
+// //     startDate: string;
+// //     endDate: string;
+// //     issueDate: string;
+// //     cohort: string;
+// //     sdpCode: string;
+// //     qualificationTitle: string;
+// //     saqaId: string;
+// //     nqfLevel: string;
+// //     credits: string;
+// //   };
+// //   // customCsvMappings?: CustomCsvMapping[];
+// // }
+
+// // export interface BaseModule {
+// //   name: string;
+// //   credits: number;
+// //   notionalHours: number;
+// //   nqfLevel: number;
+// //   status: ModuleStatus;
+// //   code?: string;
+// // }
+
+// // // ---------- Learner‑Specific Module Types ----------
+// // export interface KnowledgeModule extends BaseModule {
+// //   dateAssessed: string;
+// //   status: "Competent" | "Not Yet Competent" | "Not Started" | "Pending Grading";
+// // }
+
+// // export interface PracticalModule extends BaseModule {
+// //   dateAssessed: string;
+// //   status: "Pass" | "Fail" | "Not Started" | "Pending Grading";
+// // }
+
+// // export interface WorkExperienceModule extends BaseModule {
+// //   dateSignedOff: string;
+// //   status: "Competent" | "Not Yet Competent" | "Not Started" | "Pending Grading";
+// // }
+
+// // // Union type for any learner module (used in StatementOfResults)
+// // export type AnyAssessmentModule =
+// //   | KnowledgeModule
+// //   | PracticalModule
+// //   | WorkExperienceModule;
+
+// // // ---------- Qualification (embedded in enrollment) ----------
+// // export interface Qualification {
+// //   name: string;
+// //   saqaId: string;
+// //   credits: number;
+// //   totalNotionalHours: number;
+// //   nqfLevel: number;
+// //   dateAssessed: string;
+// // }
+
+// // // ---------- QCTO Demographics (optional) ----------
+// // export interface LearnerDemographics {
+// //   sdpCode?: string;
+// //   qualificationId?: string;
+// //   learnerAlternateId?: string;
+// //   alternativeIdType?: string;
+// //   equityCode?: string;
+// //   nationalityCode?: string;
+// //   homeLanguageCode?: string;
+// //   genderCode?: string;
+// //   citizenResidentStatusCode?: string;
+// //   socioeconomicStatusCode?: string;
+// //   disabilityStatusCode?: string;
+// //   disabilityRating?: string;
+// //   immigrantStatus?: string;
+// //   learnerMiddleName?: string;
+// //   learnerTitle?: string;
+// //   learnerHomeAddress1?: string;
+// //   learnerHomeAddress2?: string;
+// //   learnerHomeAddress3?: string;
+// //   learnerPostalAddress1?: string;
+// //   learnerPostalAddress2?: string;
+// //   learnerPostalAddress3?: string;
+// //   learnerHomeAddressPostalCode?: string;
+// //   learnerPostalAddressPostCode?: string;
+// //   learnerPhoneNumber?: string;
+// //   learnerFaxNumber?: string;
+// //   learnerEmailAddress?: string;
+// //   provinceCode?: string;
+// //   statsaaAreaCode?: string;
+// //   popiActAgree?: string;
+// //   popiActDate?: string;
+// //   expectedTrainingCompletionDate?: string;
+// //   statementOfResultsStatus?: string;
+// //   statementOfResultsIssueDate?: string;
+// //   assessmentCentreCode?: string;
+// //   learnerReadinessForEISATypeId?: string;
+// //   flc?: string;
+// //   flcStatementOfResultNumber?: string;
+// //   dateStamp?: string;
+// // }
+
+// // // ============================================================================
+// // // RELATIONAL ARCHITECTURE: IDENTITY VS. ACADEMIC RECORD
+// // // ============================================================================
+
+// // //  IDENTITY: The Human Being (Stored in 'learners' DB collection)
+// // export interface LearnerProfile {
+// //   id: string; // Global Learner ID
+// //   fullName: string;
+// //   firstName: string;
+// //   lastName: string;
+// //   idNumber: string;
+// //   dateOfBirth: string;
+// //   email: string;
+// //   phone: string;
+// //   mobile?: string;
+// //   profilePhotoUrl?: string;
+
+// //   profileCompleted?: boolean;
+// //   authUid?: string;
+// //   uid?: string;
+// //   authStatus: "pending" | "invited" | "active";
+
+// //   demographics?: LearnerDemographics;
+
+// //   createdAt: string;
+// //   createdBy: string;
+// //   updatedAt?: string;
+// //   updatedBy?: string;
+// // }
+
+// // // ACADEMIC RECORD: The Course Instance (Stored in 'enrollments' DB collection)
+// // export interface LearnerEnrollment {
+// //   id: string;
+// //   learnerId: string;
+// //   cohortId: string;
+
+// //   // System Statuses
+// //   status: "active" | "completed" | "dropped" | "in-progress" | "pending";
+// //   isDraft: boolean;
+// //   isArchived: boolean;
+
+// //   trainingStartDate: string;
+// //   exitDate?: string;
+// //   exitReason?: string;
+
+// //   // Educational Data (Snapshotted to protect historical records)
+// //   qualification: Qualification;
+// //   knowledgeModules: KnowledgeModule[];
+// //   practicalModules: PracticalModule[];
+// //   workExperienceModules: WorkExperienceModule[];
+
+// //   // Certification
+// //   eisaAdmission: boolean;
+// //   verificationCode: string;
+// //   issueDate: string | null;
+
+// //   createdAt: string;
+// //   createdBy: string;
+// //   updatedAt?: string;
+// //   updatedBy?: string;
+// // }
+
+// // // Create the new Enrollment Record Type
+// // export interface EnrollmentRecord {
+// //   cohortId: string;
+// //   programmeId: string;
+// //   status: "active" | "dropped" | "completed";
+// //   dateAssigned: string;
+// //   dateCompleted?: string;
+// //   exitDate?: string | null;
+// //   exitReason?: string;
+// // }
+
+// // export interface CertificateRecord {
+// //   id: string;
+// //   type: string;
+// //   courseName: string;
+// //   issueDate: string;
+// //   pdfUrl: string;
+// // }
+
+// // // The Combined Table View
+// // // We merge Profile and Enrollment here so your UI components (like LearnersView)
+// // // don't break while we migrate the backend.
+// // export interface DashboardLearner
+// //   extends
+// //     Omit<
+// //       LearnerProfile,
+// //       "id" | "createdAt" | "createdBy" | "updatedAt" | "updatedBy"
+// //     >,
+// //     Omit<
+// //       LearnerEnrollment,
+// //       "id" | "createdAt" | "createdBy" | "updatedAt" | "updatedBy"
+// //     > {
+// //   id: string; // In the UI, this maps to the Enrollment ID (so every row is unique)
+// //   learnerId: string; // The actual human's profile ID
+// //   enrollmentId: string; // The academic record's ID
+
+// //   // Shared Audit Trail
+// //   createdAt: string;
+// //   createdBy: string;
+// //   updatedAt?: string;
+// //   nextEisaDate?: string;
+// //   updatedBy?: string;
+// //   isBootcamp: any;
+
+// //   campusId?: string;
+// //   certificates?: CertificateRecord[];
+
+// //   trainingEndDate?: string;
+
+// //   // these Web3 / Blockchain properties:
+// //   ipfsHash?: string;
+// //   blockchainFingerprint?: string;
+// //   isBlockchainVerified?: boolean;
+
+// //   isOffline?: boolean;
+
+// //   enrollmentHistory?: EnrollmentRecord[];
+
+// //   // Workplace Placements linked to this specific enrollment
+// //   employerId?: string;
+// //   mentorId?: string;
+// // }
+
+// // // ============================================================================
+
+// // // ---------- Programme Module (embedded) ----------
+// // export interface ProgrammeModule {
+// //   name: string;
+// //   credits: number;
+// //   notionalHours: number;
+// //   nqfLevel: number;
+// // }
+
+// // // ---------- Programme Template (with embedded modules) ----------
+// // export interface ProgrammeTemplate {
+// //   id: string; // Firestore document ID
+// //   name: string;
+// //   saqaId: string;
+// //   credits: number;
+// //   totalNotionalHours: number;
+// //   nqfLevel: number;
+// //   knowledgeModules: ProgrammeModule[];
+// //   practicalModules: ProgrammeModule[];
+// //   workExperienceModules: ProgrammeModule[];
+// //   isArchived?: boolean;
+
+// //   // Audit fields
+// //   createdAt: string;
+// //   createdBy: string;
+// //   updatedAt: string;
+// //   updatedBy: string;
+// // }
+
+// // // ---------- UI / Form Categories ----------
+// // export type ModuleCategory = "knowledge" | "practical" | "workExperience";
+
+// // // ---------- Statement of Results Types ----------
+// // export interface IssuedBy {
+// //   name: string;
+// //   title: string;
+// // }
+
+// // export interface RecessPeriod {
+// //   start: string;
+// //   end: string;
+// //   reason: string;
+// // }
+
+// // export interface Cohort {
+// //   id: string;
+// //   name: string;
+// //   startDate: string;
+// //   endDate: string;
+// //   programmeId: string; // Links to the Qualification Template
+
+// //   campusId: string; // Links to settings.campuses[].id
+
+// //   // The "Triangle of Support" (Staff IDs)
+// //   facilitatorId: string;
+// //   supportFacilitatorId?: string;
+// //   assessorId: string;
+// //   moderatorId: string;
+
+// //   assessorEmail?: string;
+// //   moderatorEmail?: string;
+
+// //   qualificationId: string;
+
+// //   // The Students
+// //   learnerIds: string[]; // Array of Learner IDs
+
+// //   // STRICTLY TYPED RECESS PERIODS
+// //   recessPeriods?: RecessPeriod[];
+
+// //   staffHistory?: StaffHistoryEntry[];
+
+// //   isArchived: boolean;
+// //   createdAt: string;
+// // }
+// // export interface StaffHistoryEntry {
+// //   staffId: string;
+// //   role: "facilitator" | "assessor" | "moderator";
+// //   assignedAt: string;
+// //   removedAt: string | null;
+// //   assignedBy: string;
+
+// //   //Strict Audit Requirement
+// //   changeReason?: string;
+// // }
+
+// // export interface Employer {
+// //   id: string;
+// //   name: string;
+// //   registrationNumber: string;
+// //   physicalAddress: string;
+// //   lat?: number | null;
+// //   lng?: number | null;
+// //   contactPerson: string;
+// //   contactEmail: string;
+// //   contactPhone: string;
+// //   status: "active" | "archived";
+// //   createdAt: string;
+// // }
+
+// // // ═════════════════════════════════════════════════════════════════════════════
+// // // SME / EMPLOYER PARTNER ECOSYSTEM
+// // // ═════════════════════════════════════════════════════════════════════════════
+
+// // export type WorkArrangement = "On-site" | "Remote" | "Hybrid";
+// // export type ComplianceStatus = "Yes" | "No" | "In progress" | "Somewhat";
+// // export type RiskRating = "Low" | "Medium" | "High" | "Critical";
+// // export type SMETier =
+// //   | "Tier 1 (Enterprise)"
+// //   | "Tier 2 (Established SME)"
+// //   | "Tier 3 (Startup/Micro)";
+
+// // export interface CustomFieldBlueprint {
+// //   id: string;
+// //   label: string;
+// //   type: "text" | "dropdown" | "checkbox";
+// //   required: boolean;
+// //   options?: string[];
+// // }
+
+// // export interface EmployerFormBlueprint {
+// //   coreFieldVisibility: Record<string, boolean>;
+// //   customFields: CustomFieldBlueprint[];
+// // }
+
+// // export interface EmployerPartner {
+// //   id: string;
+
+// //   // Section 1: Organisation Information
+// //   organisationName: string;
+// //   tradingName?: string;
+// //   cipcNumber: string;
+// //   taxNumber?: string;
+// //   vatNumber?: string;
+// //   bbbeeLevel?: string;
+// //   industrySector: string[];
+// //   physicalAddress: string;
+// //   province: string;
+// //   website?: string;
+// //   yearEstablished?: string;
+
+// //   // Section 2: Primary Contact Person
+// //   primaryContactName: string;
+// //   primaryContactRole: string;
+// //   primaryContactEmail: string;
+// //   primaryContactPhone: string;
+// //   alternativeContact?: string;
+
+// //   // Section 3: Capacity & Environment
+// //   employeeCount: number;
+// //   internCapacity: number;
+// //   workArrangement: WorkArrangement;
+// //   hasDedicatedMentors: "Yes" | "No" | "Partially";
+// //   workEnvironmentDesc?: string;
+// //   techStack: string[]; // e.g., ['GitHub', 'Jira', 'Figma']
+
+// //   // Section 4: Learner Hosting Intent
+// //   hostingMotivations: string[];
+// //   preferredLearnerLevel: string[];
+// //   preferredDisciplines: string[];
+// //   expectedStartDate?: string;
+// //   expectedDuration: string; // e.g., '3 months', '6 months'
+
+// //   // Section 5 & 6: Mentorship & Projects
+// //   supervisorName?: string;
+// //   mentorExperienceLevel?: string;
+// //   weeklyCheckIns?: "Yes" | "No" | "Sometimes";
+// //   projectTypes?: string;
+// //   productionAccess?: "Yes" | "No" | "Limited";
+// //   contributionAreas?: string[];
+
+// //   // Section 7 & 8: Compliance & Incentives
+// //   willingToSignWBL: boolean;
+// //   taxCompliant: ComplianceStatus;
+// //   hasHRPolicies: boolean;
+// //   bbbeeAwareness: ComplianceStatus;
+// //   interestedInBbbee: boolean;
+// //   etiAwareness: boolean;
+// //   requiresAdvisory: boolean;
+
+// //   // Section 9: Consent
+// //   dataConsent: boolean;
+// //   setaReportingConsent: boolean;
+
+// //   // Internal mLab Evaluation (Hidden from SME)
+// //   mlabTier?: SMETier;
+// //   mlabRiskRating?: RiskRating;
+// //   placementSuitability?: string;
+// //   recommendedLearnerCount?: number;
+// //   matchingPriorityScore?: number; // 0 - 100
+// //   internalNotes?: string;
+
+// //   // System Metadata
+// //   status: "Pending Review" | "Approved" | "Rejected" | "Inactive";
+// //   createdAt: string;
+// //   updatedAt: string;
+// //   createdBy?: string;
+// // }
+
+// // // ═════════════════════════════════════════════════════════════════════════════
+// // // PLACEMENT ENGINE (The Matchmaker)
+// // // ═════════════════════════════════════════════════════════════════════════════
+
+// // export interface PlacementContract {
+// //   id: string;
+// //   learnerId: string;
+// //   employerId: string;
+// //   cohortId: string;
+
+// //   status:
+// //     | "Pending Match"
+// //     | "Interviewing"
+// //     | "Active Placement"
+// //     | "Completed"
+// //     | "Terminated";
+// //   workArrangement: WorkArrangement;
+
+// //   assignedMentorName?: string;
+// //   assignedMentorEmail?: string;
+
+// //   stipendAmount?: number;
+// //   fundedBy: "SETA" | "mLab" | "Host Employer" | "Unfunded";
+
+// //   startDate: string;
+// //   endDate: string;
+
+// //   wblAgreementSigned: boolean;
+// //   wblAgreementUrl?: string; // Link to uploaded PDF
+
+// //   // Analytics & Tracking
+// //   learnerRating?: number; // Employer rates the learner out of 5
+// //   employerRating?: number; // Learner rates the employer out of 5
+// //   isAbsorbedPostPlacement: boolean; // Did they get hired permanently?
+
+// //   createdAt: string;
+// //   updatedAt: string;
+// //   createdBy: string;
+// // }

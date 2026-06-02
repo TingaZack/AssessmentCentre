@@ -10,17 +10,41 @@ import {
     CheckCircle, Clock, Building2, User, FileText,
     MoreVertical, Edit, X, DownloadCloud, AlertCircle,
     ShieldAlert, Save, Loader2, Award, Trash2,
-    LinkIcon, UploadCloud, FileSpreadsheet
+    LinkIcon, UploadCloud, FileSpreadsheet, ShieldCheck, Network, Coins,
+    Landmark, Activity, Wallet, Percent, Lightbulb, Info,
+    Calculator,
+    Accessibility
 } from 'lucide-react';
 import moment from 'moment';
 import * as XLSX from 'xlsx';
+import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 
 import { useStore, type StaffMember } from '../../../store/useStore';
-import type { DashboardLearner, Employer } from '../../../types';
+import type { DashboardLearner, Employer, PlacementContract } from '../../../types';
 import { useToast, ToastContainer } from '../../common/Toast/Toast';
 import Loader from '../../common/Loader/Loader';
-import type { PlacementRecord } from '../../../store/slices/placementSlice';
-import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
+
+import '../WorkplacesManager/WorkplacesManager.css';
+
+/* ─── INTERFACES ─────────────────────────────────────────────────────────────── */
+interface EnrichedPlacement extends PlacementContract {
+    placementType: string;
+    bbbeeSpendCategory: string;
+    compliance: {
+        isAgreementFullyExecuted: boolean;
+        wblpaAgreementUrl?: string;
+    };
+    learnerName: string;
+    idNumber: string;
+    equityGroup: string;
+    hasDisability: boolean;
+    employerName: string;
+    mentorName: string;
+    hasMentor: boolean;
+    isEtiEligible: boolean;
+    etiMonthlyValue: number;
+    projectedStipendSpend: number;
+}
 
 /* ─── QUICK-ADD MENTOR MODAL ─────────────────────────────────────────────────── */
 interface MentorModalProps {
@@ -94,15 +118,16 @@ const MentorModal: React.FC<MentorModalProps> = ({ employerId, onClose, onSaved,
     );
 };
 
-/* ─── GLOBAL CREATE PLACEMENT MODAL (MULTI-SELECT) ───────────────────────────── */
+/* ─── GLOBAL CREATE PLACEMENT MODAL ──────────────────────────────────────────── */
 const GlobalCreatePlacementModal: React.FC<{
     employers: Employer[],
     mentors: StaffMember[],
     learners: DashboardLearner[],
+    placements: PlacementContract[],
     onClose: () => void,
     onCreate: (data: any) => Promise<void>,
     onAddNewMentor: (employerId: string) => void
-}> = ({ employers, mentors, learners, onClose, onCreate, onAddNewMentor }) => {
+}> = ({ employers, mentors, learners, placements, onClose, onCreate, onAddNewMentor }) => {
     const toast = useToast();
     const [saving, setSaving] = useState(false);
 
@@ -116,7 +141,8 @@ const GlobalCreatePlacementModal: React.FC<{
         startDate: '',
         endDate: '',
         fundingSource: 'Corporate Funded',
-        bbbeeSpendCategory: 'Category C'
+        bbbeeSpendCategory: 'Category C',
+        stipendAmount: ''
     });
 
     const availableMentors = useMemo(() => {
@@ -137,10 +163,19 @@ const GlobalCreatePlacementModal: React.FC<{
         setSelectedLearners(prev => prev.filter(l => l.id !== id));
     };
 
+    const selectedEmployer = employers.find(e => e.id === selectedEmployerId);
+    const currentEmployerPlacements = placements.filter(p => p.employerId === selectedEmployerId && (p.status === 'Active Placement' || p.status === 'Pending Match'));
+    const internCapacity = selectedEmployer ? ((selectedEmployer as any).internCapacity || 1) : 0;
+    const isOverCapacity = selectedEmployer && (currentEmployerPlacements.length + selectedLearners.length) > internCapacity;
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!selectedEmployerId) return toast.error("Please select a Host Company.");
         if (selectedLearners.length === 0) return toast.error("Please select at least one learner.");
+
+        if (isOverCapacity) {
+            if (!window.confirm(`WARNING: You are exceeding the stated capacity for ${selectedEmployer?.name}. Are you sure you want to force this placement?`)) return;
+        }
 
         setSaving(true);
         try {
@@ -149,7 +184,8 @@ const GlobalCreatePlacementModal: React.FC<{
                     learnerId: learner.id,
                     employerId: selectedEmployerId,
                     ...form,
-                    status: 'active'
+                    stipendAmount: Number(form.stipendAmount) || 0,
+                    status: 'Active Placement'
                 })
             ));
 
@@ -165,8 +201,8 @@ const GlobalCreatePlacementModal: React.FC<{
     return createPortal(
         <div className="wm-overlay animate-fade-in" onClick={onClose} style={{ zIndex: 9999 }}>
             <div className="wm-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '650px' }}>
-                <div className="wm-modal__header" style={{ borderBottom: '1px solid var(--mlab-border)', paddingBottom: '1rem' }}>
-                    <div className="wm-modal__header-icon" style={{ background: '#e0e7ff', color: '#6366f1' }}><Briefcase size={20} /></div>
+                <div className="wm-modal__header" style={{ borderBottom: '3px solid var(--mlab-green)', paddingBottom: '1rem' }}>
+                    <div className="wm-modal__header-icon" style={{ background: '#e0e7ff', color: '#6366f1' }}><Network size={20} /></div>
                     <div>
                         <h2 className="wm-modal__title">Create Global Placement</h2>
                         <p className="wm-modal__subtitle">Assign learner(s) to a host company from the master ledger.</p>
@@ -193,6 +229,13 @@ const GlobalCreatePlacementModal: React.FC<{
                                     <option key={emp.id} value={emp.id}>{emp.name}</option>
                                 ))}
                             </select>
+
+                            {selectedEmployer && (
+                                <div style={{ marginTop: '0.75rem', padding: '0.5rem', borderRadius: '4px', background: isOverCapacity ? '#fef2f2' : '#f0fdf4', border: `1px solid ${isOverCapacity ? '#fecaca' : '#bbf7d0'}`, fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '6px', color: isOverCapacity ? '#b91c1c' : '#15803d' }}>
+                                    {isOverCapacity ? <AlertTriangle size={14} /> : <ShieldCheck size={14} />}
+                                    Capacity Check: {currentEmployerPlacements.length + selectedLearners.length} / {internCapacity} filled
+                                </div>
+                            )}
                         </div>
 
                         <div className="wm-form-section">
@@ -231,9 +274,6 @@ const GlobalCreatePlacementModal: React.FC<{
                                                     <div style={{ fontWeight: 600, color: 'var(--mlab-blue)', fontSize: '0.85rem' }}>{l.fullName}</div>
                                                     <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{l.idNumber}</div>
                                                 </div>
-                                                <div style={{ fontSize: '0.7rem', padding: '2px 6px', background: l.enrollmentId ? '#ecfccb' : '#f1f5f9', color: l.enrollmentId ? '#4d7c0f' : '#64748b', borderRadius: '4px' }}>
-                                                    {l.enrollmentId ? 'Active Student' : 'External / Alumni'}
-                                                </div>
                                             </div>
                                         )) : (
                                             <div style={{ padding: '10px 12px', fontSize: '0.85rem', color: '#64748b', fontStyle: 'italic' }}>No matches found.</div>
@@ -259,9 +299,6 @@ const GlobalCreatePlacementModal: React.FC<{
                                         <option value="">-- No Mentor Assigned (Flag as Missing) --</option>
                                         {availableMentors.map(m => <option key={m.id} value={m.id}>{m.fullName} ({m.email})</option>)}
                                     </select>
-                                    {selectedEmployerId && availableMentors.length === 0 && (
-                                        <span style={{ fontSize: '0.75rem', color: '#dc2626', marginTop: '4px', display: 'block' }}>This company has no mentors. You can assign one later or quick-add one above.</span>
-                                    )}
                                 </div>
 
                                 <div className="wm-form-group">
@@ -281,6 +318,22 @@ const GlobalCreatePlacementModal: React.FC<{
                                         <option value="Category D">Category D (Apprenticeship)</option>
                                         <option value="Category E">Category E (Work-integrated learning)</option>
                                     </select>
+                                </div>
+
+                                <div className="wm-form-group wm-form-group--full">
+                                    <label className="wm-form-label">Monthly Stipend (ZAR) <span style={{ color: '#94a3b8', fontWeight: 400 }}>- Drives live B-BBEE & ETI Data</span></label>
+                                    <div style={{ position: 'relative' }}>
+                                        <div style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#64748b', fontSize: '0.85rem', fontWeight: 600 }}>R</div>
+                                        <input
+                                            className="wm-form-input"
+                                            type="number"
+                                            min="0"
+                                            style={{ paddingLeft: '28px' }}
+                                            placeholder="e.g. 4500"
+                                            value={form.stipendAmount}
+                                            onChange={e => setForm(p => ({ ...p, stipendAmount: e.target.value }))}
+                                        />
+                                    </div>
                                 </div>
 
                                 <div className="wm-form-group">
@@ -308,7 +361,7 @@ const GlobalCreatePlacementModal: React.FC<{
     );
 };
 
-/* ─── EDIT PLACEMENT MODAL ─────────────────────────────────── */
+/* ─── EDIT PLACEMENT MODAL ───────────────────────────────────────────────────── */
 const EditPlacementModal: React.FC<{
     placement: any;
     mentors: StaffMember[];
@@ -326,6 +379,7 @@ const EditPlacementModal: React.FC<{
         mentorId: placement.mentorId || '',
         placementType: placement.placementType || 'QCTO Workplace Module',
         bbbeeSpendCategory: placement.compliance?.bbbeeSpendCategory || placement.bbbeeSpendCategory || 'Category C',
+        stipendAmount: placement.stipendAmount || '',
         startDate: placement.startDate || '',
         endDate: placement.endDate || '',
         isAgreementFullyExecuted: placement.compliance?.isAgreementFullyExecuted || false,
@@ -343,7 +397,6 @@ const EditPlacementModal: React.FC<{
             if (uploadMode === 'upload' && selectedFile) {
                 setUploadingDoc(true);
                 const fileRef = ref(storage, `placements/${placement.id}/wblpa_${Date.now()}_${selectedFile.name.replace(/[^a-zA-Z0-9.]/g, '_')}`);
-
                 await uploadBytes(fileRef, selectedFile);
                 finalDocumentUrl = await getDownloadURL(fileRef);
                 setUploadingDoc(false);
@@ -356,6 +409,7 @@ const EditPlacementModal: React.FC<{
             batch.update(placementRef, {
                 mentorId: form.mentorId,
                 placementType: form.placementType,
+                stipendAmount: Number(form.stipendAmount) || 0,
                 startDate: form.startDate,
                 endDate: form.endDate,
                 compliance: {
@@ -402,7 +456,6 @@ const EditPlacementModal: React.FC<{
 
                 <form onSubmit={handleSubmit} className="wm-modal__form" style={{ maxHeight: '75vh', overflowY: 'auto' }}>
                     <div className="wm-modal__body">
-
                         <div className="wm-form-section">
                             <div className="wm-form-section__label"><Briefcase size={12} /> Logistics & Timeline</div>
                             <div className="wm-form-grid">
@@ -412,6 +465,23 @@ const EditPlacementModal: React.FC<{
                                         <option value="">-- No Mentor Assigned --</option>
                                         {availableMentors.map(m => <option key={m.id} value={m.id}>{m.fullName} ({m.email})</option>)}
                                     </select>
+                                </div>
+
+                                <div className="wm-form-group wm-form-group--full">
+                                    <label className="wm-form-label">Monthly Stipend (ZAR) <span style={{ color: '#94a3b8', fontWeight: 400 }}>- Drives live B-BBEE & ETI Data</span></label>
+                                    <div style={{ position: 'relative' }}>
+                                        <div style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#64748b', fontSize: '0.85rem', fontWeight: 600 }}>R</div>
+                                        <input
+                                            className="wm-form-input"
+                                            type="number"
+                                            min="0"
+                                            style={{ paddingLeft: '28px' }}
+                                            placeholder="e.g. 4500"
+                                            value={form.stipendAmount}
+                                            onChange={e => setForm(p => ({ ...p, stipendAmount: e.target.value }))}
+                                            disabled={saving}
+                                        />
+                                    </div>
                                 </div>
 
                                 <div className="wm-form-group">
@@ -458,11 +528,7 @@ const EditPlacementModal: React.FC<{
                                         />
                                         WBLPA Signed & On File
                                     </label>
-                                    <p style={{ margin: '4px 0 12px 24px', fontSize: '0.75rem', color: '#64748b' }}>
-                                        Check this box if the tripartite agreement has been signed by the learner, employer, and institution.
-                                    </p>
-
-                                    <div style={{ marginLeft: '24px', background: 'white', border: '1px solid #cbd5e1', borderRadius: '6px', overflow: 'hidden' }}>
+                                    <div style={{ marginLeft: '24px', background: 'white', border: '1px solid #cbd5e1', borderRadius: '6px', overflow: 'hidden', marginTop: '12px' }}>
                                         <div style={{ display: 'flex', borderBottom: '1px solid #cbd5e1', background: '#f1f5f9' }}>
                                             <button
                                                 type="button"
@@ -485,7 +551,7 @@ const EditPlacementModal: React.FC<{
                                         <div style={{ padding: '12px' }}>
                                             {uploadMode === 'link' ? (
                                                 <>
-                                                    <label className="wm-form-label" style={{ fontSize: '0.7rem' }}>Document Link (Google Drive, OneDrive, etc.)</label>
+                                                    <label className="wm-form-label" style={{ fontSize: '0.7rem' }}>Document Link</label>
                                                     <input
                                                         className="wm-form-input"
                                                         type="url"
@@ -497,7 +563,7 @@ const EditPlacementModal: React.FC<{
                                                 </>
                                             ) : (
                                                 <>
-                                                    <label className="wm-form-label" style={{ fontSize: '0.7rem' }}>Upload Scanned Contract (PDF, PNG, JPG)</label>
+                                                    <label className="wm-form-label" style={{ fontSize: '0.7rem' }}>Upload Scanned Contract</label>
                                                     <input
                                                         className="wm-form-input"
                                                         type="file"
@@ -510,11 +576,6 @@ const EditPlacementModal: React.FC<{
                                                         style={{ padding: '6px' }}
                                                         disabled={saving}
                                                     />
-                                                    {form.wblpaAgreementUrl && !selectedFile && (
-                                                        <div style={{ marginTop: '8px', fontSize: '0.7rem', color: '#16a34a', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                            <CheckCircle size={12} /> A file is already attached to this record.
-                                                        </div>
-                                                    )}
                                                 </>
                                             )}
                                         </div>
@@ -541,7 +602,7 @@ const EditPlacementModal: React.FC<{
     );
 };
 
-/* ─── PLACEMENT OPTIONS MODAL ────────────────────────────── */
+/* ─── PLACEMENT OPTIONS MODAL ────────────────────────────────────────────────── */
 const PlacementOptionsModal: React.FC<{
     placement: any;
     onClose: () => void;
@@ -600,33 +661,29 @@ const PlacementOptionsModal: React.FC<{
                 <div className="wm-modal__body" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     <button
                         type="button"
-                        disabled={processing || placement.status === 'completed'}
-                        onClick={() => handleChangeStatus('completed')}
-                        style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px', background: 'white', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: processing ? 'not-allowed' : 'pointer', fontWeight: 600, color: 'var(--mlab-midnight)', opacity: placement.status === 'completed' ? 0.5 : 1 }}
+                        disabled={processing || placement.status === 'Completed'}
+                        onClick={() => handleChangeStatus('Completed')}
+                        style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px', background: 'white', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: processing ? 'not-allowed' : 'pointer', fontWeight: 600, color: 'var(--mlab-midnight)' }}
                     >
                         <CheckCircle size={16} color="#16a34a" /> Mark as Completed
                     </button>
-
                     <button
                         type="button"
-                        disabled={processing || placement.status === 'pending_signatures'}
-                        onClick={() => handleChangeStatus('pending_signatures')}
-                        style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px', background: 'white', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: processing ? 'not-allowed' : 'pointer', fontWeight: 600, color: 'var(--mlab-midnight)', opacity: placement.status === 'pending_signatures' ? 0.5 : 1 }}
+                        disabled={processing || placement.status === 'Pending Match'}
+                        onClick={() => handleChangeStatus('Pending Match')}
+                        style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px', background: 'white', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: processing ? 'not-allowed' : 'pointer', fontWeight: 600, color: 'var(--mlab-midnight)' }}
                     >
-                        <Clock size={16} color="#d97706" /> Revert to Pending Signatures
+                        <Clock size={16} color="#d97706" /> Revert to Pending Match
                     </button>
-
                     <button
                         type="button"
-                        disabled={processing || placement.status === 'terminated'}
-                        onClick={() => handleChangeStatus('terminated')}
-                        style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '6px', cursor: processing ? 'not-allowed' : 'pointer', fontWeight: 600, color: '#b91c1c', opacity: placement.status === 'terminated' ? 0.5 : 1 }}
+                        disabled={processing || placement.status === 'Terminated'}
+                        onClick={() => handleChangeStatus('Terminated')}
+                        style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '6px', cursor: processing ? 'not-allowed' : 'pointer', fontWeight: 600, color: '#b91c1c' }}
                     >
                         <AlertTriangle size={16} color="#dc2626" /> Terminate Placement (Drop Intern)
                     </button>
-
                     <div style={{ height: '1px', background: 'var(--mlab-border)', margin: '8px 0' }} />
-
                     <button
                         type="button"
                         disabled={processing}
@@ -636,18 +693,29 @@ const PlacementOptionsModal: React.FC<{
                         <Trash2 size={16} /> Delete Record Permanently
                     </button>
                 </div>
-
-                <div className="wm-modal__footer" style={{ justifyContent: 'center' }}>
-                    <button type="button" className="wm-btn wm-btn--ghost" onClick={onClose} disabled={processing}>Close Options</button>
-                </div>
             </div>
         </div>,
         document.body
     );
 };
 
+/* ─── REUSABLE INSIGHT POPUP COMPONENT ───────────────────────────────────────── */
+const InsightPopup = ({ title, currentValue, actionSteps, onClose }: { title: string, currentValue: string, actionSteps: React.ReactNode[], onClose: () => void }) => (
+    <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: '8px', background: 'white', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '1rem', width: '360px', zIndex: 100, boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1)' }} className="animate-fade-in">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', paddingBottom: '8px', borderBottom: '1px solid #f1f5f9' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--mlab-midnight)', fontWeight: 800, fontSize: '0.85rem' }}>
+                <Activity size={16} color="#d97706" /> {title}
+            </div>
+            <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: 0 }}><X size={14} /></button>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {actionSteps.map((step, i) => <div key={i} style={{ fontSize: '0.75rem', color: '#475569', lineHeight: 1.4 }}>{step}</div>)}
+        </div>
+    </div>
+);
+
 /* ═══════════════════════════════════════════════════════════════════════════
-   MAIN COMPONENT: PLACEMENTS DASHBOARD
+   MAIN COMPONENT: PLACEMENTS DASHBOARD 
 ═══════════════════════════════════════════════════════════════════════════ */
 export const PlacementsDashboard: React.FC = () => {
     const toast = useToast();
@@ -656,27 +724,28 @@ export const PlacementsDashboard: React.FC = () => {
 
     const { employers, fetchEmployers, learners, fetchLearners, staff, fetchStaff, addStaff } = useStore();
 
-    const placements = (useStore(s => (s as any).placements) || []) as PlacementRecord[];
+    const placements = (useStore(s => (s as unknown as { placements?: PlacementContract[] }).placements) || []);
     const fetchPlacements = (useStore(s => (s as any).fetchPlacements) || (async () => { })) as any;
     const createPlacement = (useStore(s => (s as any).createPlacement) || (async () => { })) as any;
     const placementsLoading = (useStore(s => (s as any).placementsLoading) || false) as boolean;
 
     const [isInitialLoad, setIsInitialLoad] = useState(placements.length === 0);
 
-    // UI Modals
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [isMentorModalOpen, setIsMentorModalOpen] = useState(false);
     const [activeMentorEmpId, setActiveMentorEmpId] = useState('');
     const [editingPlacement, setEditingPlacement] = useState<any | null>(null);
     const [optionsPlacement, setOptionsPlacement] = useState<any | null>(null);
+    const [activeInsight, setActiveInsight] = useState<'transformation' | 'absorption' | 'eti' | 'disability' | 'spend' | null>(null);
 
-    // Filtering State
+    // 🚀 NEW: State for detailed ETI Math breakdown popup
+    const [etiBreakdownLearner, setEtiBreakdownLearner] = useState<EnrichedPlacement | null>(null);
+
     const [searchQuery, setSearchQuery] = useState('');
     const [filterType, setFilterType] = useState('all');
     const [filterEmployer, setFilterEmployer] = useState(employerUrlParam || 'all');
     const [activeTab, setActiveTab] = useState<'active' | 'history' | 'all'>('active');
 
-    // Export State
     const [showExportMenu, setShowExportMenu] = useState(false);
     const exportMenuRef = useRef<HTMLDivElement>(null);
 
@@ -709,47 +778,95 @@ export const PlacementsDashboard: React.FC = () => {
 
     const mentors = useMemo(() => staff.filter(s => s.role === 'mentor' && s.status !== 'archived'), [staff]);
 
-    const { activeCount, expiringSoonCount, missingContractsCount, completedCount, droppedCount } = useMemo(() => {
-        const thirtyDaysFromNow = moment().add(30, 'days');
-        let active = 0, expiring = 0, missingContracts = 0, completed = 0, dropped = 0;
+    const formatCurrency = (val: number) => new Intl.NumberFormat('en-ZA', { style: 'currency', currency: 'ZAR', maximumFractionDigits: 0 }).format(val);
 
-        placements.forEach(p => {
-            if (p.status === 'active' || p.status === 'pending_signatures') {
-                active++;
-                if (p.status === 'active') {
-                    if (moment(p.endDate).isBefore(thirtyDaysFromNow)) expiring++;
-                    if (!p.compliance?.isAgreementFullyExecuted) missingContracts++;
-                }
-            } else if (p.status === 'completed') {
-                completed++;
-            } else if (p.status === 'terminated') {
-                dropped++;
-            }
-        });
-        return { activeCount: active, expiringSoonCount: expiring, missingContractsCount: missingContracts, completedCount: completed, droppedCount: dropped };
-    }, [placements]);
-
-    const enrichedAndFilteredPlacements = useMemo(() => {
+    // MAP AND ENRICH DATA DYNAMICALLY FROM DATABASE
+    const enrichedAndFilteredPlacements = useMemo<EnrichedPlacement[]>(() => {
         return placements
             .map(p => {
                 const learner = learners.find(l => l.id === p.learnerId) || ({} as Partial<DashboardLearner>);
                 const employer = employers.find(e => e.id === p.employerId) || ({} as Partial<Employer>);
-                const mentor = mentors.find(m => m.id === p.mentorId) || ({} as Partial<StaffMember>);
+
+                const placementRecord = p as PlacementContract & {
+                    placementType?: string,
+                    compliance?: { isAgreementFullyExecuted?: boolean, wblpaAgreementUrl?: string, bbbeeSpendCategory?: string },
+                    bbbeeSpendCategory?: string,
+                    mentorId?: string
+                };
+
+                const mentor = mentors.find(m =>
+                    (p.assignedMentorName && m.fullName === p.assignedMentorName) ||
+                    (placementRecord.mentorId && m.id === placementRecord.mentorId)
+                ) || ({} as Partial<StaffMember>);
+
+                const extendedLearner = learner as Partial<DashboardLearner> & { equityGroup?: string, disabilityStatus?: string };
+                const equity = learner.demographics?.equityCode || extendedLearner.equityGroup || 'Unknown';
+                const disability = learner.demographics?.disabilityStatusCode || extendedLearner.disabilityStatus || 'No Disability';
+
+                // 🚀 LIVE AGE RESOLUTION FROM SA NATIONAL ID
+                let isEtiEligible = false;
+                if (learner.idNumber && learner.idNumber.length >= 6) {
+                    const yearNum = parseInt(learner.idNumber.substring(0, 2), 10);
+                    const birthYear = yearNum > 30 ? 1900 + yearNum : 2000 + yearNum;
+                    const age = new Date().getFullYear() - birthYear;
+                    if (age >= 18 && age <= 29) isEtiEligible = true;
+                }
+
+                // 🚀 LIVE STIPEND MATHEMATICAL MONTH DURATION CALCULATOR
+                const monthsDuration = moment(p.endDate).diff(moment(p.startDate), 'months', true);
+                const verifiedTimeline = monthsDuration > 0 ? monthsDuration : 0;
+
+                // 🚀 LIVE STATUTORY SLIDING-SCALE SARS ETI ENGINE DEPLOYED
+                let etiMonthlyValue = 0;
+                const wage = Number(p.stipendAmount) || 0;
+
+                if (isEtiEligible && wage > 0) {
+                    if (wage < 2500) {
+                        etiMonthlyValue = wage * 0.60; // 60% rule
+                    } else if (wage >= 2500 && wage <= 5499) {
+                        etiMonthlyValue = 1500; // Cap rule
+                    } else if (wage >= 5500 && wage < 7500) {
+                        etiMonthlyValue = Math.max(1500 - (0.75 * (wage - 5500)), 0); // Taper rule
+                    } else {
+                        etiMonthlyValue = 0; // Disqualified over R7500
+                    }
+                }
+
+                const structuredCompliance = {
+                    isAgreementFullyExecuted: typeof placementRecord.compliance?.isAgreementFullyExecuted === 'boolean'
+                        ? placementRecord.compliance.isAgreementFullyExecuted
+                        : p.wblAgreementSigned,
+                    wblpaAgreementUrl: placementRecord.compliance?.wblpaAgreementUrl || p.wblAgreementUrl
+                };
 
                 return {
                     ...p,
+                    placementType: placementRecord.placementType || 'QCTO Workplace Module',
+                    bbbeeSpendCategory: placementRecord.compliance?.bbbeeSpendCategory || placementRecord.bbbeeSpendCategory || 'Uncategorized',
+                    compliance: structuredCompliance,
                     learnerName: learner.fullName || 'Unknown Learner',
                     idNumber: learner.idNumber || '—',
+                    equityGroup: equity,
+                    hasDisability: disability !== 'No Disability' && disability !== 'None' && disability !== 'N/A' && disability !== 'No',
                     employerName: employer.name || 'Unknown Company',
-                    mentorName: mentor.fullName || 'Unassigned',
-                };
-            })
-            .filter(p => {
-                // Apply Tab Filter
-                if (activeTab === 'active' && p.status !== 'active' && p.status !== 'pending_signatures') return false;
-                if (activeTab === 'history' && p.status !== 'completed' && p.status !== 'terminated') return false;
+                    mentorName: mentor.fullName || p.assignedMentorName || 'Unassigned',
+                    isEtiEligible,
+                    etiMonthlyValue,
+                    projectedStipendSpend: wage * verifiedTimeline,
+                    hasMentor: !!(p.assignedMentorName || placementRecord.mentorId || mentor.id)
+                } as EnrichedPlacement;
+            });
+    }, [placements, learners, employers, mentors]);
 
-                // Apply Search & Dropdown Filters
+    // FILTER APPLIED LIST
+    const displayedPlacements = useMemo(() => {
+        return enrichedAndFilteredPlacements
+            .filter(p => {
+                const sLower = p.status.toLowerCase();
+
+                if (activeTab === 'active' && !sLower.includes('active') && !sLower.includes('pending') && !sLower.includes('interview')) return false;
+                if (activeTab === 'history' && !sLower.includes('complete') && !sLower.includes('terminate') && !sLower.includes('absorb')) return false;
+
                 if (searchQuery) {
                     const q = searchQuery.toLowerCase();
                     if (!(p.learnerName.toLowerCase().includes(q) || p.idNumber.includes(q) || p.employerName.toLowerCase().includes(q))) return false;
@@ -760,24 +877,89 @@ export const PlacementsDashboard: React.FC = () => {
                 return true;
             })
             .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    }, [placements, learners, employers, mentors, searchQuery, filterType, filterEmployer, activeTab]);
+    }, [enrichedAndFilteredPlacements, searchQuery, filterType, filterEmployer, activeTab]);
+
+
+    // KPI & CAPACITY INTELLIGENCE
+    const {
+        activeCount, expiringSoonCount, missingContractsCount, completedCount, droppedCount, openSeats,
+        transformationPercentage, disabilityPercentage, monthlyETITotal, annualizedETIEstimate, totalProjectedSpend, absorptionRate
+    } = useMemo(() => {
+        const thirtyDaysFromNow = moment().add(30, 'days');
+        let active = 0, expiring = 0, missingContracts = 0, completed = 0, dropped = 0, absorbed = 0;
+
+        let blackACI = 0;
+        let disabilityCount = 0;
+        let monthlyEtiSum = 0;
+        let accumulatedSpend = 0;
+
+        enrichedAndFilteredPlacements.forEach(p => {
+            const statusLower = p.status.toLowerCase();
+            const isLive = statusLower.includes('active') || statusLower.includes('pending') || statusLower.includes('interview');
+
+            // Ops counts
+            if (isLive) {
+                active++;
+                if (statusLower.includes('active')) {
+                    if (moment(p.endDate).isBefore(thirtyDaysFromNow)) expiring++;
+                    if (!p.compliance.isAgreementFullyExecuted) missingContracts++;
+                }
+            } else if (statusLower.includes('complete')) {
+                completed++;
+            } else if (statusLower.includes('terminate') || statusLower.includes('drop')) {
+                dropped++;
+            }
+            if (p.isAbsorbedPostPlacement || statusLower.includes('absorb')) absorbed++;
+
+            // Financial & B-BBEE
+            if (['African', 'Coloured', 'Indian', 'Black', 'ACI'].includes(p.equityGroup)) blackACI++;
+            if (p.hasDisability) disabilityCount++;
+            if (isLive) {
+                monthlyEtiSum += p.etiMonthlyValue;
+                accumulatedSpend += p.projectedStipendSpend;
+            }
+        });
+
+        // Capacity Logic
+        const approvedEmployers = employers.filter(e => e.status === 'active' || e.status === 'Approved');
+        const totalCap = approvedEmployers.reduce((acc, emp) => acc + ((emp as any).internCapacity || 1), 0);
+        const open = totalCap - active;
+
+        return {
+            activeCount: active,
+            expiringSoonCount: expiring,
+            missingContractsCount: missingContracts,
+            completedCount: completed,
+            droppedCount: dropped,
+            openSeats: Math.max(open, 0),
+
+            transformationPercentage: enrichedAndFilteredPlacements.length > 0 ? Math.round((blackACI / enrichedAndFilteredPlacements.length) * 100) : 0,
+            disabilityPercentage: enrichedAndFilteredPlacements.length > 0 ? Math.round((disabilityCount / enrichedAndFilteredPlacements.length) * 100) : 0,
+            monthlyETITotal: monthlyEtiSum,
+            annualizedETIEstimate: monthlyEtiSum * 12,
+            absorptionRate: completed > 0 ? Math.round((absorbed / completed) * 100) : 0,
+            totalProjectedSpend: accumulatedSpend
+        };
+    }, [enrichedAndFilteredPlacements, employers]);
 
     const formatDate = (dateStr: string) => moment(dateStr).format('DD MMM YYYY');
 
-    // EXPORT LOGIC FOR MASTER PLACEMENT DASHBOARD
     const getExportData = () => {
-        return enrichedAndFilteredPlacements.map(p => ({
+        return displayedPlacements.map(p => ({
             "Learner Name": p.learnerName,
             "ID Number": p.idNumber,
             "Host Company": p.employerName,
+            "Demographic": p.equityGroup,
             "Placement Type": p.placementType,
-            "B-BBEE Category": p.compliance?.bbbeeSpendCategory || (p as any).bbbeeSpendCategory || 'Uncategorized',
+            "B-BBEE Category": p.bbbeeSpendCategory,
+            "Monthly Stipend": p.stipendAmount || 0,
+            "ETI Claim Value": p.etiMonthlyValue > 0 ? `Yes (R${p.etiMonthlyValue}/mo)` : "No", // 🚀 DYNAMIC NO HARDCODING
             "Start Date": moment(p.startDate).format('YYYY-MM-DD'),
             "Expected End Date": moment(p.endDate).format('YYYY-MM-DD'),
             "Assigned Mentor": p.mentorName,
-            "WBLPA Contract Status": p.compliance?.isAgreementFullyExecuted ? "Signed & On File" : "Missing Contract",
-            "Contract Link": p.compliance?.wblpaAgreementUrl || 'Not Uploaded',
-            "Operational Status": p.status.replace('_', ' ').toUpperCase()
+            "WBLPA Contract Status": p.compliance.isAgreementFullyExecuted ? "Signed & On File" : "Missing Contract",
+            "Contract Link": p.compliance.wblpaAgreementUrl || 'Not Uploaded',
+            "Operational Status": p.status.toUpperCase()
         }));
     };
 
@@ -788,14 +970,9 @@ export const PlacementsDashboard: React.FC = () => {
     const handleExportCSV = () => {
         const data = getExportData();
         if (data.length === 0) return;
-
         const headers = Object.keys(data[0]);
-        const csvRows = data.map(row =>
-            headers.map(header => `"${(row as any)[header]}"`).join(',')
-        );
-        const csvString = [headers.join(','), ...csvRows].join('\n');
-
-        const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+        const csvRows = data.map(row => headers.map(header => `"${(row as Record<string, unknown>)[header]}"`).join(','));
+        const blob = new Blob([[headers.join(','), ...csvRows].join('\n')], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement('a');
         link.href = URL.createObjectURL(blob);
         link.setAttribute('download', generateFileName('csv'));
@@ -808,13 +985,85 @@ export const PlacementsDashboard: React.FC = () => {
     const handleExportExcel = () => {
         const data = getExportData();
         if (data.length === 0) return;
-
         const worksheet = XLSX.utils.json_to_sheet(data);
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, "Master Ledger");
-
         XLSX.writeFile(workbook, generateFileName('xlsx'));
         setShowExportMenu(false);
+    };
+
+    // 🚀 THE SARS ETI BREAKDOWN MODAL (PER LEARNER)
+    const EtiBreakdownModal = () => {
+        if (!etiBreakdownLearner) return null;
+        const wage = Number(etiBreakdownLearner.stipendAmount) || 0;
+        const eti = etiBreakdownLearner.etiMonthlyValue;
+        const annualEti = eti * 12;
+
+        let mathString = "";
+        if (wage < 2500) {
+            mathString = `${formatCurrency(wage)} (Stipend) × 60% = ${formatCurrency(eti)}/mo`;
+        } else if (wage >= 2500 && wage <= 5499) {
+            mathString = `${formatCurrency(wage)} falls in Bracket 2 -> Maximized Claim = ${formatCurrency(eti)}/mo`;
+        } else if (wage >= 5500 && wage < 7500) {
+            mathString = `R1,500 - (75% × (${formatCurrency(wage)} - R5,500)) = ${formatCurrency(eti)}/mo`;
+        }
+
+        return (
+            <div className="wm-overlay animate-fade-in" onClick={() => setEtiBreakdownLearner(null)} style={{ zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div className="wm-modal" onClick={e => e.stopPropagation()} style={{ width: '480px', background: 'white', borderRadius: '12px', padding: '1.5rem', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)' }}>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+                        <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#16a34a', fontWeight: 800, fontSize: '1.1rem' }}>
+                                <Landmark size={20} /> SARS ETI Tax Rebate Audit
+                            </div>
+                            <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '4px' }}>Calculated for {etiBreakdownLearner.learnerName}</div>
+                        </div>
+                        <button type="button" onClick={() => setEtiBreakdownLearner(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8' }}><X size={18} /></button>
+                    </div>
+
+                    <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '1rem', marginBottom: '1rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #cbd5e1', paddingBottom: '8px', marginBottom: '8px' }}>
+                            <span style={{ fontSize: '0.8rem', color: '#475569', fontWeight: 600 }}>Database Stipend Value:</span>
+                            <strong style={{ fontSize: '0.9rem', color: 'var(--mlab-midnight)' }}>{formatCurrency(wage)}</strong>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #cbd5e1', paddingBottom: '8px', marginBottom: '8px' }}>
+                            <span style={{ fontSize: '0.8rem', color: '#475569', fontWeight: 600 }}>Official ETI Calculation:</span>
+                            <strong style={{ fontSize: '1.1rem', color: '#16a34a' }}>{formatCurrency(eti)} /mo</strong>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span style={{ fontSize: '0.8rem', color: '#475569', fontWeight: 600 }}>Annualized Value:</span>
+                            <strong style={{ fontSize: '0.9rem', color: 'var(--mlab-midnight)' }}>{formatCurrency(annualEti)}</strong>
+                        </div>
+                    </div>
+
+                    <div style={{ fontSize: '0.8rem', color: 'var(--mlab-midnight)', fontWeight: 700, marginBottom: '8px' }}>Mathematical Formula Check:</div>
+                    <div style={{ background: '#e0e7ff', padding: '12px', borderRadius: '6px', fontSize: '0.85rem', color: '#3730a3', fontFamily: 'monospace', fontWeight: 600, marginBottom: '1rem' }}>
+                        {mathString}
+                    </div>
+
+                    <div style={{ fontSize: '0.8rem', color: 'var(--mlab-midnight)', fontWeight: 700, marginBottom: '8px' }}>The SARS 2025/2026 Rules (Ages 18-29):</div>
+                    <ul style={{ margin: 0, paddingLeft: '1.2rem', fontSize: '0.75rem', color: '#475569', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        <li style={{ color: wage > 0 && wage < 2500 ? '#16a34a' : 'inherit', fontWeight: wage > 0 && wage < 2500 ? 700 : 400 }}>
+                            If stipend is R0 – R2,499: ETI = 60% of stipend
+                        </li>
+                        <li style={{ color: wage >= 2500 && wage <= 5499 ? '#16a34a' : 'inherit', fontWeight: wage >= 2500 && wage <= 5499 ? 700 : 400 }}>
+                            If stipend is R2,500 – R5,499: ETI = R1,500 (Maximized)
+                        </li>
+                        <li style={{ color: wage >= 5500 && wage < 7500 ? '#16a34a' : 'inherit', fontWeight: wage >= 5500 && wage < 7500 ? 700 : 400 }}>
+                            If stipend is R5,500 – R7,499: ETI = R1,500 - (75% of [Stipend - R5,500])
+                        </li>
+                        <li style={{ color: wage >= 7500 ? '#dc2626' : 'inherit', fontWeight: wage >= 7500 ? 700 : 400 }}>
+                            If stipend is R7,500 or more: ETI = R0
+                        </li>
+                    </ul>
+
+                    <button type="button" onClick={() => setEtiBreakdownLearner(null)} className="wm-btn wm-btn--outline" style={{ width: '100%', marginTop: '1.5rem', justifyContent: 'center' }}>
+                        Close Audit Trail
+                    </button>
+                </div>
+            </div>
+        );
     };
 
     if (isInitialLoad || placementsLoading) return <div className="wm-loading"><Loader message="Synchronizing Tripartite Placements Ledger..." /></div>;
@@ -824,6 +1073,8 @@ export const PlacementsDashboard: React.FC = () => {
             <ToastContainer toasts={toast.toasts} onClose={toast.closeToast} />
 
             {/* ACTION MODALS */}
+            {etiBreakdownLearner && <EtiBreakdownModal />}
+
             {editingPlacement && (
                 <EditPlacementModal
                     placement={editingPlacement}
@@ -859,6 +1110,7 @@ export const PlacementsDashboard: React.FC = () => {
                     employers={employers}
                     mentors={mentors}
                     learners={learners.filter(l => !l.isArchived)}
+                    placements={placements}
                     onClose={() => setIsCreateModalOpen(false)}
                     onCreate={createPlacement}
                     onAddNewMentor={(empId) => {
@@ -870,11 +1122,19 @@ export const PlacementsDashboard: React.FC = () => {
 
             {/* ── CDP STYLED METRICS RIBBON ── */}
             <div className="cdp-stat-row" style={{ marginBottom: '1.5rem' }}>
-                <div className="cdp-stat-card cdp-stat-card--blue">
-                    <div className="cdp-stat-card__icon"><Briefcase size={20} /></div>
+                <div className="cdp-stat-card cdp-stat-card--green">
+                    <div className="cdp-stat-card__icon"><CheckCircle size={20} /></div>
                     <div className="cdp-stat-card__body">
                         <span className="cdp-stat-card__value">{activeCount}</span>
                         <span className="cdp-stat-card__label">Active Placements</span>
+                    </div>
+                </div>
+
+                <div className="cdp-stat-card cdp-stat-card--blue">
+                    <div className="cdp-stat-card__icon"><Briefcase size={20} /></div>
+                    <div className="cdp-stat-card__body">
+                        <span className="cdp-stat-card__value">{openSeats}</span>
+                        <span className="cdp-stat-card__label">Open Ecosystem Seats</span>
                     </div>
                 </div>
 
@@ -901,12 +1161,128 @@ export const PlacementsDashboard: React.FC = () => {
                         <span className="cdp-stat-card__label">Expiring &lt; 30 Days</span>
                     </div>
                 </div>
+            </div>
 
-                <div className="cdp-stat-card cdp-stat-card--green">
-                    <div className="cdp-stat-card__icon"><Award size={20} /></div>
-                    <div className="cdp-stat-card__body">
-                        <span className="cdp-stat-card__value">{completedCount}</span>
-                        <span className="cdp-stat-card__label">Completed</span>
+            {/* ── COMPLIANCE & REBATE INTELLIGENCE GRID ── */}
+            <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '12px', padding: '1.5rem', marginBottom: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#92400e', fontWeight: 800, fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    <Calculator size={18} /> Ecosystem Financial & B-BBEE Scorecard Intelligence
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.25rem' }}>
+
+                    {/* SARS ETI Yield Framework */}
+                    <div style={{ position: 'relative', background: 'white', padding: '1.25rem', borderRadius: '8px', border: '1px solid #fcd34d', display: 'flex', gap: '1rem' }}>
+                        <div style={{ background: '#dcfce7', padding: '10px', borderRadius: '50%', color: '#16a34a', height: 'fit-content' }}>
+                            <Landmark size={22} />
+                        </div>
+                        <div style={{ flex: 1 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ fontSize: '0.75rem', color: '#92400e', fontWeight: 700, textTransform: 'uppercase' }}>SARS ETI Write-offs</span>
+                                <button type="button" onClick={() => setActiveInsight(activeInsight === 'eti' ? null : 'eti')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#b45309', display: 'flex' }}><Info size={14} /></button>
+                            </div>
+                            <div style={{ fontSize: '1.4rem', fontWeight: 900, color: 'var(--mlab-midnight)', fontFamily: 'var(--font-heading)', marginTop: '4px' }}>
+                                {formatCurrency(monthlyETITotal)}<span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 500 }}> /mo</span>
+                            </div>
+                            <div style={{ background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px', fontSize: '0.65rem', color: '#475569', fontWeight: 700, display: 'inline-block', marginTop: '4px' }}>
+                                Annually: {formatCurrency(annualizedETIEstimate)}
+                            </div>
+                            {activeInsight === 'eti' && (
+                                <InsightPopup
+                                    title="SARS Employment Tax Incentive"
+                                    currentValue={`${formatCurrency(monthlyETITotal)}/mo`}
+                                    actionSteps={[
+                                        <span key="1"><strong>Live Calculation:</strong> This value is compiled dynamically by evaluating every active learner's recorded stipend against the official SARS ETI sliding scale.</span>,
+                                        <span key="2"><strong>To Optimize:</strong> Ensure interns fall within the 18-29 age bracket and earn between R2,000 and R6,500 to trigger the algorithm.</span>
+                                    ]}
+                                    onClose={() => setActiveInsight(null)}
+                                />
+                            )}
+                        </div>
+                    </div>
+
+                    {/* B-BBEE Skills Development Spend Tracker */}
+                    <div style={{ position: 'relative', background: 'white', padding: '1.25rem', borderRadius: '8px', border: '1px solid #fcd34d', display: 'flex', gap: '1rem' }}>
+                        <div style={{ background: '#e0e7ff', padding: '10px', borderRadius: '50%', color: '#4338ca', height: 'fit-content' }}>
+                            <Wallet size={22} />
+                        </div>
+                        <div style={{ flex: 1 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ fontSize: '0.75rem', color: '#3730a3', fontWeight: 700, textTransform: 'uppercase' }}>Recognized Spend</span>
+                                <button type="button" onClick={() => setActiveInsight(activeInsight === 'spend' ? null : 'spend')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#4338ca', display: 'flex' }}><Info size={14} /></button>
+                            </div>
+                            <div style={{ fontSize: '1.4rem', fontWeight: 900, color: 'var(--mlab-midnight)', fontFamily: 'var(--font-heading)', marginTop: '4px' }}>
+                                {formatCurrency(totalProjectedSpend)}
+                            </div>
+                            <span style={{ fontSize: '0.65rem', color: '#64748b', display: 'block', marginTop: '4px' }}>Projected stipend capital applied to training elements.</span>
+                            {activeInsight === 'spend' && (
+                                <InsightPopup
+                                    title="Skills Target Spend"
+                                    currentValue={formatCurrency(totalProjectedSpend)}
+                                    actionSteps={[
+                                        <span key="1"><strong>Live Calculation:</strong> Multiplying recorded stipends by duration timelines.</span>,
+                                        <span key="2"><strong>To Optimize:</strong> Ensure all placements have an accurate Stipend Amount logged in the ledger, as this counts directly toward your B-BBEE 3-6% payroll skills target.</span>
+                                    ]}
+                                    onClose={() => setActiveInsight(null)}
+                                />
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Equity Transformation Tracker */}
+                    <div style={{ position: 'relative', background: 'white', padding: '1.25rem', borderRadius: '8px', border: '1px solid #fcd34d', display: 'flex', gap: '1rem' }}>
+                        <div style={{ background: '#fef3c7', padding: '10px', borderRadius: '50%', color: '#b45309', height: 'fit-content' }}>
+                            <Percent size={22} />
+                        </div>
+                        <div style={{ flex: 1 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ fontSize: '0.75rem', color: '#92400e', fontWeight: 700, textTransform: 'uppercase' }}>Demographics</span>
+                                <button type="button" onClick={() => setActiveInsight(activeInsight === 'transformation' ? null : 'transformation')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#b45309', display: 'flex' }}><Info size={14} /></button>
+                            </div>
+                            <div style={{ fontSize: '1.4rem', fontWeight: 900, color: 'var(--mlab-midnight)', fontFamily: 'var(--font-heading)', marginTop: '4px' }}>
+                                {transformationPercentage}%
+                            </div>
+                            <span style={{ fontSize: '0.65rem', color: '#64748b', display: 'block', marginTop: '4px' }}>Black representation allocation (ACI standard indices).</span>
+                            {activeInsight === 'transformation' && (
+                                <InsightPopup
+                                    title="Transformation Demographic Metrics"
+                                    currentValue={`${transformationPercentage}%`}
+                                    actionSteps={[
+                                        <span key="1"><strong>Target:</strong> &gt; 80% Distribution.</span>,
+                                        <span key="2"><strong>To Optimize:</strong> Scale target allocations by requesting candidates from ACI demographic pools during future cohort intake cycles.</span>
+                                    ]}
+                                    onClose={() => setActiveInsight(null)}
+                                />
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Disability Inclusion Metric */}
+                    <div style={{ position: 'relative', background: 'white', padding: '1.25rem', borderRadius: '8px', border: '1px solid #fcd34d', display: 'flex', gap: '1rem' }}>
+                        <div style={{ background: '#fef3c7', padding: '10px', borderRadius: '50%', color: '#b45309', height: 'fit-content' }}>
+                            <Accessibility size={22} />
+                        </div>
+                        <div style={{ flex: 1 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ fontSize: '0.75rem', color: '#92400e', fontWeight: 700, textTransform: 'uppercase' }}>Disability Index</span>
+                                <button type="button" onClick={() => setActiveInsight(activeInsight === 'disability' ? null : 'disability')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#b45309', display: 'flex' }}><Info size={14} /></button>
+                            </div>
+                            <div style={{ fontSize: '1.4rem', fontWeight: 900, color: 'var(--mlab-midnight)', fontFamily: 'var(--font-heading)', marginTop: '4px' }}>
+                                {disabilityPercentage}%
+                            </div>
+                            <span style={{ fontSize: '0.65rem', color: '#64748b', display: 'block', marginTop: '4px' }}>Headcount ratio meeting disability sub-quotas.</span>
+                            {activeInsight === 'disability' && (
+                                <InsightPopup
+                                    title="Disability Inclusion Framework"
+                                    currentValue={`${disabilityPercentage}%`}
+                                    actionSteps={[
+                                        <span key="1"><strong>Target:</strong> &gt; 2% National Benchmark.</span>,
+                                        <span key="2"><strong>To Optimize:</strong> B-BBEE assigns 4 critical bonus points for training disabled Black people. Ensure candidates upload medical certificates into their digital profiles.</span>
+                                    ]}
+                                    onClose={() => setActiveInsight(null)}
+                                />
+                            )}
+                        </div>
                     </div>
                 </div>
             </div>
@@ -916,7 +1292,7 @@ export const PlacementsDashboard: React.FC = () => {
                 <div style={{ flex: '1 1 250px', position: 'relative', display: 'flex', alignItems: 'center', background: 'white', border: '1px solid var(--mlab-border)', borderRadius: '6px', padding: '0 12px' }}>
                     <Search size={15} color="var(--mlab-grey)" />
                     <input type="text" placeholder="Search by Learner Name, ID, or Host Company..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{ width: '100%', border: 'none', padding: '10px', outline: 'none', background: 'transparent' }} />
-                    {searchQuery && <button onClick={() => setSearchQuery('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--mlab-grey)' }}><X size={13} /></button>}
+                    {searchQuery && <button type="button" onClick={() => setSearchQuery('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--mlab-grey)' }}><X size={13} /></button>}
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', background: 'white', border: '1px solid var(--mlab-border)', borderRadius: '6px', padding: '0 12px' }}>
@@ -941,23 +1317,26 @@ export const PlacementsDashboard: React.FC = () => {
 
                     <div style={{ position: 'relative' }} ref={exportMenuRef}>
                         <button
+                            type="button"
                             onClick={() => setShowExportMenu(!showExportMenu)}
                             disabled={enrichedAndFilteredPlacements.length === 0}
                             className="cdp-btn cdp-btn--outline"
                             style={{ background: 'white', fontSize: '0.8rem', padding: '6px 12px', opacity: enrichedAndFilteredPlacements.length === 0 ? 0.5 : 1, cursor: enrichedAndFilteredPlacements.length === 0 ? 'not-allowed' : 'pointer' }}
                         >
-                            <DownloadCloud size={14} /> Export Ledger
+                            <DownloadCloud size={14} /> Export Options
                         </button>
 
                         {showExportMenu && enrichedAndFilteredPlacements.length > 0 && (
                             <div style={{ position: 'absolute', top: 'calc(100% + 4px)', right: 0, background: 'white', border: '1px solid #cbd5e1', borderRadius: '6px', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', zIndex: 50, minWidth: '180px', overflow: 'hidden' }} className="animate-fade-in">
                                 <button
+                                    type="button"
                                     onClick={handleExportCSV}
                                     style={{ width: '100%', textAlign: 'left', padding: '10px 12px', background: 'none', border: 'none', borderBottom: '1px solid #f1f5f9', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.75rem', color: 'var(--mlab-midnight)', fontWeight: 500 }}
                                 >
                                     <FileText size={14} color="#0ea5e9" /> Download as CSV
                                 </button>
                                 <button
+                                    type="button"
                                     onClick={handleExportExcel}
                                     style={{ width: '100%', textAlign: 'left', padding: '10px 12px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.75rem', color: 'var(--mlab-midnight)', fontWeight: 500 }}
                                 >
@@ -988,22 +1367,25 @@ export const PlacementsDashboard: React.FC = () => {
 
                     <div style={{ display: 'flex', gap: '1.5rem', padding: '0 1.5rem', borderBottom: '1px solid var(--mlab-border)', marginTop: '1rem', background: '#f8fafc' }}>
                         <button
+                            type="button"
                             onClick={() => setActiveTab('active')}
                             style={{ padding: '12px 0', border: 'none', background: 'none', color: activeTab === 'active' ? 'var(--mlab-blue)' : '#64748b', fontWeight: activeTab === 'active' ? 700 : 500, fontSize: '0.85rem', cursor: 'pointer', borderBottom: activeTab === 'active' ? '2px solid var(--mlab-blue)' : '2px solid transparent', display: 'flex', alignItems: 'center', gap: '6px' }}
                         >
                             Active Interns <span style={{ background: activeTab === 'active' ? '#e0e7ff' : '#f1f5f9', color: activeTab === 'active' ? 'var(--mlab-blue)' : '#94a3b8', padding: '2px 6px', borderRadius: '12px', fontSize: '0.7rem' }}>{activeCount}</span>
                         </button>
                         <button
+                            type="button"
                             onClick={() => setActiveTab('history')}
                             style={{ padding: '12px 0', border: 'none', background: 'none', color: activeTab === 'history' ? 'var(--mlab-blue)' : '#64748b', fontWeight: activeTab === 'history' ? 700 : 500, fontSize: '0.85rem', cursor: 'pointer', borderBottom: activeTab === 'history' ? '2px solid var(--mlab-blue)' : '2px solid transparent', display: 'flex', alignItems: 'center', gap: '6px' }}
                         >
                             History (Completed / Dropped) <span style={{ background: activeTab === 'history' ? '#e0e7ff' : '#f1f5f9', color: activeTab === 'history' ? 'var(--mlab-blue)' : '#94a3b8', padding: '2px 6px', borderRadius: '12px', fontSize: '0.7rem' }}>{completedCount + droppedCount}</span>
                         </button>
                         <button
+                            type="button"
                             onClick={() => setActiveTab('all')}
                             style={{ padding: '12px 0', border: 'none', background: 'none', color: activeTab === 'all' ? 'var(--mlab-blue)' : '#64748b', fontWeight: activeTab === 'all' ? 700 : 500, fontSize: '0.85rem', cursor: 'pointer', borderBottom: activeTab === 'all' ? '2px solid var(--mlab-blue)' : '2px solid transparent', display: 'flex', alignItems: 'center', gap: '6px' }}
                         >
-                            All Records <span style={{ background: activeTab === 'all' ? '#e0e7ff' : '#f1f5f9', color: activeTab === 'all' ? 'var(--mlab-blue)' : '#94a3b8', padding: '2px 6px', borderRadius: '12px', fontSize: '0.7rem' }}>{placements.length}</span>
+                            All Records <span style={{ background: activeTab === 'all' ? '#e0e7ff' : '#f1f5f9', color: activeTab === 'all' ? 'var(--mlab-blue)' : '#94a3b8', padding: '2px 6px', borderRadius: '12px', fontSize: '0.7rem' }}>{enrichedAndFilteredPlacements.length}</span>
                         </button>
                     </div>
 
@@ -1020,120 +1402,144 @@ export const PlacementsDashboard: React.FC = () => {
                                 </tr>
                             </thead>
                             <tbody>
-                                {enrichedAndFilteredPlacements.length > 0 ? enrichedAndFilteredPlacements.map(p => {
-                                    const isExpiringSoon = p.status === 'active' && moment(p.endDate).isBefore(moment().add(30, 'days'));
-
-                                    return (
-                                        <tr key={p.id}>
-                                            {/* Learner Cell */}
-                                            <td>
-                                                <div className="cdp-learner-cell">
-                                                    <div className="cdp-learner-avatar">{p.learnerName.charAt(0)}</div>
-                                                    <div className="cdp-learner-cell__info">
-                                                        <span className="cdp-learner-cell__name">{p.learnerName}</span>
-                                                        <span className="cdp-learner-cell__id">{p.idNumber}</span>
-                                                    </div>
+                                {displayedPlacements.length > 0 ? displayedPlacements.map(p => (
+                                    <tr key={p.id}>
+                                        {/* Learner Name & Identity */}
+                                        <td>
+                                            <div className="cdp-learner-cell">
+                                                <div className="cdp-learner-avatar">{p.learnerName.charAt(0)}</div>
+                                                <div className="cdp-learner-cell__info">
+                                                    <span className="cdp-learner-cell__name">{p.learnerName}</span>
+                                                    <span className="cdp-learner-cell__id">{p.idNumber}</span>
                                                 </div>
-                                            </td>
+                                            </div>
+                                        </td>
 
-                                            {/* Workplace Cell */}
-                                            <td>
-                                                <span className="cdp-placement__employer">{p.employerName}</span>
-                                                <div style={{ fontSize: '0.75rem', color: p.mentorId ? '#64748b' : '#dc2626', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px', fontWeight: p.mentorId ? 500 : 700 }}>
-                                                    {p.mentorId ? (
-                                                        <><User size={12} /> {p.mentorName}</>
-                                                    ) : (
-                                                        <><AlertTriangle size={12} /> No Mentor Assigned</>
-                                                    )}
-                                                </div>
-                                            </td>
-
-                                            {/* Placement Type Cell */}
-                                            <td>
-                                                <div className="cdp-chips" style={{ flexDirection: 'column', gap: '4px' }}>
-                                                    <span className="cdp-chip cdp-chip--w" style={{ width: 'fit-content' }}>{p.placementType}</span>
-                                                    <span className="cdp-chip cdp-chip--k" style={{ width: 'fit-content', background: '#f8fafc', border: '1px solid #e2e8f0', color: '#64748b' }}>
-                                                        {p.compliance?.bbbeeSpendCategory || (p as any).bbbeeSpendCategory || 'Uncategorized'}
-                                                    </span>
-                                                </div>
-                                            </td>
-
-                                            {/* Timeline Cell */}
-                                            <td>
-                                                <div style={{ fontSize: '0.85rem', color: 'var(--mlab-midnight)', fontWeight: 500 }}>
-                                                    {formatDate(p.startDate)} <span style={{ color: '#94a3b8', margin: '0 4px' }}>→</span> {formatDate(p.endDate)}
-                                                </div>
-                                                {isExpiringSoon && (
-                                                    <div style={{ fontSize: '0.7rem', color: '#d97706', fontWeight: 700, marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                        <AlertTriangle size={10} /> Ends &lt; 30 days
-                                                    </div>
+                                        {/* Workplace Cell */}
+                                        <td>
+                                            <span className="cdp-placement__employer">{p.employerName}</span>
+                                            <div style={{ fontSize: '0.75rem', color: p.hasMentor ? '#64748b' : '#dc2626', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px', fontWeight: p.hasMentor ? 500 : 700 }}>
+                                                {p.hasMentor ? (
+                                                    <><User size={12} /> {p.mentorName}</>
+                                                ) : (
+                                                    <><AlertTriangle size={12} /> No Mentor Assigned</>
                                                 )}
-                                            </td>
+                                            </div>
+                                        </td>
 
-                                            {/* Status Cell */}
-                                            <td>
-                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'flex-start' }}>
+                                        {/* Placement Type & ETI LIVE Cell */}
+                                        <td>
+                                            <div className="cdp-chips" style={{ flexDirection: 'column', gap: '4px' }}>
+                                                <span className="cdp-chip cdp-chip--w" style={{ width: 'fit-content' }}>{p.placementType}</span>
 
-                                                    {/* Main Operational Status Badge */}
-                                                    <span className={`cdp-status-badge ${p.status === 'active' ? 'cdp-status-badge--active' : p.status === 'terminated' ? 'cdp-status-badge--dropped' : ''}`} style={p.status === 'pending_signatures' ? { background: '#fef3c7', color: '#b45309', border: '1px solid #fde68a' } : p.status === 'completed' ? { background: '#f1f5f9', color: '#475569', border: '1px solid #e2e8f0' } : {}}>
-                                                        {p.status.replace('_', ' ')}
+                                                {/* 🚀 LIVE STIPEND BADGE */}
+                                                {p.stipendAmount && p.stipendAmount > 0 && (
+                                                    <span className="cdp-chip cdp-chip--k" style={{ width: 'fit-content', background: '#dcfce7', border: '1px solid #bbf7d0', color: '#166534', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                        <Coins size={10} /> R{p.stipendAmount}/mo
                                                     </span>
+                                                )}
 
-                                                    {/* Tripartite Contract Compliance Badge (WBLPA Tracking) */}
-                                                    {p.compliance?.isAgreementFullyExecuted ? (
-                                                        p.compliance?.wblpaAgreementUrl ? (
-                                                            <a
-                                                                href={p.compliance.wblpaAgreementUrl}
-                                                                target="_blank"
-                                                                rel="noopener noreferrer"
-                                                                style={{ fontSize: '0.65rem', color: '#166534', background: '#dcfce7', padding: '2px 6px', borderRadius: '4px', border: '1px solid #bbf7d0', display: 'inline-flex', alignItems: 'center', gap: '4px', fontWeight: 600, textDecoration: 'none' }}
-                                                                title="Click to view signed contract document"
-                                                            >
-                                                                <CheckCircle size={10} /> WBLPA Signed & On File
-                                                            </a>
-                                                        ) : (
-                                                            <span style={{ fontSize: '0.65rem', color: '#166534', background: '#dcfce7', padding: '2px 6px', borderRadius: '4px', border: '1px solid #bbf7d0', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
-                                                                <CheckCircle size={10} /> WBLPA Signed (No Link)
-                                                            </span>
-                                                        )
+                                                {/* 🚀 LIVE ETI BADGE (NO HARDCODING) & AUDIT BUTTON */}
+                                                {p.isEtiEligible && p.etiMonthlyValue > 0 ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setEtiBreakdownLearner(p)}
+                                                        style={{ background: '#dcfce7', border: '1px solid #bbf7d0', padding: '2px 6px', borderRadius: '4px', fontSize: '0.65rem', color: '#166534', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600, cursor: 'pointer' }}
+                                                        title="Click to view exact SARS mathematical breakdown"
+                                                    >
+                                                        <Coins size={10} /> ETI: {formatCurrency(p.etiMonthlyValue)}/mo
+                                                    </button>
+                                                ) : (
+                                                    <span style={{ fontSize: '0.65rem', color: '#64748b', background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600, width: 'fit-content' }}>
+                                                        <AlertCircle size={10} /> Ineligible for ETI
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </td>
+
+                                        {/* Timeline Cell */}
+                                        <td>
+                                            <div style={{ fontSize: '0.85rem', color: 'var(--mlab-midnight)', fontWeight: 500 }}>
+                                                {formatDate(p.startDate)} <span style={{ color: '#94a3b8', margin: '0 4px' }}>→</span> {formatDate(p.endDate)}
+                                            </div>
+                                            {p.status.toLowerCase().includes('active') && moment(p.endDate).isBefore(moment().add(30, 'days')) && (
+                                                <div style={{ fontSize: '0.7rem', color: '#d97706', fontWeight: 700, marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                    <AlertTriangle size={10} /> Ends &lt; 30 days
+                                                </div>
+                                            )}
+                                        </td>
+
+                                        {/* Status Cell */}
+                                        <td>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'flex-start' }}>
+
+                                                {/* Main Operational Status Badge */}
+                                                <span
+                                                    className={`cdp-status-badge ${p.status.toLowerCase().includes('active') ? 'cdp-status-badge--active' :
+                                                            p.status.toLowerCase().includes('terminate') ? 'cdp-status-badge--dropped' : ''
+                                                        }`}
+                                                    style={
+                                                        p.status.toLowerCase().includes('pending') ? { background: '#fef3c7', color: '#b45309', border: '1px solid #fde68a' } :
+                                                            p.status.toLowerCase().includes('complete') || p.status.toLowerCase().includes('absorb') ? { background: '#f1f5f9', color: '#475569', border: '1px solid #e2e8f0' } : {}
+                                                    }
+                                                >
+                                                    {p.status.replace('_', ' ')}
+                                                </span>
+
+                                                {/* Tripartite Contract Compliance Badge (WBLPA Tracking) */}
+                                                {p.compliance.isAgreementFullyExecuted ? (
+                                                    p.compliance.wblpaAgreementUrl ? (
+                                                        <a
+                                                            href={p.compliance.wblpaAgreementUrl}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            style={{ fontSize: '0.65rem', color: '#166534', background: '#dcfce7', padding: '2px 6px', borderRadius: '4px', border: '1px solid #bbf7d0', display: 'inline-flex', alignItems: 'center', gap: '4px', fontWeight: 600, textDecoration: 'none' }}
+                                                            title="Click to view signed contract document"
+                                                        >
+                                                            <CheckCircle size={10} /> WBLPA Signed & On File
+                                                        </a>
                                                     ) : (
-                                                        <span style={{ fontSize: '0.65rem', color: '#dc2626', background: '#fef2f2', padding: '2px 6px', borderRadius: '4px', border: '1px solid #fecaca', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
-                                                            <AlertCircle size={10} /> No WBLPA Uploaded
+                                                        <span style={{ fontSize: '0.65rem', color: '#166534', background: '#dcfce7', padding: '2px 6px', borderRadius: '4px', border: '1px solid #bbf7d0', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
+                                                            <CheckCircle size={10} /> WBLPA Signed (No Link)
                                                         </span>
-                                                    )}
+                                                    )
+                                                ) : (
+                                                    <span style={{ fontSize: '0.65rem', color: '#dc2626', background: '#fef2f2', padding: '2px 6px', borderRadius: '4px', border: '1px solid #fecaca', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
+                                                        <AlertCircle size={10} /> No WBLPA Uploaded
+                                                    </span>
+                                                )}
 
-                                                    {/* Mentor Supervision Status Badge */}
-                                                    {!p.mentorId && (
-                                                        <span style={{ fontSize: '0.65rem', color: '#dc2626', background: '#fef2f2', padding: '2px 6px', borderRadius: '4px', border: '1px solid #fecaca', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
-                                                            <User size={10} /> Mentor Required
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            </td>
+                                                {/* Mentor Supervision Status Badge */}
+                                                {!p.hasMentor && (
+                                                    <span style={{ fontSize: '0.65rem', color: '#dc2626', background: '#fef2f2', padding: '2px 6px', borderRadius: '4px', border: '1px solid #fecaca', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
+                                                        <User size={10} /> Mentor Required
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </td>
 
-                                            <td className="cdp-td--right">
-                                                <div className="cdp-actions">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setEditingPlacement(p)}
-                                                        style={{ background: 'white', border: '1px solid #cbd5e1', padding: '6px', borderRadius: '4px', cursor: 'pointer', color: 'var(--mlab-blue)' }}
-                                                        title="Edit Placement Details"
-                                                    >
-                                                        <Edit size={14} />
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setOptionsPlacement(p)}
-                                                        style={{ background: 'white', border: '1px solid #cbd5e1', padding: '6px', borderRadius: '4px', cursor: 'pointer', color: 'var(--mlab-amber)' }}
-                                                        title="Placement Options"
-                                                    >
-                                                        <MoreVertical size={14} />
-                                                    </button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    );
-                                }) : (
+                                        <td className="cdp-td--right">
+                                            <div className="cdp-actions">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setEditingPlacement(p)}
+                                                    style={{ background: 'white', border: '1px solid #cbd5e1', padding: '6px', borderRadius: '4px', cursor: 'pointer', color: 'var(--mlab-blue)' }}
+                                                    title="Edit Placement Details"
+                                                >
+                                                    <Edit size={14} />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setOptionsPlacement(p)}
+                                                    style={{ background: 'white', border: '1px solid #cbd5e1', padding: '6px', borderRadius: '4px', cursor: 'pointer', color: 'var(--mlab-amber)' }}
+                                                    title="Placement Options"
+                                                >
+                                                    <MoreVertical size={14} />
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                )) : (
                                     <tr>
                                         <td colSpan={6} style={{ padding: '4rem', textAlign: 'center' }}>
                                             <Briefcase size={40} style={{ opacity: 0.2, margin: '0 auto 1rem', color: 'var(--mlab-blue)' }} />
@@ -1323,7 +1729,7 @@ export const PlacementsDashboard: React.FC = () => {
 //     return createPortal(
 //         <div className="wm-overlay animate-fade-in" onClick={onClose} style={{ zIndex: 9999 }}>
 //             <div className="wm-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '650px' }}>
-//                 <div className="wm-modal__header" style={{ borderBottom: '1px solid var(--mlab-border)', paddingBottom: '1rem' }}>
+//                 <div className="wm-modal__header" style={{ borderBottom: '3px solid var(--mlab-green)', paddingBottom: '1rem' }}>
 //                     <div className="wm-modal__header-icon" style={{ background: '#e0e7ff', color: '#6366f1' }}><Briefcase size={20} /></div>
 //                     <div>
 //                         <h2 className="wm-modal__title">Create Global Placement</h2>

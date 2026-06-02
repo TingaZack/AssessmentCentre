@@ -8,7 +8,7 @@ import {
 } from 'firebase/firestore';
 import {
     ChevronLeft, Save, Edit3, Search,
-    DownloadCloud, Calendar, Users, Filter, // Imported Filter icon
+    DownloadCloud, Calendar, Users, Filter,
     Lock
 } from 'lucide-react';
 import { db } from '../../lib/firebase';
