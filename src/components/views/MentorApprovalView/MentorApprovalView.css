@@ -1,0 +1,695 @@
+/* src/components/views/MentorApprovalView/MentorApprovalView.css */
+
+.mav-root {
+  min-height: 100vh;
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  background: #f5f8fa;
+  display: flex;
+  flex-direction: column;
+}
+
+@keyframes mav-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.mav-spin {
+  animation: mav-spin 0.75s linear infinite;
+  display: inline-block;
+}
+
+/* ─── Topbar ─────────────────────────────────────────────────────────────── */
+.mav-topbar {
+  background: #073f4e;
+  padding: 0 32px;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 3px solid #94c73d;
+  flex-shrink: 0;
+  background-image: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 40px,
+    rgba(255, 255, 255, 0.015) 40px,
+    rgba(255, 255, 255, 0.015) 41px
+  );
+}
+
+.mav-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.mav-brand-text {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  line-height: 1;
+}
+
+.mav-brand-m {
+  color: #94c73d;
+}
+
+.mav-brand-lab {
+  color: #ffffff;
+}
+
+.mav-topbar-title {
+  font-family:
+    system-ui,
+    -apple-system,
+    sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.45);
+  padding-left: 14px;
+  border-left: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.mav-secure-pill {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  background: rgba(148, 199, 61, 0.1);
+  border: 1px solid rgba(148, 199, 61, 0.25);
+  border-radius: 20px;
+  padding: 6px 14px;
+}
+
+.mav-secure-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #94c73d;
+  display: inline-block;
+}
+
+.mav-secure-txt {
+  font-family:
+    system-ui,
+    -apple-system,
+    sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #94c73d;
+}
+
+/* ─── Layout ─────────────────────────────────────────────────────────────── */
+.mav-layout {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  align-items: start;
+  flex: 1;
+}
+
+@media (max-width: 900px) {
+  .mav-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ─── Sidebar ────────────────────────────────────────────────────────────── */
+.mav-sidebar {
+  position: sticky;
+  top: 0;
+  padding: 28px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  border-right: 1px solid #e8eef1;
+  background: #ffffff;
+  min-height: calc(100vh - 63px);
+}
+
+@media (max-width: 900px) {
+  .mav-sidebar {
+    position: relative;
+    border-right: none;
+    border-bottom: 1px solid #e8eef1;
+    min-height: auto;
+  }
+}
+
+.mav-mentor-card {
+  background: #ffffff;
+  border: 1.5px solid #e8eef1;
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.mav-mentor-card-top {
+  background: #073f4e;
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mav-mentor-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: #94c73d;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 800;
+  color: #073f4e;
+  flex-shrink: 0;
+}
+
+.mav-mentor-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: #ffffff;
+  line-height: 1.2;
+}
+
+.mav-mentor-role {
+  font-family:
+    system-ui,
+    -apple-system,
+    sans-serif;
+  font-size: 9px;
+  font-weight: 400;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.4);
+  margin-top: 2px;
+}
+
+.mav-mentor-body {
+  padding: 16px;
+}
+
+.mav-mentor-field {
+  margin-bottom: 12px;
+}
+
+.mav-field-lbl {
+  font-family:
+    system-ui,
+    -apple-system,
+    sans-serif;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #9aabb0;
+  margin-bottom: 4px;
+  display: block;
+}
+
+.mav-field-val {
+  font-size: 13px;
+  font-weight: 600;
+  color: #073f4e;
+}
+
+.mav-divider {
+  height: 1px;
+  background: #f0f4f6;
+  margin: 12px 0;
+}
+
+.mav-stats-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.mav-stat-box {
+  background: #f5f8fa;
+  border-radius: 10px;
+  padding: 12px;
+  text-align: center;
+}
+
+.mav-stat-val {
+  font-size: 22px;
+  font-weight: 800;
+  color: #073f4e;
+  letter-spacing: -0.5px;
+  line-height: 1;
+}
+
+.mav-stat-lbl {
+  font-family:
+    system-ui,
+    -apple-system,
+    sans-serif;
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #9aabb0;
+  margin-top: 4px;
+}
+
+.mav-declaration {
+  background: #eef7d6;
+  border: 1.5px solid rgba(148, 199, 61, 0.3);
+  border-left: 4px solid #94c73d;
+  border-radius: 0 12px 12px 0;
+  padding: 14px 16px;
+  display: flex;
+  gap: 10px;
+}
+
+.mav-declaration-icon {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.mav-declaration-title {
+  font-family:
+    system-ui,
+    -apple-system,
+    sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #3b6d11;
+  margin-bottom: 5px;
+  display: block;
+}
+
+.mav-declaration-txt {
+  font-size: 12px;
+  font-weight: 300;
+  color: #3d6b0f;
+  line-height: 1.65;
+  margin: 0;
+}
+
+.mav-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mav-approve-btn {
+  width: 100%;
+  height: 50px;
+  background: #073f4e;
+  border: none;
+  border-radius: 12px;
+  font-family:
+    system-ui,
+    -apple-system,
+    sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #ffffff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  transition: opacity 0.2s;
+}
+
+.mav-approve-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.mav-approve-pill {
+  width: 24px;
+  height: 24px;
+  background: #94c73d;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mav-reject-btn {
+  width: 100%;
+  height: 44px;
+  background: transparent;
+  border: 1.5px solid #fdd;
+  border-radius: 12px;
+  font-family:
+    system-ui,
+    -apple-system,
+    sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #dc2626;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: opacity 0.2s;
+}
+
+.mav-reject-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* ─── Feed ───────────────────────────────────────────────────────────────── */
+.mav-feed {
+  padding: 28px 28px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.mav-feed-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.mav-feed-title {
+  font-family:
+    system-ui,
+    -apple-system,
+    sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #073f4e;
+  margin: 0;
+}
+
+.mav-learner-block {
+  background: #ffffff;
+  border-radius: 16px;
+  border: 1.5px solid #e8eef1;
+  overflow: hidden;
+}
+
+.mav-learner-hdr {
+  background: #f5f8fa;
+  padding: 14px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #e8eef1;
+}
+
+.mav-learner-hdr-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mav-learner-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: #073f4e;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 800;
+  color: #94c73d;
+  flex-shrink: 0;
+}
+
+.mav-learner-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: #073f4e;
+  letter-spacing: -0.2px;
+}
+
+.mav-hours-badge {
+  background: #073f4e;
+  color: #ffffff;
+  font-family:
+    system-ui,
+    -apple-system,
+    sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 5px 12px;
+  border-radius: 20px;
+}
+
+.mav-entry {
+  padding: 18px 20px;
+}
+
+.mav-entry:not(:last-child) {
+  border-bottom: 1px solid #f0f4f6;
+}
+
+.mav-entry-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.mav-entry-date {
+  font-family:
+    system-ui,
+    -apple-system,
+    sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #073f4e;
+}
+
+.mav-time-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #e8f5e2;
+  border: 1px solid rgba(148, 199, 61, 0.3);
+  border-radius: 20px;
+  padding: 4px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #3b6d11;
+}
+
+.mav-qcto {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-left: 4px solid #f59e0b;
+  border-radius: 0 8px 8px 0;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.mav-qcto-icon {
+  width: 28px;
+  height: 28px;
+  background: #fef3c7;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.mav-qcto-title {
+  font-family:
+    system-ui,
+    -apple-system,
+    sans-serif;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: #92400e;
+  margin-bottom: 5px;
+}
+
+.mav-qcto-row {
+  font-size: 11px;
+  color: #b45309;
+  line-height: 1.5;
+}
+
+.mav-tasks {
+  background: #f5f8fa;
+  border: 1px solid #e8eef1;
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+
+.mav-tasks-lbl {
+  font-family:
+    system-ui,
+    -apple-system,
+    sans-serif;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #9aabb0;
+  margin-bottom: 7px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.mav-tasks-txt {
+  font-size: 13px;
+  font-weight: 300;
+  color: #334155;
+  line-height: 1.65;
+  margin: 0;
+}
+
+/* ─── Full-screen states (Loading / Error / Success) ─────────────────────── */
+.mav-state-outer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  min-height: calc(100vh - 63px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 24px;
+  background: #f5f8fa;
+}
+
+.mav-state-card {
+  background: #ffffff;
+  border-radius: 20px;
+  padding: 48px 40px;
+  max-width: 480px;
+  width: 100%;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05);
+}
+
+.mav-state-strip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+}
+
+.mav-state-icon-wrap {
+  width: 72px;
+  height: 72px;
+  border-radius: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 20px;
+}
+
+.mav-state-title {
+  font-family:
+    system-ui,
+    -apple-system,
+    sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0 0 12px 0;
+}
+
+.mav-state-msg {
+  font-size: 14px;
+  font-weight: 300;
+  color: #9aabb0;
+  line-height: 1.7;
+  margin: 0 0 28px 0;
+}
+
+.mav-state-btn {
+  height: 48px;
+  padding: 0 28px;
+  border: none;
+  border-radius: 12px;
+  font-family:
+    system-ui,
+    -apple-system,
+    sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #ffffff;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.mav-state-btn:hover {
+  opacity: 0.9;
+}
+
+/* Specific inner wrappers for loading state */
+.mav-loading-wrapper {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.mav-loading-icon-wrap {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: rgba(148, 199, 61, 0.12);
+  border: 1.5px solid rgba(148, 199, 61, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mav-loading-title {
+  font-family:
+    system-ui,
+    -apple-system,
+    sans-serif;
+  font-size: 18px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #073f4e;
+  margin: 0;
+}
+
+.mav-loading-msg {
+  font-size: 14px;
+  font-weight: 300;
+  color: #9aabb0;
+  margin: 0;
+}

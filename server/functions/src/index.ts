@@ -7030,3 +7030,351 @@ export const backfillLearnerAttendance = onDocumentCreated(
     }
   },
 );
+
+// ============================================================================
+// WORKPLACE LOGS: FRIDAY MENTOR APPROVAL SWEEPER (MAGIC LINKS)
+// ============================================================================
+
+export const generateWeeklyMentorLinks = onSchedule(
+  {
+    schedule: "0 15 * * 5", // Runs every Friday at 15:00 SAST
+    timeZone: "Africa/Johannesburg",
+    timeoutSeconds: 120,
+    memory: "256MiB",
+    secrets: [mailgunSecret],
+  },
+  async (event) => {
+    try {
+      const db = admin.firestore();
+      logger.info("🕒 [generateWeeklyMentorLinks] Executing Friday Sweeper...");
+
+      // 1. Find all pending workplace logs
+      const logsSnap = await db
+        .collection("workplace_logs")
+        .where("status", "==", "Pending_Mentor_Approval")
+        .get();
+
+      if (logsSnap.empty) {
+        logger.info("No pending workplace logs found. Skipping execution.");
+        return;
+      }
+
+      // 2. Group logs by Mentor Email (Linking Learner -> Active Placement -> Mentor)
+      // Map structure: { "mentor@company.com": { name: "John", logs: ["log1", "log2"] } }
+      const logsByMentor: Record<string, { name: string; logs: string[] }> = {};
+
+      for (const docSnap of logsSnap.docs) {
+        const logData = docSnap.data();
+        const learnerId = logData.learnerId;
+
+        // Find the active placement for this learner
+        const placementSnap = await db
+          .collection("placements")
+          .where("learnerId", "==", learnerId)
+          .where("status", "in", ["Active", "active"])
+          .get();
+
+        if (!placementSnap.empty) {
+          const placement = placementSnap.docs[0].data();
+          const mentorEmail = placement.mentorEmail;
+
+          if (mentorEmail) {
+            if (!logsByMentor[mentorEmail]) {
+              logsByMentor[mentorEmail] = {
+                name: placement.mentorName || "Workplace Mentor",
+                logs: [],
+              };
+            }
+            logsByMentor[mentorEmail].logs.push(docSnap.id);
+          }
+        }
+      }
+
+      // 3. Generate Magic Tokens & Dispatch Emails
+      const batch = db.batch();
+      const emailPromises: Promise<any>[] = [];
+      let tokenCount = 0;
+
+      for (const [email, data] of Object.entries(logsByMentor)) {
+        // Generate a cryptographically random token string
+        const tokenId = crypto.randomBytes(24).toString("hex");
+
+        const expireDate = new Date();
+        expireDate.setDate(expireDate.getDate() + 7); // Valid for 7 days
+
+        // Store the token in the DB
+        const tokenRef = db.collection("mentor_tokens").doc(tokenId);
+        batch.set(tokenRef, {
+          mentorEmail: email,
+          mentorName: data.name,
+          logIds: data.logs,
+          status: "pending",
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          expiresAt: expireDate.toISOString(),
+        });
+
+        // The secure magic link to your web platform route
+        const magicLink = `${APP_URL}/verify/${tokenId}`;
+
+        // USE THE EXISTING MLAB EMAIL BUILDER
+        const emailParams = {
+          title: "Verify Weekly Timesheets",
+          subtitle: "QCTO Workplace Experience Verification",
+          recipientName: data.name,
+          bodyHtml: `
+            <p>Good afternoon. Your assigned mLab interns have submitted their workplace evidence logs and timesheets for this week.</p>
+            <p>As their official Workplace Mentor, you are required to review and digitally sign off on their submissions to ensure compliance with QCTO regulations.</p>
+            
+            <div style="background-color: #f8fafc; padding: 15px; border-radius: 6px; border: 1px solid #dde4e8; border-left: 4px solid #0ea5e9; margin: 20px 0;">
+                <p style="margin: 0; color: #475569; font-size: 13px;"><strong>Pending Approvals:</strong> ${data.logs.length} Logged Task(s)<br/> 
+                <strong>Security:</strong> No password required. This is a secure, single-use authentication link.</p>
+            </div>
+            
+            <p>Please click the button below to open your secure verification portal. <strong>This link will automatically expire in 7 days.</strong></p>
+          `,
+          ctaText: "Review & Sign-Off Timesheets",
+          ctaLink: magicLink,
+          showStepIndicator: false,
+        };
+
+        emailPromises.push(
+          sendMailgunEmail({
+            to: email,
+            subject: "Action Required: Weekly Timesheet Verification",
+            text: buildMlabEmailPlainText(emailParams),
+            html: buildMlabEmailHtml(emailParams),
+          }).catch((err) => {
+            logger.error(`Failed to send magic link to ${email}`, err);
+          }),
+        );
+
+        tokenCount++;
+      }
+
+      // Commit all generated tokens to the database
+      if (tokenCount > 0) {
+        await batch.commit();
+        logger.info(
+          `Successfully saved ${tokenCount} mentor magic tokens to Firestore.`,
+        );
+
+        // Wait for Mailgun
+        await Promise.all(emailPromises);
+        logger.info(
+          `Successfully dispatched ${emailPromises.length} secure mentor emails.`,
+        );
+      }
+    } catch (error) {
+      logger.error("Error executing Friday Mentor Sweeper:", error);
+    }
+  },
+);
+
+// ─── MANUAL TRIGGER FOR TESTING ───
+// Run this via your browser URL to test the email delivery immediately without waiting for Friday 15:00
+export const testGenerateWeeklyMentorLinks = onRequest(
+  { secrets: [mailgunSecret], timeoutSeconds: 120, memory: "256MiB" },
+  async (req, res) => {
+    return cors(req, res, async () => {
+      try {
+        const db = admin.firestore();
+        logger.info("🕒 [TEST MODE] Executing Mentor Sweeper...");
+
+        const logsSnap = await db
+          .collection("workplace_logs")
+          .where("status", "==", "Pending_Mentor_Approval")
+          .get();
+
+        if (logsSnap.empty) {
+          res
+            .status(200)
+            .send({ success: true, message: "No pending logs found to test." });
+          return;
+        }
+
+        // Force route to the developer email instead of real mentors
+        const TEST_EMAIL = "codetribe@mlab.co.za";
+
+        const logsByMentor: Record<string, { name: string; logs: string[] }> =
+          {};
+        for (const docSnap of logsSnap.docs) {
+          if (!logsByMentor[TEST_EMAIL]) {
+            logsByMentor[TEST_EMAIL] = {
+              name: "Test Mentor (Admin)",
+              logs: [],
+            };
+          }
+          logsByMentor[TEST_EMAIL].logs.push(docSnap.id);
+        }
+
+        const batch = db.batch();
+        const emailPromises: Promise<any>[] = [];
+
+        for (const [email, data] of Object.entries(logsByMentor)) {
+          const tokenId = crypto.randomBytes(24).toString("hex");
+          const expireDate = new Date();
+          expireDate.setDate(expireDate.getDate() + 7);
+
+          const tokenRef = db.collection("mentor_tokens").doc(tokenId);
+          batch.set(tokenRef, {
+            mentorEmail: email,
+            mentorName: data.name,
+            logIds: data.logs,
+            status: "pending",
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            expiresAt: expireDate.toISOString(),
+          });
+
+          // 🚀 FIX: Updated route to avoid collision with student verification
+          const magicLink = `${APP_URL}/mentor-verify/${tokenId}`;
+
+          const emailParams = {
+            title: "[TEST] Verify Weekly Timesheets",
+            subtitle: "QCTO Workplace Experience Verification",
+            recipientName: data.name,
+            bodyHtml: `
+              <p>Good afternoon. Your assigned mLab interns have submitted their workplace evidence logs and timesheets for this week.</p>
+              <p>As their official Workplace Mentor, you are required to review and digitally sign off on their submissions to ensure compliance with QCTO regulations.</p>
+              <div style="background-color: #f8fafc; padding: 15px; border-radius: 6px; border: 1px solid #dde4e8; border-left: 4px solid #0ea5e9; margin: 20px 0;">
+                  <p style="margin: 0; color: #475569; font-size: 13px;"><strong>Pending Approvals:</strong> ${data.logs.length} Logged Task(s)<br/> 
+                  <strong>Security:</strong> No password required. This is a secure, single-use authentication link.</p>
+              </div>
+              <p>Please click the button below to open your secure verification portal. <strong>This link will automatically expire in 7 days.</strong></p>
+            `,
+            ctaText: "Review & Sign-Off Timesheets",
+            ctaLink: magicLink,
+            showStepIndicator: false,
+          };
+
+          emailPromises.push(
+            sendMailgunEmail({
+              to: email,
+              subject: "[TEST] Action Required: Weekly Timesheet Verification",
+              text: buildMlabEmailPlainText(emailParams),
+              html: buildMlabEmailHtml(emailParams),
+            }),
+          );
+        }
+
+        await batch.commit();
+        await Promise.all(emailPromises);
+
+        res.status(200).send({
+          success: true,
+          message: `Test complete. Generated ${Object.keys(logsByMentor).length} token(s) and routed emails to ${TEST_EMAIL}.`,
+        });
+      } catch (error: any) {
+        logger.error("Error executing Test Mentor Sweeper:", error);
+        res.status(500).send({ success: false, error: error.message });
+      }
+    });
+  },
+);
+
+// ============================================================================
+// WORKPLACE LOGS: SECURE MENTOR GATEWAYS
+// ============================================================================
+
+export const getMentorVerificationDetails = onCall(async (request) => {
+  const { tokenId } = request.data;
+  if (!tokenId) throw new HttpsError("invalid-argument", "Token ID missing.");
+
+  const db = admin.firestore();
+
+  try {
+    const tokenSnap = await db.collection("mentor_tokens").doc(tokenId).get();
+
+    if (!tokenSnap.exists) return { status: "not_found" };
+
+    const tokenData = tokenSnap.data()!;
+
+    if (tokenData.status === "approved") return { status: "already_approved" };
+    if (new Date(tokenData.expiresAt).getTime() < Date.now())
+      return { status: "expired" };
+
+    // Fetch the actual log documents
+    const fetchedLogs: any[] = [];
+    for (const logId of tokenData.logIds) {
+      const logSnap = await db.collection("workplace_logs").doc(logId).get();
+      if (logSnap.exists) {
+        fetchedLogs.push({ id: logSnap.id, ...logSnap.data() });
+      }
+    }
+
+    // Group by Learner for a clean UI delivery
+    const groupedLogs = fetchedLogs.reduce((acc: any, log: any) => {
+      if (!acc[log.learnerId]) {
+        acc[log.learnerId] = {
+          learnerName: log.learnerName || "Assigned Intern",
+          totalHours: 0,
+          entries: [],
+        };
+      }
+      acc[log.learnerId].entries.push(log);
+      acc[log.learnerId].totalHours += log.totalHours || 0;
+      return acc;
+    }, {});
+
+    return {
+      status: "valid",
+      tokenData,
+      logs: Object.values(groupedLogs),
+    };
+  } catch (error) {
+    logger.error("Error verifying mentor token:", error);
+    throw new HttpsError("internal", "Failed to verify token.");
+  }
+});
+
+export const submitMentorApproval = onCall(async (request) => {
+  const { tokenId, userAgent } = request.data;
+  if (!tokenId) throw new HttpsError("invalid-argument", "Token ID missing.");
+
+  const db = admin.firestore();
+  const tokenRef = db.collection("mentor_tokens").doc(tokenId);
+
+  try {
+    // Run as a transaction to prevent double-approvals
+    await db.runTransaction(async (transaction) => {
+      const tokenSnap = await transaction.get(tokenRef);
+      if (!tokenSnap.exists)
+        throw new HttpsError("not-found", "Token is invalid.");
+
+      const data = tokenSnap.data()!;
+      if (data.status === "approved")
+        throw new HttpsError(
+          "failed-precondition",
+          "Timesheets already approved.",
+        );
+
+      // Digital Signature Metadata
+      const signatureData = {
+        status: "Approved",
+        approvedAt: new Date().toISOString(),
+        approvedBy: data.mentorEmail,
+        approvalIpAddress: request.rawRequest?.ip || "Remote IP",
+        userAgent: userAgent || "Unknown",
+      };
+
+      // Approve all linked logs
+      for (const logId of data.logIds) {
+        const logRef = db.collection("workplace_logs").doc(logId);
+        transaction.update(logRef, signatureData);
+      }
+
+      // Terminate the token
+      transaction.update(tokenRef, {
+        status: "approved",
+        executedAt: new Date().toISOString(),
+      });
+    });
+
+    return { success: true };
+  } catch (error: any) {
+    logger.error("Error submitting mentor approval:", error);
+    throw new HttpsError(
+      "internal",
+      error.message || "Failed to process approval.",
+    );
+  }
+});
