@@ -66,6 +66,7 @@ const APP_URL =
 const mailgunSecret = defineSecret("MAILGUN_API_KEY");
 const privateKeySecret = defineSecret("INSTITUTION_PRIVATE_KEY");
 const encryptionKeySecret = defineSecret("ENCRYPTION_KEY");
+const mapsApiKey = defineSecret("GOOGLE_MAPS_API_KEY");
 
 // const openAISecret = defineSecret("OPENAI_API_KEY");
 
@@ -120,8 +121,9 @@ export const sendMailgunEmail = async ({
 
   if (text) form.append("text", text);
   if (html) form.append("html", html);
-  if (html && !text)
+  if (html && !text) {
     form.append("text", "Please view this email in an HTML-compatible client.");
+  }
 
   // Safely append file buffers to the form data
   if (attachment && attachment.length > 0) {
@@ -141,7 +143,7 @@ export const sendMailgunEmail = async ({
         headers: {
           Authorization:
             "Basic " + Buffer.from(`api:${apiKey}`).toString("base64"),
-          ...form.getHeaders(),
+          ...form.getHeaders(), // 🚀 CRITICAL FIX: Injects multipart/form-data boundary headers dynamically!
         },
       },
     );
@@ -152,6 +154,61 @@ export const sendMailgunEmail = async ({
     );
   }
 };
+
+// export const sendMailgunEmail = async ({
+//   to,
+//   subject,
+//   text,
+//   html,
+//   attachment,
+// }: {
+//   to: string;
+//   subject: string;
+//   text?: string;
+//   html?: string;
+//   attachment?: any[];
+// }) => {
+//   const { apiKey, domain } = getMailgunConfig();
+
+//   const form = new FormData();
+//   form.append("from", `mLab Assessment Platform <noreply@${domain}>`);
+//   form.append("to", to);
+//   form.append("subject", subject);
+
+//   if (text) form.append("text", text);
+//   if (html) form.append("html", html);
+//   if (html && !text)
+//     form.append("text", "Please view this email in an HTML-compatible client.");
+
+//   // Safely append file buffers to the form data
+//   if (attachment && attachment.length > 0) {
+//     attachment.forEach((file) => {
+//       form.append("attachment", file.data, {
+//         filename: file.filename,
+//         contentType: file.contentType,
+//       });
+//     });
+//   }
+
+//   try {
+//     const res = await axios.post(
+//       `https://api.mailgun.net/v3/${domain}/messages`,
+//       form,
+//       {
+//         headers: {
+//           Authorization:
+//             "Basic " + Buffer.from(`api:${apiKey}`).toString("base64"),
+//           ...form.getHeaders(),
+//         },
+//       },
+//     );
+//     return res.data;
+//   } catch (error: any) {
+//     throw new Error(
+//       `Mailgun API Error: ${error.response?.data?.message || error.message}`,
+//     );
+//   }
+// };
 
 // export const sendMailgunEmail = async ({
 //   to,
@@ -7060,7 +7117,6 @@ export const generateWeeklyMentorLinks = onSchedule(
       }
 
       // 2. Group logs by Mentor Email (Linking Learner -> Active Placement -> Mentor)
-      // Map structure: { "mentor@company.com": { name: "John", logs: ["log1", "log2"] } }
       const logsByMentor: Record<string, { name: string; logs: string[] }> = {};
 
       for (const docSnap of logsSnap.docs) {
@@ -7114,9 +7170,8 @@ export const generateWeeklyMentorLinks = onSchedule(
         });
 
         // The secure magic link to your web platform route
-        const magicLink = `${APP_URL}/verify/${tokenId}`;
+        const magicLink = `${APP_URL}/mentor-verify/${tokenId}`;
 
-        // USE THE EXISTING MLAB EMAIL BUILDER
         const emailParams = {
           title: "Verify Weekly Timesheets",
           subtitle: "QCTO Workplace Experience Verification",
@@ -7151,14 +7206,11 @@ export const generateWeeklyMentorLinks = onSchedule(
         tokenCount++;
       }
 
-      // Commit all generated tokens to the database
       if (tokenCount > 0) {
         await batch.commit();
         logger.info(
           `Successfully saved ${tokenCount} mentor magic tokens to Firestore.`,
         );
-
-        // Wait for Mailgun
         await Promise.all(emailPromises);
         logger.info(
           `Successfully dispatched ${emailPromises.length} secure mentor emails.`,
@@ -7171,7 +7223,6 @@ export const generateWeeklyMentorLinks = onSchedule(
 );
 
 // ─── MANUAL TRIGGER FOR TESTING ───
-// Run this via your browser URL to test the email delivery immediately without waiting for Friday 15:00
 export const testGenerateWeeklyMentorLinks = onRequest(
   { secrets: [mailgunSecret], timeoutSeconds: 120, memory: "256MiB" },
   async (req, res) => {
@@ -7192,7 +7243,6 @@ export const testGenerateWeeklyMentorLinks = onRequest(
           return;
         }
 
-        // Force route to the developer email instead of real mentors
         const TEST_EMAIL = "codetribe@mlab.co.za";
 
         const logsByMentor: Record<string, { name: string; logs: string[] }> =
@@ -7225,7 +7275,6 @@ export const testGenerateWeeklyMentorLinks = onRequest(
             expiresAt: expireDate.toISOString(),
           });
 
-          // 🚀 FIX: Updated route to avoid collision with student verification
           const magicLink = `${APP_URL}/mentor-verify/${tokenId}`;
 
           const emailParams = {
@@ -7327,7 +7376,7 @@ export const getMentorVerificationDetails = onCall(async (request) => {
 });
 
 export const submitMentorApproval = onCall(async (request) => {
-  const { tokenId, userAgent } = request.data;
+  const { tokenId, userAgent, decisions } = request.data;
   if (!tokenId) throw new HttpsError("invalid-argument", "Token ID missing.");
 
   const db = admin.firestore();
@@ -7344,22 +7393,39 @@ export const submitMentorApproval = onCall(async (request) => {
       if (data.status === "approved")
         throw new HttpsError(
           "failed-precondition",
-          "Timesheets already approved.",
+          "Timesheets already processed.",
         );
 
-      // Digital Signature Metadata
-      const signatureData = {
-        status: "Approved",
-        approvedAt: new Date().toISOString(),
-        approvedBy: data.mentorEmail,
+      // Common Digital Signature Metadata
+      const commonMetadata = {
+        processedAt: new Date().toISOString(),
+        processedBy: data.mentorEmail,
         approvalIpAddress: request.rawRequest?.ip || "Remote IP",
         userAgent: userAgent || "Unknown",
       };
 
-      // Approve all linked logs
+      // 🚀 Process each log individually based on the mentor's explicit decision
       for (const logId of data.logIds) {
         const logRef = db.collection("workplace_logs").doc(logId);
-        transaction.update(logRef, signatureData);
+
+        // Match the specific decision from the frontend, default to Approved if missing
+        const decision =
+          decisions && decisions[logId]
+            ? decisions[logId]
+            : { status: "approved", reason: "" };
+
+        if (decision.status === "rejected") {
+          transaction.update(logRef, {
+            status: "Rejected",
+            rejectionReason: decision.reason || "No reason provided by mentor.",
+            ...commonMetadata,
+          });
+        } else {
+          transaction.update(logRef, {
+            status: "Approved",
+            ...commonMetadata,
+          });
+        }
       }
 
       // Terminate the token
@@ -7371,10 +7437,201 @@ export const submitMentorApproval = onCall(async (request) => {
 
     return { success: true };
   } catch (error: any) {
-    logger.error("Error submitting mentor approval:", error);
+    logger.error("Error submitting mentor review:", error);
     throw new HttpsError(
       "internal",
-      error.message || "Failed to process approval.",
+      error.message || "Failed to process review.",
     );
   }
+});
+
+// ============================================================================
+// GEOSPATIAL REVERSE-GEOCODING ENGINE (BOOTCAMP ADDRESSES)
+// ============================================================================
+
+/**
+ * Trigger: Runs automatically whenever a new document is added to the "learners" collection.
+ * Purpose: Reverse-geocodes the raw address, updates the geoData block, and backfills legacy QCTO demographic fields.
+ */
+export const geocodeLearnerAddress = onDocumentCreated(
+  {
+    document: "learners/{learnerId}",
+    secrets: [mapsApiKey],
+    maxInstances: 10, // Limits concurrency to protect against Google Maps 50 QPS limit
+  },
+  async (event) => {
+    const snap = event.data;
+    if (!snap) return;
+
+    const data = snap.data();
+    const learnerId = event.params.learnerId;
+    // const db = admin.firestore();
+
+    // 1. Safety Check: Skip if already processed or manually flagged
+    if (data._geocoded) {
+      return;
+    }
+
+    const rawAddress = data.demographics?.learnerHomeAddress1 || "";
+    const province = data.province || data.nearestCodeTribe || "";
+
+    // If no address is provided at all, mark as skipped
+    if (!rawAddress || rawAddress.toLowerCase() === "not specified") {
+      logger.info(
+        `[GEOCODE] Skipping ${learnerId}: No valid street address provided.`,
+      );
+      await snap.ref.update({ _geocoded: "skipped_no_address" });
+      return;
+    }
+
+    // 2. Build the search query dynamically
+    const searchQuery = `${rawAddress}, ${province}, South Africa`;
+
+    try {
+      const apiKey = mapsApiKey.value();
+
+      // 3. Call Google Maps Geocoding API
+      const response = await axios.get(
+        `https://maps.googleapis.com/maps/api/geocode/json`,
+        {
+          params: {
+            address: searchQuery,
+            key: apiKey,
+          },
+        },
+      );
+
+      const apiStatus = response.data.status;
+
+      // 🟢 SCENARIO 1: PERFECT SUCCESS
+      if (apiStatus === "OK" && response.data.results.length > 0) {
+        const result = response.data.results[0];
+        const lat = result.geometry.location.lat;
+        const lng = result.geometry.location.lng;
+        const formattedAddress = result.formatted_address;
+
+        let postalCode = "";
+        let normalizedProvince = data.demographics?.provinceCode || province;
+        let city = "";
+
+        result.address_components.forEach((comp: any) => {
+          if (comp.types.includes("postal_code")) {
+            postalCode = comp.long_name;
+          }
+          if (comp.types.includes("administrative_area_level_1")) {
+            normalizedProvince = comp.long_name;
+          }
+          if (
+            comp.types.includes("locality") ||
+            comp.types.includes("administrative_area_level_3")
+          ) {
+            city = comp.long_name;
+          }
+        });
+
+        await snap.ref.update({
+          _geocoded: true,
+          geoData: {
+            lat: lat,
+            lng: lng,
+            formattedAddress: formattedAddress,
+            postalCode: postalCode,
+            province: normalizedProvince,
+            city: city,
+            geocodedAt: new Date().toISOString(),
+          },
+          // DYNAMIC BACKFILL: Keeps legacy QCTO object consistent
+          "demographics.learnerPostalAddressPostCode":
+            postalCode || data.demographics?.learnerPostalAddressPostCode || "",
+          "demographics.provinceCode": normalizedProvince,
+        });
+
+        logger.info(
+          `✅ [GEOCODE] Successfully geocoded ${learnerId} to ${formattedAddress}`,
+        );
+      }
+      // 🟡 SCENARIO 2: BAD USER DATA
+      else if (apiStatus === "ZERO_RESULTS") {
+        logger.warn(
+          `⚠️ [GEOCODE] Address not found for ${learnerId}: "${searchQuery}"`,
+        );
+        await snap.ref.update({ _geocoded: "failed_no_results" });
+      }
+      // 🔴 SCENARIO 3: CRITICAL SYSTEM ERROR
+      else {
+        logger.error(
+          `🚨 [GEOCODE] API CRITICAL ERROR [${apiStatus}] for ${learnerId}: ${response.data.error_message}`,
+        );
+        await snap.ref.update({ _geocoded: "failed_api_error" });
+      }
+    } catch (error: any) {
+      // ⚫ SCENARIO 4: NETWORK/AXIOS FAILURE
+      logger.error(
+        `🚨 [GEOCODE] Network Error for ${learnerId}:`,
+        error.message,
+      );
+    }
+  },
+);
+
+// ============================================================================
+// ONE-OFF SCRIPT: GLOBAL GHOST PURGE (SCIENTIFIC NOTATION)
+// ============================================================================
+
+export const executeGlobalGhostPurge = onRequest((req, res) => {
+  return cors(req, res, async () => {
+    logger.info("Initiating Global Ghost Purge...");
+    const db = admin.firestore();
+
+    try {
+      const learnersSnap = await db.collection("learners").get();
+      const enrollmentsSnap = await db.collection("enrollments").get();
+
+      const batch = db.batch();
+      let purgeCount = 0;
+
+      // 1. Hunt down ghost Learners by document ID
+      learnersSnap.forEach((docSnap) => {
+        const docId = docSnap.id;
+
+        // Target specifically the scientific notation corruptions
+        if (docId.includes("E") || docId.includes("+")) {
+          batch.delete(docSnap.ref);
+          purgeCount++;
+          logger.info(`Found & staged for deletion: Learner ${docId}`);
+        }
+      });
+
+      // 2. Hunt down ghost Enrollments that point to those broken IDs
+      enrollmentsSnap.forEach((docSnap) => {
+        const data = docSnap.data();
+        if (
+          data.learnerId &&
+          (data.learnerId.includes("E") || data.learnerId.includes("+"))
+        ) {
+          batch.delete(docSnap.ref);
+          purgeCount++;
+        }
+      });
+
+      if (purgeCount > 0) {
+        await batch.commit();
+        logger.info(
+          `✅ Successfully purged ${purgeCount} ghost records globally.`,
+        );
+        res.status(200).send({
+          success: true,
+          message: `Global Ghost Purge Complete. Obliterated ${purgeCount} corrupted records.`,
+        });
+      } else {
+        res.status(200).send({
+          success: true,
+          message: `Scan complete. No ghost records found in the database.`,
+        });
+      }
+    } catch (error: any) {
+      logger.error("Ghost Purge Failed:", error);
+      res.status(500).send({ success: false, error: error.message });
+    }
+  });
 });

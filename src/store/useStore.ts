@@ -872,34 +872,6 @@ export const useStore = create<StoreState>()(
             });
           }
 
-          // // A. TRANSFER TO NEW CLASS (Create New Ledger)
-          // if (newCohortId && newCohortId !== "") {
-          //   const newEnrollmentId = `${newCohortId}_${learnerIdNumber}`;
-
-          //   const newEnrollmentData = {
-          //     ...existingRow, // Maintain existing data
-          //     ...updates, // Apply new changes (campus, qualification, etc)
-          //     id: newEnrollmentId,
-          //     learnerId: learnerIdNumber,
-          //     cohortId: newCohortId,
-          //     status: "active",
-          //     enrolledAt: existingRow.createdAt || timestamp,
-          //     updatedAt: timestamp,
-          //     isArchived: false,
-          //   };
-
-          //   batch.set(
-          //     doc(db, "enrollments", newEnrollmentId),
-          //     sanitizeForFirestore(newEnrollmentData),
-          //     { merge: true },
-          //   );
-
-          //   // Update New Cohort Class List
-          //   batch.update(doc(db, "cohorts", newCohortId), {
-          //     learnerIds: arrayUnion(learnerIdNumber),
-          //   });
-          // }
-
           // B. REMOVE FROM OLD CLASS (Ledger Deletion)
           if (oldCohortId && oldCohortId !== "") {
             const oldEnrollmentId = `${oldCohortId}_${learnerIdNumber}`;
@@ -914,7 +886,7 @@ export const useStore = create<StoreState>()(
           // GHOST PURGE: Delete any legacy "Unassigned" ledger docs for this human
           batch.delete(doc(db, "enrollments", `Unassigned_${learnerIdNumber}`));
         } else if (existingRow.enrollmentId) {
-          //STANDARD LEDGER UPDATE (No Class Change)
+          // ─── STANDARD LEDGER UPDATE (No Class Change) ───
           // Update the existing ledger document if non-relational fields changed
           const enrollmentUpdates: any = {
             updatedAt: timestamp,
@@ -926,6 +898,27 @@ export const useStore = create<StoreState>()(
           if (updates.campusId) enrollmentUpdates.campusId = updates.campusId;
           if (updates.qualification)
             enrollmentUpdates.qualification = updates.qualification;
+
+          // 🚀 FIX: Map and save curriculum module arrays directly to the active enrollment document
+          if (updates.knowledgeModules)
+            enrollmentUpdates.knowledgeModules = updates.knowledgeModules;
+          if (updates.practicalModules)
+            enrollmentUpdates.practicalModules = updates.practicalModules;
+          if (updates.workExperienceModules)
+            enrollmentUpdates.workExperienceModules =
+              updates.workExperienceModules;
+
+          // Sync secondary timeline data to prevent discrepancy flags
+          if (updates.trainingStartDate)
+            enrollmentUpdates.trainingStartDate = updates.trainingStartDate;
+          if (updates.trainingEndDate)
+            enrollmentUpdates.trainingEndDate = updates.trainingEndDate;
+          if (updates.verificationCode)
+            enrollmentUpdates.verificationCode = updates.verificationCode;
+          if (updates.issueDate)
+            enrollmentUpdates.issueDate = updates.issueDate;
+          if (updates.isOffline !== undefined)
+            enrollmentUpdates.isOffline = updates.isOffline;
 
           batch.set(
             doc(db, "enrollments", existingRow.enrollmentId),
@@ -2361,13 +2354,18 @@ export const useStore = create<StoreState>()(
           "createStaffAccount",
         );
 
+        // Generate a secure temporary password for the welcome email
+        const tempPassword = `mLab${Math.floor(100000 + Math.random() * 900000)}!`;
+
         const result = await createStaffAccount({
           email: newStaff.email,
           fullName: newStaff.fullName,
           role: newStaff.role,
-          phone: newStaff.phone || "",
-          employerId: newStaff.employerId || "",
-          assessorRegNumber: newStaff.assessorRegNumber || "",
+          // 🚀 FIX 2: Prevent Mailgun form-data crashes by never sending empty strings ""
+          phone: newStaff.phone || "N/A",
+          employerId: newStaff.employerId || "N/A",
+          assessorRegNumber: newStaff.assessorRegNumber || "N/A",
+          password: tempPassword,
         });
 
         const data = result.data as any;

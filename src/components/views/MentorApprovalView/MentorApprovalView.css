@@ -40,24 +40,20 @@
     rgba(255, 255, 255, 0.015) 41px
   );
 }
-
 .mav-brand {
   display: flex;
   align-items: center;
   gap: 14px;
 }
-
 .mav-brand-text {
   font-size: 20px;
   font-weight: 800;
   letter-spacing: -0.5px;
   line-height: 1;
 }
-
 .mav-brand-m {
   color: #94c73d;
 }
-
 .mav-brand-lab {
   color: #ffffff;
 }
@@ -85,7 +81,6 @@
   border-radius: 20px;
   padding: 6px 14px;
 }
-
 .mav-secure-dot {
   width: 7px;
   height: 7px;
@@ -93,7 +88,6 @@
   background: #94c73d;
   display: inline-block;
 }
-
 .mav-secure-txt {
   font-family:
     system-ui,
@@ -106,21 +100,19 @@
   color: #94c73d;
 }
 
-/* ─── Layout ─────────────────────────────────────────────────────────────── */
+/* ─── Layout & Sidebar ───────────────────────────────────────────────────── */
 .mav-layout {
   display: grid;
   grid-template-columns: 320px 1fr;
-  align-items: start;
+  align-items: stretch;
   flex: 1;
 }
-
 @media (max-width: 900px) {
   .mav-layout {
     grid-template-columns: 1fr;
   }
 }
 
-/* ─── Sidebar ────────────────────────────────────────────────────────────── */
 .mav-sidebar {
   position: sticky;
   top: 0;
@@ -132,7 +124,6 @@
   background: #ffffff;
   min-height: calc(100vh - 63px);
 }
-
 @media (max-width: 900px) {
   .mav-sidebar {
     position: relative;
@@ -148,7 +139,6 @@
   border-radius: 14px;
   overflow: hidden;
 }
-
 .mav-mentor-card-top {
   background: #073f4e;
   padding: 14px 16px;
@@ -156,7 +146,6 @@
   align-items: center;
   gap: 10px;
 }
-
 .mav-mentor-avatar {
   width: 40px;
   height: 40px;
@@ -170,14 +159,12 @@
   color: #073f4e;
   flex-shrink: 0;
 }
-
 .mav-mentor-name {
   font-size: 15px;
   font-weight: 700;
   color: #ffffff;
   line-height: 1.2;
 }
-
 .mav-mentor-role {
   font-family:
     system-ui,
@@ -190,15 +177,12 @@
   color: rgba(255, 255, 255, 0.4);
   margin-top: 2px;
 }
-
 .mav-mentor-body {
   padding: 16px;
 }
-
 .mav-mentor-field {
   margin-bottom: 12px;
 }
-
 .mav-field-lbl {
   font-family:
     system-ui,
@@ -212,51 +196,41 @@
   margin-bottom: 4px;
   display: block;
 }
-
 .mav-field-val {
   font-size: 13px;
   font-weight: 600;
   color: #073f4e;
 }
-
 .mav-divider {
   height: 1px;
   background: #f0f4f6;
   margin: 12px 0;
 }
 
-.mav-stats-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+.mav-summary-box {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
   gap: 8px;
 }
-
-.mav-stat-box {
-  background: #f5f8fa;
-  border-radius: 10px;
-  padding: 12px;
-  text-align: center;
-}
-
-.mav-stat-val {
-  font-size: 22px;
-  font-weight: 800;
+.mav-summary-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 600;
   color: #073f4e;
-  letter-spacing: -0.5px;
-  line-height: 1;
 }
-
-.mav-stat-lbl {
-  font-family:
-    system-ui,
-    -apple-system,
-    sans-serif;
-  font-size: 9px;
-  font-weight: 500;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: #9aabb0;
-  margin-top: 4px;
+.mav-summary-row strong {
+  font-weight: 800;
+}
+.mav-summary-row.success {
+  color: #16a34a;
+}
+.mav-summary-row.danger {
+  color: #dc2626;
 }
 
 .mav-declaration {
@@ -268,12 +242,10 @@
   display: flex;
   gap: 10px;
 }
-
 .mav-declaration-icon {
   flex-shrink: 0;
   margin-top: 1px;
 }
-
 .mav-declaration-title {
   font-family:
     system-ui,
@@ -287,7 +259,6 @@
   margin-bottom: 5px;
   display: block;
 }
-
 .mav-declaration-txt {
   font-size: 12px;
   font-weight: 300;
@@ -295,7 +266,6 @@
   line-height: 1.65;
   margin: 0;
 }
-
 .mav-actions {
   display: flex;
   flex-direction: column;
@@ -314,7 +284,7 @@
     sans-serif;
   font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: #ffffff;
   cursor: pointer;
@@ -324,65 +294,36 @@
   gap: 10px;
   transition: opacity 0.2s;
 }
-
 .mav-approve-btn:disabled {
   opacity: 0.55;
   cursor: not-allowed;
 }
 
-.mav-approve-pill {
-  width: 24px;
-  height: 24px;
-  background: #94c73d;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.mav-reject-btn {
-  width: 100%;
-  height: 44px;
-  background: transparent;
-  border: 1.5px solid #fdd;
-  border-radius: 12px;
-  font-family:
-    system-ui,
-    -apple-system,
-    sans-serif;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: #dc2626;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  transition: opacity 0.2s;
-}
-
-.mav-reject-btn:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-/* ─── Feed ───────────────────────────────────────────────────────────────── */
+/* ─── Centered Feed & Scrolling ──────────────────────────────────────────── */
 .mav-feed {
-  padding: 28px 28px 48px;
+  padding: 28px 40px 0;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  width: 100%;
+  height: calc(100vh - 60px);
+  overflow: hidden;
+}
+
+.mav-feed-container {
+  max-width: 1200px;
+  width: 100%;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 
 .mav-feed-header {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 4px;
+  justify-content: space-between;
+  margin-bottom: 12px;
 }
-
 .mav-feed-title {
   font-family:
     system-ui,
@@ -396,13 +337,102 @@
   margin: 0;
 }
 
+.mav-bulk-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: white;
+  border: 1px solid #e8eef1;
+  padding: 8px 16px;
+  border-radius: 10px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+  margin-bottom: 16px;
+  flex-shrink: 0;
+}
+.mav-bulk-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  color: #073f4e;
+  font-size: 13px;
+  font-weight: 600;
+}
+.mav-bulk-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-left: 1px solid #e8eef1;
+  padding-left: 16px;
+}
+.mav-bulk-count {
+  font-size: 12px;
+  color: #64748b;
+  font-weight: 600;
+  margin-right: 4px;
+}
+.mav-btn-bulk-approve {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #16a34a;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: bold;
+  cursor: pointer;
+}
+.mav-btn-bulk-reject {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #dc2626;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+/* 🚀 The smooth, styled scroll area */
+.mav-feed-scroll-area {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 12px;
+  padding-bottom: 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* Beautiful custom scrollbars for the feed */
+.mav-feed-scroll-area::-webkit-scrollbar {
+  width: 6px;
+}
+.mav-feed-scroll-area::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 4px;
+}
+.mav-feed-scroll-area::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+.mav-feed-scroll-area::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
 .mav-learner-block {
   background: #ffffff;
   border-radius: 16px;
   border: 1.5px solid #e8eef1;
   overflow: hidden;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.02);
+  flex-shrink: 0;
 }
-
 .mav-learner-hdr {
   background: #f5f8fa;
   padding: 14px 20px;
@@ -411,13 +441,11 @@
   justify-content: space-between;
   border-bottom: 1px solid #e8eef1;
 }
-
 .mav-learner-hdr-left {
   display: flex;
   align-items: center;
   gap: 10px;
 }
-
 .mav-learner-avatar {
   width: 36px;
   height: 36px;
@@ -431,14 +459,12 @@
   color: #94c73d;
   flex-shrink: 0;
 }
-
 .mav-learner-name {
   font-size: 14px;
   font-weight: 700;
   color: #073f4e;
   letter-spacing: -0.2px;
 }
-
 .mav-hours-badge {
   background: #073f4e;
   color: #ffffff;
@@ -454,21 +480,44 @@
   border-radius: 20px;
 }
 
+/* Updated Entry to accommodate Checkbox */
 .mav-entry {
-  padding: 18px 20px;
+  padding: 20px;
+  transition: all 0.2s ease;
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
 }
-
+.mav-entry.is-rejected-card {
+  background: #fff1f2;
+}
 .mav-entry:not(:last-child) {
   border-bottom: 1px solid #f0f4f6;
 }
 
+.mav-entry-checkbox {
+  margin-top: 2px;
+  cursor: pointer;
+  color: #cbd5e1;
+  transition: color 0.2s;
+}
+.mav-entry-checkbox.selected {
+  color: #073f4e;
+}
+.mav-entry-checkbox:hover {
+  color: #94a3b8;
+}
+
+.mav-entry-content {
+  flex: 1;
+  min-width: 0;
+}
 .mav-entry-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-bottom: 12px;
 }
-
 .mav-entry-date {
   font-family:
     system-ui,
@@ -480,7 +529,6 @@
   letter-spacing: 0.08em;
   color: #073f4e;
 }
-
 .mav-time-chip {
   display: flex;
   align-items: center;
@@ -505,7 +553,6 @@
   gap: 10px;
   align-items: flex-start;
 }
-
 .mav-qcto-icon {
   width: 28px;
   height: 28px;
@@ -516,7 +563,6 @@
   justify-content: center;
   flex-shrink: 0;
 }
-
 .mav-qcto-title {
   font-family:
     system-ui,
@@ -529,7 +575,6 @@
   color: #92400e;
   margin-bottom: 5px;
 }
-
 .mav-qcto-row {
   font-size: 11px;
   color: #b45309;
@@ -537,12 +582,11 @@
 }
 
 .mav-tasks {
-  background: #f5f8fa;
+  background: #ffffff;
   border: 1px solid #e8eef1;
   border-radius: 8px;
   padding: 12px 14px;
 }
-
 .mav-tasks-lbl {
   font-family:
     system-ui,
@@ -558,16 +602,140 @@
   align-items: center;
   gap: 5px;
 }
-
 .mav-tasks-txt {
   font-size: 13px;
-  font-weight: 300;
+  font-weight: 400;
   color: #334155;
   line-height: 1.65;
   margin: 0;
 }
 
-/* ─── Full-screen states (Loading / Error / Success) ─────────────────────── */
+.mav-decision-group {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px dashed #e2e8f0;
+}
+.mav-decision-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  color: #64748b;
+}
+.mav-decision-btn:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+.mav-decision-btn.is-approved {
+  background: #dcfce7;
+  border-color: #86efac;
+  color: #166534;
+}
+.mav-decision-btn.is-rejected {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #991b1b;
+}
+
+.mav-reject-reason-wrap {
+  margin-top: 10px;
+  background: #ffffff;
+  border: 1px dashed #fca5a5;
+  border-radius: 6px;
+  padding: 10px;
+  animation: mav-fade-in 0.2s ease-out;
+}
+.mav-reject-reason-wrap label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #be123c;
+  margin-bottom: 8px;
+}
+.mav-reject-reason-input {
+  width: 100%;
+  border: 1px solid #fecaca;
+  background: #fef2f2;
+  border-radius: 4px;
+  padding: 8px;
+  font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 50px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.mav-reject-reason-input:focus {
+  border-color: #f87171;
+}
+
+@keyframes mav-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ─── Modal ──────────────────────────────────────────────────────────────── */
+.mav-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.mav-modal {
+  background: white;
+  padding: 24px;
+  border-radius: 12px;
+  width: 400px;
+  max-width: 90%;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+}
+.mav-btn-ghost {
+  background: transparent;
+  border: 1px solid #cbd5e1;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-weight: bold;
+  cursor: pointer;
+  color: #475569;
+}
+.mav-btn-danger {
+  background: #dc2626;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+/* ─── Full-screen states ─────────────────────────────────────────────────── */
 .mav-state-outer {
   position: absolute;
   top: 0;
@@ -581,7 +749,6 @@
   padding: 40px 24px;
   background: #f5f8fa;
 }
-
 .mav-state-card {
   background: #ffffff;
   border-radius: 20px;
@@ -593,7 +760,6 @@
   overflow: hidden;
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05);
 }
-
 .mav-state-strip {
   position: absolute;
   top: 0;
@@ -601,7 +767,6 @@
   right: 0;
   height: 4px;
 }
-
 .mav-state-icon-wrap {
   width: 72px;
   height: 72px;
@@ -611,7 +776,6 @@
   justify-content: center;
   margin: 0 auto 20px;
 }
-
 .mav-state-title {
   font-family:
     system-ui,
@@ -623,7 +787,6 @@
   letter-spacing: 0.05em;
   margin: 0 0 12px 0;
 }
-
 .mav-state-msg {
   font-size: 14px;
   font-weight: 300;
@@ -631,7 +794,6 @@
   line-height: 1.7;
   margin: 0 0 28px 0;
 }
-
 .mav-state-btn {
   height: 48px;
   padding: 0 28px;
@@ -649,12 +811,10 @@
   cursor: pointer;
   transition: opacity 0.2s;
 }
-
 .mav-state-btn:hover {
   opacity: 0.9;
 }
 
-/* Specific inner wrappers for loading state */
 .mav-loading-wrapper {
   text-align: center;
   display: flex;
@@ -662,7 +822,6 @@
   align-items: center;
   gap: 16px;
 }
-
 .mav-loading-icon-wrap {
   width: 56px;
   height: 56px;
@@ -673,7 +832,6 @@
   align-items: center;
   justify-content: center;
 }
-
 .mav-loading-title {
   font-family:
     system-ui,
@@ -686,10 +844,40 @@
   color: #073f4e;
   margin: 0;
 }
-
 .mav-loading-msg {
   font-size: 14px;
   font-weight: 300;
   color: #9aabb0;
   margin: 0;
+}
+
+/* Defend Mentor approval text blocks from text inflation glitches */
+.quill-content-display {
+  word-wrap: break-word !important;
+  overflow-wrap: break-word !important;
+  max-width: 100% !important;
+}
+
+.quill-content-display *,
+.quill-content-display p,
+.quill-content-display span,
+.quill-content-display li,
+.quill-content-display strong {
+  word-wrap: break-word !important;
+  overflow-wrap: break-word !important;
+  line-break: anywhere !important;
+  max-width: 100% !important;
+}
+
+/* Ensure flex parents dont expand past their physical screen columns */
+.mav-entry-content {
+  flex: 1 !important;
+  min-width: 0 !important; /* Critical: Stops flex container inflating past viewport bounds */
+  max-width: 100% !important;
+}
+
+.mav-tasks,
+.mav-reject-reason-wrap {
+  max-width: 100% !important;
+  overflow: hidden !important;
 }
