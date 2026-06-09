@@ -40,7 +40,7 @@ import { NotificationBell } from '../../components/common/NotificationBell/Notif
 import { AttendanceHistoryList } from '../FacilitatorDashboard/AttendanceRegister/AttendanceHistoryList';
 import { EcosystemDashboard } from '../../components/admin/EcosystemDashboard/EcosystemDashboard';
 import { WorkplaceHub } from '../../components/views/WorkplaceHub/WorkplaceHub';
-import { CompanyInsightsView } from '../../components/admin/WorkplacesManager/CompanyInsightsView';
+import { CompanyInsightsView } from '../../components/admin/WorkplacesManager/CompanyInsightsView/CompanyInsightsView';
 
 import './AdminDashboard.css';
 
