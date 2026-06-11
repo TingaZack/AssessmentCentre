@@ -285,7 +285,7 @@ const LearnerDashboard: React.FC = () => {
     const [absenceDates, setAbsenceDates] = useState<any[]>([]);
 
     const [showWorkplaceLogModal, setShowWorkplaceLogModal] = useState(false);
-    // 🚀 NEW: State to hold the drafted workplace log to pass down into the edit modal
+    // State to hold the drafted workplace log to pass down into the edit modal
     const [activeEditLog, setActiveEditLog] = useState<any>(null);
 
     const [myScans, setMyScans] = useState<any[]>([]);

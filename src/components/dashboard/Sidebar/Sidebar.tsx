@@ -84,7 +84,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, currentNav, setCurrentNa
             case 'learner':
                 return [
                     { id: 'dashboard', label: 'My Classes', icon: LayoutDashboard, path: '/portal' },
-                    // 🚀 ADDED ATTENDANCE TAB TO THE LEARNER'S MAIN SIDEBAR
                     { id: 'attendance', label: 'Attendance Log', icon: CalendarCheck, path: '/portal' },
                     { id: 'profile', label: 'My Profile', icon: User, path: '/portal' },
                     { id: 'certificates', label: 'My Certificates', icon: Award, path: '/portal' },

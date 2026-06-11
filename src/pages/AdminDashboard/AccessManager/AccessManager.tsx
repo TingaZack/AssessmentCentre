@@ -167,7 +167,7 @@ export const AccessManager: React.FC = () => {
                 setSuccess(`Success! An invitation email has been sent to ${email}.`);
             }
 
-            await fetchAdmins(true); // Force refetch to get the updated list
+            await fetchAdmins(true);
 
             setTimeout(() => {
                 setShowModal(false);

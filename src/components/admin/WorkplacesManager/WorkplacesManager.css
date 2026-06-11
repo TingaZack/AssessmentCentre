@@ -97,7 +97,7 @@
 .wm-page-header__icon {
   width: 48px;
   height: 48px;
-  /* background: rgba(148, 199, 61, 0.15); */
+  background: rgba(148, 199, 61, 0.15);
   border: 1px solid rgba(148, 199, 61, 0.3);
   display: flex;
   align-items: center;

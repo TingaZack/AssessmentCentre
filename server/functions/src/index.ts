@@ -7341,6 +7341,15 @@ export const getMentorVerificationDetails = onCall(async (request) => {
     if (new Date(tokenData.expiresAt).getTime() < Date.now())
       return { status: "expired" };
 
+    // Check if this mentor has a previously saved signature linked to their email
+    const sigSnap = await db
+      .collection("mentor_signatures")
+      .doc(tokenData.mentorEmail.toLowerCase())
+      .get();
+    const existingSignatureUrl = sigSnap.exists
+      ? sigSnap.data()?.signatureUrl
+      : null;
+
     // Fetch the actual log documents
     const fetchedLogs: any[] = [];
     for (const logId of tokenData.logIds) {
@@ -7368,47 +7377,91 @@ export const getMentorVerificationDetails = onCall(async (request) => {
       status: "valid",
       tokenData,
       logs: Object.values(groupedLogs),
+      existingSignatureUrl,
     };
   } catch (error) {
     logger.error("Error verifying mentor token:", error);
     throw new HttpsError("internal", "Failed to verify token.");
   }
 });
-
 export const submitMentorApproval = onCall(async (request) => {
-  const { tokenId, userAgent, decisions } = request.data;
+  // EXTRACT BOTH signatureBase64 (if new) OR existingSignatureUrl (if reused)
+  const {
+    tokenId,
+    userAgent,
+    decisions,
+    signatureBase64,
+    existingSignatureUrl,
+  } = request.data;
   if (!tokenId) throw new HttpsError("invalid-argument", "Token ID missing.");
 
   const db = admin.firestore();
+  const bucket = admin.storage().bucket();
   const tokenRef = db.collection("mentor_tokens").doc(tokenId);
 
   try {
-    // Run as a transaction to prevent double-approvals
+    let finalSignatureUrl = existingSignatureUrl || null;
+
+    // 1. Fetch token early to get the mentor's email for the registry
+    const initialTokenSnap = await tokenRef.get();
+    if (!initialTokenSnap.exists)
+      throw new HttpsError("not-found", "Token is invalid.");
+    const tokenDataRaw = initialTokenSnap.data()!;
+
+    // 2. CONVERT BASE64 TO IMAGE FILE AND SAVE TO REGISTRY
+    if (signatureBase64) {
+      const base64Data = signatureBase64.replace(
+        /^data:image\/png;base64,/,
+        "",
+      );
+      const imageBuffer = Buffer.from(base64Data, "base64");
+      const file = bucket.file(
+        `signatures/mentors/${tokenDataRaw.mentorEmail.toLowerCase()}_${Date.now()}.png`,
+      );
+
+      await file.save(imageBuffer, { metadata: { contentType: "image/png" } });
+      const [url] = await file.getSignedUrl({
+        action: "read",
+        expires: "01-01-2100",
+      });
+      finalSignatureUrl = url;
+
+      // Save this URL globally for this mentor's email so they never have to draw it again
+      await db
+        .collection("mentor_signatures")
+        .doc(tokenDataRaw.mentorEmail.toLowerCase())
+        .set(
+          {
+            signatureUrl: finalSignatureUrl,
+            updatedAt: new Date().toISOString(),
+          },
+          { merge: true },
+        );
+    }
+
+    // 3. APPLY DECISIONS TO LOGS
     await db.runTransaction(async (transaction) => {
       const tokenSnap = await transaction.get(tokenRef);
-      if (!tokenSnap.exists)
-        throw new HttpsError("not-found", "Token is invalid.");
-
       const data = tokenSnap.data()!;
+
       if (data.status === "approved")
         throw new HttpsError(
           "failed-precondition",
           "Timesheets already processed.",
         );
 
-      // Common Digital Signature Metadata
-      const commonMetadata = {
+      const commonMetadata: any = {
         processedAt: new Date().toISOString(),
         processedBy: data.mentorEmail,
         approvalIpAddress: request.rawRequest?.ip || "Remote IP",
         userAgent: userAgent || "Unknown",
       };
 
-      // 🚀 Process each log individually based on the mentor's explicit decision
+      if (finalSignatureUrl)
+        commonMetadata.mentorSignatureUrl = finalSignatureUrl;
+
       for (const logId of data.logIds) {
         const logRef = db.collection("workplace_logs").doc(logId);
-
-        // Match the specific decision from the frontend, default to Approved if missing
         const decision =
           decisions && decisions[logId]
             ? decisions[logId]
@@ -7417,21 +7470,18 @@ export const submitMentorApproval = onCall(async (request) => {
         if (decision.status === "rejected") {
           transaction.update(logRef, {
             status: "Rejected",
-            rejectionReason: decision.reason || "No reason provided by mentor.",
+            rejectionReason: decision.reason || "No reason provided.",
             ...commonMetadata,
           });
         } else {
-          transaction.update(logRef, {
-            status: "Approved",
-            ...commonMetadata,
-          });
+          transaction.update(logRef, { status: "Approved", ...commonMetadata });
         }
       }
 
-      // Terminate the token
       transaction.update(tokenRef, {
         status: "approved",
         executedAt: new Date().toISOString(),
+        mentorSignatureUrl: finalSignatureUrl,
       });
     });
 
@@ -7444,7 +7494,6 @@ export const submitMentorApproval = onCall(async (request) => {
     );
   }
 });
-
 // ============================================================================
 // GEOSPATIAL REVERSE-GEOCODING ENGINE (BOOTCAMP ADDRESSES)
 // ============================================================================
@@ -7635,3 +7684,1253 @@ export const executeGlobalGhostPurge = onRequest((req, res) => {
     }
   });
 });
+
+// ============================================================================
+// SETA COMPLIANCE AUDIT PACK GENERATOR (ZIPPED)
+// ============================================================================
+
+export const generateSetaAuditPack = onCall(
+  {
+    timeoutSeconds: 300,
+    memory: "2GiB",
+  },
+  async (request) => {
+    logger.info("BACKEND: generateSetaAuditPack triggered.");
+
+    const auth = request.auth;
+    if (!auth) {
+      throw new HttpsError(
+        "unauthenticated",
+        "User must be logged in to generate audit packs.",
+      );
+    }
+
+    // 🚀 1. Accept the enriched data directly from the frontend Pre-Flight Payload
+    const {
+      learnerId,
+      placementId,
+      employerName,
+      learnerName,
+      idNumber: payloadIdNumber,
+      mentorName: payloadMentorName,
+    } = request.data;
+
+    if (!learnerId || !placementId) {
+      throw new HttpsError(
+        "invalid-argument",
+        "Missing required Learner or Placement IDs.",
+      );
+    }
+
+    const db = admin.firestore();
+    const bucket = admin.storage().bucket();
+
+    try {
+      // 🚀 2. DECODE COMPOSITE IDs (e.g. "CohortID_IDNumber")
+      let actualDocId = learnerId;
+      let extractedCohortId = "";
+
+      if (learnerId.includes("_")) {
+        const parts = learnerId.split("_");
+        extractedCohortId = parts[0];
+        actualDocId = parts[1]; // The actual 13-digit ID
+      }
+
+      // 3. Fetch Primary Documents & Historical Disbursement Records Subcollection
+      const [learnerSnap, placementSnap, disbursementsSnap] = await Promise.all(
+        [
+          db.collection("learners").doc(actualDocId).get(),
+          db.collection("placements").doc(placementId).get(),
+          db.collection(`placements/${placementId}/disbursements`).get(),
+        ],
+      );
+
+      const learner = learnerSnap.data() || {};
+      const placement = placementSnap.exists ? placementSnap.data() || {} : {};
+
+      // Parse disbursements array from subcollection
+      const disbursementsList = disbursementsSnap.docs
+        .map((doc) => doc.data())
+        .sort((a, b) => String(a.monthYear).localeCompare(String(b.monthYear)));
+
+      const finalIdNumber =
+        payloadIdNumber && payloadIdNumber !== "—"
+          ? payloadIdNumber
+          : String(learner.idNumber || actualDocId).trim();
+      const resolvedMentorName =
+        payloadMentorName && payloadMentorName !== "Unassigned"
+          ? payloadMentorName
+          : placement.assignedMentorName ||
+            placement.mentorName ||
+            "Unassigned Mentor";
+      const cohortId =
+        placement.cohortId || learner.cohortId || extractedCohortId;
+
+      const JSZipModule = require("jszip");
+      const JSZip =
+        typeof JSZipModule === "function"
+          ? JSZipModule
+          : JSZipModule.default || JSZipModule;
+      const zip = new JSZip();
+
+      // AGGRESSIVE WORKPLACE LOG RESOLUTION ENGINE
+      const logQueries = [
+        db
+          .collection("workplace_logs")
+          .where("learnerId", "==", learnerId)
+          .get(),
+      ];
+      if (finalIdNumber && learnerId !== finalIdNumber) {
+        logQueries.push(
+          db
+            .collection("workplace_logs")
+            .where("learnerId", "==", finalIdNumber)
+            .get(),
+        );
+      }
+
+      const logSnaps = await Promise.all(logQueries);
+      const allLogsMap = new Map();
+
+      logSnaps.forEach((snap) => {
+        snap.docs.forEach((doc) => {
+          const logData = doc.data();
+          if (
+            String(logData.status || "")
+              .trim()
+              .toLowerCase() === "approved"
+          ) {
+            allLogsMap.set(doc.id, logData);
+          }
+        });
+      });
+
+      const logs = Array.from(allLogsMap.values());
+
+      // BIOMETRIC CLASSROOM ATTENDANCE RESOLUTION ENGINE
+      let classroomRecords: any[] = [];
+      if (cohortId && finalIdNumber) {
+        const attendanceSnap = await db
+          .collection("attendance")
+          .where("cohortId", "==", cohortId)
+          .get();
+
+        const formatScanTime = (ts: number | undefined) => {
+          if (!ts) return "—";
+          return new Date(ts).toLocaleTimeString("en-ZA", {
+            timeZone: "Africa/Johannesburg",
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+          });
+        };
+
+        classroomRecords = attendanceSnap.docs
+          .map((d) => {
+            const att = d.data();
+            const isPresent =
+              Array.isArray(att.presentLearners) &&
+              att.presentLearners.includes(finalIdNumber);
+            const isAbsent =
+              Array.isArray(att.absentLearners) &&
+              att.absentLearners.includes(finalIdNumber);
+
+            if (!isPresent && !isAbsent) return null;
+
+            const scanData =
+              isPresent && att.scans ? att.scans[finalIdNumber] : null;
+
+            return {
+              date: att.date || "—",
+              status: isPresent ? "Present" : "Absent",
+              checkIn: scanData?.checkInAt
+                ? formatScanTime(scanData.checkInAt)
+                : "—",
+              lunchOut: scanData?.lunchOutAt
+                ? formatScanTime(scanData.lunchOutAt)
+                : "—",
+              lunchIn: scanData?.lunchInAt
+                ? formatScanTime(scanData.lunchInAt)
+                : "—",
+              checkOut: scanData?.checkOutAt
+                ? formatScanTime(scanData.checkOutAt)
+                : "—",
+              finalizedBy: att.finalizedBy || "system-auto",
+            };
+          })
+          .filter(Boolean)
+          .sort(
+            (a: any, b: any) =>
+              new Date(b.date).getTime() - new Date(a.date).getTime(),
+          );
+      }
+
+      const folderLegal = "01_Legal_Identity_and_Contracts/";
+      const folderClassroom = "02_Theory_and_Practical_Classroom_Evidence/";
+      const folderWorkplace = "03_Workplace_Logbooks_and_Timesheets/";
+      const folderFinancial = "04_Financial_and_Payroll_Evidence/";
+
+      // FILE RESOLUTION STRATEGY
+      let idUrl =
+        learner.documents?.idDocument ||
+        learner.idUrl ||
+        learner.idDocumentUrl ||
+        "";
+      let wblpaUrl =
+        placement.compliance?.wblpaAgreementUrl ||
+        placement.wblAgreementUrl ||
+        placement.wblpaAgreementUrl ||
+        "";
+
+      let learnerUserDoc: any = {};
+      if (learner.authUid) {
+        const uSnap = await db.collection("users").doc(learner.authUid).get();
+        if (uSnap.exists) learnerUserDoc = uSnap.data();
+      }
+
+      const arraysToScan = [
+        ...(learner.uploadedDocuments || []),
+        ...(placement.uploadedDocuments || []),
+        ...(learnerUserDoc?.uploadedDocuments || []),
+      ];
+
+      arraysToScan.forEach((doc: any) => {
+        const docId = String(doc.id || "").toLowerCase();
+        const name = String(doc.name || "").toLowerCase();
+        if (
+          !idUrl &&
+          (docId === "id" ||
+            name.includes("id") ||
+            name.includes("identity") ||
+            name.includes("passport"))
+        )
+          idUrl = doc.url;
+        if (
+          !wblpaUrl &&
+          (docId === "wblpa" ||
+            docId === "contract" ||
+            name.includes("contract") ||
+            name.includes("wblpa") ||
+            name.includes("agreement"))
+        )
+          wblpaUrl = doc.url;
+      });
+
+      const appendUrlToZipFolder = async (
+        url: string,
+        folderPath: string,
+        filename: string,
+      ) => {
+        try {
+          const response = await axios.get(url, {
+            responseType: "arraybuffer",
+          });
+          zip.file(`${folderPath}${filename}`, response.data);
+          return true;
+        } catch (e: any) {
+          logger.error(
+            `Failed to execute download file layout setup for ${filename}:`,
+            e.message,
+          );
+          return false;
+        }
+      };
+
+      const safeLearnerName = (learnerName || "Learner").replace(
+        /[^a-zA-Z0-9]/g,
+        "_",
+      );
+
+      const getExtensionFromUrl = (url: string, defaultExt: string = "pdf") => {
+        try {
+          const urlWithoutQuery = url.split("?")[0];
+          const parts = urlWithoutQuery.split(".");
+          const ext = parts[parts.length - 1].toLowerCase();
+          if (["pdf", "jpg", "jpeg", "png", "docx"].includes(ext)) return ext;
+          return defaultExt;
+        } catch {
+          return defaultExt;
+        }
+      };
+
+      if (idUrl) {
+        const idExt = getExtensionFromUrl(idUrl, "pdf");
+        await appendUrlToZipFolder(
+          idUrl,
+          folderLegal,
+          `ID_Document_${safeLearnerName}.${idExt}`,
+        );
+      } else {
+        zip.file(
+          `${folderLegal}⚠️_MISSING_IDENTITY_DOCUMENT.txt`,
+          "Compliance Alert: No certified ID file or passport was uploaded.",
+        );
+      }
+
+      if (wblpaUrl) {
+        const wblpaExt = getExtensionFromUrl(wblpaUrl, "pdf");
+        await appendUrlToZipFolder(
+          wblpaUrl,
+          folderLegal,
+          `Fully_Executed_WBLPA_Contract_${safeLearnerName}.${wblpaExt}`,
+        );
+      } else {
+        zip.file(
+          `${folderLegal}⚠️_MISSING_WBLPA_CONTRACT.txt`,
+          "Compliance Alert: No signed tripartite WBLPA agreement link could be fetched.",
+        );
+      }
+
+      const formatCurrency = (val: any) =>
+        new Intl.NumberFormat("en-ZA", {
+          style: "currency",
+          currency: "ZAR",
+          maximumFractionDigits: 0,
+        }).format(Number(val) || 0);
+
+      // 8. BUILD AND INJECT DYNAMIC FINANCIAL DISBURSEMENT LEDGER PAGE
+      let financialHtml = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@400;700&display=swap');
+            body { font-family: 'Trebuchet MS', Arial, sans-serif; font-size: 11px; color: #1a2e35; padding: 20px; }
+            h1 { color: #073f4e; text-align: center; text-transform: uppercase; font-family: 'Oswald', sans-serif; letter-spacing: 0.05em; }
+            .meta { background: #fffbeb; border-left: 4px solid #d97706; padding: 15px; margin-bottom: 20px; border-radius: 4px; border: 1px solid #fef3c7; }
+            table { width: 100%; border-collapse: collapse; margin-top: 10px; table-layout: fixed; }
+            th, td { border: 1px solid #dde4e8; padding: 10px; text-align: left; vertical-align: middle; word-wrap: break-word; overflow-wrap: break-word; word-break: break-word; }
+            th { background-color: #073f4e; color: white; font-family: 'Oswald', sans-serif; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
+            tr:nth-child(even) { background-color: #f8fafb; }
+          </style>
+        </head>
+        <body>
+          <h1>Stipend Disbursement Compliance Ledger</h1>
+          <div class="meta">
+            <strong>Learner Name:</strong> ${learnerName || "Unknown"}<br/>
+            <strong>Identity Number:</strong> ${finalIdNumber || "Unknown"}<br/>
+            <strong>Host Employer:</strong> ${employerName || "Unknown"}<br/>
+            <strong>SARS Employment Verification Status:</strong> Active Tracking Account
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th width="15%">Month</th>
+                <th width="18%">Total Earnings</th>
+                <th width="12%">Log Days</th>
+                <th width="20%">Net Payment</th>
+                <th width="15%">ETI Claimed</th>
+                <th width="20%">Bank Reference</th>
+              </tr>
+            </thead>
+            <tbody>
+      `;
+
+      if (disbursementsList.length === 0) {
+        financialHtml += `
+          <tr>
+            <td><strong>${new Date().toISOString().slice(0, 7)}</strong></td>
+            <td>${formatCurrency(placement.stipendAmount)}</td>
+            <td>${placement.currentMonthApprovedDays || 0} / ${placement.expectedWorkingDaysThisMonth || 21} d</td>
+            <td style="font-weight:bold; color:#16a34a;">${formatCurrency(placement.currentMonthEarnedStipend)}</td>
+            <td>${formatCurrency(placement.etiMonthlyValue)}</td>
+            <td style="font-family:monospace; font-size:10px; color:#475569;">MLAB-PENDING-SYNC</td>
+          </tr>
+        `;
+      } else {
+        disbursementsList.forEach((disb: any) => {
+          financialHtml += `
+            <tr>
+              <td><strong>${disb.monthYear}</strong></td>
+              <td>${formatCurrency(disb.totalEarnings)}</td>
+              <td>${disb.daysApproved} / ${disb.daysExpected} d</td>
+              <td style="font-weight:bold; color:#16a34a;">${formatCurrency(disb.netPayment)}</td>
+              <td>${formatCurrency(disb.etiClaimed)}</td>
+              <td style="font-family:monospace; font-size:10px; color:#475569;">${disb.bankReference || "—"}</td>
+            </tr>
+          `;
+        });
+      }
+      financialHtml += `</tbody></table></body></html>`;
+
+      // 9. RENDER THE CLASSROOM ATTENDANCE PDF SUMMARY
+      const totalSessions = classroomRecords.length;
+      const totalPresent = classroomRecords.filter(
+        (r) => r.status === "Present",
+      ).length;
+      const attendanceRatio =
+        totalSessions > 0
+          ? Math.round((totalPresent / totalSessions) * 100)
+          : 0;
+
+      let classroomHtml = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@400;700&display=swap');
+            body { font-family: 'Trebuchet MS', Arial, sans-serif; font-size: 11px; color: #1a2e35; padding: 20px; }
+            h1 { color: #073f4e; text-align: center; text-transform: uppercase; font-family: 'Oswald', sans-serif; letter-spacing: 0.05em; }
+            .meta { background: #f0f9ff; border-left: 4px solid #0ea5e9; padding: 15px; margin-bottom: 20px; border-radius: 4px; border: 1px solid #bae6fd; }
+            table { width: 100%; border-collapse: collapse; margin-top: 10px; table-layout: fixed; }
+            th, td { border: 1px solid #dde4e8; padding: 10px; text-align: left; vertical-align: middle; word-wrap: break-word; overflow-wrap: break-word; word-break: break-word; }
+            th { background-color: #073f4e; color: white; font-family: 'Oswald', sans-serif; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
+            tr:nth-child(even) { background-color: #f8fafb; }
+            .badge-present { color: #166534; font-weight: bold; background: #dcfce7; padding: 2px 6px; border: 1px solid #bbf7d0; text-transform: uppercase; font-size: 9px; }
+            .badge-absent { color: #991b1b; font-weight: bold; background: #fee2e2; padding: 2px 6px; border: 1px solid #fecaca; text-transform: uppercase; font-size: 9px; }
+          </style>
+        </head>
+        <body>
+          <h1>Classroom Attendance Verification Ledger</h1>
+          <div class="meta">
+            <strong>Learner Name:</strong> ${learnerName || "Unknown"}<br/>
+            <strong>Identity Number:</strong> ${finalIdNumber || "Unknown"}<br/>
+            <strong>Class Cohort ID:</strong> ${cohortId || "Unknown"}<br/>
+            <strong>Theoretical Compliance Threshold:</strong> 80% Required<br/>
+            <strong>Actual Classroom Attendance Ratio:</strong> <span style="color: ${attendanceRatio >= 80 ? "#16a34a" : "#dc2626"}; font-weight: bold;">${attendanceRatio}% (${totalPresent} / ${totalSessions} sessions)</span>
+          </div>
+          <table>
+            <thead>
+              <tr><th>Session Date</th><th>Enrolment Status</th><th>Check-In (SAST)</th><th>Lunch Break Out/In</th><th>Check-Out (SAST)</th><th>Validation Stream</th></tr>
+            </thead>
+            <tbody>
+      `;
+
+      if (classroomRecords.length === 0) {
+        classroomHtml += `<tr><td colspan="6" style="text-align:center; padding: 30px;">No historical campus registration sequences located in the logs database.</td></tr>`;
+      } else {
+        classroomRecords.forEach((rec) => {
+          const statusBadge =
+            rec.status === "Present"
+              ? `<span class="badge-present">Present</span>`
+              : `<span class="badge-absent">Absent</span>`;
+          classroomHtml += `<tr><td><strong>${rec.date}</strong></td><td>${statusBadge}</td><td>${rec.checkIn}</td><td>${rec.lunchOut} → ${rec.lunchIn}</td><td>${rec.checkOut}</td><td style="color:#64748b; font-family: monospace;">${rec.finalizedBy}</td></tr>`;
+        });
+      }
+      classroomHtml += `</tbody></table></body></html>`;
+
+      // 10. RENDER THE WORKPLACE LOGBOOK PDF TEMPLATE
+      logs.sort(
+        (a, b) =>
+          new Date(a.dateString).getTime() - new Date(b.dateString).getTime(),
+      );
+
+      const totalHours = logs.reduce(
+        (sum, l) => sum + (Number(l.totalHours) || 0),
+        0,
+      );
+
+      // 🚀 EXTRACT THE *LAST* MENTOR SIGNATURE FOR THE FINAL SIGN-OFF (Chronologically)
+      const lastSignedLog = [...logs]
+        .reverse()
+        .find((l) => l.mentorSignatureUrl);
+      const mentorSignature = lastSignedLog?.mentorSignatureUrl || null;
+      const finalSignoffMentorName =
+        lastSignedLog?.processedBy || resolvedMentorName;
+
+      const learnerSignature =
+        learnerUserDoc?.signatureUrl || learner.signatureUrl || null;
+      const signatureDate =
+        logs.length > 0
+          ? logs[logs.length - 1].dateString
+          : "_________________________";
+
+      let logsHtml = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@400;700&display=swap');
+            body { font-family: 'Trebuchet MS', Arial, sans-serif; font-size: 11px; color: #1a2e35; padding: 20px; }
+            h1 { color: #073f4e; text-align: center; text-transform: uppercase; font-family: 'Oswald', sans-serif; letter-spacing: 0.05em; }
+            .meta { background: #f8fafc; border-left: 4px solid #94c73d; padding: 15px; margin-bottom: 20px; border-radius: 4px; border: 1px solid #dde4e8; }
+            
+            /* 🚀 STRICT TABLE BOUNDARIES TO PREVENT TEXT STRETCHING */
+            table { width: 100%; border-collapse: collapse; margin-top: 10px; table-layout: fixed; }
+            th, td { border: 1px solid #dde4e8; padding: 10px; text-align: left; vertical-align: top; word-wrap: break-word; overflow-wrap: break-word; word-break: break-word; }
+            th { background-color: #073f4e; color: white; font-family: 'Oswald', sans-serif; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
+            tr:nth-child(even) { background-color: #f8fafb; }
+            
+            /* 🚀 QUILL HTML RENDER FORMATTING */
+            .quill-content { font-size: 11px; line-height: 1.5; color: #334155; white-space: normal; }
+            .quill-content * { word-wrap: break-word !important; overflow-wrap: break-word !important; word-break: break-word !important; max-width: 100%; }
+            .quill-content p { margin: 0 0 5px 0; }
+            .quill-content ul, .quill-content ol { margin: 4px 0; padding-left: 18px; }
+            .quill-content a { color: #0ea5e9; text-decoration: underline; word-break: break-all; }
+            .quill-content pre { background-color: #f1f5f9; padding: 8px; border-radius: 4px; white-space: pre-wrap; font-family: monospace; font-size: 9px; overflow-x: hidden; border: 1px solid #dde4e8; }
+            .quill-content blockquote { border-left: 3px solid #94a3b8; padding-left: 8px; margin: 8px 0; color: #475569; font-style: italic; }
+            .quill-content img { max-width: 100%; height: auto; }
+            
+            .signature-block { margin-top: 40px; page-break-inside: avoid; border-top: 2px solid #073f4e; padding-top: 20px; }
+            .signature-table { width: 100%; border: none; margin-top: 30px; table-layout: fixed; }
+            .signature-table td { border: none; background: transparent !important; padding: 0; }
+            .sig-line { border-bottom: 1px solid #1a2e35; height: 40px; margin-bottom: 5px; }
+          </style>
+        </head>
+        <body>
+          <h1>Official QCTO Workplace Evidence Logbook</h1>
+          <div class="meta">
+            <strong>Learner Name:</strong> ${learnerName || "Unknown"}<br/>
+            <strong>Identity Number:</strong> ${finalIdNumber || "Unknown"}<br/>
+            <strong>Host Employer:</strong> ${employerName || "Unknown"}<br/>
+            <strong>Current Workplace Mentor:</strong> ${resolvedMentorName}<br/>
+            <strong>Total Approved Workplace Hours:</strong> ${totalHours.toFixed(1)} hrs
+          </div>
+          <table>
+            <thead>
+              <tr><th width="12%">Date</th><th width="15%">Time Logged</th><th width="18%">SETA Module</th><th width="55%">Tasks Performed & Supervisor Validation</th></tr>
+            </thead>
+            <tbody>
+      `;
+
+      if (logs.length === 0) {
+        logsHtml += `<tr><td colspan="4" style="text-align:center; padding: 30px; font-weight: bold; color: #dc2626;">No approved workplace logs found.</td></tr>`;
+      } else {
+        logs.forEach((log) => {
+          // 🚀 KEEP QUILL HTML, INJECT DIRECTLY INTO .quill-content
+          const formattedTasks =
+            log.tasksPerformed ||
+            "<em style='color:#94a3b8'>No description provided</em>";
+          const logSignatureImg = log.mentorSignatureUrl
+            ? `<img src="${log.mentorSignatureUrl}" style="max-height: 25px; mix-blend-mode: multiply; display: block;" />`
+            : `<span style="font-size: 9px; color: #166534; font-weight: bold;">✔ VERIFIED ONLINE</span>`;
+          const logApprover = log.processedBy || resolvedMentorName;
+          const logApprovalDate = log.processedAt
+            ? new Date(log.processedAt).toLocaleDateString("en-ZA", {
+                timeZone: "Africa/Johannesburg",
+              })
+            : log.dateString;
+
+          logsHtml += `
+            <tr>
+              <td><strong>${log.dateString}</strong></td>
+              <td>${log.startTime} to ${log.endTime}<br/><em style="color:#0ea5e9;">(${Number(log.totalHours).toFixed(1)} hrs)</em></td>
+              <td><strong>${log.workActivityCode || log.moduleCode || "N/A"}</strong></td>
+              <td>
+                <div class="quill-content">${formattedTasks}</div>
+                <div style="background: #f8fafc; border: 1px solid #dde4e8; border-left: 3px solid #0ea5e9; padding: 6px; display: flex; align-items: center; gap: 10px; margin-top: 8px;">
+                  <div style="width: 80px;">${logSignatureImg}</div>
+                  <div style="font-size: 9px; color: #475569;">
+                    <strong>Supervisor:</strong> ${logApprover}<br/>
+                    <strong>Date Verified:</strong> ${logApprovalDate}
+                  </div>
+                </div>
+              </td>
+            </tr>
+          `;
+        });
+      }
+
+      // 🚀 INJECT THE "LAST MENTOR" SIGNATURE INTO THE FINAL DECLARATION
+      logsHtml += `
+            </tbody>
+          </table>
+          <div class="signature-block">
+            <h3 style="color: #073f4e; text-transform: uppercase; font-family: 'Oswald', sans-serif; margin-bottom: 10px;">Official Sign-Off & Declaration</h3>
+            <p style="font-size: 11px; line-height: 1.6; color: #475569;">
+              I, the undersigned Workplace Mentor, hereby declare that the learner <strong>${learnerName}</strong> has authentically completed <strong>${totalHours.toFixed(1)}</strong> hours of workplace experience at <strong>${employerName}</strong> as detailed in the logs above. I confirm that the tasks performed align with the required SETA/QCTO curriculum outcomes, and the evidence provided is valid, authentic, and current.
+            </p>
+            <table class="signature-table">
+              <tr>
+                <td style="width: 45%;">
+                  ${mentorSignature ? `<img src="${mentorSignature}" style="max-height: 40px; mix-blend-mode: multiply; margin-bottom: 4px;" />` : `<div class="sig-line"></div>`}
+                  <div style="font-weight: bold;">Workplace Mentor Signature</div>
+                  <div style="color: #64748b; font-size: 10px; margin-top: 4px;">Name: ${finalSignoffMentorName}</div>
+                  <div style="color: #64748b; font-size: 10px; margin-top: 2px;">Date: ${signatureDate}</div>
+                </td>
+                <td style="width: 10%;"></td>
+                <td style="width: 45%;">
+                  ${learnerSignature ? `<img src="${learnerSignature}" style="max-height: 40px; mix-blend-mode: multiply; margin-bottom: 4px;" />` : `<div class="sig-line"></div>`}
+                  <div style="font-weight: bold;">Learner Signature</div>
+                  <div style="color: #64748b; font-size: 10px; margin-top: 4px;">Name: ${learnerName || "_________________________"}</div>
+                  <div style="color: #64748b; font-size: 10px; margin-top: 2px;">Date: ${signatureDate}</div>
+                </td>
+              </tr>
+            </table>
+          </div>
+        </body>
+        </html>
+      `;
+
+      // 11. SPAWN CHROMIUM AND CONVERT PAGES
+      logger.info(
+        "[AuditPack] Spawning chromium instance for PDF generation...",
+      );
+      const browser = await puppeteer.launch({
+        args: chromium.args,
+        defaultViewport: chromium.defaultViewport,
+        executablePath: await chromium.executablePath(),
+        headless: chromium.headless,
+      });
+
+      const pageClassroom = await browser.newPage();
+      await pageClassroom.setContent(classroomHtml, {
+        waitUntil: ["load", "networkidle0"],
+      });
+      const classroomPdfBuffer = await pageClassroom.pdf({
+        format: "A4",
+        printBackground: true,
+        margin: { top: "15mm", right: "15mm", bottom: "15mm", left: "15mm" },
+      });
+
+      const pageWorkplace = await browser.newPage();
+      await pageWorkplace.setContent(logsHtml, {
+        waitUntil: ["load", "networkidle0"],
+      });
+      const workplacePdfBuffer = await pageWorkplace.pdf({
+        format: "A4",
+        printBackground: true,
+        margin: { top: "15mm", right: "15mm", bottom: "20mm", left: "15mm" },
+      });
+
+      const pageFinancial = await browser.newPage();
+      await pageFinancial.setContent(financialHtml, {
+        waitUntil: ["load", "networkidle0"],
+      });
+      const financialPdfBuffer = await pageFinancial.pdf({
+        format: "A4",
+        printBackground: true,
+        margin: { top: "15mm", right: "15mm", bottom: "15mm", left: "15mm" },
+      });
+
+      await browser.close();
+
+      // 12. POPULATE THE ZIP STRUCTURE
+      zip.file(
+        `${folderClassroom}Campus_Attendance_Register_Summary_${safeLearnerName}.pdf`,
+        classroomPdfBuffer,
+      );
+      zip.file(
+        `${folderWorkplace}Official_QCTO_Workplace_Logbook_${safeLearnerName}.pdf`,
+        workplacePdfBuffer,
+      );
+      zip.file(
+        `${folderFinancial}Official_Stipend_Disbursement_Ledger_${safeLearnerName}.pdf`,
+        financialPdfBuffer,
+      );
+
+      // Loop through historical disbursements to push actual uploaded financial files as sub-annexures
+      for (const disb of disbursementsList) {
+        if (disb.payslipEftUrl) {
+          const ext = getExtensionFromUrl(disb.payslipEftUrl, "pdf");
+          await appendUrlToZipFolder(
+            disb.payslipEftUrl,
+            folderFinancial,
+            `Bank_Cleared_Receipt_${disb.monthYear}.${ext}`,
+          );
+        }
+      }
+
+      // 13. COMPILE AND GENERATE SECURE EXPIRES URL
+      const finalZipBuffer = await zip.generateAsync({
+        type: "nodebuffer",
+        compression: "DEFLATE",
+        compressionOptions: { level: 9 },
+      });
+      const fileName = `audit_packs/SETA_Audit_${safeLearnerName}_${Date.now()}.zip`;
+      const file = bucket.file(fileName);
+      await file.save(finalZipBuffer, {
+        metadata: { contentType: "application/zip" },
+      });
+
+      const [signedUrl] = await file.getSignedUrl({
+        action: "read",
+        expires: Date.now() + 1000 * 60 * 60 * 2,
+      });
+      return { success: true, url: signedUrl };
+    } catch (error: any) {
+      logger.error("Audit Pack Generation Error:", error);
+      throw new HttpsError(
+        "internal",
+        error.message || "Failed to compile compliance pack.",
+      );
+    }
+  },
+);
+
+// ============================================================================
+// ENTERPRISE BULK EXPORT ENGINE (ASYNCHRONOUS FAN-OUT PIPELINE)
+// ============================================================================
+
+import { onTaskDispatched } from "firebase-functions/v2/tasks";
+import { getFunctions as getAdminFunctions } from "firebase-admin/functions";
+
+/**
+ * 1. THE MASTER TRIGGER
+ * Takes the array of learners from the Bulk Upload UI, creates a Master Tracker
+ * in Firestore, and queues up a Google Cloud Task for every single learner.
+ */
+export const requestBulkAuditPacks = onCall(async (request) => {
+  const auth = request.auth;
+  if (!auth) throw new HttpsError("unauthenticated", "Unauthorized.");
+
+  const { companyId, companyName, placements } = request.data;
+  if (!companyId || !placements || placements.length === 0) {
+    throw new HttpsError("invalid-argument", "Missing required payload.");
+  }
+
+  const db = admin.firestore();
+  // Target the worker function we define below
+  const queue = getAdminFunctions().taskQueue("processSingleLearnerTask");
+
+  try {
+    // Create Master Job Tracker
+    const jobRef = db.collection("compliance_jobs").doc();
+    await jobRef.set({
+      companyId,
+      companyName,
+      status: "processing",
+      totalTasks: placements.length,
+      completedTasks: 0,
+      failedTasks: 0,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      downloadUrl: null,
+    });
+
+    // Enqueue a background task for every single learner in parallel
+    const enqueuePromises = placements.map((p: any) => {
+      return queue.enqueue({
+        jobId: jobRef.id,
+        companyName,
+        learnerId: p.learnerId,
+        placementId: p.placementId,
+        learnerName: p.learnerName,
+        idNumber: p.idNumber,
+        mentorName: p.mentorName,
+      });
+    });
+
+    await Promise.all(enqueuePromises);
+
+    logger.info(
+      `Bulk Job ${jobRef.id} started. Enqueued ${placements.length} learners.`,
+    );
+    return { success: true, jobId: jobRef.id };
+  } catch (error: any) {
+    logger.error("Error starting bulk job:", error);
+    throw new HttpsError("internal", "Failed to initialize bulk export.");
+  }
+});
+
+/**
+ * 2. THE WORKER BEE (Google Cloud Task)
+ * Runs in parallel. Generates the PDFs for ONE learner using Puppeteer and
+ * saves them securely to a temporary folder in Cloud Storage.
+ */
+export const processSingleLearnerTask = onTaskDispatched(
+  {
+    retryConfig: { maxAttempts: 3, minBackoffSeconds: 60 },
+    rateLimits: { maxConcurrentDispatches: 10 }, // Throttles Puppeteer so we don't crash RAM
+    memory: "2GiB",
+    timeoutSeconds: 300,
+  },
+  async (request) => {
+    const {
+      jobId,
+      companyName,
+      learnerId,
+      placementId,
+      learnerName,
+      idNumber: payloadIdNumber,
+      mentorName: payloadMentorName,
+    } = request.data;
+
+    const db = admin.firestore();
+    const bucket = admin.storage().bucket();
+    const jobRef = db.collection("compliance_jobs").doc(jobId);
+
+    try {
+      logger.info(`Worker starting for ${learnerName} (Job: ${jobId})`);
+
+      // DECODE COMPOSITE IDs (e.g. "CohortID_IDNumber")
+      let actualDocId = learnerId;
+      let extractedCohortId = "";
+      if (learnerId.includes("_")) {
+        const parts = learnerId.split("_");
+        extractedCohortId = parts[0];
+        actualDocId = parts[1];
+      }
+
+      // Fetch Primary Documents
+      const [learnerSnap, placementSnap, disbursementsSnap] = await Promise.all(
+        [
+          db.collection("learners").doc(actualDocId).get(),
+          db.collection("placements").doc(placementId).get(),
+          db.collection(`placements/${placementId}/disbursements`).get(),
+        ],
+      );
+
+      const learner = learnerSnap.data() || {};
+      const placement = placementSnap.exists ? placementSnap.data() || {} : {};
+      const disbursementsList = disbursementsSnap.docs
+        .map((d) => d.data())
+        .sort((a, b) => String(a.monthYear).localeCompare(String(b.monthYear)));
+
+      const finalIdNumber =
+        payloadIdNumber && payloadIdNumber !== "—"
+          ? payloadIdNumber
+          : String(learner.idNumber || actualDocId).trim();
+      const resolvedMentorName =
+        payloadMentorName && payloadMentorName !== "Unassigned"
+          ? payloadMentorName
+          : placement.assignedMentorName ||
+            placement.mentorName ||
+            "Unassigned Mentor";
+      const cohortId =
+        placement.cohortId || learner.cohortId || extractedCohortId;
+
+      // FETCH LOGS
+      const logQueries = [
+        db
+          .collection("workplace_logs")
+          .where("learnerId", "==", learnerId)
+          .get(),
+      ];
+      if (finalIdNumber && learnerId !== finalIdNumber) {
+        logQueries.push(
+          db
+            .collection("workplace_logs")
+            .where("learnerId", "==", finalIdNumber)
+            .get(),
+        );
+      }
+      const logSnaps = await Promise.all(logQueries);
+      const allLogsMap = new Map();
+      logSnaps.forEach((snap) => {
+        snap.docs.forEach((doc) => {
+          if (
+            String(doc.data().status || "")
+              .trim()
+              .toLowerCase() === "approved"
+          ) {
+            allLogsMap.set(doc.id, doc.data());
+          }
+        });
+      });
+      const logs = Array.from(allLogsMap.values());
+
+      // FETCH CLASSROOM ATTENDANCE
+      let classroomRecords: any[] = [];
+      if (cohortId && finalIdNumber) {
+        const attendanceSnap = await db
+          .collection("attendance")
+          .where("cohortId", "==", cohortId)
+          .get();
+        const formatScanTime = (ts: number | undefined) => {
+          if (!ts) return "—";
+          return new Date(ts).toLocaleTimeString("en-ZA", {
+            timeZone: "Africa/Johannesburg",
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+          });
+        };
+        classroomRecords = attendanceSnap.docs
+          .map((d) => {
+            const att = d.data();
+            const isPresent =
+              Array.isArray(att.presentLearners) &&
+              att.presentLearners.includes(finalIdNumber);
+            const isAbsent =
+              Array.isArray(att.absentLearners) &&
+              att.absentLearners.includes(finalIdNumber);
+            if (!isPresent && !isAbsent) return null;
+            const scanData =
+              isPresent && att.scans ? att.scans[finalIdNumber] : null;
+            return {
+              date: att.date || "—",
+              status: isPresent ? "Present" : "Absent",
+              checkIn: scanData?.checkInAt
+                ? formatScanTime(scanData.checkInAt)
+                : "—",
+              lunchOut: scanData?.lunchOutAt
+                ? formatScanTime(scanData.lunchOutAt)
+                : "—",
+              lunchIn: scanData?.lunchInAt
+                ? formatScanTime(scanData.lunchInAt)
+                : "—",
+              checkOut: scanData?.checkOutAt
+                ? formatScanTime(scanData.checkOutAt)
+                : "—",
+              finalizedBy: att.finalizedBy || "system-auto",
+            };
+          })
+          .filter(Boolean)
+          .sort(
+            (a: any, b: any) =>
+              new Date(b.date).getTime() - new Date(a.date).getTime(),
+          );
+      }
+
+      // FOLDER STRUCTURE
+      const safeLearnerName = (learnerName || "Learner").replace(
+        /[^a-zA-Z0-9]/g,
+        "_",
+      );
+      const basePath = `tmp_bulk_jobs/${jobId}/Learner_${safeLearnerName}_${finalIdNumber}`;
+      const folderLegal = `${basePath}/01_Legal_Identity_and_Contracts/`;
+      const folderClassroom = `${basePath}/02_Theory_and_Practical_Classroom_Evidence/`;
+      const folderWorkplace = `${basePath}/03_Workplace_Logbooks_and_Timesheets/`;
+      const folderFinancial = `${basePath}/04_Financial_and_Payroll_Evidence/`;
+
+      // ─── FILE DOWNLOADING HELPER ───
+      const getExtensionFromUrl = (url: string, defaultExt: string = "pdf") => {
+        try {
+          return (
+            url.split("?")[0].split(".").pop()?.toLowerCase() || defaultExt
+          );
+        } catch {
+          return defaultExt;
+        }
+      };
+
+      const downloadFileToStorage = async (url: string, targetPath: string) => {
+        try {
+          const response = await axios.get(url, {
+            responseType: "arraybuffer",
+          });
+          await bucket.file(targetPath).save(Buffer.from(response.data));
+          return true;
+        } catch (e: any) {
+          logger.warn(`Failed to pull file ${targetPath}: ${e.message}`);
+          return false;
+        }
+      };
+
+      // FETCH IDENTITY & WBLPA
+      let idUrl =
+        learner.documents?.idDocument ||
+        learner.idUrl ||
+        learner.idDocumentUrl ||
+        "";
+      let wblpaUrl =
+        placement.compliance?.wblpaAgreementUrl ||
+        placement.wblAgreementUrl ||
+        placement.wblpaAgreementUrl ||
+        "";
+
+      let learnerUserDoc: any = {};
+      if (learner.authUid) {
+        const uSnap = await db.collection("users").doc(learner.authUid).get();
+        if (uSnap.exists) learnerUserDoc = uSnap.data();
+      }
+
+      const arraysToScan = [
+        ...(learner.uploadedDocuments || []),
+        ...(placement.uploadedDocuments || []),
+        ...(learnerUserDoc?.uploadedDocuments || []),
+      ];
+      arraysToScan.forEach((doc: any) => {
+        const docId = String(doc.id || "").toLowerCase();
+        const name = String(doc.name || "").toLowerCase();
+        if (
+          !idUrl &&
+          (docId === "id" ||
+            name.includes("id") ||
+            name.includes("identity") ||
+            name.includes("passport"))
+        )
+          idUrl = doc.url;
+        if (
+          !wblpaUrl &&
+          (docId === "wblpa" ||
+            docId === "contract" ||
+            name.includes("contract") ||
+            name.includes("wblpa") ||
+            name.includes("agreement"))
+        )
+          wblpaUrl = doc.url;
+      });
+
+      if (idUrl)
+        await downloadFileToStorage(
+          idUrl,
+          `${folderLegal}ID_Document_${safeLearnerName}.${getExtensionFromUrl(idUrl, "pdf")}`,
+        );
+      else
+        await bucket
+          .file(`${folderLegal}⚠️_MISSING_IDENTITY_DOCUMENT.txt`)
+          .save(
+            "Compliance Alert: No certified ID file or passport was uploaded.",
+          );
+
+      if (wblpaUrl)
+        await downloadFileToStorage(
+          wblpaUrl,
+          `${folderLegal}Fully_Executed_WBLPA_Contract_${safeLearnerName}.${getExtensionFromUrl(wblpaUrl, "pdf")}`,
+        );
+      else
+        await bucket
+          .file(`${folderLegal}⚠️_MISSING_WBLPA_CONTRACT.txt`)
+          .save(
+            "Compliance Alert: No signed tripartite WBLPA agreement link could be fetched.",
+          );
+
+      // DOWNLOAD BANK CLEARED RECEIPTS
+      for (const disb of disbursementsList) {
+        if (disb.payslipEftUrl) {
+          await downloadFileToStorage(
+            disb.payslipEftUrl,
+            `${folderFinancial}Bank_Cleared_Receipt_${disb.monthYear}.${getExtensionFromUrl(disb.payslipEftUrl, "pdf")}`,
+          );
+        }
+      }
+
+      const formatCurrency = (val: any) =>
+        new Intl.NumberFormat("en-ZA", {
+          style: "currency",
+          currency: "ZAR",
+          maximumFractionDigits: 0,
+        }).format(Number(val) || 0);
+
+      // ─── BUILD FINANCIAL HTML ───
+      let financialHtml = `<!DOCTYPE html><html><head><style>@import url('https://fonts.googleapis.com/css2?family=Oswald:wght@400;700&display=swap');body{font-family:'Trebuchet MS',Arial,sans-serif;font-size:11px;color:#1a2e35;padding:20px;}h1{color:#073f4e;text-align:center;text-transform:uppercase;font-family:'Oswald',sans-serif;letter-spacing:0.05em;}.meta{background:#fffbeb;border-left:4px solid #d97706;padding:15px;margin-bottom:20px;border-radius:4px;border:1px solid #fef3c7;}table{width:100%;border-collapse:collapse;margin-top:10px;table-layout:fixed;}th,td{border:1px solid #dde4e8;padding:10px;text-align:left;vertical-align:middle;word-wrap:break-word;overflow-wrap:break-word;word-break:break-word;}th{background-color:#073f4e;color:white;font-family:'Oswald',sans-serif;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;}tr:nth-child(even){background-color:#f8fafb;}</style></head><body><h1>Stipend Disbursement Compliance Ledger</h1><div class="meta"><strong>Learner Name:</strong> ${learnerName || "Unknown"}<br/><strong>Identity Number:</strong> ${finalIdNumber || "Unknown"}<br/><strong>Host Employer:</strong> ${companyName || "Unknown"}<br/><strong>SARS Employment Verification Status:</strong> Active Tracking Account</div><table><thead><tr><th width="15%">Month</th><th width="18%">Total Earnings</th><th width="12%">Log Days</th><th width="20%">Net Payment</th><th width="15%">ETI Claimed</th><th width="20%">Bank Reference</th></tr></thead><tbody>`;
+      if (disbursementsList.length === 0)
+        financialHtml += `<tr><td colspan="6" style="text-align:center;">No financial disbursements on record.</td></tr>`;
+      else {
+        disbursementsList.forEach((disb: any) => {
+          financialHtml += `<tr><td><strong>${disb.monthYear}</strong></td><td>${formatCurrency(disb.totalEarnings)}</td><td>${disb.daysApproved} / ${disb.daysExpected} d</td><td style="font-weight:bold; color:#16a34a;">${formatCurrency(disb.netPayment)}</td><td>${formatCurrency(disb.etiClaimed)}</td><td style="font-family:monospace; font-size:10px; color:#475569;">${disb.bankReference || "—"}</td></tr>`;
+        });
+      }
+      financialHtml += `</tbody></table></body></html>`;
+
+      // ─── BUILD CLASSROOM HTML ───
+      const totalSessions = classroomRecords.length;
+      const totalPresent = classroomRecords.filter(
+        (r) => r.status === "Present",
+      ).length;
+      const attendanceRatio =
+        totalSessions > 0
+          ? Math.round((totalPresent / totalSessions) * 100)
+          : 0;
+      let classroomHtml = `<!DOCTYPE html><html><head><style>@import url('https://fonts.googleapis.com/css2?family=Oswald:wght@400;700&display=swap');body{font-family:'Trebuchet MS',Arial,sans-serif;font-size:11px;color:#1a2e35;padding:20px;}h1{color:#073f4e;text-align:center;text-transform:uppercase;font-family:'Oswald',sans-serif;letter-spacing:0.05em;}.meta{background:#f0f9ff;border-left:4px solid #0ea5e9;padding:15px;margin-bottom:20px;border-radius:4px;border:1px solid #bae6fd;}table{width:100%;border-collapse:collapse;margin-top:10px;table-layout:fixed;}th,td{border:1px solid #dde4e8;padding:10px;text-align:left;vertical-align:middle;word-wrap:break-word;overflow-wrap:break-word;word-break:break-word;}th{background-color:#073f4e;color:white;font-family:'Oswald',sans-serif;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;}tr:nth-child(even){background-color:#f8fafb;}.badge-present{color:#166534;font-weight:bold;background:#dcfce7;padding:2px 6px;border:1px solid #bbf7d0;text-transform:uppercase;font-size:9px;}.badge-absent{color:#991b1b;font-weight:bold;background:#fee2e2;padding:2px 6px;border:1px solid #fecaca;text-transform:uppercase;font-size:9px;}</style></head><body><h1>Classroom Attendance Verification Ledger</h1><div class="meta"><strong>Learner Name:</strong> ${learnerName || "Unknown"}<br/><strong>Identity Number:</strong> ${finalIdNumber || "Unknown"}<br/><strong>Class Cohort ID:</strong> ${cohortId || "Unknown"}<br/><strong>Theoretical Compliance Threshold:</strong> 80% Required<br/><strong>Actual Classroom Attendance Ratio:</strong> <span style="color: ${attendanceRatio >= 80 ? "#16a34a" : "#dc2626"}; font-weight: bold;">${attendanceRatio}% (${totalPresent} / ${totalSessions} sessions)</span></div><table><thead><tr><th>Session Date</th><th>Enrolment Status</th><th>Check-In (SAST)</th><th>Lunch Break Out/In</th><th>Check-Out (SAST)</th><th>Validation Stream</th></tr></thead><tbody>`;
+      if (classroomRecords.length === 0)
+        classroomHtml += `<tr><td colspan="6" style="text-align:center; padding: 30px;">No historical campus registration sequences located.</td></tr>`;
+      else {
+        classroomRecords.forEach((rec) => {
+          const statusBadge =
+            rec.status === "Present"
+              ? `<span class="badge-present">Present</span>`
+              : `<span class="badge-absent">Absent</span>`;
+          classroomHtml += `<tr><td><strong>${rec.date}</strong></td><td>${statusBadge}</td><td>${rec.checkIn}</td><td>${rec.lunchOut} → ${rec.lunchIn}</td><td>${rec.checkOut}</td><td style="color:#64748b; font-family: monospace;">${rec.finalizedBy}</td></tr>`;
+        });
+      }
+      classroomHtml += `</tbody></table></body></html>`;
+
+      // ─── BUILD WORKPLACE LOGBOOK HTML ───
+      logs.sort(
+        (a, b) =>
+          new Date(a.dateString).getTime() - new Date(b.dateString).getTime(),
+      );
+      const totalHours = logs.reduce(
+        (sum, l) => sum + (Number(l.totalHours) || 0),
+        0,
+      );
+      const lastSignedLog = [...logs]
+        .reverse()
+        .find((l) => l.mentorSignatureUrl);
+      const mentorSignature = lastSignedLog?.mentorSignatureUrl || null;
+      const finalSignoffMentorName =
+        lastSignedLog?.processedBy || resolvedMentorName;
+      const learnerSignature =
+        learnerUserDoc?.signatureUrl || learner.signatureUrl || null;
+      const signatureDate =
+        logs.length > 0
+          ? logs[logs.length - 1].dateString
+          : "_________________________";
+
+      let logsHtml = `<!DOCTYPE html><html><head><style>@import url('https://fonts.googleapis.com/css2?family=Oswald:wght@400;700&display=swap');body{font-family:'Trebuchet MS',Arial,sans-serif;font-size:11px;color:#1a2e35;padding:20px;}h1{color:#073f4e;text-align:center;text-transform:uppercase;font-family:'Oswald',sans-serif;letter-spacing:0.05em;}.meta{background:#f8fafc;border-left:4px solid #94c73d;padding:15px;margin-bottom:20px;border-radius:4px;border:1px solid #dde4e8;}table{width:100%;border-collapse:collapse;margin-top:10px;table-layout:fixed;}th,td{border:1px solid #dde4e8;padding:10px;text-align:left;vertical-align:top;word-wrap:break-word;overflow-wrap:break-word;word-break:break-word;}th{background-color:#073f4e;color:white;font-family:'Oswald',sans-serif;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;}tr:nth-child(even){background-color:#f8fafb;}.quill-content{font-size:11px;line-height:1.5;color:#334155;white-space:normal;}.quill-content *{word-wrap:break-word !important;overflow-wrap:break-word !important;word-break:break-word !important;max-width:100%;}.quill-content p{margin:0 0 5px 0;}.quill-content ul,.quill-content ol{margin:4px 0;padding-left:18px;}.signature-block{margin-top:40px;page-break-inside:avoid;border-top:2px solid #073f4e;padding-top:20px;}.signature-table{width:100%;border:none;margin-top:30px;table-layout:fixed;}.signature-table td{border:none;background:transparent !important;padding:0;}.sig-line{border-bottom:1px solid #1a2e35;height:40px;margin-bottom:5px;}</style></head><body><h1>Official QCTO Workplace Evidence Logbook</h1><div class="meta"><strong>Learner Name:</strong> ${learnerName || "Unknown"}<br/><strong>Identity Number:</strong> ${finalIdNumber || "Unknown"}<br/><strong>Host Employer:</strong> ${companyName || "Unknown"}<br/><strong>Current Workplace Mentor:</strong> ${resolvedMentorName}<br/><strong>Total Approved Workplace Hours:</strong> ${totalHours.toFixed(1)} hrs</div><table><thead><tr><th width="12%">Date</th><th width="15%">Time Logged</th><th width="18%">SETA Module</th><th width="55%">Tasks Performed & Supervisor Validation</th></tr></thead><tbody>`;
+      if (logs.length === 0)
+        logsHtml += `<tr><td colspan="4" style="text-align:center; padding: 30px; font-weight: bold; color: #dc2626;">No approved workplace logs found.</td></tr>`;
+      else {
+        logs.forEach((log) => {
+          const formattedTasks =
+            log.tasksPerformed ||
+            "<em style='color:#94a3b8'>No description provided</em>";
+          const logSignatureImg = log.mentorSignatureUrl
+            ? `<img src="${log.mentorSignatureUrl}" style="max-height: 25px; mix-blend-mode: multiply; display: block;" />`
+            : `<span style="font-size: 9px; color: #166534; font-weight: bold;">✔ VERIFIED ONLINE</span>`;
+          const logApprover = log.processedBy || resolvedMentorName;
+          const logApprovalDate = log.processedAt
+            ? new Date(log.processedAt).toLocaleDateString("en-ZA", {
+                timeZone: "Africa/Johannesburg",
+              })
+            : log.dateString;
+          logsHtml += `<tr><td><strong>${log.dateString}</strong></td><td>${log.startTime} to ${log.endTime}<br/><em style="color:#0ea5e9;">(${Number(log.totalHours).toFixed(1)} hrs)</em></td><td><strong>${log.workActivityCode || log.moduleCode || "N/A"}</strong></td><td><div class="quill-content">${formattedTasks}</div><div style="background: #f8fafc; border: 1px solid #dde4e8; border-left: 3px solid #0ea5e9; padding: 6px; display: flex; align-items: center; gap: 10px; margin-top: 8px;"><div style="width: 80px;">${logSignatureImg}</div><div style="font-size: 9px; color: #475569;"><strong>Supervisor:</strong> ${logApprover}<br/><strong>Date Verified:</strong> ${logApprovalDate}</div></div></td></tr>`;
+        });
+      }
+      logsHtml += `</tbody></table><div class="signature-block"><h3 style="color: #073f4e; text-transform: uppercase; font-family: 'Oswald', sans-serif; margin-bottom: 10px;">Official Sign-Off & Declaration</h3><p style="font-size: 11px; line-height: 1.6; color: #475569;">I, the undersigned Workplace Mentor, hereby declare that the learner <strong>${learnerName}</strong> has authentically completed <strong>${totalHours.toFixed(1)}</strong> hours of workplace experience at <strong>${companyName}</strong> as detailed in the logs above. I confirm that the tasks performed align with the required SETA/QCTO curriculum outcomes, and the evidence provided is valid, authentic, and current.</p><table class="signature-table"><tr><td style="width: 45%;">${mentorSignature ? `<img src="${mentorSignature}" style="max-height: 40px; mix-blend-mode: multiply; margin-bottom: 4px;" />` : `<div class="sig-line"></div>`}<div style="font-weight: bold;">Workplace Mentor Signature</div><div style="color: #64748b; font-size: 10px; margin-top: 4px;">Name: ${finalSignoffMentorName}</div><div style="color: #64748b; font-size: 10px; margin-top: 2px;">Date: ${signatureDate}</div></td><td style="width: 10%;"></td><td style="width: 45%;">${learnerSignature ? `<img src="${learnerSignature}" style="max-height: 40px; mix-blend-mode: multiply; margin-bottom: 4px;" />` : `<div class="sig-line"></div>`}<div style="font-weight: bold;">Learner Signature</div><div style="color: #64748b; font-size: 10px; margin-top: 4px;">Name: ${learnerName || "_________________________"}</div><div style="color: #64748b; font-size: 10px; margin-top: 2px;">Date: ${signatureDate}</div></td></tr></table></div></body></html>`;
+
+      // ─── SPAWN CHROMIUM AND SAVE PDFs TO CLOUD STORAGE ───
+      const browser = await puppeteer.launch({
+        args: chromium.args,
+        defaultViewport: chromium.defaultViewport,
+        executablePath: await chromium.executablePath(),
+        headless: chromium.headless,
+      });
+
+      const pageClassroom = await browser.newPage();
+      await pageClassroom.setContent(classroomHtml, {
+        waitUntil: ["load", "networkidle0"],
+      });
+      const classroomPdfBuffer = await pageClassroom.pdf({
+        format: "A4",
+        printBackground: true,
+        margin: { top: "15mm", right: "15mm", bottom: "15mm", left: "15mm" },
+      });
+
+      const pageWorkplace = await browser.newPage();
+      await pageWorkplace.setContent(logsHtml, {
+        waitUntil: ["load", "networkidle0"],
+      });
+      const workplacePdfBuffer = await pageWorkplace.pdf({
+        format: "A4",
+        printBackground: true,
+        margin: { top: "15mm", right: "15mm", bottom: "20mm", left: "15mm" },
+      });
+
+      const pageFinancial = await browser.newPage();
+      await pageFinancial.setContent(financialHtml, {
+        waitUntil: ["load", "networkidle0"],
+      });
+      const financialPdfBuffer = await pageFinancial.pdf({
+        format: "A4",
+        printBackground: true,
+        margin: { top: "15mm", right: "15mm", bottom: "15mm", left: "15mm" },
+      });
+
+      await browser.close();
+
+      // Save generated PDFs into Cloud Storage
+      await bucket
+        .file(
+          `${folderClassroom}Campus_Attendance_Register_Summary_${safeLearnerName}.pdf`,
+        )
+        .save(classroomPdfBuffer);
+      await bucket
+        .file(
+          `${folderWorkplace}Official_QCTO_Workplace_Logbook_${safeLearnerName}.pdf`,
+        )
+        .save(workplacePdfBuffer);
+      await bucket
+        .file(
+          `${folderFinancial}Official_Stipend_Disbursement_Ledger_${safeLearnerName}.pdf`,
+        )
+        .save(financialPdfBuffer);
+
+      // Increment Master Tracker Complete Count
+      await jobRef.update({
+        completedTasks: admin.firestore.FieldValue.increment(1),
+      });
+      logger.info(`Worker completed for ${learnerName}`);
+    } catch (error) {
+      logger.error(`Worker failed for Learner ${learnerId}:`, error);
+      await jobRef.update({
+        failedTasks: admin.firestore.FieldValue.increment(1),
+        completedTasks: admin.firestore.FieldValue.increment(1), // Advance tracker so the queue doesn't hang
+      });
+    }
+  },
+);
+
+/**
+ * 3. THE AGGREGATOR
+ * Watches the Master Tracker. When completedTasks == totalTasks, it streams all the
+ * Cloud Storage temp files into a final ZIP file without crashing the RAM.
+ */
+export const finalizeBulkJob = onDocumentUpdated(
+  {
+    document: "compliance_jobs/{jobId}",
+    timeoutSeconds: 540,
+    memory: "1GiB", // Dropped back to 1GB because Streams use almost zero RAM!
+  },
+  async (event) => {
+    const jobBefore = event.data?.before.data();
+    const jobAfter = event.data?.after.data();
+    if (!jobBefore || !jobAfter) return;
+
+    // Trigger only when all tasks are done and status is still processing
+    if (
+      jobAfter.status === "processing" &&
+      jobAfter.completedTasks === jobAfter.totalTasks
+    ) {
+      const jobId = event.params.jobId;
+      const bucket = admin.storage().bucket();
+      const cleanCompanyName = String(jobAfter.companyName).replace(
+        /[^a-zA-Z0-9]/g,
+        "_",
+      );
+      const finalZipPath = `audit_packs/Bulk_SETA_Audit_${cleanCompanyName}_${Date.now()}.zip`;
+
+      try {
+        await event.data?.after.ref.update({ status: "zipping" });
+        logger.info(
+          `All tasks complete for job ${jobId}. Streaming final ZIP via Archiver...`,
+        );
+
+        // 1. Initialize Google Cloud Storage Write Stream
+        const finalFile = bucket.file(finalZipPath);
+        const outputStream = finalFile.createWriteStream({
+          contentType: "application/zip",
+          resumable: false,
+        });
+
+        // 2. Initialize Archiver
+        const archiver = require("archiver");
+        const archive = archiver("zip", { zlib: { level: 9 } });
+
+        // 🚀 CRITICAL: Wrap streams in a Promise so the function doesn't exit prematurely!
+        const uploadPromise = new Promise((resolve, reject) => {
+          outputStream.on("finish", resolve);
+          outputStream.on("error", reject);
+          archive.on("error", reject);
+        });
+
+        // Pipe the Archiver directly into Cloud Storage
+        archive.pipe(outputStream);
+
+        // 3. Fetch all generated files from the temp folder
+        const [files] = await bucket.getFiles({
+          prefix: `tmp_bulk_jobs/${jobId}/`,
+        });
+
+        // 4. Stream temp files from Cloud Storage directly into Archiver
+        for (const file of files) {
+          const zipPath = file.name.replace(`tmp_bulk_jobs/${jobId}/`, "");
+
+          // file.createReadStream() is a native GCP method that pipes beautifully into Archiver
+          archive.append(file.createReadStream(), { name: zipPath });
+        }
+
+        logger.info(`Finalizing archive stream for ${files.length} files...`);
+
+        // 5. Tell archiver we are done adding files
+        await archive.finalize();
+
+        // 6. Wait for the upload pipe to Google Cloud Storage to fully complete
+        await uploadPromise;
+
+        // 7. Generate the secure Download URL
+        const [signedUrl] = await finalFile.getSignedUrl({
+          action: "read",
+          expires: Date.now() + 1000 * 60 * 60 * 24 * 7, // Expires in 7 days
+        });
+
+        // 8. Mark Job Complete
+        await event.data?.after.ref.update({
+          status: "complete",
+          downloadUrl: signedUrl,
+        });
+
+        // 9. Cleanup: Delete the temp folder to save space
+        await bucket.deleteFiles({ prefix: `tmp_bulk_jobs/${jobId}/` });
+        logger.info(
+          `Bulk Job ${jobId} completely finished. Stream closed securely.`,
+        );
+      } catch (error) {
+        logger.error(`Failed to compile final ZIP for job ${jobId}`, error);
+        await event.data?.after.ref.update({ status: "failed" });
+      }
+    }
+  },
+);

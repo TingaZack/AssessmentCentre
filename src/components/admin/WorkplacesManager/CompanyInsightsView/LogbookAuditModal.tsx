@@ -1,7 +1,7 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { createPortal } from "react-dom";
 import moment from "moment";
-import { X, FileText, Calendar, Clock, CheckCircle, AlertTriangle, ChevronUp, ChevronDown, History, Eye, EyeOff, ExternalLink } from "lucide-react";
+import { X, FileText, Calendar, Clock, CheckCircle, AlertTriangle, ChevronUp, ChevronDown, History, Eye, EyeOff, ExternalLink, Layers, CheckCircle2, Activity } from "lucide-react";
 
 export const LogbookAuditModal = ({ auditLearner, workplaceLogs, onClose }: { auditLearner: any, workplaceLogs: any[], onClose: () => void }) => {
     const [expandedLogIds, setExpandedLogIds] = useState<Set<string>>(new Set());
@@ -31,115 +31,253 @@ export const LogbookAuditModal = ({ auditLearner, workplaceLogs, onClose }: { au
         });
     };
 
+    // 🚀 1. Filter down to only the relevant learner's logs
+    const learnerLogs = useMemo(() => {
+        return workplaceLogs
+            .filter((l) => l.learnerId === auditLearner.learnerId || l.learnerId === auditLearner.idNumber)
+            .sort((a, b) => new Date(b.dateString).getTime() - new Date(a.dateString).getTime());
+    }, [workplaceLogs, auditLearner]);
+
+    // 🚀 2. Extract Unique Months for the Filter Bar
+    const availableMonths = useMemo(() => {
+        const months = new Set<string>();
+        learnerLogs.forEach(log => {
+            if (log.dateString) {
+                months.add(moment(log.dateString).format("MMMM YYYY"));
+            }
+        });
+        return Array.from(months);
+    }, [learnerLogs]);
+
+    const [selectedMonth, setSelectedMonth] = useState<string>(availableMonths[0] || "All Time");
+
+    // 🚀 3. Apply the Month Filter
+    const filteredLogs = useMemo(() => {
+        if (selectedMonth === "All Time") return learnerLogs;
+        return learnerLogs.filter(log => moment(log.dateString).format("MMMM YYYY") === selectedMonth);
+    }, [learnerLogs, selectedMonth]);
+
+    // 🚀 4. Generate the Quick Audit Snapshot
+    const auditSnapshot = useMemo(() => {
+        let approved = 0, pending = 0, rejected = 0;
+        filteredLogs.forEach(log => {
+            const status = String(log.status || "").trim().toLowerCase();
+            const hours = Number(log.totalHours) || 0;
+            if (status === "approved") approved += hours;
+            else if (status === "pending_mentor_approval" || status === "pending") pending += hours;
+            else if (status === "rejected") rejected += hours;
+        });
+        return { approved, pending, rejected, totalLogs: filteredLogs.length };
+    }, [filteredLogs]);
+
     return createPortal(
-        <div className="lfm-overlay animate-fade-in" onClick={onClose} style={{ zIndex: 999999, display: "flex", alignItems: "center", justifyContent: "center", position: "fixed", top: 0, left: 0, right: 0, bottom: 0, padding: "1.5rem", background: "rgba(15, 23, 42, 0.6)", backdropFilter: "blur(4px)" }}>
-            <div className="lfm-modal" onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: "800px", height: "90vh", display: "flex", flexDirection: "column", background: "white", borderRadius: "12px", overflow: "hidden", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)" }}>
-                <div className="lfm-header" style={{ flex: "0 0 auto", padding: "1.25rem 1.5rem", borderBottom: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <h2 style={{ display: "flex", alignItems: "center", gap: "8px", margin: 0, fontSize: "1.2rem", color: "var(--mlab-midnight)" }}>
-                        <FileText size={18} /> Workplace Log Audits - {auditLearner.learnerName}
+        <div className="lfm-overlay animate-fade-in" style={{ zIndex: 100000 }} onClick={onClose}>
+            <div className="lfm-modal" onClick={(e) => e.stopPropagation()}>
+
+                {/* ── STRICT mLab HEADER ── */}
+                <div className="lfm-header">
+                    <h2 className="lfm-header__title">
+                        <FileText size={18} /> Deep Logbook Audit Trail
+                        <span style={{ fontSize: "0.75rem", color: "var(--mlab-white)", opacity: 0.8, letterSpacing: "normal", textTransform: "none", marginLeft: "12px", fontFamily: "var(--font-body)", fontWeight: 400 }}>
+                            Executing trace for: {auditLearner.learnerName} ({auditLearner.idNumber})
+                        </span>
                     </h2>
-                    <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "#64748b" }}>
+                    <button className="lfm-close-btn" onClick={onClose}>
                         <X size={20} />
                     </button>
                 </div>
 
-                <div className="lfm-body" style={{ flex: "1 1 auto", overflowY: "auto", padding: "1.5rem", background: "#f8fafc" }}>
-                    <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-                        {workplaceLogs
-                            .filter((l) => l.learnerId === auditLearner.learnerId || l.learnerId === auditLearner.idNumber)
-                            .sort((a, b) => new Date(b.dateString).getTime() - new Date(a.dateString).getTime())
-                            .map((log) => {
-                                const logVersions = log.history && log.history.length > 0 ? [...log.history, log].sort((a, b) => new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime()) : [log];
-                                const isLogExpanded = expandedLogIds.has(log.id);
+                <div className="lfm-body">
 
-                                return (
-                                    <div key={log.id} style={{ background: "white", border: "1px solid var(--mlab-border)", borderRadius: "12px", overflow: "hidden", boxShadow: "0 2px 4px rgba(0,0,0,0.02)" }}>
-                                        <div onClick={() => toggleLogAccordion(log.id)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "1.25rem", background: isLogExpanded ? "#f8fafc" : "white", borderBottom: isLogExpanded ? "1px solid #f1f5f9" : "none", cursor: "pointer", transition: "background 0.2s ease" }}>
-                                            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                                                <div style={{ background: "var(--mlab-midnight)", width: 36, height: 36, borderRadius: "8px", display: "flex", alignItems: "center", justifyContent: "center", color: "white" }}>
-                                                    <Calendar size={16} />
-                                                </div>
-                                                <div>
-                                                    <div style={{ fontWeight: 700, color: "var(--mlab-midnight)", fontSize: "1rem" }}>{moment(log.dateString).format("dddd, DD MMM YYYY")}</div>
-                                                    <div style={{ color: "var(--mlab-grey)", fontSize: "0.8rem", fontWeight: 600, display: "flex", alignItems: "center", gap: "6px" }}>
-                                                        <Clock size={12} /> {log.startTime} - {log.endTime} <span style={{ color: "#ea580c" }}>({log.totalHours} hrs)</span>
+                    {/* ── AUDIT SNAPSHOT WIDGET ── */}
+                    <div>
+                        <div className="lfm-section-hdr"><Activity size={13} /> Logbook Tally Snapshot</div>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "1rem" }}>
+                            <div className="lfm-flags-panel" style={{ borderLeftColor: "var(--mlab-green)" }}>
+                                <span style={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--mlab-grey)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Total Approved</span>
+                                <div style={{ display: "flex", alignItems: "baseline", gap: "6px", marginTop: "4px" }}>
+                                    <span style={{ fontSize: "1.5rem", fontWeight: 700, color: "var(--mlab-blue)", fontFamily: "var(--font-heading)" }}>{auditSnapshot.approved.toFixed(1)}</span>
+                                    <span style={{ fontSize: "0.8rem", color: "var(--mlab-green)", fontWeight: 700 }}>Hours</span>
+                                </div>
+                            </div>
+                            <div className="lfm-flags-panel" style={{ borderLeftColor: "#f59e0b" }}>
+                                <span style={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--mlab-grey)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Pending Review</span>
+                                <div style={{ display: "flex", alignItems: "baseline", gap: "6px", marginTop: "4px" }}>
+                                    <span style={{ fontSize: "1.5rem", fontWeight: 700, color: "var(--mlab-blue)", fontFamily: "var(--font-heading)" }}>{auditSnapshot.pending.toFixed(1)}</span>
+                                    <span style={{ fontSize: "0.8rem", color: "#d97706", fontWeight: 700 }}>Hours</span>
+                                </div>
+                            </div>
+                            <div className="lfm-flags-panel" style={{ borderLeftColor: "var(--mlab-red)" }}>
+                                <span style={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--mlab-grey)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Rejected Blocks</span>
+                                <div style={{ display: "flex", alignItems: "baseline", gap: "6px", marginTop: "4px" }}>
+                                    <span style={{ fontSize: "1.5rem", fontWeight: 700, color: "var(--mlab-blue)", fontFamily: "var(--font-heading)" }}>{auditSnapshot.rejected.toFixed(1)}</span>
+                                    <span style={{ fontSize: "0.8rem", color: "var(--mlab-red)", fontWeight: 700 }}>Hours</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* ── CHRONOLOGICAL MONTH FILTER BAR ── */}
+                    {availableMonths.length > 0 && (
+                        <div>
+                            <div className="lfm-section-hdr"><Calendar size={13} /> Timeline Filter</div>
+                            <div className="lfm-tabs" style={{ overflowX: "auto" }}>
+                                <button className={`lfm-tab ${selectedMonth === "All Time" ? "active" : ""}`} onClick={() => setSelectedMonth("All Time")}>
+                                    All Time Trace
+                                </button>
+                                {availableMonths.map(month => (
+                                    <button key={month} className={`lfm-tab ${selectedMonth === month ? "active" : ""}`} onClick={() => setSelectedMonth(month)}>
+                                        {month}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ── DETAILED AUDIT RECORDS ── */}
+                    <div>
+                        <div className="lfm-section-hdr"><FileText size={13} /> Traceability Ledgers</div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                            {filteredLogs.length === 0 ? (
+                                <div className="lfm-error-banner" style={{ borderLeftColor: "var(--mlab-grey)", borderColor: "var(--mlab-border)", background: "var(--mlab-light-blue)", color: "var(--mlab-grey)" }}>
+                                    <History size={16} /> <span>No workplace logs detected for {selectedMonth}.</span>
+                                </div>
+                            ) : (
+                                filteredLogs.map((log) => {
+                                    const logVersions = log.history && log.history.length > 0 ? [...log.history, log].sort((a, b) => new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime()) : [log];
+                                    const isLogExpanded = expandedLogIds.has(log.id);
+
+                                    // Dynamic strict left-border indicator
+                                    const borderColor = log.status === "Approved" ? "var(--mlab-green)" : log.status === "Rejected" ? "var(--mlab-red)" : "#f59e0b";
+
+                                    return (
+                                        <div key={log.id} style={{ border: "1px solid var(--mlab-border)", borderLeft: `4px solid ${borderColor}`, background: "var(--mlab-white)" }}>
+
+                                            {/* ACCORDION HEADER */}
+                                            <div onClick={() => toggleLogAccordion(log.id)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "1rem 1.25rem", background: isLogExpanded ? "var(--mlab-light-blue)" : "var(--mlab-white)", cursor: "pointer", transition: "background 0.2s ease" }}>
+                                                <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                                                    <div style={{ background: "var(--mlab-blue)", width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--mlab-white)" }}>
+                                                        <Calendar size={16} />
+                                                    </div>
+                                                    <div>
+                                                        <div style={{ fontWeight: 700, color: "var(--mlab-blue)", fontSize: "0.95rem", fontFamily: "var(--font-heading)", textTransform: "uppercase", letterSpacing: "0.05em", display: "flex", alignItems: "center", gap: "8px" }}>
+                                                            {moment(log.dateString).format("dddd, DD MMM YYYY")}
+                                                            {/* 🚀 SETA MODULE TAG */}
+                                                            {log.moduleCode && (
+                                                                <span style={{ fontSize: "0.6rem", background: "var(--mlab-bg)", color: "var(--mlab-grey)", padding: "2px 6px", border: "1px solid var(--mlab-border)", display: "flex", alignItems: "center", gap: "4px", fontWeight: 700, letterSpacing: "normal" }}>
+                                                                    <Layers size={10} /> {log.moduleCode}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <div style={{ color: "var(--mlab-grey)", fontSize: "0.8rem", fontWeight: 600, display: "flex", alignItems: "center", gap: "6px", marginTop: "4px" }}>
+                                                            <Clock size={12} /> {log.startTime} - {log.endTime} <span style={{ color: "var(--mlab-green)", fontWeight: 700 }}>({log.totalHours} hrs)</span>
+                                                        </div>
                                                     </div>
                                                 </div>
+                                                <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                                                    {log.status === "Approved" && <span style={{ color: "var(--mlab-green)", fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase", display: "flex", alignItems: "center", gap: "4px" }}><CheckCircle2 size={14} /> Approved</span>}
+                                                    {log.status === "Pending_Mentor_Approval" && <span style={{ color: "#d97706", fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase", display: "flex", alignItems: "center", gap: "4px" }}><Clock size={14} /> Pending Review</span>}
+                                                    {log.status === "Rejected" && <span style={{ color: "var(--mlab-red)", fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase", display: "flex", alignItems: "center", gap: "4px" }}><AlertTriangle size={14} /> Rejected</span>}
+                                                    {log.status === "Draft" && <span style={{ color: "var(--mlab-grey)", fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase", display: "flex", alignItems: "center", gap: "4px" }}><FileText size={14} /> Draft</span>}
+                                                    <div style={{ color: "var(--mlab-blue)" }}>{isLogExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}</div>
+                                                </div>
                                             </div>
-                                            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                                                {log.status === "Approved" && <span style={{ background: "#dcfce7", color: "#166534", padding: "4px 10px", borderRadius: "6px", fontSize: "0.7rem", fontWeight: 700, textTransform: "uppercase", border: "1px solid #bbf7d0" }}><CheckCircle size={12} style={{ display: "inline", marginBottom: "-2px" }} /> Approved</span>}
-                                                {log.status === "Pending_Mentor_Approval" && <span style={{ background: "#fef3c7", color: "#b45309", padding: "4px 10px", borderRadius: "6px", fontSize: "0.7rem", fontWeight: 700, textTransform: "uppercase", border: "1px solid #fde68a" }}>Pending Review</span>}
-                                                {log.status === "Rejected" && <span style={{ background: "#fee2e2", color: "#991b1b", padding: "4px 10px", borderRadius: "6px", fontSize: "0.7rem", fontWeight: 700, textTransform: "uppercase", border: "1px solid #fecaca" }}>Rejected</span>}
-                                                {log.status === "Draft" && <span style={{ background: "#f1f5f9", color: "#475569", padding: "4px 10px", borderRadius: "6px", fontSize: "0.7rem", fontWeight: 700, textTransform: "uppercase", border: "1px solid #cbd5e1" }}>Draft</span>}
-                                                <div style={{ color: "#94a3b8", display: "flex", alignItems: "center" }}>{isLogExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}</div>
-                                            </div>
-                                        </div>
 
-                                        {isLogExpanded && (
-                                            <div className="animate-fade-in" style={{ padding: "1.25rem" }}>
-                                                {log.history && log.history.length > 0 && (
-                                                    <div style={{ marginBottom: "16px" }}>
-                                                        <button type="button" onClick={() => toggleHistoryAccordion(log.id)} style={{ background: "#f1f5f9", border: "1px solid #cbd5e1", borderRadius: "6px", padding: "4px 10px", fontSize: "0.75rem", fontWeight: 700, color: "#475569", display: "flex", alignItems: "center", gap: "6px", cursor: "pointer" }}>
-                                                            <History size={12} /> {expandedHistoryIds.has(log.id) ? "Hide Full Audit History" : `View Full Audit History Trail (${logVersions.length} Versions)`}
-                                                        </button>
-                                                    </div>
-                                                )}
+                                            {/* ACCORDION BODY (VERSIONS) */}
+                                            {isLogExpanded && (
+                                                <div className="animate-fade-in" style={{ padding: "1.25rem", borderTop: "1px solid var(--mlab-border)", background: "var(--mlab-white)" }}>
+                                                    {log.history && log.history.length > 0 && (
+                                                        <div style={{ marginBottom: "1.5rem" }}>
+                                                            <button type="button" className="lfm-btn lfm-btn--ghost" onClick={() => toggleHistoryAccordion(log.id)} style={{ padding: "0.5rem 0.75rem", fontSize: "0.65rem" }}>
+                                                                <History size={12} /> {expandedHistoryIds.has(log.id) ? "Hide Full Audit History" : `View Full Audit History Trail (${logVersions.length} Versions)`}
+                                                            </button>
+                                                        </div>
+                                                    )}
 
-                                                <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-                                                    {(expandedHistoryIds.has(log.id) ? logVersions : [logVersions[0]]).map((version: any, idx: number) => {
-                                                        const isLatest = idx === 0;
-                                                        const versionNumber = logVersions.length - idx;
+                                                    <div style={{ display: "flex", flexDirection: "column" }}>
+                                                        {(expandedHistoryIds.has(log.id) ? logVersions : [logVersions[0]]).map((version: any, idx: number) => {
+                                                            const isLatest = idx === 0;
+                                                            const versionNumber = logVersions.length - idx;
 
-                                                        return (
-                                                            <div key={version.updatedAt || idx} style={{ position: "relative", paddingLeft: "20px", borderLeft: "2px solid var(--mlab-border)" }}>
-                                                                <div style={{ position: "absolute", left: "-8px", top: "0px", width: "14px", height: "14px", borderRadius: "50%", background: isLatest ? "var(--mlab-blue)" : "#cbd5e1", border: "3px solid white" }} />
-                                                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
-                                                                    <div style={{ margin: 0, fontSize: "0.9rem", fontWeight: 700, color: "var(--mlab-midnight)", display: "flex", alignItems: "center", gap: "8px" }}>
-                                                                        Version {versionNumber}
-                                                                        {isLatest && <span style={{ fontSize: "0.65rem", background: "#e0e7ff", color: "#3730a3", padding: "2px 8px", borderRadius: "12px", textTransform: "uppercase" }}>Latest</span>}
-                                                                    </div>
-                                                                    <div style={{ fontSize: "0.75rem", color: "#64748b" }}>{moment(version.updatedAt).format("DD MMM YYYY, HH:mm")}</div>
-                                                                </div>
+                                                            return (
+                                                                <div key={version.updatedAt || idx} style={{ position: "relative", paddingLeft: "1.5rem", borderLeft: "2px solid var(--mlab-border)", paddingBottom: "1.5rem" }}>
+                                                                    {/* Timeline dot */}
+                                                                    <div style={{ position: "absolute", left: "-7px", top: "0px", width: "12px", height: "12px", background: isLatest ? "var(--mlab-blue)" : "var(--mlab-grey-lt)", border: "2px solid var(--mlab-white)" }} />
 
-                                                                <div style={{ marginBottom: "1rem" }}>
-                                                                    <h4 style={{ fontSize: "0.7rem", textTransform: "uppercase", color: "var(--mlab-grey)", margin: "0 0 6px 0", letterSpacing: "0.05em" }}>Tasks Performed</h4>
-                                                                    <div style={{ background: "#f8fafc", padding: "12px", borderRadius: "6px", border: "1px solid #e2e8f0", color: "#334155", fontSize: "0.85rem", lineHeight: 1.6 }} className="quill-content-display" dangerouslySetInnerHTML={{ __html: version.tasksPerformed || '<span style="font-style:italic; color:#94a3b8">No description provided...</span>' }} />
-                                                                </div>
-
-                                                                {version.evidenceUrl && (
-                                                                    <div style={{ marginBottom: "1rem" }}>
-                                                                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "6px" }}>
-                                                                            <h4 style={{ fontSize: "0.7rem", textTransform: "uppercase", color: "var(--mlab-grey)", margin: 0, letterSpacing: "0.05em" }}>Attached Evidence</h4>
-                                                                            <button onClick={() => setPreviewEvidenceId(previewEvidenceId === version.evidenceUrl ? null : version.evidenceUrl)} style={{ background: "none", border: "none", color: "var(--mlab-blue)", fontSize: "0.75rem", fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: "4px" }}>
-                                                                                {previewEvidenceId === version.evidenceUrl ? <EyeOff size={12} /> : <Eye size={12} />} {previewEvidenceId === version.evidenceUrl ? "Close File" : "Preview File"}
-                                                                            </button>
+                                                                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "12px", marginTop: "-4px" }}>
+                                                                        <div style={{ margin: 0, fontSize: "0.85rem", fontWeight: 700, color: "var(--mlab-blue)", display: "flex", alignItems: "center", gap: "8px", fontFamily: "var(--font-heading)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                                                                            Version {versionNumber}
+                                                                            {isLatest && <span style={{ background: "var(--mlab-blue)", color: "white", padding: "2px 6px", fontSize: "0.55rem" }}>LATEST SNAPSHOT</span>}
                                                                         </div>
-
-                                                                        {previewEvidenceId === version.evidenceUrl && (
-                                                                            <div className="animate-fade-in" style={{ padding: "8px", border: "1px solid var(--mlab-border)", borderRadius: "8px", background: "#f1f5f9" }}>
-                                                                                <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "8px" }}>
-                                                                                    <a href={version.evidenceUrl} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "0.75rem", fontWeight: 600, color: "#475569", background: "white", padding: "4px 10px", borderRadius: "4px", textDecoration: "none", border: "1px solid #cbd5e1" }}><ExternalLink size={12} /> Open Full Screen</a>
-                                                                                </div>
-                                                                                <div style={{ width: "100%", minHeight: "200px", background: "white", borderRadius: "4px", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
-                                                                                    {isImageFile(version.evidenceUrl) ? <img src={version.evidenceUrl} alt="Evidence Render inline" style={{ maxWidth: "100%", maxHeight: "400px", objectFit: "contain" }} /> : <iframe src={version.evidenceUrl} title="Evidence Preview Frame" style={{ width: "100%", height: "350px", border: "none" }} />}
-                                                                                </div>
-                                                                            </div>
-                                                                        )}
+                                                                        <div style={{ fontSize: "0.75rem", color: "var(--mlab-grey)", fontWeight: 600 }}>{moment(version.updatedAt || version.createdAt).format("DD MMM YYYY, HH:mm")}</div>
                                                                     </div>
-                                                                )}
-                                                            </div>
-                                                        );
-                                                    })}
+
+                                                                    <div className="lfm-flags-panel" style={{ padding: "0.85rem", borderLeft: "none", marginBottom: "1rem" }}>
+                                                                        <span style={{ fontSize: "0.65rem", fontWeight: 700, color: "var(--mlab-grey)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "6px", display: "block" }}>Tasks Performed</span>
+                                                                        {/* 🚀 STRICT WORD-WRAP & OVERFLOW CONTAINMENT */}
+                                                                        <div
+                                                                            style={{
+                                                                                fontSize: "0.85rem",
+                                                                                color: "var(--mlab-blue)",
+                                                                                fontFamily: "var(--font-body)",
+                                                                                lineHeight: 1.6,
+                                                                                width: "100%",
+                                                                                wordBreak: "break-word",
+                                                                                overflowWrap: "break-word",
+                                                                                whiteSpace: "pre-wrap",
+                                                                                overflowX: "auto"
+                                                                            }}
+                                                                            dangerouslySetInnerHTML={{ __html: version.tasksPerformed || '<span style="font-style:italic; color:var(--mlab-grey-lt)">No description provided...</span>' }}
+                                                                        />
+                                                                    </div>
+
+                                                                    {/* 🚀 MENTOR REJECTION REASON RENDERING WITH WRAP */}
+                                                                    {version.status === "Rejected" && version.rejectionReason && (
+                                                                        <div className="lfm-error-banner" style={{ marginBottom: "1rem", wordBreak: "break-word", overflowWrap: "break-word" }}>
+                                                                            <span style={{ display: "flex", flexDirection: "column", gap: "4px", width: "100%" }}>
+                                                                                <strong style={{ fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>Mentor Rejection Reason:</strong>
+                                                                                <span style={{ whiteSpace: "pre-wrap" }}>{version.rejectionReason}</span>
+                                                                            </span>
+                                                                        </div>
+                                                                    )}
+
+                                                                    {version.evidenceUrl && (
+                                                                        <div style={{ marginBottom: "0.5rem" }}>
+                                                                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
+                                                                                <span style={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--mlab-grey)", textTransform: "uppercase", letterSpacing: "0.05em", display: "block" }}>Attached Evidence</span>
+                                                                                <button className="lfm-btn lfm-btn--ghost" onClick={() => setPreviewEvidenceId(previewEvidenceId === version.evidenceUrl ? null : version.evidenceUrl)} style={{ padding: "0.4rem 0.8rem", fontSize: "0.65rem" }}>
+                                                                                    {previewEvidenceId === version.evidenceUrl ? <><EyeOff size={12} /> Close File</> : <><Eye size={12} /> Preview File</>}
+                                                                                </button>
+                                                                            </div>
+
+                                                                            {previewEvidenceId === version.evidenceUrl && (
+                                                                                <div className="animate-fade-in" style={{ padding: "8px", border: "1px solid var(--mlab-border)", background: "var(--mlab-bg)" }}>
+                                                                                    <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "8px" }}>
+                                                                                        <a href={version.evidenceUrl} target="_blank" rel="noopener noreferrer" className="lfm-btn lfm-btn--ghost" style={{ padding: "0.4rem 0.8rem", fontSize: "0.65rem", textDecoration: "none" }}><ExternalLink size={12} /> Open Full Screen</a>
+                                                                                    </div>
+                                                                                    <div style={{ width: "100%", minHeight: "200px", background: "white", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", border: "1px solid var(--mlab-border)" }}>
+                                                                                        {isImageFile(version.evidenceUrl) ? <img src={version.evidenceUrl} alt="Evidence Render inline" style={{ maxWidth: "100%", maxHeight: "400px", objectFit: "contain" }} /> : <iframe src={version.evidenceUrl} title="Evidence Preview Frame" style={{ width: "100%", height: "350px", border: "none" }} />}
+                                                                                    </div>
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        )}
-                                    </div>
-                                );
-                            })}
+                                            )}
+                                        </div>
+                                    );
+                                })
+                            )}
+                        </div>
                     </div>
                 </div>
-                <div className="lfm-footer" style={{ flex: "0 0 auto", display: "flex", justifyContent: "flex-end", padding: "1rem 1.5rem", background: "white", borderTop: "1px solid #e2e8f0" }}>
-                    <button className="mlab-btn mlab-btn--ghost" onClick={onClose} style={{ background: "#f1f5f9", color: "#475569", border: "none", padding: "8px 16px", borderRadius: "6px", fontWeight: 600, cursor: "pointer" }}>Close Audit Window</button>
+
+                <div className="lfm-footer">
+                    <button className="lfm-btn lfm-btn--ghost" onClick={onClose}>Close Audit Window</button>
                 </div>
             </div>
         </div>,
