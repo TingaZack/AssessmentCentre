@@ -9,7 +9,8 @@ import {
     RotateCcw, Download, AlertTriangle, X, Menu, Search,
     Filter, ChevronLeft, ChevronRight,
     ArrowUpDown, CheckSquare, Square, Printer, Layers, ShieldAlert,
-    Timer
+    Timer,
+    Lock
 } from 'lucide-react';
 import {
     collection, query, where, getDocs, doc,
@@ -39,7 +40,7 @@ interface LearnerSubmission {
     cohortId?: string;
     title: string;
     type: string;
-    status: 'not_started' | 'in_progress' | 'submitted' | 'awaiting_learner_signoff' | 'facilitator_reviewed' | 'returned' | 'graded' | 'moderated' | 'appealed' | 'missed';
+    status: 'not_started' | 'in_progress' | 'submitted' | 'awaiting_learner_signoff' | 'facilitator_reviewed' | 'returned' | 'graded' | 'moderated' | 'appealed' | 'missed' | 'upcoming' | 'scheduled';
     assignedAt: string;
     startedAt?: string;
     marks: number;
@@ -429,64 +430,65 @@ export const ViewPortfolio: React.FC = () => {
             try {
                 const subRef = collection(db, 'learner_submissions');
                 const targetHumanId = enrollment.learnerId || enrollment.id;
+                const targetAuthUid = enrollment.authUid || targetHumanId;
                 const activeCohortId = targetCohortId || enrollment.cohortId;
 
                 let subs: LearnerSubmission[] = [];
 
-                if (user?.role === 'learner') {
-                    const q1 = activeCohortId && activeCohortId !== ""
-                        ? query(subRef, where('authUid', '==', user.uid), where('cohortId', '==', activeCohortId))
-                        : query(subRef, where('authUid', '==', user.uid));
+                // 1. 🚀 FIXED: Securely fetch Submissions using Role-based compliance
+                try {
+                    let subSnap;
+                    if (user?.role === 'learner') {
+                        // Strict rule compliance for learners
+                        subSnap = await getDocs(query(subRef, where('authUid', '==', user.uid)));
+                    } else {
+                        // Facilitators can fetch by learnerId
+                        subSnap = await getDocs(query(subRef, where('learnerId', '==', targetHumanId)));
+                    }
 
-                    const q2 = activeCohortId && activeCohortId !== ""
-                        ? query(subRef, where('learnerId', '==', user.uid), where('cohortId', '==', activeCohortId))
-                        : query(subRef, where('learnerId', '==', user.uid));
-
-                    const [snap1, snap2] = await Promise.all([getDocs(q1), getDocs(q2)]);
-
-                    const merged = new Map();
-                    snap1.docs.forEach(d => merged.set(d.id, { id: d.id, ...d.data() }));
-                    snap2.docs.forEach(d => merged.set(d.id, { id: d.id, ...d.data() }));
-                    subs = Array.from(merged.values()) as LearnerSubmission[];
-                } else {
-                    const q = activeCohortId && activeCohortId !== ""
-                        ? query(subRef, where('learnerId', '==', targetHumanId), where('cohortId', '==', activeCohortId))
-                        : query(subRef, where('learnerId', '==', targetHumanId));
-
-                    const snap = await getDocs(q);
-                    subs = snap.docs.map(d => ({ id: d.id, ...d.data() } as LearnerSubmission));
+                    // Filter by cohort in memory to avoid missing index errors
+                    if (activeCohortId) {
+                        subs = subSnap.docs
+                            .map(d => ({ id: d.id, ...d.data() } as LearnerSubmission))
+                            .filter(s => s.cohortId === activeCohortId || !s.cohortId);
+                    } else {
+                        subs = subSnap.docs.map(d => ({ id: d.id, ...d.data() } as LearnerSubmission));
+                    }
+                } catch (queryErr) {
+                    console.error("Submission query error:", queryErr);
                 }
 
-                // FETCH ASSOCIATED ASSESSMENTS TO PATCH SCHEDULE TIMERS
+                // 2. 🚀 FIXED: Fetch Master Assessments Safely (Memory mapped, fixes string vs array mismatch)
                 const activeAssessments = new Map();
                 const draftAssessmentIds = new Set();
+
                 try {
-                    if (activeCohortId && activeCohortId !== "") {
-                        const cohortAssessmentsQ = query(
-                            collection(db, 'assessments'),
-                            where('cohortIds', 'array-contains', activeCohortId)
-                        );
-                        const cohortAssSnap = await getDocs(cohortAssessmentsQ);
-                        cohortAssSnap.forEach(docSnap => {
-                            const assData = docSnap.data();
-                            if (assData.status === 'active' || assData.status === 'scheduled') {
+                    const assessmentsSnap = await getDocs(collection(db, 'assessments'));
+                    assessmentsSnap.forEach(docSnap => {
+                        const assData = docSnap.data();
+
+                        // Supports both modern array schema and legacy string schema simultaneously
+                        const belongsToCohort = (assData.cohortIds && assData.cohortIds.includes(activeCohortId)) || (assData.cohortId === activeCohortId);
+
+                        if (belongsToCohort || !activeCohortId) {
+                            if (assData.status === 'active' || assData.status === 'scheduled' || assData.status === 'upcoming') {
                                 activeAssessments.set(docSnap.id, assData);
                             } else if (assData.status === 'draft') {
                                 draftAssessmentIds.add(docSnap.id);
                             }
-                        });
-                    }
+                        }
+                    });
                 } catch (e) {
-                    console.warn("Failed to fetch assessment metadata for patching timers.", e);
+                    console.warn("Failed to fetch assessment metadata.", e);
                 }
 
-                // PATCH EXISTING SUBMISSIONS WITH SCHEDULE & TIMER DATA
+                // 3. Patch Existing Submissions
                 subs = subs.map(sub => {
                     const matchingAss = activeAssessments.get(sub.assessmentId);
                     if (matchingAss) {
                         return {
                             ...sub,
-                            isScheduled: matchingAss.isScheduled || false,
+                            isScheduled: matchingAss.isScheduled || matchingAss.status === 'scheduled',
                             scheduledDate: matchingAss.scheduledDate || null,
                             timeLimit: matchingAss.moduleInfo?.timeLimit || sub.timeLimit || 0
                         };
@@ -494,12 +496,13 @@ export const ViewPortfolio: React.FC = () => {
                     return sub;
                 });
 
-                // ISOLATED AUTO-HYDRATION BLOCK (Prevents silent failures for Facilitators)
+                // 4. 🚀 FIXED: Indestructible Auto-Hydration for Missing Assessments
                 try {
-                    if (activeCohortId && activeCohortId !== "") {
+                    if (activeCohortId) {
                         const batch = writeBatch(db);
                         let batchCount = 0;
 
+                        // Remove Drafts
                         subs = subs.filter(sub => {
                             if (draftAssessmentIds.has(sub.assessmentId) && sub.status === 'not_started') {
                                 batch.delete(doc(db, 'learner_submissions', sub.id));
@@ -517,20 +520,20 @@ export const ViewPortfolio: React.FC = () => {
                                 const newSub = {
                                     learnerId: targetHumanId,
                                     enrollmentId: enrollment.enrollmentId || enrollment.id,
-                                    authUid: user?.role === 'learner' ? user.uid : (enrollment.authUid || targetHumanId),
+                                    authUid: targetAuthUid,
                                     qualificationName: enrollment.qualification?.name || matchingProgramme?.name || "",
                                     assessmentId: astId,
                                     cohortId: activeCohortId,
                                     title: assData.title,
-                                    type: assData.type,
-                                    moduleType: assData.moduleType,
-                                    status: "not_started",
+                                    type: assData.type || 'formative',
+                                    moduleType: assData.moduleType || 'knowledge',
+                                    status: assData.status === 'upcoming' ? 'upcoming' : 'not_started',
                                     assignedAt: new Date().toISOString(),
                                     marks: 0,
                                     totalMarks: assData.totalMarks || 0,
                                     moduleNumber: assData.moduleInfo?.moduleNumber || "",
                                     timeLimit: assData.moduleInfo?.timeLimit || 0,
-                                    isScheduled: assData.isScheduled || false,
+                                    isScheduled: assData.isScheduled || assData.status === 'scheduled' || false,
                                     scheduledDate: assData.scheduledDate || null,
                                     createdAt: new Date().toISOString(),
                                     createdBy: "System_AutoHydration"
@@ -547,8 +550,70 @@ export const ViewPortfolio: React.FC = () => {
                         }
                     }
                 } catch (hydrationError) {
-                    console.warn("Auto-hydration skipped due to permissions/network. Proceeding with existing submissions.");
+                    console.warn("Auto-hydration skipped due to permissions/network.");
                 }
+
+                // ========================================================
+                // 5. DYNAMIC INJECTION: Map Workplace Logs to Submissions
+                // ========================================================
+                try {
+                    // We must check BOTH idNumber (SA ID) and the raw document ID based on your database structure
+                    const logTargetId = enrollment.idNumber || targetHumanId;
+
+                    console.log(`[DEBUG Workplace Logs] 1. Initiating fetch for learner ID: "${logTargetId}"`);
+
+                    const logsRef = collection(db, 'workplace_logs');
+                    // Querying exactly how it's stored in the database dump you provided
+                    const logsQuery = query(logsRef, where('learnerId', '==', logTargetId));
+                    const logsSnap = await getDocs(logsQuery);
+
+                    console.log(`[DEBUG Workplace Logs] 2. Query complete. Found ${logsSnap.empty ? 0 : logsSnap.size} documents.`);
+
+                    if (!logsSnap.empty) {
+                        const mappedLogs: LearnerSubmission[] = logsSnap.docs.map(docSnap => {
+                            const data = docSnap.data();
+
+                            // Log the raw data being processed
+                            console.log(`[DEBUG Workplace Logs] 3. Processing Doc ID: ${docSnap.id} | raw status: "${data.status}"`);
+
+                            // STRICT TYPE MAPPING: Ensure we only use statuses defined in your interface
+                            let mappedStatus: LearnerSubmission['status'] = 'submitted'; // Default
+                            if (data.status === 'Approved') mappedStatus = 'facilitator_reviewed';
+                            if (data.status === 'Rejected') mappedStatus = 'returned';
+                            if (data.status === 'Draft') mappedStatus = 'in_progress';
+
+                            return {
+                                id: docSnap.id, // Using the log document ID as the submission ID
+                                assessmentId: data.workActivityCode || `log-${docSnap.id}`,
+                                learnerId: data.learnerId || targetHumanId,
+                                enrollmentId: enrollment.enrollmentId || enrollment.id,
+                                authUid: targetAuthUid,
+                                cohortId: data.cohortId || activeCohortId,
+
+                                title: data.topicTitle || data.workActivityLabel || 'Workplace Log Entry',
+                                type: 'Logbook', // This triggers your orange badge in getTypeBadge!
+                                status: mappedStatus,
+                                assignedAt: data.createdAt || new Date().toISOString(),
+
+                                marks: data.totalHours || 0,
+                                totalMarks: 8, // Standard workplace hours per day
+
+                                moduleNumber: data.workActivityCode || 'Workplace',
+                                moduleType: 'workplace', // Forces it into the Workplace tab!
+
+                                isScheduled: false,
+                                facilitatorName: data.mentorId ? 'Mentor Assigned' : 'Unassigned',
+                            } as LearnerSubmission;
+                        });
+
+                        // Append the dynamically generated logs to the existing submissions array
+                        subs = [...subs, ...mappedLogs];
+                        console.log(`[DEBUG Workplace Logs] 4. Successfully merged ${mappedLogs.length} logs. Total portfolio size: ${subs.length}`);
+                    }
+                } catch (logErr) {
+                    console.error("[DEBUG Workplace Logs] ERROR - Failed to fetch or map workplace logs:", logErr);
+                }
+                // ========================================================
 
                 if (mounted) {
                     setSubmissions(subs.sort((a, b) => new Date(b.assignedAt).getTime() - new Date(a.assignedAt).getTime()));
@@ -564,7 +629,7 @@ export const ViewPortfolio: React.FC = () => {
         loadSubmissions();
 
         return () => { mounted = false; };
-    }, [enrollment, matchingProgramme, targetCohortId]);
+    }, [enrollment, matchingProgramme, targetCohortId, user?.uid]);
 
     // Reset pagination when tab changes
     useEffect(() => {
@@ -655,9 +720,13 @@ export const ViewPortfolio: React.FC = () => {
                 return <span className="mlab-badge" style={{ ...baseStyle, background: '#fee2e2', color: '#991b1b', border: '1px solid #fecaca' }}><AlertTriangle size={12} /> Missed</span>;
 
             default:
+                if (sub.status === 'upcoming') {
+                    return <span className="mlab-badge" style={{ ...baseStyle, background: '#fffbeb', color: '#b45309', border: '1px solid #fde68a' }}><Lock size={12} /> Coming Soon</span>;
+                }
                 return <span className="mlab-badge" style={{ ...baseStyle, background: '#f8fafc', color: '#64748b', border: '1px solid #cbd5e1' }}><BookOpen size={12} /> Not Started</span>;
         }
     };
+
 
     const filteredSubmissions = useMemo(() => {
         let filtered = submissions.filter(sub => {
@@ -829,7 +898,7 @@ export const ViewPortfolio: React.FC = () => {
 
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '6px' }}>
                             {/* Schedule & Timing Metdata block */}
-                            {sub.isScheduled && sub.scheduledDate && ['not_started', 'in_progress', 'missed'].includes(sub.status) ? (
+                            {sub.isScheduled && sub.scheduledDate && ['not_started', 'in_progress', 'missed', 'upcoming'].includes(sub.status) ? (
                                 <span className="vp-assessment-meta" style={{ color: sub.status === 'missed' ? '#ef4444' : '#0284c7', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
                                     <Clock size={12} />
                                     {isScheduledForFuture
@@ -885,10 +954,10 @@ export const ViewPortfolio: React.FC = () => {
                         >
                             <ShieldAlert size={14} /> Review Absence
                         </button>
-                    ) : sub.status === 'missed' && user?.role === 'learner' ? (
+                    ) : (sub.status === 'missed' || sub.status === 'upcoming') && user?.role === 'learner' ? (
                         <button
                             className="mlab-btn"
-                            style={{ color: '#dc2626' }}
+                            style={{ color: sub.status === 'missed' ? '#dc2626' : '#d97706' }}
                             onClick={() => navigate(`/learner/assessment/${sub.assessmentId}`)}
                         >
                             <Eye size={14} /> View
@@ -1370,3 +1439,4 @@ export const ViewPortfolio: React.FC = () => {
 };
 
 export default ViewPortfolio;
+

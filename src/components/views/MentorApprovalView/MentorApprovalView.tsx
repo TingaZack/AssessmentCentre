@@ -32,7 +32,7 @@ interface WorkplaceLog {
   workActivityLabel?: string;
   evidenceUrl?: string;
   rejectionReason?: string;
-  history?: any[]; // Holds previous iterations for auditing
+  history?: any[]; 
   [key: string]: any;
 }
 

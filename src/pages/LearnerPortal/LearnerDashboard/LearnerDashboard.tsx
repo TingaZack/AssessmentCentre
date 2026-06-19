@@ -318,6 +318,8 @@ const LearnerDashboard: React.FC = () => {
         store.fetchCohorts();
         store.fetchStaff();
 
+        console.log('USer UID: ', store.user?.uid);
+
         if (!store.user?.uid) return;
 
         let unsubscribeProfile: () => void;
@@ -329,134 +331,203 @@ const LearnerDashboard: React.FC = () => {
             console.log("🚀 [System Log]: Initializing setupLiveProfile stream for Auth UID:", store.user?.uid);
 
             try {
-                const qProfile = query(collection(db, 'learners'), where('authUid', '==', store.user!.uid));
+                // 1. 🚀 AUTO-HEALING IDENTITY RESOLUTION
+                let profileDocRef = null;
 
-                unsubscribeProfile = onSnapshot(qProfile, async (snapProfile) => {
-                    console.group("⚙️ [Live Profile Stream Tick]");
+                // Try finding by Auth UID first
+                const qUid = query(collection(db, 'learners'), where('authUid', '==', store.user!.uid));
+                const snapUid = await getDocs(qUid);
 
-                    if (snapProfile.empty) {
-                        console.warn("⚠️ [Profile Stream Warning]: No matching learner found for this Auth UID in the 'learners' collection.");
-                        setIsLoading(false);
-                        console.groupEnd();
-                        return;
+                if (!snapUid.empty) {
+                    profileDocRef = doc(db, 'learners', snapUid.docs[0].id);
+                } else if (store.user?.email) {
+                    // Fallback to email (Fixes accounts created when the backend auth function was failing)
+                    console.log("⚠️ Auth UID not found. Attempting to map via email:", store.user.email);
+                    const qEmail = query(collection(db, 'learners'), where('email', '==', store.user.email));
+                    const snapEmail = await getDocs(qEmail);
+
+                    if (!snapEmail.empty) {
+                        profileDocRef = doc(db, 'learners', snapEmail.docs[0].id);
+                        // Heal the database immediately so we never have to do this again
+                        await updateDoc(profileDocRef, { authUid: store.user!.uid });
+                        console.log("✅ Auto-healed learner profile with correct Auth UID.");
                     }
+                }
 
-                    const profileDoc = snapProfile.docs[0];
-                    const profileData = profileDoc.data();
-                    const finalProfileId = profileDoc.id;
-                    const profile: any = { id: finalProfileId, ...profileData };
-
-                    console.log("📋 Physical Identity Doc ID (SA ID Number):", finalProfileId);
-
-                    setAcademicProfile((prev: any) => {
-                        if (prev && prev.professionalismStreak > 0 && profile.professionalismStreak === 0) {
-                            setShowStreakLostModal(true);
-                        }
-                        else if (!prev && profile.professionalismStreak === 0 && profile.professionalismScore < 100) {
-                            const localKey = `streak_loss_seen_${finalProfileId}_${profile.professionalismScore}`;
-                            if (!localStorage.getItem(localKey)) {
-                                setShowStreakLostModal(true);
-                                localStorage.setItem(localKey, 'true');
-                            }
-                        }
-                        return {
-                            ...profile,
-                            employerId: prev?.employerId || profile.employerId || null,
-                            mentorId: prev?.mentorId || profile.mentorId || null
-                        };
-                    });
-
-                    console.log("🔍 Fetching academic registration ledger from 'enrollments'...");
-                    const enrolQ = query(
-                        collection(db, 'enrollments'),
-                        where('learnerId', '==', finalProfileId),
-                        where('status', 'in', ['active', 'in-progress'])
-                    );
-                    const snapEnrol = await getDocs(enrolQ);
-                    const enrolls = snapEnrol.docs.map(d => ({ id: d.id, ...d.data() }));
-                    setLearnerEnrollments(enrolls);
-
-                    // ─── 🚀 IN-MEMORY BLUEPRINT HYDRATION ENGINE ───
-                    if (enrolls.length > 0) {
-                        let activeEnrollment: any = enrolls[0];
-
-                        const hasWE = activeEnrollment.workExperienceModules && activeEnrollment.workExperienceModules.length > 0;
-
-                        if (!hasWE) {
-                            console.log("🛠️ [Self-Healing Initialized]: Local blueprint modules are empty. Executing in-memory recovery...");
-                            try {
-                                const cohortDocRef = doc(db, 'cohorts', activeEnrollment.cohortId);
-                                const cohortSnap = await getDoc(cohortDocRef);
-                                let masterProgrammeId = activeEnrollment.programmeId;
-
-                                if (cohortSnap.exists()) {
-                                    masterProgrammeId = cohortSnap.data().programmeId || masterProgrammeId;
-                                }
-
-                                if (masterProgrammeId) {
-                                    const progSnap = await getDoc(doc(db, 'programmes', masterProgrammeId));
-
-                                    if (progSnap.exists()) {
-                                        const progData = progSnap.data();
-                                        const recoveredWE = progData.workExperienceModules || [];
-                                        const recoveredP = progData.practicalModules || [];
-                                        const recoveredK = progData.knowledgeModules || [];
-
-                                        console.log(`📋 Found Blueprint Templates -> WE Count: ${recoveredWE.length}. Injecting straight to memory!`);
-
-                                        // 🚀 ASSIGN TO LOCAL RUNTIME FIRST SO CHANNELS HYDRATE SECURELY
-                                        activeEnrollment.workExperienceModules = recoveredWE;
-                                        activeEnrollment.practicalModules = recoveredP;
-                                        activeEnrollment.knowledgeModules = recoveredK;
-                                    }
-                                }
-                            } catch (healError) {
-                                console.error("🚨 In-memory self-healing failed:", healError);
-                            }
-                        }
-
-                        console.log("⚡ Hydrating UI state container with modules count =", (activeEnrollment.workExperienceModules || []).length);
-                        setAcademicProfile((prev: any) => prev ? {
-                            ...prev,
-                            workExperienceModules: activeEnrollment.workExperienceModules || [],
-                            practicalModules: activeEnrollment.practicalModules || [],
-                            knowledgeModules: activeEnrollment.knowledgeModules || [],
-                            qualification: activeEnrollment.qualification || prev.qualification
-                        } : prev);
-                    }
-
-                    if (enrolls.length > 0) {
-                        const qAtt = query(collection(db, 'attendance'), where('cohortId', 'in', enrolls.map((e: any) => e.cohortId)));
-                        const snapAtt = await getDocs(qAtt);
-
-                        const missed = snapAtt.docs
-                            .filter(d => d.data().absentLearners?.includes(profile.id) || d.data().absentLearners?.includes(profile.idNumber))
-                            .map(d => {
-                                const attData = d.data();
-                                return {
-                                    date: attData.date,
-                                    cohortId: attData.cohortId || '',
-                                    cohortName: attData.cohortName || ''
-                                };
-                            });
-
-                        setAbsenceDates(missed);
-                    }
-
-                    const scansQ = query(collection(db, 'live_attendance_scans'), where('learnerId', '==', finalProfileId));
-                    unsubscribeScans = onSnapshot(scansQ, (snapScans) => {
-                        const scans = snapScans.docs.map(d => ({ id: d.id, ...d.data() }));
-                        setMyScans(scans);
-                    });
-
-                    const worklogsQ = query(collection(db, 'workplace_logs'), where('learnerId', '==', finalProfileId));
-                    unsubscribeWorklogs = onSnapshot(worklogsQ, (snapLogs) => {
-                        const logs = snapLogs.docs.map(d => ({ id: d.id, ...d.data() }));
-                        setMyWorkplaceLogs(logs);
-                    });
-
-                    console.groupEnd();
+                if (!profileDocRef) {
+                    console.warn("⚠️ [Profile Stream Warning]: No matching learner found for this user in the 'learners' collection.");
                     setIsLoading(false);
+                    return;
+                }
+
+                // 2. Attach the real-time listener directly to the resolved document
+                // 🚀 FIXED: Using a standard sync callback to satisfy TypeScript overloads
+                unsubscribeProfile = onSnapshot(profileDocRef, (profileSnap: any) => {
+
+                    // Wrap the async code in a helper function
+                    const processProfileData = async () => {
+                        console.group("⚙️ [Live Profile Stream Tick]");
+
+                        if (!profileSnap.exists()) {
+                            console.groupEnd();
+                            return;
+                        }
+
+                        const profileData = profileSnap.data();
+                        const finalProfileId = profileSnap.id;
+                        const profile: any = { id: finalProfileId, ...profileData };
+
+                        console.log("📋 Physical Identity Doc ID (SA ID Number):", finalProfileId);
+
+                        setAcademicProfile((prev: any) => {
+                            if (prev && prev.professionalismStreak > 0 && profile.professionalismStreak === 0) {
+                                setShowStreakLostModal(true);
+                            }
+                            else if (!prev && profile.professionalismStreak === 0 && profile.professionalismScore < 100) {
+                                const localKey = `streak_loss_seen_${finalProfileId}_${profile.professionalismScore}`;
+                                if (!localStorage.getItem(localKey)) {
+                                    setShowStreakLostModal(true);
+                                    localStorage.setItem(localKey, 'true');
+                                }
+                            }
+                            return {
+                                ...profile,
+                                employerId: prev?.employerId || profile.employerId || null,
+                                mentorId: prev?.mentorId || profile.mentorId || null
+                            };
+                        });
+
+                        // 🔍 Fetching academic registration ledger from 'enrollments'...
+                        const enrolQ = query(
+                            collection(db, 'enrollments'),
+                            where('learnerId', '==', finalProfileId),
+                            where('status', 'in', ['active', 'in-progress'])
+                        );
+                        const snapEnrol = await getDocs(enrolQ);
+                        let enrolls: any[] = snapEnrol.docs.map(d => ({ id: d.id, ...d.data() }));
+
+                        // 🚀 FIXED: INDESTRUCTIBLE SYNTHETIC ENROLLMENT FALLBACK
+                        if (enrolls.length === 0) {
+                            let activeCohortId = profile.cohortId;
+
+                            if (!activeCohortId && store.cohorts) {
+                                const possibleIdentities = [
+                                    finalProfileId,
+                                    profile.idNumber,
+                                    profile.authUid,
+                                    profile.learnerId
+                                ].filter(Boolean);
+
+                                const foundCohort = store.cohorts.find(c =>
+                                    c.learnerIds?.some(id => possibleIdentities.includes(id))
+                                );
+
+                                if (foundCohort) {
+                                    activeCohortId = foundCohort.id;
+                                    console.log("🛠️ Found learner deeply nested in cohort:", foundCohort.name);
+                                }
+                            }
+
+                            if (activeCohortId) {
+                                console.log("🛠️ No formal ledger found. Injecting synthetic enrollment using matched cohortId:", activeCohortId);
+                                enrolls = [{
+                                    id: `synthetic_${finalProfileId}`,
+                                    learnerId: finalProfileId,
+                                    cohortId: activeCohortId,
+                                    status: 'active',
+                                    qualification: profile.qualification || null
+                                }];
+                            }
+                        }
+
+                        setLearnerEnrollments(enrolls);
+
+                        // ─── 🚀 IN-MEMORY BLUEPRINT HYDRATION ENGINE ───
+                        if (enrolls.length > 0) {
+                            let activeEnrollment: any = enrolls[0];
+
+                            const hasWE = activeEnrollment.workExperienceModules && activeEnrollment.workExperienceModules.length > 0;
+
+                            if (!hasWE) {
+                                console.log("🛠️ [Self-Healing Initialized]: Local blueprint modules are empty. Executing in-memory recovery...");
+                                try {
+                                    const cohortDocRef = doc(db, 'cohorts', activeEnrollment.cohortId);
+                                    const cohortSnap = await getDoc(cohortDocRef);
+                                    let masterProgrammeId = activeEnrollment.programmeId;
+
+                                    if (cohortSnap.exists()) {
+                                        masterProgrammeId = cohortSnap.data().programmeId || masterProgrammeId;
+                                    }
+
+                                    if (masterProgrammeId) {
+                                        const progSnap = await getDoc(doc(db, 'programmes', masterProgrammeId));
+
+                                        if (progSnap.exists()) {
+                                            const progData = progSnap.data();
+                                            const recoveredWE = progData.workExperienceModules || [];
+                                            const recoveredP = progData.practicalModules || [];
+                                            const recoveredK = progData.knowledgeModules || [];
+
+                                            console.log(`📋 Found Blueprint Templates -> WE Count: ${recoveredWE.length}. Injecting straight to memory!`);
+
+                                            activeEnrollment.workExperienceModules = recoveredWE;
+                                            activeEnrollment.practicalModules = recoveredP;
+                                            activeEnrollment.knowledgeModules = recoveredK;
+                                        }
+                                    }
+                                } catch (healError) {
+                                    console.error("🚨 In-memory self-healing failed:", healError);
+                                }
+                            }
+
+                            console.log("⚡ Hydrating UI state container with modules count =", (activeEnrollment.workExperienceModules || []).length);
+                            setAcademicProfile((prev: any) => prev ? {
+                                ...prev,
+                                workExperienceModules: activeEnrollment.workExperienceModules || [],
+                                practicalModules: activeEnrollment.practicalModules || [],
+                                knowledgeModules: activeEnrollment.knowledgeModules || [],
+                                qualification: activeEnrollment.qualification || prev.qualification
+                            } : prev);
+                        }
+
+                        if (enrolls.length > 0) {
+                            const qAtt = query(collection(db, 'attendance'), where('cohortId', 'in', enrolls.map((e: any) => e.cohortId)));
+                            const snapAtt = await getDocs(qAtt);
+
+                            const missed = snapAtt.docs
+                                .filter(d => d.data().absentLearners?.includes(profile.id) || d.data().absentLearners?.includes(profile.idNumber))
+                                .map(d => {
+                                    const attData = d.data();
+                                    return {
+                                        date: attData.date,
+                                        cohortId: attData.cohortId || '',
+                                        cohortName: attData.cohortName || ''
+                                    };
+                                });
+
+                            setAbsenceDates(missed);
+                        }
+
+                        const scansQ = query(collection(db, 'live_attendance_scans'), where('learnerId', '==', finalProfileId));
+                        // Re-assign the outer unsubscribe variable so cleanup works
+                        unsubscribeScans = onSnapshot(scansQ, (snapScans) => {
+                            const scans = snapScans.docs.map(d => ({ id: d.id, ...d.data() }));
+                            setMyScans(scans);
+                        });
+
+                        const worklogsQ = query(collection(db, 'workplace_logs'), where('learnerId', '==', finalProfileId));
+                        // Re-assign the outer unsubscribe variable so cleanup works
+                        unsubscribeWorklogs = onSnapshot(worklogsQ, (snapLogs) => {
+                            const logs = snapLogs.docs.map(d => ({ id: d.id, ...d.data() }));
+                            setMyWorkplaceLogs(logs);
+                        });
+
+                        console.groupEnd();
+                        setIsLoading(false);
+                    };
+
+                    // Execute our async helper immediately
+                    processProfileData();
                 });
 
             } catch (error) {

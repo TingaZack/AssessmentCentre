@@ -415,7 +415,8 @@ export const LearnerProfileSetup: React.FC = () => {
         try {
             const getExt = (f: File) => f.name.split('.').pop();
 
-            let finalPhotoUrl = formData.profilePhotoUrl;
+            // let finalPhotoUrl = formData.profilePhotoUrl;
+            let finalPhotoUrl = formData.profilePhotoUrl || "";
             if (profilePhoto) {
                 finalPhotoUrl = await handleFileUpload(profilePhoto, `learners/${user.uid}/profile_${Date.now()}.${getExt(profilePhoto)}`);
             }
@@ -494,6 +495,19 @@ export const LearnerProfileSetup: React.FC = () => {
                     phone: formatAsText(formData.nokPhone, 10)
                 }
             };
+
+            Object.keys(finalData).forEach(key => {
+                if (finalData[key] === undefined) {
+                    finalData[key] = "";
+                }
+            });
+
+            // Same for the nested demographics object
+            Object.keys(finalData.demographics).forEach(key => {
+                if (finalData.demographics[key] === undefined) {
+                    finalData.demographics[key] = "";
+                }
+            });
 
             await updateDoc(doc(db, 'users', user.uid), finalData);
             if (learnerDocId) await updateDoc(doc(db, 'learners', learnerDocId), finalData);

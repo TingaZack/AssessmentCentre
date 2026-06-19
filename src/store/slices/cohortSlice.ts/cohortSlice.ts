@@ -41,9 +41,42 @@ export const createCohortSlice: StateCreator<
   cohortsLoading: false,
   cohortsError: null,
 
+  // fetchCohorts: async (force = false) => {
+  //   const { cohorts } = get();
+  //   if (!force && cohorts.length > 0) return;
+
+  //   set((state: any) => {
+  //     state.cohortsLoading = true;
+  //     state.cohortsError = null;
+  //   });
+
+  //   try {
+  //     const q = query(collection(db, "cohorts"), orderBy("name"));
+  //     const snapshot = await getDocs(q);
+  //     const list = snapshot.docs.map(
+  //       (doc) => ({ id: doc.id, ...doc.data() }) as Cohort,
+  //     );
+
+  //     set((state: any) => {
+  //       state.cohorts = list;
+  //       state.cohortsLoading = false;
+  //     });
+  //   } catch (systemError: any) {
+  //     console.error("Failed to fetch cohorts:", systemError);
+  //     set((state: any) => {
+  //       state.cohortsLoading = false;
+  //       state.cohortsError = systemError.message;
+  //     });
+  //   }
+  // },
   fetchCohorts: async (force = false) => {
     const { cohorts } = get();
-    if (!force && cohorts.length > 0) return;
+    if (!force && cohorts.length > 0) {
+      console.log(
+        "[DEBUG useStore] Cohorts already in memory. Skipping fetch.",
+      );
+      return;
+    }
 
     set((state: any) => {
       state.cohortsLoading = true;
@@ -51,10 +84,17 @@ export const createCohortSlice: StateCreator<
     });
 
     try {
+      console.log("[DEBUG useStore] Fetching cohorts from Firestore...");
+      const start = Date.now();
+
       const q = query(collection(db, "cohorts"), orderBy("name"));
       const snapshot = await getDocs(q);
       const list = snapshot.docs.map(
         (doc) => ({ id: doc.id, ...doc.data() }) as Cohort,
+      );
+
+      console.log(
+        `[DEBUG useStore] Fetched ${list.length} cohorts in ${Date.now() - start}ms.`,
       );
 
       set((state: any) => {

@@ -17,7 +17,7 @@ interface Props {
     userUid?: string; // Made optional for Guest Mode
     existingSignatureUrl?: string | null;
     onComplete: () => void;
-    // 🚀 GUEST MODE PROPS
+    // GUEST MODE PROPS
     isGuestMode?: boolean;
     onGuestSave?: (base64String: string) => void;
     guestName?: string;
