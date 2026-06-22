@@ -90,7 +90,7 @@ export const NotificationBell: React.FC = () => {
     return (
         <div className="mlab-notif-container" ref={dropdownRef}>
             <button className="mlab-notif-btn" onClick={() => setIsOpen(!isOpen)}>
-                {user?.role !== 'admin' && <Bell color='white' size={20} />}
+                {user?.role !== 'admin' && <Bell color='var(--mlab-green)' size={20} />}
                 {user?.role === 'admin' && <Bell size={20} />}
 
                 {unreadCount > 0 && <span className="mlab-notif-badge">{unreadCount}</span>}

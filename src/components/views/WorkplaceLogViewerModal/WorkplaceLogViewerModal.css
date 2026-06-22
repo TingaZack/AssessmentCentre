@@ -1,0 +1,28 @@
+.quill-content-display {
+  max-width: 100% !important;
+  overflow-x: hidden; /* Safeguards parent container boundaries */
+}
+
+.quill-content-display p,
+.quill-content-display span {
+  white-space: normal !important;
+  word-break: break-word !important; /* Only wraps standard word bounds */
+  line-height: 1.6 !important; /* Generous line spacing for readability */
+  color: #334155 !important;
+}
+
+.quill-content-display ul,
+.quill-content-display ol {
+  padding-left: 24px !important; /* Clean bullet indentations */
+  margin: 8px 0 !important;
+  list-style-position: outside !important;
+}
+
+.quill-content-display pre {
+  white-space: pre !important; /* Enforces real code line continuity */
+  overflow-x: auto !important; /* Adds a horizontal scrollbar INSIDE the block only */
+  max-width: 100% !important; /* Prevents the block from stretching the parent div */
+  display: block !important;
+  word-break: normal !important; /* Stops text-breaking rules from splitting variables */
+  word-wrap: normal !important;
+}

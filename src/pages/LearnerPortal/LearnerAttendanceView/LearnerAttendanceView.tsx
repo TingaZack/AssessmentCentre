@@ -1,21 +1,20 @@
-// src/pages/LearnerPortal/LearnerAttendanceView/LearnerAttendanceView.tsx
+// src/components/components/views/LearnerAttendanceView/LearnerAttendanceView.tsx
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { createPortal } from 'react-dom';
 import {
     CalendarCheck, Clock, CheckCircle, AlertTriangle, Calendar, XCircle,
     ArrowDownToLine, BookOpen, Layers, Briefcase, Plus, History,
     FileText, Pencil, Search, ChevronDown, ChevronUp, ExternalLink,
-    Maximize2, X, Paperclip, Landmark, Loader2,
-    EyeOff,
-    Eye
+    Maximize2, Paperclip, Landmark, Loader2,
+    EyeOff, Eye, FileCode, Link2, MapPin, Phone, Mail, Building2, UserCircle, BadgeCheck
 } from 'lucide-react';
 import moment from 'moment';
-import { collection, doc, getDoc, getDocs, query, where } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
 
 import './LearnerAttendanceView.css';
 import { useStore } from '../../../store/useStore';
+import { WorkplaceLogViewerModal } from '../../../components/views/WorkplaceLogViewerModal/WorkplaceLogViewerModal';
 
 const MIDNIGHT = '#073f4e';
 const GREEN = '#94c73d';
@@ -34,24 +33,19 @@ export interface LearnerAttendanceViewProps {
     workplaceLogs: any[];
     learnerHasEmployer: boolean;
     stipendAmount?: number;
-    onOpenLogModal: (log?: any) => void;
+    onOpenLogModal: (log?: any, placementContext?: { placementId?: string, employerId?: string, mentorId?: string }) => void;
 }
 
-const getSAWorkingDaysInMonth = (year: number, month: number) => {
+// ─── 🚀 UPDATED: HELPER NOW ACCEPTS DYNAMIC API HOLIDAY ARRAY ───
+const getSAWorkingDaysInMonth = (year: number, month: number, holidaysList: string[]) => {
     const start = moment([year, month, 1]);
     const end = moment(start).endOf('month');
     let days = 0;
 
-    const holidays = [
-        '2026-01-01', '2026-03-21', '2026-04-03', '2026-04-06', '2026-04-27',
-        '2026-05-01', '2026-06-16', '2026-08-09', '2026-08-10', '2026-09-24',
-        '2026-12-16', '2026-12-25', '2026-12-26'
-    ];
-
     let current = start.clone();
     while (current.isSameOrBefore(end)) {
         if (current.isoWeekday() !== 6 && current.isoWeekday() !== 7) {
-            if (!holidays.includes(current.format('YYYY-MM-DD'))) {
+            if (!holidaysList.includes(current.format('YYYY-MM-DD'))) {
                 days++;
             }
         }
@@ -82,96 +76,154 @@ export const LearnerAttendanceView: React.FC<LearnerAttendanceViewProps> = ({
     const [wpSearch, setWpSearch] = useState('');
     const [wpStatusFilter, setWpStatusFilter] = useState<string>('all');
     const [wpMonthFilter, setWpMonthFilter] = useState<string>('all');
-    const [expandedWpMonths, setExpandedWpMonths] = useState<Set<string>>(new Set());
+
+    const [expandedWpMonths, setExpandedWpMonths] = useState<Set<string>>(new Set([moment().format('MMMM YYYY')]));
+    const [expandedEmployers, setExpandedEmployers] = useState<Set<string>>(new Set());
 
     const [previewEvidenceId, setPreviewEvidenceId] = useState<string | null>(null);
+    const [previewCustomSeId, setPreviewCustomSeId] = useState<string | null>(null);
     const [viewingLogDetails, setViewingLogDetails] = useState<any | null>(null);
+    const [viewingLogEmployer, setViewingLogEmployer] = useState<any>(null);
+
     const [expandedHistoryIds, setExpandedHistoryIds] = useState<Set<string>>(new Set());
 
-    // ─── 🚀 DEEP STIPEND SCANNER STATE ───
+    // ─── EMPLOYMENT HISTORY & STIPEND PIPELINE STATE ───
+    const [placementsHistory, setPlacementsHistory] = useState<any[]>([]);
     const [directStipend, setDirectStipend] = useState<number | null>(null);
-    const [isStipendLoading, setIsStipendLoading] = useState<boolean>(false);
+    const [isEmploymentLoading, setIsEmploymentLoading] = useState<boolean>(false);
 
-    // Stable primitives for the hook dependency array
+    // ─── 🚀 NEW: DYNAMIC PUBLIC HOLIDAYS STATE ENGINE ───
+    const [publicHolidays, setPublicHolidays] = useState<string[]>([]);
+    const [isHolidaysLoading, setIsHolidaysLoading] = useState<boolean>(true);
+
     const stableUserUid = user?.uid || '';
     const stableIdNumber = user?.idNumber || '';
     const fallbackSearchId = workplaceLogs.length > 0 ? workplaceLogs[0].learnerId : '';
 
+    // ─── 🚀 EFFECT 1: FETCH DYNAMIC SOUTH AFRICAN PUBLIC HOLIDAYS FROM API ───
     useEffect(() => {
-        const fetchStipendDirectly = async () => {
-            const rawHumanId = stableIdNumber || stableUserUid || fallbackSearchId;
-
-            console.group("🔍 [DEEP STIPEND SCANNER - ROOT CAUSE SOLVED]");
-            console.log("1. Starting direct database pipeline query.");
-            console.log("   - Raw Candidate Target ID:", rawHumanId);
-
-            if (!rawHumanId) {
-                console.warn("   ✕ Aborting scan. No raw lookup identifier could be resolved.");
-                console.groupEnd();
-                return;
-            }
-
-            setIsStipendLoading(true);
-
+        const fetchSAHolidaysFromApi = async () => {
+            setIsHolidaysLoading(true);
             try {
-                // STEP A: Fetch the enrollment record to resolve the compound ID mapping mismatch
-                console.log("2. Querying 'enrollments' to resolve the compound key mapping...");
-                const enrollmentsQ = query(collection(db, "enrollments"), where("learnerId", "==", rawHumanId));
-                const enrollmentsSnap = await getDocs(enrollmentsQ);
+                const queryYear = moment().year(); // Detect current calendar execution year context
+                const response = await fetch(`https://date.nager.at/api/v3/PublicHolidays/${queryYear}/ZA`);
 
-                let compoundId = "";
-                if (!enrollmentsSnap.empty) {
-                    const enrollmentDoc = enrollmentsSnap.docs[0];
-                    const enrollmentData = enrollmentDoc.data();
-                    // Extract the true compound key string (cohortId_idNumber)
-                    compoundId = enrollmentData?.id || enrollmentDoc.id;
-                    console.log("   ✓ Enrollment compound string successfully resolved:", compoundId);
+                if (response.ok) {
+                    const data = await response.json();
+                    // Extract exact date strings array matching 'YYYY-MM-DD'
+                    const parsedDates = data.map((item: any) => item.date);
+                    setPublicHolidays(parsedDates);
                 } else {
-                    console.log("   ✕ No matching document found in 'enrollments'. Will try searching placements by raw ID only.");
+                    throw new Error(`API Error response channel: ${response.status}`);
                 }
-
-                // STEP B: Build a lookup pool containing both the raw ID and the compound ID formats
-                const searchPool = [rawHumanId];
-                if (compoundId) {
-                    searchPool.push(compoundId);
-                }
-                console.log("3. Executing lookups on 'placements' collection using lookup pool:", searchPool);
-
-                // Query placements checking for either matching key structure
-                const placementsQ = query(collection(db, "placements"), where("learnerId", "in", searchPool));
-                const placementsSnap = await getDocs(placementsQ);
-
-                if (!placementsSnap.empty) {
-                    const data = placementsSnap.docs[0].data();
-                    console.log("   ✓ Success! Found matching document in 'placements' collection:", data);
-
-                    // Inspecting payroll data targets
-                    const stipend = data?.stipendAmount ?? data?.stipend ?? data?.allowance ?? data?.wage;
-                    if (stipend !== undefined && stipend !== null) {
-                        console.log("   🎯 Valid Stipend Value extracted:", stipend);
-                        setDirectStipend(Number(stipend));
-                        console.groupEnd();
-                        return;
-                    } else {
-                        console.log("   ✕ Placement doc exists, but contains no valid stipend fields.");
-                    }
-                } else {
-                    console.log("   ✕ Vector empty. No matching records found inside 'placements' collection for this search pool.");
-                }
-
-                console.warn("⚠️ Scanner complete. All identifier variations checked but no matching stipend value was resolved.");
             } catch (err) {
-                console.error("❌ Transactional scanner loop hit a critical execution error:", err);
+                console.warn("⚠️ Holiday API channel down. Injecting structural safety fallback matrix.", err);
+                // Resilient local fallback matrix in case of runtime connection dropouts
+                setPublicHolidays([
+                    '2026-01-01', '2026-03-21', '2026-04-03', '2026-04-06', '2026-04-27',
+                    '2026-05-01', '2026-06-16', '2026-08-09', '2026-08-10', '2026-09-24',
+                    '2026-12-16', '2026-12-25', '2026-12-26'
+                ]);
             } finally {
-                setIsStipendLoading(false);
-                console.groupEnd();
+                setIsHolidaysLoading(false);
             }
         };
 
-        if (learnerHasEmployer && (!stipendAmount || stipendAmount === 0)) {
-            fetchStipendDirectly();
+        fetchSAHolidaysFromApi();
+    }, []);
+
+    // Auto-expand most recent month
+    useEffect(() => {
+        if (workplaceLogs.length > 0) {
+            const mostRecentLog = [...workplaceLogs].sort((a, b) => new Date(b.dateString).getTime() - new Date(a.dateString).getTime())[0];
+            if (mostRecentLog?.dateString) {
+                const recentMonth = moment(mostRecentLog.dateString).format('MMMM YYYY');
+                setExpandedWpMonths(prev => new Set(prev).add(recentMonth));
+            }
         }
-    }, [stableUserUid, stableIdNumber, fallbackSearchId, learnerHasEmployer, stipendAmount]);
+    }, [workplaceLogs]);
+
+    // Auto-expand the active employer placement
+    useEffect(() => {
+        if (placementsHistory.length > 0) {
+            const active = placementsHistory.find(p => ['active placement', 'active', 'pending match'].includes(String(p.status).toLowerCase()));
+            if (active) {
+                setExpandedEmployers(prev => new Set(prev).add(active.placementId));
+            }
+        }
+    }, [placementsHistory]);
+
+    // ─── 🚀 UNIFIED EMPLOYMENT PIPELINE ───
+    useEffect(() => {
+        const fetchEmploymentProfile = async () => {
+            const rawHumanId = stableIdNumber || stableUserUid || fallbackSearchId;
+            if (!rawHumanId || !learnerHasEmployer) {
+                setIsEmploymentLoading(false);
+                return;
+            }
+
+            setIsEmploymentLoading(true);
+            try {
+                const searchPool = [rawHumanId];
+                const enrollmentsQ = query(collection(db, "enrollments"), where("learnerId", "==", rawHumanId));
+                const enrollmentsSnap = await getDocs(enrollmentsQ);
+                if (!enrollmentsSnap.empty) {
+                    searchPool.push(enrollmentsSnap.docs[0].id);
+                    if (enrollmentsSnap.docs[0].data()?.id) {
+                        searchPool.push(enrollmentsSnap.docs[0].data().id);
+                    }
+                }
+                const validSearchPool = [...new Set(searchPool)].filter(Boolean);
+
+                const placementsQ = query(collection(db, "placements"), where("learnerId", "in", validSearchPool));
+                const placementsSnap = await getDocs(placementsQ);
+
+                if (!placementsSnap.empty) {
+                    const fetchedPlacements = placementsSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+                        .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+                    const employerIds = [...new Set(fetchedPlacements.map((p: any) => p.employerId).filter(Boolean))];
+                    const mentorIds = [...new Set(fetchedPlacements.map((p: any) => p.mentorId).filter(Boolean))];
+
+                    const employersData: Record<string, any> = {};
+                    const mentorsData: Record<string, any> = {};
+
+                    if (employerIds.length > 0) {
+                        const empDocs = await Promise.all(employerIds.map(id => getDoc(doc(db, 'employers', id))));
+                        empDocs.forEach(d => { if (d.exists()) employersData[d.id] = d.data(); });
+                    }
+
+                    if (mentorIds.length > 0) {
+                        const mDocs = await Promise.all(mentorIds.map(id => getDoc(doc(db, 'users', id))));
+                        mDocs.forEach(d => { if (d.exists()) mentorsData[d.id] = d.data(); });
+                    }
+
+                    const compiledHistory = fetchedPlacements.map((p: any) => ({
+                        placementId: p.id,
+                        status: p.status || 'Past Placement',
+                        startDate: p.startDate || p.createdAt,
+                        endDate: p.endDate,
+                        stipendAmount: p.stipendAmount ?? p.stipend ?? p.allowance ?? p.wage,
+                        employer: p.employerId ? { id: p.employerId, ...employersData[p.employerId] } : null,
+                        mentor: p.mentorId ? { id: p.mentorId, ...mentorsData[p.mentorId] } : null,
+                    }));
+
+                    setPlacementsHistory(compiledHistory);
+
+                    const activePlace = compiledHistory.find(h => ['active placement', 'active', 'pending match'].includes(String(h.status).toLowerCase()));
+                    if (activePlace && activePlace.stipendAmount !== undefined && (!stipendAmount || stipendAmount === 0)) {
+                        setDirectStipend(Number(activePlace.stipendAmount));
+                    }
+                }
+            } catch (err) {
+                console.error("Pipeline failure:", err);
+            } finally {
+                setIsEmploymentLoading(false);
+            }
+        };
+
+        fetchEmploymentProfile();
+    }, [stableIdNumber, stableUserUid, fallbackSearchId, learnerHasEmployer, stipendAmount]);
 
     // ─── HELPER FUNCTIONS ───
     const formatCurrency = (val: number) =>
@@ -206,18 +258,13 @@ export const LearnerAttendanceView: React.FC<LearnerAttendanceViewProps> = ({
         });
     };
 
-    // ─── 🚀 THE MISSING VARIABLE: MODAL TIMELINE ENGINE ───
-    const logVersions = useMemo(() => {
-        if (!viewingLogDetails) return [];
-        if (viewingLogDetails.history && viewingLogDetails.history.length > 0) {
-            return [...viewingLogDetails.history, viewingLogDetails].sort((a, b) => {
-                const timeA = new Date(a.updatedAt || a.createdAt || 0).getTime();
-                const timeB = new Date(b.updatedAt || b.createdAt || 0).getTime();
-                return timeB - timeA;
-            });
-        }
-        return [viewingLogDetails];
-    }, [viewingLogDetails]);
+    const toggleEmployerAccordion = (placementId: string) => {
+        setExpandedEmployers(prev => {
+            const next = new Set(prev);
+            if (next.has(placementId)) next.delete(placementId); else next.add(placementId);
+            return next;
+        });
+    };
 
     // ─── CAMPUS LEDGER COMPUTATION ───
     const combinedLedger = useMemo(() => {
@@ -269,46 +316,6 @@ export const LearnerAttendanceView: React.FC<LearnerAttendanceViewProps> = ({
         });
     }, [combinedLedger, selectedCohortId]);
 
-    const stats = useMemo(() => {
-        const presentCount = cohortFilteredLedger.filter(r => r.type === 'present').length;
-        const absentCount = cohortFilteredLedger.filter(r => r.type === 'absent').length;
-        const total = presentCount + absentCount;
-        const ratio = total === 0 ? "100%" : Math.round((presentCount / total) * 100) + "%";
-
-        const currentYear = moment().year();
-        const currentMonth = moment().month();
-        const currentMonthStr = moment().format('YYYY-MM');
-
-        const expectedWorkingDaysThisMonth = getSAWorkingDaysInMonth(currentYear, currentMonth);
-
-        const approvedDatesThisMonth = new Set(
-            workplaceLogs
-                .filter((l: any) => l.dateString && l.dateString.startsWith(currentMonthStr))
-                .filter((l: any) => String(l.status || "").trim().toLowerCase() === "approved")
-                .map((l: any) => l.dateString)
-        );
-        const currentMonthApprovedDays = approvedDatesThisMonth.size;
-
-        const baseWageAmount = Number(stipendAmount) || directStipend || 0;
-
-        let currentMonthEarnedStipend = baseWageAmount;
-        if (expectedWorkingDaysThisMonth > 0 && baseWageAmount > 0) {
-            const calculatedProRata = (currentMonthApprovedDays / expectedWorkingDaysThisMonth) * baseWageAmount;
-            currentMonthEarnedStipend = Math.min(calculatedProRata, baseWageAmount);
-        }
-
-        return {
-            total,
-            presentCount,
-            absentCount,
-            ratio,
-            currentMonthApprovedDays,
-            expectedWorkingDaysThisMonth,
-            currentMonthEarnedStipend,
-            baseStipendUsed: baseWageAmount
-        };
-    }, [cohortFilteredLedger, workplaceLogs, stipendAmount, directStipend]);
-
     const finalFilteredDisplayLedger = useMemo(() => {
         return cohortFilteredLedger.filter(record => {
             if (filterStatus !== 'all' && record.type !== filterStatus) return false;
@@ -321,7 +328,7 @@ export const LearnerAttendanceView: React.FC<LearnerAttendanceViewProps> = ({
         });
     }, [cohortFilteredLedger, filterStatus, dateFilterMode, dateSearch]);
 
-    // ─── WORKPLACE LOGS COMPUTATION & GROUPING ───
+    // ─── WORKPLACE LOGS & PLACEMENT MAPPING COMPUTATION ───
     const wpAvailableMonths = useMemo(() => {
         const months = new Set<string>();
         workplaceLogs.forEach(log => {
@@ -330,16 +337,8 @@ export const LearnerAttendanceView: React.FC<LearnerAttendanceViewProps> = ({
         return Array.from(months).sort((a, b) => b.localeCompare(a));
     }, [workplaceLogs]);
 
-    const totalWorkplaceHours = useMemo(() => {
-        return workplaceLogs
-            .filter(log => String(log.status || "").trim().toLowerCase() === 'approved')
-            .reduce((sum, log) => sum + (Number(log.totalHours) || 0), 0);
-    }, [workplaceLogs]);
-
-    const hasActiveWpFilters = wpSearch.trim() !== '' || wpStatusFilter !== 'all' || wpMonthFilter !== 'all';
-
-    const filteredAndGroupedWpLogs = useMemo(() => {
-        const filtered = workplaceLogs.filter(log => {
+    const filteredWpLogs = useMemo(() => {
+        return workplaceLogs.filter(log => {
             if (wpStatusFilter !== 'all' && log.status !== wpStatusFilter) return false;
             if (wpMonthFilter !== 'all' && !log.dateString?.startsWith(wpMonthFilter)) return false;
 
@@ -354,29 +353,214 @@ export const LearnerAttendanceView: React.FC<LearnerAttendanceViewProps> = ({
             }
             return true;
         }).sort((a, b) => new Date(b.dateString).getTime() - new Date(a.dateString).getTime());
-
-        const groups: Record<string, any[]> = {};
-        filtered.forEach(log => {
-            const monthYear = moment(log.dateString).format('MMMM YYYY');
-            if (!groups[monthYear]) {
-                groups[monthYear] = [];
-            }
-            groups[monthYear].push(log);
-        });
-
-        return groups;
     }, [workplaceLogs, wpStatusFilter, wpMonthFilter, wpSearch]);
 
-    useEffect(() => {
-        const months = Object.keys(filteredAndGroupedWpLogs);
-        if (months.length > 0) {
-            if (hasActiveWpFilters) {
-                setExpandedWpMonths(new Set(months));
-            } else if (expandedWpMonths.size === 0) {
-                setExpandedWpMonths(new Set([months[0]]));
-            }
+    const { mappedPlacements, unassignedLogs } = useMemo(() => {
+        const assignedLogIds = new Set<string>();
+
+        const mapped = placementsHistory.map(place => {
+            const pLogs = filteredWpLogs.filter(log => {
+                const logEmpId = log.employerId || log.rawLogData?.employerId;
+                const logMentorId = log.mentorId || log.rawLogData?.mentorId;
+
+                if (logEmpId && place.employer?.id && logEmpId === place.employer.id) return true;
+                if (logMentorId && place.mentor?.id && logMentorId === place.mentor.id) return true;
+
+                if (log.dateString && place.startDate) {
+                    const logDate = moment(log.dateString);
+                    const start = moment(place.startDate);
+                    const end = place.endDate ? moment(place.endDate) : moment().add(10, 'years');
+                    return logDate.isSameOrAfter(start) && logDate.isSameOrBefore(end);
+                }
+                return false;
+            });
+
+            pLogs.forEach(l => assignedLogIds.add(l.id));
+
+            const grouped: Record<string, any[]> = {};
+            pLogs.forEach(log => {
+                const monthYear = moment(log.dateString).format('MMMM YYYY');
+                if (!grouped[monthYear]) grouped[monthYear] = [];
+                grouped[monthYear].push(log);
+            });
+
+            return { ...place, logs: pLogs, groupedLogs: grouped };
+        });
+
+        const unassigned = filteredWpLogs.filter(l => !assignedLogIds.has(l.id));
+        const unassignedGrouped: Record<string, any[]> = {};
+        unassigned.forEach(log => {
+            const monthYear = moment(log.dateString).format('MMMM YYYY');
+            if (!unassignedGrouped[monthYear]) unassignedGrouped[monthYear] = [];
+            unassignedGrouped[monthYear].push(log);
+        });
+
+        return { mappedPlacements: mapped, unassignedLogs: unassignedGrouped };
+    }, [placementsHistory, filteredWpLogs]);
+
+    const totalWorkplaceHours = useMemo(() => {
+        return workplaceLogs
+            .filter(log => String(log.status || "").trim().toLowerCase() === 'approved')
+            .reduce((sum, log) => sum + (Number(log.totalHours) || 0), 0);
+    }, [workplaceLogs]);
+
+    const stats = useMemo(() => {
+        const presentCount = cohortFilteredLedger.filter(r => r.type === 'present').length;
+        const absentCount = cohortFilteredLedger.filter(r => r.type === 'absent').length;
+        const total = presentCount + absentCount;
+        const ratio = total === 0 ? "100%" : Math.round((presentCount / total) * 100) + "%";
+
+        const currentYear = moment().year();
+        const currentMonth = moment().month();
+        const currentMonthStr = moment().format('YYYY-MM');
+
+        // 🚀 INJECT REAL-TIME RESOLVED PUBLIC HOLIDAYS STATE MAPPED VIA API ENDPOINTS
+        const expectedWorkingDaysThisMonth = getSAWorkingDaysInMonth(currentYear, currentMonth, publicHolidays);
+
+        const approvedDatesThisMonth = new Set(
+            workplaceLogs
+                .filter((l: any) => l.dateString && l.dateString.startsWith(currentMonthStr))
+                .filter((l: any) => String(l.status || "").trim().toLowerCase() === "approved")
+                .map((l: any) => l.dateString)
+        );
+        const currentMonthApprovedDays = approvedDatesThisMonth.size;
+        const baseWageAmount = Number(stipendAmount) || directStipend || 0;
+
+        let currentMonthEarnedStipend = baseWageAmount;
+        if (expectedWorkingDaysThisMonth > 0 && baseWageAmount > 0) {
+            const calculatedProRata = (currentMonthApprovedDays / expectedWorkingDaysThisMonth) * baseWageAmount;
+            currentMonthEarnedStipend = Math.min(calculatedProRata, baseWageAmount);
         }
-    }, [filteredAndGroupedWpLogs, hasActiveWpFilters]);
+
+        return {
+            total, presentCount, absentCount, ratio,
+            currentMonthApprovedDays, expectedWorkingDaysThisMonth,
+            currentMonthEarnedStipend, baseStipendUsed: baseWageAmount
+        };
+    }, [cohortFilteredLedger, workplaceLogs, stipendAmount, directStipend, publicHolidays]); // Added publicHolidays reactive link observer
+
+    // ─── RENDER HELPER FOR LOGS ───
+    const renderLogsGroupedByMonth = (groupedLogs: Record<string, any[]>, passedEmployer?: any) => {
+        if (Object.keys(groupedLogs).length === 0) {
+            return (
+                <div style={{ textTransform: 'uppercase', textAlign: 'center', padding: '2rem 1rem', background: '#f8fafc', borderRadius: '12px', border: '1px dashed #cbd5e1' }}>
+                    <History size={32} color="var(--mlab-grey-lt)" style={{ margin: '0 auto 1rem' }} />
+                    <h4 style={{ fontFamily: 'var(--font-heading)', color: '#64748b', margin: 0 }}>No Logs Found</h4>
+                    <p style={{ color: 'var(--mlab-grey)', margin: '4px 0 0', fontSize: '0.8rem', textTransform: 'none' }}>No entries match the current timeline or filters.</p>
+                </div>
+            );
+        }
+
+        return Object.keys(groupedLogs).map(monthLabel => {
+            const monthLogs = groupedLogs[monthLabel];
+            const isOpen = expandedWpMonths.has(monthLabel);
+            const totalMonthHours = monthLogs.reduce((sum: number, log: any) => sum + (Number(log.totalHours) || 0), 0);
+
+            return (
+                <div key={monthLabel} style={{ background: 'white', borderRadius: '12px', border: '1px solid var(--mlab-border)', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.02)', marginBottom: '1rem' }}>
+                    <div onClick={() => toggleWpMonthAccordion(monthLabel)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 1.25rem', background: isOpen ? '#f8fafc' : 'white', borderBottom: isOpen ? '1px solid var(--mlab-border)' : 'none', cursor: 'pointer' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <div style={{ background: 'var(--mlab-blue-light)', padding: '6px', borderRadius: '6px', width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <Calendar size={16} color={'white'} />
+                            </div>
+                            <div>
+                                <h4 style={{ margin: 0, fontSize: '1rem', color: MIDNIGHT, fontFamily: 'var(--font-heading)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{monthLabel}</h4>
+                                <span style={{ fontSize: '0.75rem', color: 'var(--mlab-grey)', fontWeight: 600 }}>{monthLogs.length} Entry(s)</span>
+                            </div>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                            <div style={{ background: '#f1f5f9', padding: '4px 10px', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 700, color: '#475569', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <Clock size={12} /> {totalMonthHours.toFixed(1)} hrs
+                            </div>
+                            {isOpen ? <ChevronUp size={18} color="#64748b" /> : <ChevronDown size={18} color="#64748b" />}
+                        </div>
+                    </div>
+
+                    {isOpen && (
+                        <div style={{ display: 'flex', flexDirection: 'column', padding: '1rem', gap: '1rem', background: '#fafbfc' }}>
+                            {monthLogs.map((log: any) => {
+                                const entryVersions = log.history && log.history.length > 0
+                                    ? [...log.history, log].sort((a: any, b: any) => {
+                                        const timeA = new Date(a.updatedAt || a.createdAt || 0).getTime();
+                                        const timeB = new Date(b.updatedAt || b.createdAt || 0).getTime();
+                                        return timeB - timeA;
+                                    })
+                                    : [log];
+
+                                return (
+                                    <div key={log.id} style={{ background: 'white', border: `1px solid ${log.status === 'Rejected' ? '#fecaca' : 'var(--mlab-border)'}`, borderRadius: '8px', padding: '1rem' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
+                                            <div>
+                                                <div style={{ fontFamily: 'var(--font-heading)', fontSize: '0.9rem', color: MIDNIGHT, fontWeight: 700, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    {moment(log.dateString).format('dddd, DD MMM YYYY')}
+                                                    {(log.evidenceUrl || (log.customEvidenceTracking && log.customEvidenceTracking.length > 0)) && (
+                                                        <span title="Supporting evidence attached" style={{ display: 'inline-flex' }}>
+                                                            <Paperclip size={13} color="var(--mlab-blue)" />
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div style={{ fontSize: '0.75rem', color: 'var(--mlab-grey)', display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px', fontWeight: 600 }}>
+                                                    <Clock size={12} /> {log.startTime} - {log.endTime} <span style={{ color: '#ea580c' }}>({log.totalHours} hrs)</span>
+                                                </div>
+                                            </div>
+
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                {log.status === 'Draft' && <span style={{ background: '#f1f5f9', color: '#475569', padding: '2px 8px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', border: '1px solid #cbd5e1' }}>Draft</span>}
+                                                {log.status === 'Pending_Mentor_Approval' && (
+                                                    <span style={{ background: '#fef3c7', color: '#b45309', padding: '2px 8px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', border: '1px solid #fde68a', display: 'flex', gap: '4px', alignItems: 'center' }}>
+                                                        <Clock size={10} /> Pending
+                                                    </span>
+                                                )}
+                                                {log.status === 'Approved' && <span style={{ background: '#dcfce7', color: '#166534', padding: '2px 8px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', border: '1px solid #bbf7d0', display: 'flex', gap: '4px', alignItems: 'center' }}><CheckCircle size={10} /> Approved</span>}
+                                                {log.status === 'Rejected' && <span style={{ background: '#fee2e2', color: '#991b1b', padding: '2px 8px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', border: '1px solid #fecaca', display: 'flex', gap: '4px', alignItems: 'center' }}><XCircle size={10} /> Rejected</span>}
+
+                                                {['Draft', 'Rejected'].includes(log.status) && (
+                                                    <button onClick={() => {
+                                                        setViewingLogEmployer(passedEmployer || null);
+                                                        onOpenLogModal(log);
+                                                    }} style={{ background: log.status === 'Rejected' ? '#fef2f2' : 'var(--mlab-blue-light)', border: `1px solid ${log.status === 'Rejected' ? '#fca5a5' : 'transparent'}`, padding: '2px 6px', borderRadius: '4px', fontSize: '0.65rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', color: log.status === 'Rejected' ? '#be123c' : 'var(--mlab-blue)' }}><Pencil size={10} /> Fix</button>
+                                                )}
+
+                                                <button onClick={() => {
+                                                    setViewingLogDetails(log);
+                                                    setViewingLogEmployer(passedEmployer || null);
+                                                }} style={{ background: 'white', border: '1px solid #cbd5e1', padding: '2px 6px', borderRadius: '4px', fontSize: '0.65rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', color: '#475569' }}><Maximize2 size={10} /> View</button>
+                                            </div>
+                                        </div>
+
+                                        {log.isQctoAligned && (
+                                            <div style={{ fontSize: '0.8rem', color: '#0369a1', background: '#e0f2fe', padding: '4px 10px', borderRadius: '4px', display: 'inline-flex', alignItems: 'center', gap: '6px', marginBottom: '0.5rem', fontWeight: 600, border: '1px dashed #7dd3fc' }}><BookOpen size={12} /> {log.workActivityCode}: {log.workActivityLabel}</div>
+                                        )}
+
+                                        <div
+                                            style={{ margin: 0, fontSize: '0.8rem', color: '#475569', lineHeight: 1.6, background: '#f8fafc', padding: '12px', borderRadius: '6px', borderLeft: '3px solid #cbd5e1', maxHeight: '100px', overflow: 'hidden' }}
+                                            className="quill-content-display"
+                                            dangerouslySetInnerHTML={{ __html: log.tasksPerformed || '<span style="font-style:italic; color:#94a3b8">Empty description...</span>' }}
+                                        />
+
+                                        {((log.customEvidenceTracking && log.customEvidenceTracking.length > 0) || log.evidenceUrl) && (
+                                            <div style={{ marginTop: '10px', display: 'flex', gap: '8px' }}>
+                                                {log.customEvidenceTracking?.length > 0 && (
+                                                    <span style={{ fontSize: '0.7rem', fontWeight: 600, color: '#4f46e5', display: 'flex', alignItems: 'center', gap: '4px', background: '#e0e7ff', padding: '2px 8px', borderRadius: '12px' }}>
+                                                        <FileCode size={10} /> {log.customEvidenceTracking.length} Custom Artifacts
+                                                    </span>
+                                                )}
+                                                {log.evidenceUrl && (
+                                                    <span style={{ fontSize: '0.7rem', fontWeight: 600, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '4px', background: '#f1f5f9', padding: '2px 8px', borderRadius: '12px', border: '1px solid #cbd5e1' }}>
+                                                        <Paperclip size={10} /> Legacy Attachment
+                                                    </span>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+            );
+        });
+    };
 
     return (
         <div className="ld-animate" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -397,159 +581,37 @@ export const LearnerAttendanceView: React.FC<LearnerAttendanceViewProps> = ({
                 .quill-content-display table th, .quill-content-display table td { border: 1px solid #cbd5e1 !important; padding: 8px 12px !important; text-align: left !important; }
                 .quill-content-display table th { background-color: #f8fafc !important; font-weight: 700 !important; color: #0f172a !important; }
                 .quill-content-display table tr:nth-child(even) { background-color: #f8fafc !important; }
+
+                /* 🌐 Multi-line Dynamic Evidence CSS Blocks */
+                .attendance-se-stack { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; width: 100%; }
+                .attendance-se-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+                .attendance-se-meta-row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; width: 100%; }
+                .attendance-se-badge { background: #e0e7ff; color: #4338ca; font-weight: 800; font-size: 0.72rem; padding: 2px 6px; border-radius: 4px; font-family: monospace; }
+                .attendance-se-chip-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 2px; }
+                .attendance-se-tag { background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; font-weight: 700; font-size: 0.68rem; padding: 1px 6px; border-radius: 4px; }
             `}} />
 
-            {/* COMPREHENSIVE FULL DETAILS MODAL POPUP */}
-            {viewingLogDetails && createPortal(
-                <div className="lfm-overlay" onClick={() => setViewingLogDetails(null)} style={{ zIndex: 999999 }}>
-                    <div className="lfm-modal animate-fade-in" onClick={e => e.stopPropagation()} style={{ maxWidth: '800px', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
-                        <div className="lfm-header">
-                            <h2 className="lfm-header__title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <FileText size={18} /> Workplace Log Details & Revision History
-                            </h2>
-                            <button className="lfm-close-btn" onClick={() => setViewingLogDetails(null)}>
-                                <X size={20} />
-                            </button>
-                        </div>
-
-                        <div className="lfm-body" style={{ overflowY: 'auto', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', padding: '12px 16px', borderRadius: '8px', border: '1px solid var(--mlab-border)' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                    <div style={{ background: MIDNIGHT, width: 40, height: 40, borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
-                                        <Calendar size={20} />
-                                    </div>
-                                    <div>
-                                        <div style={{ fontWeight: 700, color: MIDNIGHT, fontSize: '1.1rem' }}>
-                                            {moment(viewingLogDetails.dateString).format('dddd, DD MMMM YYYY')}
-                                        </div>
-                                        <div style={{ color: 'var(--mlab-grey)', fontSize: '0.85rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                            <Clock size={12} /> {viewingLogDetails.startTime} - {viewingLogDetails.endTime} ({viewingLogDetails.totalHours} hrs)
-                                        </div>
-                                    </div>
-                                </div>
-                                {viewingLogDetails.isQctoAligned && (
-                                    <div style={{ textTransform: 'uppercase', textAlign: 'right' }}>
-                                        <div style={{ fontSize: '0.75rem', color: 'var(--mlab-grey)', fontWeight: 700 }}>Curriculum Alignment</div>
-                                        <div style={{ fontSize: '0.85rem', fontWeight: 600, color: MIDNIGHT }}>{viewingLogDetails.workActivityCode}</div>
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* QCTO Alignment */}
-                            {viewingLogDetails.isQctoAligned && (
-                                <div style={{ marginTop: '-1rem' }}>
-                                    <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid var(--mlab-border)' }}>
-                                        <div style={{ color: MIDNIGHT, fontWeight: 700, fontSize: '0.9rem', marginBottom: '4px' }}>
-                                            {viewingLogDetails.workActivityCode}: {viewingLogDetails.workActivityLabel}
-                                        </div>
-                                        <div style={{ color: '#475569', fontSize: '0.85rem' }}>
-                                            <strong>Module:</strong> {viewingLogDetails.moduleName}
-                                        </div>
-                                        <div style={{ color: '#475569', fontSize: '0.85rem', marginTop: '4px' }}>
-                                            <strong>Topic:</strong> {viewingLogDetails.topicTitle}
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* MODAL TIMELINE ENGINE */}
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-                                {logVersions.map((version: any, idx: number) => {
-                                    const isLatest = idx === 0;
-                                    const versionNumber = logVersions.length - idx;
-
-                                    return (
-                                        <div key={version.updatedAt || idx} style={{ position: 'relative', paddingLeft: '20px', borderLeft: '2px solid var(--mlab-border)' }}>
-                                            <div style={{ position: 'absolute', left: '-8px', top: '0px', width: '14px', height: '14px', borderRadius: '50%', background: isLatest ? 'var(--mlab-blue)' : '#cbd5e1', border: '3px solid white' }} />
-
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                                                <h3 style={{ margin: 0, fontSize: '1.05rem', color: MIDNIGHT, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                    Version {versionNumber}
-                                                    {isLatest && <span style={{ fontSize: '0.7rem', background: '#e0e7ff', color: '#3730a3', padding: '2px 8px', borderRadius: '12px', textTransform: 'uppercase', fontWeight: 700 }}>Latest</span>}
-                                                </h3>
-
-                                                <div style={{ display: 'flex', gap: '4px' }}>
-                                                    {version.status === 'Draft' && <span style={{ background: '#f1f5f9', color: '#475569', padding: '4px 10px', borderRadius: '6px', fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', border: '1px solid #cbd5e1' }}>Draft</span>}
-                                                    {version.status === 'Pending_Mentor_Approval' && <span style={{ background: '#fef3c7', color: '#b45309', padding: '4px 10px', borderRadius: '6px', fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', border: '1px solid #fde68a' }}>Pending Review</span>}
-                                                    {version.status === 'Approved' && <span style={{ background: '#dcfce7', color: '#166534', padding: '4px 10px', borderRadius: '6px', fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', border: '1px solid #bbf7d0' }}>Approved</span>}
-                                                    {version.status === 'Rejected' && <span style={{ background: '#fee2e2', color: '#991b1b', padding: '4px 10px', borderRadius: '6px', fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', border: '1px solid #fecaca' }}>Rejected</span>}
-                                                </div>
-                                            </div>
-
-                                            <div style={{ marginBottom: '1rem' }}>
-                                                <h4 style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--mlab-grey)', margin: '0 0 8px 0', letterSpacing: '0.05em' }}>Tasks Performed</h4>
-                                                <div
-                                                    style={{ background: 'white', padding: '16px', borderRadius: '8px', border: '1px solid var(--mlab-border)', color: '#334155', fontSize: '0.9rem', lineHeight: 1.6 }}
-                                                    className="quill-content-display"
-                                                    dangerouslySetInnerHTML={{ __html: version.tasksPerformed || '<span style="font-style:italic; color:#94a3b8">No description provided...</span>' }}
-                                                />
-                                            </div>
-
-                                            {version.evidenceUrl && (
-                                                <div style={{ marginBottom: '1rem' }}>
-                                                    <h4 style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--mlab-grey)', margin: '0 0 8px 0', letterSpacing: '0.05em' }}>Attached Evidence</h4>
-                                                    <div style={{ padding: '8px', border: '1px solid var(--mlab-border)', borderRadius: '8px', background: '#f8fafc' }}>
-                                                        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '8px' }}>
-                                                            <a
-                                                                href={version.evidenceUrl}
-                                                                target="_blank"
-                                                                rel="noopener noreferrer"
-                                                                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', fontWeight: 600, color: '#475569', background: 'white', padding: '4px 10px', borderRadius: '4px', textDecoration: 'none', border: '1px solid #cbd5e1' }}
-                                                            >
-                                                                <ExternalLink size={12} /> Open File in Full Tab
-                                                            </a>
-                                                        </div>
-                                                        <div style={{ width: '100%', minHeight: '250px', background: 'white', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-                                                            {isImageFile(version.evidenceUrl) ? (
-                                                                <img src={version.evidenceUrl} alt={`Evidence for Version ${versionNumber}`} style={{ maxWidth: '100%', maxHeight: '400px', objectFit: 'contain' }} />
-                                                            ) : (
-                                                                <iframe src={version.evidenceUrl} title={`Evidence Frame ${versionNumber}`} style={{ width: '100%', height: '350px', border: 'none' }} />
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            )}
-
-                                            {version.rejectionReason && version.status !== 'Approved' && (
-                                                <div style={{ background: version.status === 'Rejected' ? '#fff1f2' : '#f8fafc', border: `1px dashed ${version.status === 'Rejected' ? '#fca5a5' : '#cbd5e1'}`, padding: '14px', borderRadius: '8px', display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
-                                                    <AlertTriangle size={18} color={version.status === 'Rejected' ? '#be123c' : '#475569'} style={{ marginTop: '2px', flexShrink: 0 }} />
-                                                    <div style={{ width: '100%' }}>
-                                                        <strong style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: version.status === 'Rejected' ? '#be123c' : '#475569', display: 'block', marginBottom: '4px', letterSpacing: '0.05em' }}>
-                                                            {version.status === 'Rejected' ? "Mentor's Correction Notice" : "Resolved Revision Notes"}
-                                                        </strong>
-                                                        <div
-                                                            className="quill-content-display"
-                                                            style={{ color: version.status === 'Rejected' ? '#9f1239' : '#334155', fontSize: '0.9rem', lineHeight: 1.5 }}
-                                                            dangerouslySetInnerHTML={{ __html: version.rejectionReason }}
-                                                        />
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </div>
-                                    );
-                                })}
-                            </div>
-
-                        </div>
-                        <div className="lfm-footer" style={{ display: 'flex', justifyContent: 'flex-end', padding: '1rem 1.5rem', background: '#f8fafc', borderTop: '1px solid var(--mlab-border)' }}>
-                            <button className="mlab-btn mlab-btn--ghost" onClick={() => setViewingLogDetails(null)}>Close Window</button>
-                            {['Draft', 'Rejected'].includes(viewingLogDetails.status) && (
-                                <button
-                                    onClick={() => {
-                                        setViewingLogDetails(null);
-                                        onOpenLogModal(viewingLogDetails);
-                                    }}
-                                    className="mlab-btn mlab-btn--primary"
-                                    style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '10px' }}
-                                >
-                                    <Pencil size={14} /> Edit &amp; Resubmit
-                                </button>
-                            )}
-                        </div>
-                    </div>
-                </div>,
-                document.body
+            {/* Shared detail preview modal canvas container invocation */}
+            {viewingLogDetails && (
+                <WorkplaceLogViewerModal
+                    log={viewingLogDetails}
+                    allowEdit={true}
+                    preloadedEmployer={viewingLogEmployer ? {
+                        companyName: viewingLogEmployer.name,
+                        address: viewingLogEmployer.physicalAddress || viewingLogEmployer.address || 'Address missing in system',
+                        workTelephone: viewingLogEmployer.contactPhone || 'Phone unlisted',
+                        email: viewingLogEmployer.contactEmail || 'Email unlisted'
+                    } : null}
+                    onEdit={(logToEdit) => {
+                        setViewingLogDetails(null);
+                        setViewingLogEmployer(null);
+                        onOpenLogModal(logToEdit);
+                    }}
+                    onClose={() => {
+                        setViewingLogDetails(null);
+                        setViewingLogEmployer(null);
+                    }}
+                />
             )}
 
             {/* ── HEADER ── */}
@@ -558,28 +620,20 @@ export const LearnerAttendanceView: React.FC<LearnerAttendanceViewProps> = ({
                     <div>
                         <h2 className="ld-section-title"><CalendarCheck size={20} /> Compliance &amp; Attendance</h2>
                         <p style={{ color: 'var(--mlab-grey)', fontSize: '0.85rem', margin: '4px 0 0 28px' }}>
-                            A complete history of your daily campus check-ins and workplace logbook entries.
+                            A complete history of your daily campus check-ins and structured workplace logbook entries.
                         </p>
                     </div>
-                    {learnerHasEmployer && (
-                        <button
-                            className="mlab-btn mlab-btn--primary"
-                            onClick={() => onOpenLogModal()}
-                            style={{ padding: '0.6rem 1.25rem', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}
-                        >
-                            <Plus size={16} /> Add Logbook Entry
-                        </button>
-                    )}
                 </div>
             </div>
 
             {/* ── UNIFIED TABS ── */}
             <div className="lfm-tabs" style={{ marginBottom: 0 }}>
-                <button className={`lfm-tab ${activeTab === 'campus' ? 'active' : ''}`} onClick={() => setActiveTab('campus')} style={{ fontSize: '0.8rem', padding: '0.75rem 1.5rem' }}><CalendarCheck size={16} /> Campus Attendance</button>
-                {/* <button className={`lfm-tab ${activeTab === 'workplace' ? 'active' : ''}`} onClick={() => setActiveTab('workplace')} style={{ fontSize: '0.8rem', padding: '0.75rem 1.5rem' }}><Briefcase size={16} /> Workplace Logbook</button> */}
+                <button className={`lfm-tab ${activeTab === 'campus' ? 'active' : ''}`} onClick={() => setActiveTab('campus')} style={{ fontSize: '0.8rem', padding: '0.75rem 1.5rem' }}>
+                    <CalendarCheck size={16} /> Campus Attendance
+                </button>
                 {learnerHasEmployer && (
                     <button className={`lfm-tab ${activeTab === 'workplace' ? 'active' : ''}`} onClick={() => setActiveTab('workplace')}>
-                        <Briefcase size={16} /> Workplace Logbook
+                        <Briefcase size={16} /> Unified Workplace Logbook
                     </button>
                 )}
             </div>
@@ -587,7 +641,6 @@ export const LearnerAttendanceView: React.FC<LearnerAttendanceViewProps> = ({
             {/* ════ CAMPUS ATTENDANCE VIEW ════ */}
             {activeTab === 'campus' && (
                 <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                    {/* STATS ROW */}
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
                         <div style={{ background: 'white', padding: '1.25rem', borderRadius: '12px', border: '1px solid var(--mlab-border)', borderBottom: `4px solid ${GREEN}` }}>
                             <div style={{ color: 'var(--mlab-grey)', fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.5rem' }}>Class Attendance Ratio</div>
@@ -682,13 +735,12 @@ export const LearnerAttendanceView: React.FC<LearnerAttendanceViewProps> = ({
                 </div>
             )}
 
-            {/* ════ WORKPLACE LOGS VIEW ════ */}
+            {/* ════ WORKPLACE LOGS VIEW (UNIFIED WITH EMPLOYERS) ════ */}
             {activeTab === 'workplace' && (
                 <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
 
-                    {/* STATS HERO */}
+                    {/* STATS ROW */}
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1rem' }}>
-
                         <div style={{ display: 'flex', gap: '1rem', background: '#f0fdf4', padding: '1.25rem', borderRadius: '12px', border: '1px solid #bbf7d0', alignItems: 'center' }}>
                             <div style={{ background: '#dcfce7', padding: '12px', borderRadius: '50%' }}>
                                 <CheckCircle size={28} color="#166534" />
@@ -701,7 +753,6 @@ export const LearnerAttendanceView: React.FC<LearnerAttendanceViewProps> = ({
                             </div>
                         </div>
 
-                        {/* MONTHLY EARNED STIPEND CARD */}
                         <div style={{ display: 'flex', gap: '1rem', background: 'white', padding: '1.25rem', borderRadius: '12px', border: '1px solid var(--mlab-border)', alignItems: 'center' }}>
                             <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '50%' }}>
                                 <Landmark size={28} color="var(--mlab-midnight)" />
@@ -710,18 +761,20 @@ export const LearnerAttendanceView: React.FC<LearnerAttendanceViewProps> = ({
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                     <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--mlab-grey)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Earned This Month</p>
                                     <span style={{ fontSize: '0.75rem', fontWeight: 600, color: stats.currentMonthEarnedStipend < stats.baseStipendUsed ? '#dc2626' : '#16a34a' }}>
-                                        {stats.currentMonthApprovedDays} / {stats.expectedWorkingDaysThisMonth} Days Logged
+                                        {isHolidaysLoading ? (
+                                            <span style={{ fontSize: '0.7rem', color: '#64748b' }}>Calculating Days...</span>
+                                        ) : `${stats.currentMonthApprovedDays} / ${stats.expectedWorkingDaysThisMonth} Days Logged`}
                                     </span>
                                 </div>
                                 <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', margin: '4px 0 0' }}>
                                     <h3 style={{ margin: 0, color: 'var(--mlab-midnight)', fontSize: '2rem' }}>
-                                        {isStipendLoading ? (
+                                        {isEmploymentLoading || isHolidaysLoading ? (
                                             <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '1.2rem', color: '#64748b' }}>
                                                 <Loader2 size={16} className="animate-spin" /> Verifying...
                                             </span>
                                         ) : formatCurrency(stats.currentMonthEarnedStipend)}
                                     </h3>
-                                    {!isStipendLoading && stats.currentMonthEarnedStipend < stats.baseStipendUsed && (
+                                    {!isEmploymentLoading && !isHolidaysLoading && stats.currentMonthEarnedStipend < stats.baseStipendUsed && (
                                         <span style={{ fontSize: '0.9rem', color: '#94a3b8', textDecoration: 'line-through' }}>
                                             {formatCurrency(stats.baseStipendUsed)}
                                         </span>
@@ -729,13 +782,11 @@ export const LearnerAttendanceView: React.FC<LearnerAttendanceViewProps> = ({
                                 </div>
                             </div>
                         </div>
-
                     </div>
 
-                    {/* WORKPLACE FILTERS BAR */}
+                    {/* SEARCH & FILTERS TOOLBAR */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'white', padding: '1rem', borderRadius: '12px', border: '1px solid var(--mlab-border)', flexWrap: 'wrap', gap: '1rem' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', flex: 1 }}>
-
                             <div className="ld-search-box" style={{ margin: 0, display: 'flex', flex: 1, minWidth: '220px', alignItems: 'center' }}>
                                 <Search size={16} style={{ marginLeft: '12px', color: 'var(--mlab-grey)' }} />
                                 <input type="text" placeholder="Search tasks, codes, or topics..." value={wpSearch} onChange={(e) => setWpSearch(e.target.value)} className="ld-search-input" style={{ paddingLeft: '8px' }} />
@@ -760,212 +811,176 @@ export const LearnerAttendanceView: React.FC<LearnerAttendanceViewProps> = ({
                         </div>
                     </div>
 
-                    {/* MONTHLY ACCORDION FEED */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                        {Object.keys(filteredAndGroupedWpLogs).length === 0 ? (
-                            <div style={{ textAlign: 'center', padding: '4rem 1rem', background: 'white', borderRadius: '12px', border: '1px solid var(--mlab-border)' }}>
+                    {/* 🚀 UNIFIED EMPLOYMENT & LOGS ACCORDIONS */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                        {isEmploymentLoading ? (
+                            <div style={{ display: 'flex', justifyContent: 'center', padding: '4rem' }}>
+                                <Loader2 size={32} className="animate-spin" color="var(--mlab-blue)" />
+                            </div>
+                        ) : placementsHistory.length === 0 && unassignedLogs && Object.keys(unassignedLogs).length === 0 ? (
+                            <div style={{ textTransform: 'uppercase', textAlign: 'center', padding: '4rem 1rem', background: 'white', borderRadius: '12px', border: '1px solid var(--mlab-border)' }}>
                                 <History size={48} color="var(--mlab-grey-lt)" style={{ margin: '0 auto 1rem' }} />
-                                <h3 style={{ fontFamily: 'var(--font-heading)', color: MIDNIGHT, textTransform: 'uppercase' }}>No Entries Found</h3>
-                                <p style={{ color: 'var(--mlab-grey)', margin: 0, fontSize: '0.9rem' }}>No logs match your current metrics.</p>
+                                <h3 style={{ fontFamily: 'var(--font-heading)', color: MIDNIGHT }}>No Entries Found</h3>
+                                <p style={{ color: 'var(--mlab-grey)', margin: 0, fontSize: '0.9rem', textTransform: 'none' }}>No logbook or employment records match your current filters.</p>
                             </div>
                         ) : (
-                            Object.keys(filteredAndGroupedWpLogs).map(monthLabel => {
-                                const monthLogs = filteredAndGroupedWpLogs[monthLabel];
-                                const isOpen = expandedWpMonths.has(monthLabel);
-                                const totalMonthHours = monthLogs.reduce((sum: number, log: any) => sum + (Number(log.totalHours) || 0), 0);
+                            <>
+                                {mappedPlacements.map((place: any, idx: number) => {
+                                    const isActive = ['active placement', 'active', 'pending match'].includes(String(place.status).toLowerCase());
+                                    const isEmpExpanded = expandedEmployers.has(place.placementId);
 
-                                return (
-                                    <div key={monthLabel} style={{ background: 'white', borderRadius: '12px', border: '1px solid var(--mlab-border)', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+                                    return (
+                                        <div key={place.placementId || idx} style={{ background: 'white', borderRadius: '12px', border: `1px solid ${isActive ? '#bbf7d0' : 'var(--mlab-border)'}`, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
 
-                                        <div onClick={() => toggleWpMonthAccordion(monthLabel)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1.25rem', background: isOpen ? '#f8fafc' : 'white', borderBottom: isOpen ? '1px solid var(--mlab-border)' : 'none', cursor: 'pointer' }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                                <div style={{ background: 'var(--mlab-blue-light)', padding: '8px', borderRadius: '8px', width: 35, height: 35, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                                    <Calendar size={18} color={'white'} />
+                                            {/* Employer Header / Trigger */}
+                                            <div onClick={() => toggleEmployerAccordion(place.placementId)} style={{ padding: '1.25rem', background: isActive ? '#f0fdf4' : '#f8fafc', borderBottom: isEmpExpanded ? `1px solid ${isActive ? '#bbf7d0' : 'var(--mlab-border)'}` : 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', cursor: 'pointer' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                                    <div style={{ background: isActive ? '#166534' : 'var(--mlab-midnight)', padding: '10px', borderRadius: '8px', color: 'white' }}>
+                                                        <Building2 size={20} />
+                                                    </div>
+                                                    <div>
+                                                        <h3 style={{ margin: 0, fontSize: '1.15rem', color: isActive ? '#14532d' : MIDNIGHT, fontFamily: 'var(--font-heading)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                            {place.employer?.name || 'Registered Host Employer'}
+                                                            <span style={{
+                                                                background: isActive ? '#dcfce7' : '#f1f5f9', color: isActive ? '#166534' : '#475569', padding: '2px 8px', borderRadius: '4px', fontSize: '0.65rem', fontWeight: 800, textTransform: 'uppercase', border: `1px solid ${isActive ? '#86efac' : '#cbd5e1'}`
+                                                            }}>
+                                                                {isActive ? 'Active Placement' : 'Past Placement'}
+                                                            </span>
+                                                        </h3>
+                                                        <div style={{ fontSize: '0.8rem', color: isActive ? '#166534' : 'var(--mlab-grey)', marginTop: '4px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                            <Calendar size={12} />
+                                                            Started: {place.startDate ? moment(place.startDate).format('DD MMM YYYY') : 'Unknown'}
+                                                            {place.endDate && ` - Ended: ${moment(place.endDate).format('DD MMM YYYY')}`}
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                                <div>
-                                                    <h3 style={{ margin: 0, fontSize: '1.1rem', color: MIDNIGHT, fontFamily: 'var(--font-heading)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{monthLabel}</h3>
-                                                    <span style={{ fontSize: '0.8rem', color: 'var(--mlab-grey)', fontWeight: 600 }}>{monthLogs.length} Entry(s)</span>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                                                    {/* INJECTED "ADD LOGBOOK ENTRY" BUTTON */}
+                                                    {isActive && (
+                                                        <button
+                                                            className="mlab-btn mlab-btn--primary"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation(); // Don't collapse the layout container
+                                                                onOpenLogModal(undefined, {
+                                                                    placementId: place.placementId,
+                                                                    employerId: place.employer?.id,
+                                                                    mentorId: place.mentor?.id
+                                                                });
+                                                            }}
+                                                            style={{ padding: '4px 12px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', height: 'auto', marginRight: '8px' }}
+                                                        >
+                                                            <Plus size={14} /> Add Entry
+                                                        </button>
+                                                    )}
+                                                    <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#475569', background: 'white', padding: '4px 10px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                                                        {place.logs.length} Total Log(s)
+                                                    </span>
+                                                    {isEmpExpanded ? <ChevronUp size={20} color={MIDNIGHT} /> : <ChevronDown size={20} color={MIDNIGHT} />}
                                                 </div>
                                             </div>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                                                <div style={{ background: '#f1f5f9', padding: '4px 10px', borderRadius: '6px', fontSize: '0.85rem', fontWeight: 700, color: '#475569', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                    <Clock size={12} /> {totalMonthHours.toFixed(1)} hrs
-                                                </div>
-                                                {isOpen ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-                                            </div>
-                                        </div>
 
-                                        {isOpen && (
-                                            <div style={{ display: 'flex', flexDirection: 'column', padding: '1.25rem', gap: '1rem', background: '#fafbfc' }}>
-                                                {monthLogs.map((log: any) => {
-                                                    const entryVersions = log.history && log.history.length > 0
-                                                        ? [...log.history, log].sort((a: any, b: any) => {
-                                                            const timeA = new Date(a.updatedAt || a.createdAt || 0).getTime();
-                                                            const timeB = new Date(b.updatedAt || b.createdAt || 0).getTime();
-                                                            return timeB - timeA;
-                                                        })
-                                                        : [log];
+                                            {/* Employer Body */}
+                                            {isEmpExpanded && (
+                                                <div style={{ display: 'flex', flexDirection: 'column' }}>
 
-                                                    return (
-                                                        <div key={log.id} style={{ background: 'white', border: `1px solid ${log.status === 'Rejected' ? '#fecaca' : 'var(--mlab-border)'}`, borderRadius: '8px', padding: '1.25rem' }}>
-                                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
-                                                                <div>
-                                                                    <div style={{ fontFamily: 'var(--font-heading)', fontSize: '0.95rem', color: MIDNIGHT, fontWeight: 700, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                                        {moment(log.dateString).format('dddd, DD MMM YYYY')}
-                                                                        {log.evidenceUrl && (
-                                                                            <span title="Supporting evidence attached" style={{ display: 'inline-flex' }}>
-                                                                                <Paperclip size={13} color="var(--mlab-blue)" />
-                                                                            </span>
-                                                                        )}
-                                                                    </div>
-                                                                    <div style={{ fontSize: '0.8rem', color: 'var(--mlab-grey)', display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px', fontWeight: 600 }}>
-                                                                        <Clock size={12} /> {log.startTime} - {log.endTime} <span style={{ color: '#ea580c' }}>({log.totalHours} hrs)</span>
-                                                                    </div>
+                                                    {/* Company Metadata Row */}
+                                                    <div style={{ padding: '1.25rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.25rem', background: 'white', borderBottom: '1px solid #e2e8f0' }}>
+                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                                            <span style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: '#64748b', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}><MapPin size={12} /> Organization Details</span>
+                                                            <div style={{ background: '#f8fafc', padding: '10px', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '0.8rem', color: '#334155', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                                                {/* <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+                                                                    <MapPin size={12} color="var(--mlab-grey)" style={{ flexShrink: 0, marginTop: '2px' }} />
+                                                                    <span style={{ lineHeight: 1.4 }}>{place.employer?.physicalAddress || place.employer?.address || 'Physical address not on file'}</span>
+                                                                </div> */}
+                                                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                                                    <Phone size={12} color="var(--mlab-grey)" style={{ flexShrink: 0 }} />
+                                                                    <span>{place.employer?.contactPhone || 'Phone unlisted'}</span>
                                                                 </div>
-
-                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                                    {log.status === 'Draft' && <span style={{ background: '#f1f5f9', color: '#475569', padding: '4px 10px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', border: '1px solid #cbd5e1' }}><FileText size={12} /> Draft</span>}
-
-                                                                    {log.status === 'Pending_Mentor_Approval' && (
-                                                                        <>
-                                                                            <span style={{ background: '#fef3c7', color: '#b45309', padding: '4px 10px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', border: '1px solid #fde68a' }}><Clock size={12} /> Pending</span>
-                                                                            {log.rejectionReason && <span style={{ background: '#e0e7ff', color: '#3730a3', padding: '4px 10px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', border: '1px solid #c7d2fe' }}><History size={12} /> Resubmitted (v2)</span>}
-                                                                        </>
-                                                                    )}
-
-                                                                    {log.status === 'Approved' && <span style={{ background: '#dcfce7', color: '#166534', padding: '4px 10px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', border: '1px solid #bbf7d0' }}><CheckCircle size={12} /> Approved</span>}
-                                                                    {log.status === 'Rejected' && <span style={{ background: '#fee2e2', color: '#991b1b', padding: '4px 10px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', border: '1px solid #fecaca' }}><XCircle size={12} /> Rejected</span>}
-
-                                                                    {['Draft', 'Rejected'].includes(log.status) && (
-                                                                        <button onClick={() => onOpenLogModal(log)} style={{ background: log.status === 'Rejected' ? '#fef2f2' : 'var(--mlab-blue-light)', border: `1px solid ${log.status === 'Rejected' ? '#fca5a5' : 'transparent'}`, padding: '4px 8px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', color: log.status === 'Rejected' ? '#be123c' : 'var(--mlab-blue)' }}><Pencil size={11} /> {log.status === 'Rejected' ? 'Fix & Resubmit' : 'Resume'}</button>
-                                                                    )}
-
-                                                                    <button onClick={() => setViewingLogDetails(log)} style={{ background: 'white', border: '1px solid #cbd5e1', padding: '4px 8px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', color: '#475569' }}><Maximize2 size={11} /> View Details</button>
+                                                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                                                    <Mail size={12} color="var(--mlab-grey)" style={{ flexShrink: 0 }} />
+                                                                    <span>{place.employer?.contactEmail || 'Email unlisted'}</span>
                                                                 </div>
                                                             </div>
-
-                                                            {log.isQctoAligned && (
-                                                                <div style={{ fontSize: '0.85rem', color: '#0369a1', background: '#e0f2fe', padding: '6px 12px', borderRadius: '6px', display: 'inline-flex', alignItems: 'center', gap: '6px', marginBottom: '1rem', fontWeight: 600, border: '1px dashed #7dd3fc' }}><BookOpen size={14} /> {log.workActivityCode}: {log.workActivityLabel}</div>
-                                                            )}
-
-                                                            {log.history && log.history.length > 0 && (
-                                                                <div style={{ marginBottom: '12px' }}>
-                                                                    <button
-                                                                        onClick={() => toggleHistoryAccordion(log.id)}
-                                                                        style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '4px 10px', fontSize: '0.75rem', fontWeight: 700, color: '#475569', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}
-                                                                    >
-                                                                        <History size={12} /> {expandedHistoryIds.has(log.id) ? "Hide Full Audit History" : `View Full Audit History Trail (${entryVersions.length} Versions)`}
-                                                                    </button>
-
-                                                                    {expandedHistoryIds.has(log.id) && (
-                                                                        <div className="animate-fade-in" style={{ padding: '16px 12px 12px 12px', background: '#fafbfc', borderRadius: '8px', marginTop: '12px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                                                                            {entryVersions.map((hist: any, hIdx: number) => {
-                                                                                const isLatest = hIdx === 0;
-                                                                                const versionNumber = entryVersions.length - hIdx;
-
-                                                                                return (
-                                                                                    <div key={hist.updatedAt || hIdx} style={{ position: 'relative', paddingLeft: '16px', borderLeft: '2px solid #cbd5e1' }}>
-                                                                                        <div style={{ position: 'absolute', left: '-7px', top: '0px', width: '12px', height: '12px', borderRadius: '50%', background: isLatest ? 'var(--mlab-blue)' : '#94a3b8', border: '2px solid white' }} />
-
-                                                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                                                                                            <div style={{ fontWeight: 700, color: MIDNIGHT, display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.9rem' }}>
-                                                                                                Version {versionNumber}
-                                                                                                <span style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--mlab-grey)' }}>({moment(hist.updatedAt).format('DD MMM YYYY')})</span>
-                                                                                                {isLatest && <span style={{ fontSize: '0.65rem', background: '#e0e7ff', color: '#3730a3', padding: '2px 8px', borderRadius: '12px', textTransform: 'uppercase' }}>Latest</span>}
-                                                                                            </div>
-
-                                                                                            <div style={{ display: 'flex', gap: '4px' }}>
-                                                                                                {hist.status === 'Draft' && <span style={{ background: '#f1f5f9', color: '#475569', padding: '2px 8px', borderRadius: '6px', fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', border: '1px solid #cbd5e1' }}>Draft</span>}
-                                                                                                {hist.status === 'Pending_Mentor_Approval' && <span style={{ background: '#fef3c7', color: '#b45309', padding: '2px 8px', borderRadius: '6px', fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', border: '1px solid #fde68a' }}>Pending Review</span>}
-                                                                                                {hist.status === 'Approved' && <span style={{ background: '#dcfce7', color: '#166534', padding: '2px 8px', borderRadius: '6px', fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', border: '1px solid #bbf7d0' }}>Approved</span>}
-                                                                                                {hist.status === 'Rejected' && <span style={{ background: '#fee2e2', color: '#991b1b', padding: '2px 8px', borderRadius: '6px', fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', border: '1px solid #fecaca' }}>Rejected</span>}
-                                                                                            </div>
-                                                                                        </div>
-
-                                                                                        <div className="quill-content-display" dangerouslySetInnerHTML={{ __html: hist.tasksPerformed || '<span style="font-style:italic; color:#94a3b8">No description provided...</span>' }} style={{ background: 'white', padding: '12px', borderRadius: '6px', border: '1px solid #e2e8f0', color: '#475569', fontSize: '0.85rem' }} />
-
-                                                                                        {hist.evidenceUrl && (
-                                                                                            <div style={{ marginTop: '8px' }}>
-                                                                                                <a href={hist.evidenceUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', fontWeight: 600, color: '#475569', background: 'white', padding: '4px 10px', borderRadius: '4px', textDecoration: 'none', border: '1px solid #cbd5e1' }}>
-                                                                                                    <ExternalLink size={12} /> View Evidence Attachment
-                                                                                                </a>
-                                                                                            </div>
-                                                                                        )}
-
-                                                                                        {hist.rejectionReason && hist.status !== 'Approved' && (
-                                                                                            <div style={{ background: hist.status === 'Rejected' ? '#fff1f2' : '#f8fafc', border: `1px dashed ${hist.status === 'Rejected' ? '#fca5a5' : '#cbd5e1'}`, padding: '10px 14px', borderRadius: '6px', marginTop: '8px', display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
-                                                                                                <AlertTriangle size={14} color={hist.status === 'Rejected' ? '#be123c' : '#475569'} style={{ marginTop: '2px', flexShrink: 0 }} />
-                                                                                                <div style={{ width: '100%' }}>
-                                                                                                    <strong style={{ fontSize: '0.7rem', textTransform: 'uppercase', color: hist.status === 'Rejected' ? '#be123c' : '#475569', display: 'block', marginBottom: '2px' }}>
-                                                                                                        {hist.status === 'Rejected' ? "Mentor's Correction Notice" : "Resolved Revision Notes"}
-                                                                                                    </strong>
-                                                                                                    <div className="quill-content-display" style={{ color: hist.status === 'Rejected' ? '#9f1239' : '#334155', fontSize: '0.8rem', lineHeight: 1.5 }} dangerouslySetInnerHTML={{ __html: hist.rejectionReason }} />
-                                                                                                </div>
-                                                                                            </div>
-                                                                                        )}
-                                                                                    </div>
-                                                                                );
-                                                                            })}
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-                                                            )}
-
-                                                            {!expandedHistoryIds.has(log.id) && (
-                                                                <>
-                                                                    {log.rejectionReason && log.status !== 'Approved' && (
-                                                                        <div style={{ background: log.status === 'Rejected' ? '#fff1f2' : '#f8fafc', border: `1px dashed ${log.status === 'Rejected' ? '#fca5a5' : '#cbd5e1'}`, padding: '10px 14px', borderRadius: '8px', marginBottom: '1rem', display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
-                                                                            <AlertTriangle size={16} color={log.status === 'Rejected' ? '#be123c' : '#475569'} style={{ marginTop: '2px', flexShrink: 0 }} />
-                                                                            <div style={{ width: '100%' }}>
-                                                                                <strong style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: log.status === 'Rejected' ? '#be123c' : '#475569', display: 'block', marginBottom: '2px' }}>
-                                                                                    {log.status === 'Rejected' ? "Mentor's Note" : "Previous Revision History Notes"}
-                                                                                </strong>
-                                                                                <div
-                                                                                    className="quill-content-display"
-                                                                                    style={{ color: log.status === 'Rejected' ? '#9f1239' : '#334155', fontSize: '0.85rem', lineHeight: 1.5 }}
-                                                                                    dangerouslySetInnerHTML={{ __html: log.rejectionReason }}
-                                                                                />
-                                                                            </div>
-                                                                        </div>
-                                                                    )}
-
-                                                                    <div
-                                                                        style={{ margin: 0, fontSize: '0.85rem', color: '#475569', lineHeight: 1.6, background: '#f8fafc', padding: '1rem', borderRadius: '8px', borderLeft: '4px solid #cbd5e1', maxHeight: '150px', overflow: 'hidden' }}
-                                                                        className="quill-content-display"
-                                                                        dangerouslySetInnerHTML={{ __html: log.tasksPerformed || '<span style="font-style:italic; color:#94a3b8">Empty entry description text...</span>' }}
-                                                                    />
-
-                                                                    {log.evidenceUrl && (
-                                                                        <div style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                                                                <button onClick={() => setPreviewEvidenceId(previewEvidenceId === log.id ? null : log.id)} style={{ background: 'var(--mlab-blue-light)', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-                                                                                    {previewEvidenceId === log.id ? <EyeOff size={14} /> : <Eye size={14} />}
-                                                                                    {previewEvidenceId === log.id ? 'Close Preview' : 'Preview Evidence'}
-                                                                                </button>
-                                                                                <a href={log.evidenceUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', fontWeight: 600, color: '#475569', background: 'white', padding: '5px 12px', borderRadius: '6px', textDecoration: 'none', border: '1px solid #cbd5e1' }}><ExternalLink size={14} /> Open Full View</a>
-                                                                            </div>
-
-                                                                            {previewEvidenceId === log.id && (
-                                                                                <div className="animate-fade-in" style={{ padding: '8px', border: '1px solid var(--mlab-border)', borderRadius: '8px', background: '#f8fafc', marginTop: '4px', display: 'flex', justifyContent: 'center' }}>
-                                                                                    {isImageFile(log.evidenceUrl) ? (
-                                                                                        <img src={log.evidenceUrl} alt="Evidence Render inline" style={{ maxWidth: '100%', maxHeight: '350px', objectFit: 'contain' }} />
-                                                                                    ) : (
-                                                                                        <iframe src={log.evidenceUrl} title="Evidence Preview Frame" style={{ width: '100%', height: '350px', border: 'none', background: 'white' }} />
-                                                                                    )}
-                                                                                </div>
-                                                                            )}
-                                                                        </div>
-                                                                    )}
-                                                                </>
-                                                            )}
                                                         </div>
-                                                    );
-                                                })}
+
+                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                                            <span style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: '#64748b', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}><UserCircle size={12} /> Workplace Supervision</span>
+                                                            <div style={{ background: '#f8fafc', padding: '10px', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '0.8rem', color: '#334155', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                                                    <strong style={{ color: MIDNIGHT }}>Assigned Mentor:</strong>
+                                                                    <span>{place.mentor?.fullName || place.mentor?.firstName || 'Pending Assignment'}</span>
+                                                                </div>
+                                                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                                                    <strong style={{ color: MIDNIGHT }}>Mentor Contact:</strong>
+                                                                    <span>{place.mentor?.email || place.mentor?.phone || 'N/A'}</span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+
+                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                                            <span style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: '#64748b', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}><Landmark size={12} /> Remuneration</span>
+                                                            <div style={{ background: '#f8fafc', padding: '10px', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '0.8rem', color: '#334155', display: 'flex', flexDirection: 'column', gap: '8px', height: '100%' }}>
+                                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                                                    <span style={{ fontSize: '0.7rem', color: '#64748b' }}>Monthly Base Stipend</span>
+                                                                    <span style={{ fontSize: '1.1rem', fontWeight: 800, color: '#0f172a' }}>
+                                                                        {place.stipendAmount ? formatCurrency(Number(place.stipendAmount)) : 'Unspecified'}
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Logs mapped to this placement */}
+                                                    <div style={{ padding: '1.25rem', background: '#fafbfc' }}>
+                                                        <h4 style={{ margin: '0 0 1rem 0', fontSize: '0.9rem', color: MIDNIGHT, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                            <FileText size={14} color="var(--mlab-blue)" /> Logbook Entries for this Placement
+                                                        </h4>
+
+                                                        {renderLogsGroupedByMonth(place.groupedLogs, place.employer)}
+                                                    </div>
+
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+
+                                {/* ─── UNASSIGNED / FALLBACK LOGS ─── */}
+                                {unassignedLogs && Object.keys(unassignedLogs).length > 0 && (
+                                    <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', marginTop: '1rem' }}>
+                                        <div style={{ padding: '1.25rem', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                                <div style={{ background: '#e2e8f0', padding: '10px', borderRadius: '8px', color: '#475569' }}>
+                                                    <Layers size={20} />
+                                                </div>
+                                                <div>
+                                                    <h3 style={{ margin: 0, fontSize: '1.1rem', color: '#334155', fontFamily: 'var(--font-heading)' }}>
+                                                        General / Unassigned Logs
+                                                    </h3>
+                                                    <div style={{ fontSize: '0.8rem', color: 'var(--mlab-grey)', marginTop: '4px', fontWeight: 500 }}>
+                                                        Logs not directly linked to a specific employer contract timeline.
+                                                    </div>
+                                                </div>
                                             </div>
-                                        )}
+                                            {learnerHasEmployer && (
+                                                <button
+                                                    className="mlab-btn mlab-btn--outline"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        onOpenLogModal();
+                                                    }}
+                                                    style={{ padding: '4px 12px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', height: 'auto' }}
+                                                >
+                                                    <Plus size={14} /> Add Unassigned Entry
+                                                </button>
+                                            )}
+                                        </div>
+                                        <div style={{ padding: '1.25rem', background: '#fafbfc' }}>
+                                            {renderLogsGroupedByMonth(unassignedLogs, null)}
+                                        </div>
                                     </div>
-                                );
-                            })
+                                )}
+                            </>
                         )}
                     </div>
                 </div>

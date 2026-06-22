@@ -1,19 +1,18 @@
-// src/pages/Portfolio/ViewPortfolio.tsx
+// src/components/views/ViewPortfolio/ViewPortfolio.tsx
 
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import {
-    User, Calendar, FileText, CheckCircle, AlertCircle, Clock,
-    BookOpen, Briefcase, FileBadge, Eye, Play, Edit3,
+    User, Calendar, FileText, CheckCircle, AlertTriangle, AlertCircle, Clock,
+    BookOpen, Briefcase, FileBadge, Eye, Edit3,
     ShieldCheck, Award, Loader2, BarChart2,
-    RotateCcw, Download, AlertTriangle, X, Menu, Search,
+    RotateCcw, Download, X, Menu, Search,
     Filter, ChevronLeft, ChevronRight,
     ArrowUpDown, CheckSquare, Square, Printer, Layers, ShieldAlert,
-    Timer,
-    Lock
+    Timer, Lock
 } from 'lucide-react';
 import {
-    collection, query, where, getDocs, doc,
+    collection, query, where, getDocs, doc, getDoc, limit,
     setDoc, updateDoc, deleteField, onSnapshot, addDoc, writeBatch
 } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
@@ -30,6 +29,12 @@ import './ViewPortfolio.css';
 import Loader from '../../components/common/Loader/Loader';
 import { RemediationModal } from '../FacilitatorDashboard/SubmissionReview/SubmissionReview/SubmissionReviewModals';
 import moment from 'moment';
+import { WorkplaceLogViewerModal } from '../../components/views/WorkplaceLogViewerModal/WorkplaceLogViewerModal';
+
+// ─── IMPORT EXTERNAL PRINT COMPONENTS ───
+import { WorkplaceModuleBulkPrintable } from './WorkplaceModuleBulkPrintable';
+
+// ─── Interfaces & Types ────────────────────────────────────────────────────────
 
 interface LearnerSubmission {
     id: string;
@@ -58,21 +63,23 @@ interface LearnerSubmission {
     dueDate?: string;
     facilitatorName?: string;
     assessorName?: string;
+    rawLogData?: any;
 }
 
-const TABS = [
+type TabId = 'overview' | 'knowledge' | 'practical' | 'workplace' | 'other' | 'compliance';
+
+const TABS: { id: TabId; label: string; icon: any }[] = [
     { id: 'overview', label: 'Overview', icon: BarChart2 },
     { id: 'knowledge', label: 'Knowledge', icon: BookOpen },
-    { id: 'practical', label: 'Practical', icon: FileText },
-    { id: 'workplace', label: 'Workplace', icon: Briefcase },
-    { id: 'other', label: 'Practice', icon: Play },
+    { id: 'practical', label: 'Practical', icon: Briefcase },
+    { id: 'workplace', label: 'Workplace', icon: Layers },
     { id: 'compliance', label: 'Compliance', icon: FileBadge },
-] as const;
+];
 
-type TabId = typeof TABS[number]['id'];
-const INFORMAL_TYPES = ['Developmental Activity', 'Practice Set', 'Task'];
+const INFORMAL_TYPES = ['practice', 'mock', 'informal', 'quiz'];
 
-// UTILITY: Global Type Badge Generator
+// ─── Global Independent Sub-Components ──────────────────────────────────────
+
 const getTypeBadge = (type: string) => {
     const t = (type || '').toLowerCase();
     const baseStyle: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', padding: '4px 8px', borderRadius: '4px', fontSize: '0.65rem', fontWeight: 800, border: 'none', textTransform: 'uppercase', letterSpacing: '0.05em' };
@@ -85,8 +92,6 @@ const getTypeBadge = (type: string) => {
     return <span className="mlab-badge" style={{ ...baseStyle, background: '#f8fafc', color: '#475569', border: '1px solid #cbd5e1' }}>{type || 'Task'}</span>;
 };
 
-
-// Skeleton Components
 const SkeletonPulse: React.FC<{ className?: string, style?: React.CSSProperties }> = ({ className, style }) => (
     <div className={`vp-skeleton ${className || ''}`} style={style} />
 );
@@ -104,7 +109,6 @@ const TableSkeleton: React.FC = () => (
     </div>
 );
 
-// Progress Ring Component
 const ProgressRing: React.FC<{ progress: number; size?: number }> = ({ progress, size = 40 }) => {
     const radius = 16;
     const circumference = 2 * Math.PI * radius;
@@ -129,7 +133,6 @@ const ProgressRing: React.FC<{ progress: number; size?: number }> = ({ progress,
     );
 };
 
-// PoE Generator Component
 const PoEGenerator: React.FC<{ learnerId: string; requestedByUid: string }> = ({ learnerId, requestedByUid }) => {
     const [generating, setGenerating] = useState(false);
     const [progress, setProgress] = useState(0);
@@ -271,7 +274,6 @@ const PoEGenerator: React.FC<{ learnerId: string; requestedByUid: string }> = ({
     );
 };
 
-// Global mLab Export Modal
 const ExportModal: React.FC<{
     submissions: LearnerSubmission[];
     onClose: () => void;
@@ -371,7 +373,9 @@ const ExportModal: React.FC<{
     );
 };
 
-// Main Component
+// ==========================================================================
+// 🚀 MAIN APPLICATION DASHBOARD VIEW
+// ==========================================================================
 export const ViewPortfolio: React.FC = () => {
     const { id: routeId } = useParams();
     const navigate = useNavigate();
@@ -379,7 +383,14 @@ export const ViewPortfolio: React.FC = () => {
     const toast = useToast();
     const targetCohortId = (location.state as any)?.cohortId;
 
-    const { user, learners, learnersLoading, programmes, cohorts, fetchLearners, fetchProgrammes, fetchCohorts } = useStore();
+    // ─── 1. REACT HOOKS AND STATES ───
+    const {
+        user, learners, learnersLoading, programmes, cohorts,
+        fetchLearners, fetchProgrammes, fetchCohorts,
+        employers, fetchEmployers,
+        placements, fetchPlacements
+    } = useStore() as any;
+
     const [submissions, setSubmissions] = useState<LearnerSubmission[]>([]);
     const [loadingSubmissions, setLoadingSubmissions] = useState(true);
     const [activeTab, setActiveTab] = useState<TabId>('overview');
@@ -388,37 +399,85 @@ export const ViewPortfolio: React.FC = () => {
     const [sortBy, setSortBy] = useState<'module' | 'date' | 'status' | 'title'>('module');
     const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
+    const [showLogModal, setShowLogModal] = useState(false);
+    const [selectedLog, setSelectedLog] = useState<any>(null);
+
+    const [bulkPrintPayload, setBulkPrintPayload] = useState<{
+        moduleCode: string;
+        moduleTopics: any[];
+        logs: any[];
+        mentorName: string;
+        assessorName: string;
+        learnerSig: string;
+        mentorSig: string;
+        assessorSig: string;
+        employerDetails: any;
+    } | null>(null);
+    const [isCompilingPrint, setIsCompilingPrint] = useState<boolean>(false);
+
     const [remediationTarget, setRemediationTarget] = useState<LearnerSubmission | null>(null);
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [showExportModal, setShowExportModal] = useState(false);
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 15;
 
+    // ─── 2. EFFECTS (DATA FETCHING) ───
     useEffect(() => {
-        if (!learners.length) fetchLearners();
-        if (!programmes.length) fetchProgrammes();
-        if (!cohorts.length) fetchCohorts();
+        if (!learners || !learners.length) fetchLearners();
+        if (!programmes || !programmes.length) fetchProgrammes();
+        if (!cohorts || !cohorts.length) fetchCohorts();
+        if (!employers || !employers.length) {
+            if (typeof fetchEmployers === 'function') fetchEmployers();
+        }
+        if (!placements || !placements.length) {
+            if (typeof fetchPlacements === 'function') fetchPlacements();
+        }
     }, []);
 
+    // ─── 3. USE MEMO MAPPINGS (DEPENDENCIES FIRST) ───
     const enrollment = useMemo(() => {
         if (!routeId) return undefined;
-        const records = learners.filter(l => l.enrollmentId === routeId || l.id === routeId || l.learnerId === routeId);
+        const records = learners.filter((l: any) => l.enrollmentId === routeId || l.id === routeId || l.learnerId === routeId);
         if (!records.length) return undefined;
-        if (targetCohortId) return records.find(l => l.cohortId === targetCohortId) || { ...records[0], cohortId: targetCohortId };
-        return records.find(e => e.status !== 'dropped') || records[0];
+        if (targetCohortId) return records.find((l: any) => l.cohortId === targetCohortId) || { ...records[0], cohortId: targetCohortId };
+        return records.find((e: any) => e.status !== 'dropped') || records[0];
     }, [learners, routeId, targetCohortId]);
 
     const matchingProgramme = useMemo(() => {
-        if (!programmes.length || !enrollment) return null;
+        if (!programmes || !programmes.length || !enrollment) return null;
         const activeCohortId = targetCohortId || enrollment.cohortId;
         if (activeCohortId && cohorts.length) {
-            const linked = cohorts.find(c => c.id === activeCohortId);
+            const linked = cohorts.find((c: any) => c.id === activeCohortId);
             const templateId = (linked as any)?.programmeId || (linked as any)?.qualificationId;
-            const prog = programmes.find(p => p.id === templateId);
+            const prog = programmes.find((p: any) => p.id === templateId);
             if (prog) return prog;
         }
-        return programmes.find(p => String(p.saqaId || '') === String(enrollment.qualification?.saqaId || '')) || null;
+        return programmes.find((p: any) => String(p.saqaId || '') === String(enrollment.qualification?.saqaId || '')) || null;
     }, [programmes, cohorts, enrollment, targetCohortId]);
+
+    // ─── CROSS-REFERENCE PLACEMENT ENGINE DATA (SYNCHRONOUS CACHE FALLBACK) ───
+    const activeEmployerDetails = useMemo(() => {
+        if (!enrollment || !employers || !placements) return null;
+
+        const targetId = enrollment.learnerId || enrollment.id;
+
+        const activePlacement = placements
+            .filter((p: any) => p.learnerId === targetId && ['Active Placement', 'Pending Match', 'active'].includes(p.status))
+            .sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())[0];
+
+        if (activePlacement?.employerId) {
+            const matchedEmployer = employers.find((e: any) => e.id === activePlacement.employerId);
+            if (matchedEmployer) {
+                return {
+                    companyName: matchedEmployer.name,
+                    address: matchedEmployer.physicalAddress || 'Address missing in system',
+                    workTelephone: matchedEmployer.contactPhone || 'Phone unlisted',
+                    email: matchedEmployer.contactEmail || 'Email unlisted'
+                };
+            }
+        }
+        return null;
+    }, [enrollment, employers, placements]);
 
     useEffect(() => {
         let mounted = true;
@@ -435,18 +494,14 @@ export const ViewPortfolio: React.FC = () => {
 
                 let subs: LearnerSubmission[] = [];
 
-                // 1. 🚀 FIXED: Securely fetch Submissions using Role-based compliance
                 try {
                     let subSnap;
                     if (user?.role === 'learner') {
-                        // Strict rule compliance for learners
                         subSnap = await getDocs(query(subRef, where('authUid', '==', user.uid)));
                     } else {
-                        // Facilitators can fetch by learnerId
                         subSnap = await getDocs(query(subRef, where('learnerId', '==', targetHumanId)));
                     }
 
-                    // Filter by cohort in memory to avoid missing index errors
                     if (activeCohortId) {
                         subs = subSnap.docs
                             .map(d => ({ id: d.id, ...d.data() } as LearnerSubmission))
@@ -458,7 +513,6 @@ export const ViewPortfolio: React.FC = () => {
                     console.error("Submission query error:", queryErr);
                 }
 
-                // 2. 🚀 FIXED: Fetch Master Assessments Safely (Memory mapped, fixes string vs array mismatch)
                 const activeAssessments = new Map();
                 const draftAssessmentIds = new Set();
 
@@ -466,8 +520,6 @@ export const ViewPortfolio: React.FC = () => {
                     const assessmentsSnap = await getDocs(collection(db, 'assessments'));
                     assessmentsSnap.forEach(docSnap => {
                         const assData = docSnap.data();
-
-                        // Supports both modern array schema and legacy string schema simultaneously
                         const belongsToCohort = (assData.cohortIds && assData.cohortIds.includes(activeCohortId)) || (assData.cohortId === activeCohortId);
 
                         if (belongsToCohort || !activeCohortId) {
@@ -482,7 +534,6 @@ export const ViewPortfolio: React.FC = () => {
                     console.warn("Failed to fetch assessment metadata.", e);
                 }
 
-                // 3. Patch Existing Submissions
                 subs = subs.map(sub => {
                     const matchingAss = activeAssessments.get(sub.assessmentId);
                     if (matchingAss) {
@@ -496,13 +547,11 @@ export const ViewPortfolio: React.FC = () => {
                     return sub;
                 });
 
-                // 4. 🚀 FIXED: Indestructible Auto-Hydration for Missing Assessments
                 try {
                     if (activeCohortId) {
                         const batch = writeBatch(db);
                         let batchCount = 0;
 
-                        // Remove Drafts
                         subs = subs.filter(sub => {
                             if (draftAssessmentIds.has(sub.assessmentId) && sub.status === 'not_started') {
                                 batch.delete(doc(db, 'learner_submissions', sub.id));
@@ -553,67 +602,51 @@ export const ViewPortfolio: React.FC = () => {
                     console.warn("Auto-hydration skipped due to permissions/network.");
                 }
 
-                // ========================================================
-                // 5. DYNAMIC INJECTION: Map Workplace Logs to Submissions
-                // ========================================================
                 try {
-                    // We must check BOTH idNumber (SA ID) and the raw document ID based on your database structure
                     const logTargetId = enrollment.idNumber || targetHumanId;
-
-                    console.log(`[DEBUG Workplace Logs] 1. Initiating fetch for learner ID: "${logTargetId}"`);
-
                     const logsRef = collection(db, 'workplace_logs');
-                    // Querying exactly how it's stored in the database dump you provided
                     const logsQuery = query(logsRef, where('learnerId', '==', logTargetId));
                     const logsSnap = await getDocs(logsQuery);
 
-                    console.log(`[DEBUG Workplace Logs] 2. Query complete. Found ${logsSnap.empty ? 0 : logsSnap.size} documents.`);
-
                     if (!logsSnap.empty) {
-                        const mappedLogs: LearnerSubmission[] = logsSnap.docs.map(docSnap => {
+                        let mappedLogs: LearnerSubmission[] = logsSnap.docs.map(docSnap => {
                             const data = docSnap.data();
 
-                            // Log the raw data being processed
-                            console.log(`[DEBUG Workplace Logs] 3. Processing Doc ID: ${docSnap.id} | raw status: "${data.status}"`);
-
-                            // STRICT TYPE MAPPING: Ensure we only use statuses defined in your interface
-                            let mappedStatus: LearnerSubmission['status'] = 'submitted'; // Default
+                            let mappedStatus: LearnerSubmission['status'] = 'submitted';
                             if (data.status === 'Approved') mappedStatus = 'facilitator_reviewed';
                             if (data.status === 'Rejected') mappedStatus = 'returned';
                             if (data.status === 'Draft') mappedStatus = 'in_progress';
 
                             return {
-                                id: docSnap.id, // Using the log document ID as the submission ID
+                                id: docSnap.id,
                                 assessmentId: data.workActivityCode || `log-${docSnap.id}`,
                                 learnerId: data.learnerId || targetHumanId,
                                 enrollmentId: enrollment.enrollmentId || enrollment.id,
                                 authUid: targetAuthUid,
-                                cohortId: data.cohortId || activeCohortId,
-
+                                cohortId: data.cohortId,
                                 title: data.topicTitle || data.workActivityLabel || 'Workplace Log Entry',
-                                type: 'Logbook', // This triggers your orange badge in getTypeBadge!
+                                type: 'Logbook',
                                 status: mappedStatus,
                                 assignedAt: data.createdAt || new Date().toISOString(),
-
                                 marks: data.totalHours || 0,
-                                totalMarks: 8, // Standard workplace hours per day
-
+                                totalMarks: 8,
                                 moduleNumber: data.workActivityCode || 'Workplace',
-                                moduleType: 'workplace', // Forces it into the Workplace tab!
-
+                                moduleType: 'workplace',
                                 isScheduled: false,
                                 facilitatorName: data.mentorId ? 'Mentor Assigned' : 'Unassigned',
-                            } as LearnerSubmission;
+                                rawLogData: { id: docSnap.id, ...data }
+                            } as LearnerSubmission & { rawLogData?: any };
                         });
 
-                        // Append the dynamically generated logs to the existing submissions array
+                        if (activeCohortId) {
+                            mappedLogs = mappedLogs.filter(log => log.cohortId === activeCohortId);
+                        }
+
                         subs = [...subs, ...mappedLogs];
-                        console.log(`[DEBUG Workplace Logs] 4. Successfully merged ${mappedLogs.length} logs. Total portfolio size: ${subs.length}`);
                     }
                 } catch (logErr) {
-                    console.error("[DEBUG Workplace Logs] ERROR - Failed to fetch or map workplace logs:", logErr);
+                    console.error("[DEBUG Workplace Logs] ERROR - Failed to fetch logs:", logErr);
                 }
-                // ========================================================
 
                 if (mounted) {
                     setSubmissions(subs.sort((a, b) => new Date(b.assignedAt).getTime() - new Date(a.assignedAt).getTime()));
@@ -631,11 +664,11 @@ export const ViewPortfolio: React.FC = () => {
         return () => { mounted = false; };
     }, [enrollment, matchingProgramme, targetCohortId, user?.uid]);
 
-    // Reset pagination when tab changes
     useEffect(() => {
         setCurrentPage(1);
     }, [activeTab, searchTerm, statusFilter]);
 
+    // ─── PIPELINE AND FILTER MEMOS ───
     const pipelineStats = useMemo(() => {
         const total = submissions.length;
         if (total === 0) return { total: 0, submitted: 0, facReviewed: 0, graded: 0, moderated: 0 };
@@ -648,6 +681,74 @@ export const ViewPortfolio: React.FC = () => {
         };
     }, [submissions]);
 
+    const filteredSubmissions = useMemo(() => {
+        let filtered = submissions.filter(sub => {
+            if (activeTab === 'overview') return true;
+            const isPracticeActivity = INFORMAL_TYPES.includes(sub.type);
+            if (activeTab === 'other') return isPracticeActivity;
+            return (sub.moduleType || 'knowledge') === activeTab && !isPracticeActivity;
+        });
+
+        if (searchTerm) {
+            const term = searchTerm.toLowerCase();
+            filtered = filtered.filter(sub =>
+                sub.title.toLowerCase().includes(term) ||
+                sub.moduleNumber?.toLowerCase().includes(term) ||
+                sub.type?.toLowerCase().includes(term) ||
+                sub.facilitatorName?.toLowerCase().includes(term)
+            );
+        }
+
+        if (statusFilter !== 'all') {
+            filtered = filtered.filter(sub => {
+                if (statusFilter === 'competent') return sub.status === 'moderated' && sub.competency === 'C';
+                if (statusFilter === 'nyc') return sub.status === 'moderated' && sub.competency === 'NYC';
+                if (statusFilter === 'pending') return ['submitted', 'facilitator_reviewed', 'graded'].includes(sub.status);
+                if (statusFilter === 'active') return ['in_progress', 'not_started'].includes(sub.status);
+                if (statusFilter === 'missed') return sub.status === 'missed';
+                return sub.status === statusFilter;
+            });
+        }
+
+        filtered.sort((a, b) => {
+            let comparison = 0;
+            switch (sortBy) {
+                case 'module':
+                    comparison = (a.moduleNumber || 'ZZZ').localeCompare(b.moduleNumber || 'ZZZ');
+                    break;
+                case 'date':
+                    comparison = new Date(b.assignedAt).getTime() - new Date(a.assignedAt).getTime();
+                    break;
+                case 'title':
+                    comparison = a.title.localeCompare(b.title);
+                    break;
+                case 'status':
+                    const statusOrder = ['not_started', 'in_progress', 'submitted', 'facilitator_reviewed', 'graded', 'moderated', 'appealed', 'missed'];
+                    comparison = statusOrder.indexOf(a.status) - statusOrder.indexOf(b.status);
+                    break;
+            }
+            return sortOrder === 'asc' ? comparison * -1 : comparison;
+        });
+
+        return filtered;
+    }, [submissions, activeTab, searchTerm, statusFilter, sortBy, sortOrder]);
+
+    const totalPages = useMemo(() => Math.ceil(filteredSubmissions.length / itemsPerPage), [filteredSubmissions.length]);
+
+    const paginatedSubmissions = useMemo(() => {
+        return filteredSubmissions.slice(
+            (currentPage - 1) * itemsPerPage,
+            currentPage * itemsPerPage
+        );
+    }, [filteredSubmissions, currentPage]);
+
+    const activeCohort = useMemo(() => cohorts.find((c: any) => c.id === (targetCohortId || enrollment?.cohortId)), [cohorts, targetCohortId, enrollment]);
+    const activeCohortName = (enrollment as any)?.cohortName || activeCohort?.name;
+
+    const effectiveStartDate = enrollment?.trainingStartDate || activeCohort?.startDate;
+    const effectiveEndDate = (enrollment as any)?.trainingEndDate || activeCohort?.endDate;
+
+    // ─── 4. INNER RENDER HELPERS (Must follow Memos) ───
     const executeRemediation = async (date: string, notes: string) => {
         if (!remediationTarget) return;
         const s = remediationTarget;
@@ -670,6 +771,134 @@ export const ViewPortfolio: React.FC = () => {
             toast.success("Workbook unlocked for next attempt!");
         } catch {
             toast.error("Failed to unlock workbook.");
+        }
+    };
+
+    const handleTriggerCompiledModulePrint = async (moduleCode: string, logsList: any[]) => {
+        try {
+            setIsCompilingPrint(true);
+            console.group(`🔍 QCTO BULK PRINT DYNAMIC ENGINE: Module ${moduleCode}`);
+
+            const chronologicalLogs = [...logsList].sort((a, b) =>
+                new Date(a.dateString || 0).getTime() - new Date(b.dateString || 0).getTime()
+            );
+            const lastApprovedLog = [...chronologicalLogs].reverse().find(l => l.status === 'Approved');
+            const targetLog = lastApprovedLog || chronologicalLogs[chronologicalLogs.length - 1] || {};
+
+            const linkedBlueprintModule = (matchingProgramme?.workExperienceModules || []).find(
+                (m: any) => (m.code === moduleCode || m.name === moduleCode)
+            );
+            const verifiedModuleTopics = linkedBlueprintModule?.topics || [];
+
+            // Resolve Learner Sig
+            let resolvedLearnerSig = targetLog.learnerSignatureUrl || targetLog.signatureUrl || targetLog.learnerSignature || targetLog.signature || '';
+            const targetLearnerId = targetLog.learnerId || enrollment?.idNumber;
+
+            if (!resolvedLearnerSig && targetLearnerId) {
+                try {
+                    const learnerQuery = query(collection(db, 'users'), where('idNumber', '==', String(targetLearnerId).trim()), limit(1));
+                    const querySnapshot = await getDocs(learnerQuery);
+                    if (!querySnapshot.empty) {
+                        resolvedLearnerSig = querySnapshot.docs[0].data().signatureUrl || '';
+                    }
+                } catch (e) { console.warn("Learner signature trace lookup skipped:", e); }
+            }
+
+            // Resolve Mentor Sig & Extrapolate Employer ID directly from Mentor Profile
+            let resolvedMentorSig = targetLog.mentorSignatureUrl || '';
+            let resolvedMentorName = targetLog.mentorName || 'Assigned Workplace Mentor';
+            let resolvedEmployerId = targetLog.employerId || null;
+
+            if (!resolvedMentorSig && (targetLog.mentorEmail || targetLog.processedBy)) {
+                const targetEmail = (targetLog.mentorEmail || targetLog.processedBy).toLowerCase().trim();
+                try {
+                    const sigDoc = await getDoc(doc(db, 'mentor_signatures', targetEmail));
+                    if (sigDoc.exists()) resolvedMentorSig = sigDoc.data().signatureUrl || '';
+                } catch (e) { console.error(e); }
+            }
+
+            if (targetLog.mentorId) {
+                try {
+                    const profile = await getDoc(doc(db, 'users', targetLog.mentorId));
+                    if (profile.exists()) {
+                        const data = profile.data();
+                        resolvedMentorName = data.fullName || `${data.firstName || ''} ${data.lastName || ''}`.trim();
+                        if (!resolvedMentorSig) {
+                            resolvedMentorSig = data.signatureUrl || data.existingSignatureUrl || '';
+                        }
+                        // 🚀 DYNAMIC EXTRACTION: Grab Employer ID directly from the Mentor's Profile!
+                        if (data.employerId) {
+                            resolvedEmployerId = data.employerId;
+                        }
+                    }
+                } catch (e) { console.error(e); }
+            }
+
+            // Resolve Assessor Sig
+            let resolvedAssessorSig = targetLog.assessorSignatureUrl || '';
+            let resolvedAssessorName = targetLog.assessorName || 'Unassigned Assessor';
+            const targetAssessorId = targetLog.assessorId || targetLog.reviewerId;
+
+            if (targetAssessorId && !resolvedAssessorSig) {
+                try {
+                    const profile = await getDoc(doc(db, 'users', targetAssessorId));
+                    if (profile.exists()) {
+                        const data = profile.data();
+                        resolvedAssessorName = data.fullName || `${data.firstName || ''} ${data.lastName || ''}`.trim();
+                        resolvedAssessorSig = data.signatureUrl || '';
+                    }
+                } catch (e) { console.error(e); }
+            }
+
+            // 🚀 SECURE EMPLOYER DETAILS RESOLUTION (using extracted resolvedEmployerId)
+            let finalEmployerDetails = activeEmployerDetails; // Fallback to cache
+
+            if (resolvedEmployerId) {
+                let matchedEmployer = employers?.find((e: any) => e.id === resolvedEmployerId);
+
+                // If the employer is not in the Zustand store cache, fetch it directly from the DB!
+                if (!matchedEmployer) {
+                    try {
+                        const empDoc = await getDoc(doc(db, 'employers', resolvedEmployerId));
+                        if (empDoc.exists()) {
+                            matchedEmployer = { id: empDoc.id, ...empDoc.data() };
+                        }
+                    } catch (e) { console.warn("Failed to fetch exact employer doc:", e); }
+                }
+
+                if (matchedEmployer) {
+                    finalEmployerDetails = {
+                        companyName: matchedEmployer.name || 'Registered Host Employer',
+                        address: matchedEmployer.physicalAddress || 'Address missing in system',
+                        workTelephone: matchedEmployer.contactPhone || 'Phone unlisted',
+                        email: matchedEmployer.contactEmail || 'Email unlisted'
+                    };
+                }
+            }
+
+            console.groupEnd();
+
+            setBulkPrintPayload({
+                moduleCode,
+                moduleTopics: verifiedModuleTopics,
+                logs: logsList,
+                mentorName: resolvedMentorName,
+                assessorName: resolvedAssessorName,
+                learnerSig: resolvedLearnerSig,
+                mentorSig: resolvedMentorSig,
+                assessorSig: resolvedAssessorSig,
+                employerDetails: finalEmployerDetails // 🚀 INJECTED RESOLVED DETAILS
+            });
+
+            setTimeout(() => {
+                window.print();
+                setBulkPrintPayload(null);
+                setIsCompilingPrint(false);
+            }, 1200);
+
+        } catch (err) {
+            console.error("Batch print run failure:", err);
+            setIsCompilingPrint(false);
         }
     };
 
@@ -726,71 +955,6 @@ export const ViewPortfolio: React.FC = () => {
                 return <span className="mlab-badge" style={{ ...baseStyle, background: '#f8fafc', color: '#64748b', border: '1px solid #cbd5e1' }}><BookOpen size={12} /> Not Started</span>;
         }
     };
-
-
-    const filteredSubmissions = useMemo(() => {
-        let filtered = submissions.filter(sub => {
-            if (activeTab === 'overview') return true;
-            const isPracticeActivity = INFORMAL_TYPES.includes(sub.type);
-
-            if (activeTab === 'other') return isPracticeActivity;
-
-            return (sub.moduleType || 'knowledge') === activeTab && !isPracticeActivity;
-        });
-
-        // Search filter
-        if (searchTerm) {
-            const term = searchTerm.toLowerCase();
-            filtered = filtered.filter(sub =>
-                sub.title.toLowerCase().includes(term) ||
-                sub.moduleNumber?.toLowerCase().includes(term) ||
-                sub.type?.toLowerCase().includes(term) ||
-                sub.facilitatorName?.toLowerCase().includes(term)
-            );
-        }
-
-        // Status filter
-        if (statusFilter !== 'all') {
-            filtered = filtered.filter(sub => {
-                if (statusFilter === 'competent') return sub.status === 'moderated' && sub.competency === 'C';
-                if (statusFilter === 'nyc') return sub.status === 'moderated' && sub.competency === 'NYC';
-                if (statusFilter === 'pending') return ['submitted', 'facilitator_reviewed', 'graded'].includes(sub.status);
-                if (statusFilter === 'active') return ['in_progress', 'not_started'].includes(sub.status);
-                if (statusFilter === 'missed') return sub.status === 'missed';
-                return sub.status === statusFilter;
-            });
-        }
-
-        // Sorting
-        filtered.sort((a, b) => {
-            let comparison = 0;
-            switch (sortBy) {
-                case 'module':
-                    comparison = (a.moduleNumber || 'ZZZ').localeCompare(b.moduleNumber || 'ZZZ');
-                    break;
-                case 'date':
-                    comparison = new Date(b.assignedAt).getTime() - new Date(a.assignedAt).getTime();
-                    break;
-                case 'title':
-                    comparison = a.title.localeCompare(b.title);
-                    break;
-                case 'status':
-                    const statusOrder = ['not_started', 'in_progress', 'submitted', 'facilitator_reviewed', 'graded', 'moderated', 'appealed', 'missed'];
-                    comparison = statusOrder.indexOf(a.status) - statusOrder.indexOf(b.status);
-                    break;
-            }
-            return sortOrder === 'asc' ? comparison * -1 : comparison;
-        });
-
-        return filtered;
-    }, [submissions, activeTab, searchTerm, statusFilter, sortBy, sortOrder]);
-
-    // Pagination
-    const totalPages = Math.ceil(filteredSubmissions.length / itemsPerPage);
-    const paginatedSubmissions = filteredSubmissions.slice(
-        (currentPage - 1) * itemsPerPage,
-        currentPage * itemsPerPage
-    );
 
     const renderPipelineBar = (label: string, value: number, total: number, variant: string) => {
         const pct = total > 0 ? Math.round((value / total) * 100) : 0;
@@ -884,7 +1048,6 @@ export const ViewPortfolio: React.FC = () => {
         </div>
     );
 
-    // DYNAMIC ROW RENDERER: Supports Flat and Grouped Rows
     const renderTableRow = (sub: LearnerSubmission, isGrouped: boolean) => {
         const isNYC = sub.status === 'moderated' && sub.competency === 'NYC';
         const hasPendingAppeal = sub.status === 'appealed' || sub.appeal?.status === 'pending';
@@ -897,7 +1060,6 @@ export const ViewPortfolio: React.FC = () => {
                         <span className="vp-assessment-title" style={isGrouped ? { fontSize: '0.9rem' } : {}}>{sub.title}</span>
 
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '6px' }}>
-                            {/* Schedule & Timing Metdata block */}
                             {sub.isScheduled && sub.scheduledDate && ['not_started', 'in_progress', 'missed', 'upcoming'].includes(sub.status) ? (
                                 <span className="vp-assessment-meta" style={{ color: sub.status === 'missed' ? '#ef4444' : '#0284c7', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
                                     <Clock size={12} />
@@ -932,54 +1094,69 @@ export const ViewPortfolio: React.FC = () => {
                     #{sub.attemptNumber || 1}
                 </td>
                 <td style={{ textAlign: 'right' }}>
-                    {isNYC && user?.role === 'learner' && !hasPendingAppeal ? (
-                        <button
-                            className="mlab-btn mlab-btn--warning mlab-btn--sm"
-                            onClick={() => navigate(`/learner/assessment/${sub.assessmentId}`)}
-                        >
-                            <AlertCircle size={14} style={{ marginRight: '4px' }} /> Appeal / Remediate
-                        </button>
-                    ) : isNYC && user?.role !== 'learner' && !hasPendingAppeal ? (
-                        <button
-                            className="mlab-btn mlab-btn--warning mlab-btn--sm"
-                            onClick={() => setRemediationTarget(sub)}
-                        >
-                            <AlertCircle size={14} style={{ marginRight: '4px' }} /> Remediate
-                        </button>
-                    ) : sub.status === 'missed' && user?.role !== 'learner' ? (
-                        <button
-                            className="mlab-btn mlab-btn--outline"
-                            style={{ color: '#dc2626', borderColor: '#fecaca' }}
-                            onClick={() => navigate(`/portfolio/submission/${sub.id}`)}
-                        >
-                            <ShieldAlert size={14} /> Review Absence
-                        </button>
-                    ) : (sub.status === 'missed' || sub.status === 'upcoming') && user?.role === 'learner' ? (
-                        <button
-                            className="mlab-btn"
-                            style={{ color: sub.status === 'missed' ? '#dc2626' : '#d97706' }}
-                            onClick={() => navigate(`/learner/assessment/${sub.assessmentId}`)}
-                        >
-                            <Eye size={14} /> View
-                        </button>
-                    ) : (
-                        <button
-                            className="mlab-btn"
-                            style={{ color: 'green' }}
-                            onClick={() => navigate(user?.role === 'learner' ? `/learner/assessment/${sub.assessmentId}` : `/portfolio/submission/${sub.id}`)}
-                        >
-                            <Eye size={14} /> View
-                        </button>
-                    )}
+                    {(() => {
+                        const handleViewClick = () => {
+                            if (sub.moduleType === 'workplace') {
+                                if (!(sub as any).rawLogData) {
+                                    setSelectedLog(sub);
+                                } else {
+                                    setSelectedLog((sub as any).rawLogData);
+                                }
+                                setShowLogModal(true);
+                            } else {
+                                if (user?.role === 'learner') {
+                                    navigate(`/learner/assessment/${sub.assessmentId}`);
+                                } else {
+                                    navigate(`/portfolio/submission/${sub.id}`);
+                                }
+                            }
+                        };
+
+                        if (isNYC && user?.role === 'learner' && !hasPendingAppeal) {
+                            return (
+                                <button className="mlab-btn mlab-btn--warning mlab-btn--sm" onClick={handleViewClick}>
+                                    <AlertCircle size={14} style={{ marginRight: '4px' }} /> Appeal / Remediate
+                                </button>
+                            );
+                        }
+
+                        if (isNYC && user?.role !== 'learner' && !hasPendingAppeal) {
+                            return (
+                                <button className="mlab-btn mlab-btn--warning mlab-btn--sm" onClick={() => setRemediationTarget(sub)}>
+                                    <AlertCircle size={14} style={{ marginRight: '4px' }} /> Remediate
+                                </button>
+                            );
+                        }
+
+                        if (sub.status === 'missed' && user?.role !== 'learner') {
+                            return (
+                                <button className="mlab-btn mlab-btn--outline" style={{ color: '#dc2626', borderColor: '#fecaca' }} onClick={handleViewClick}>
+                                    <ShieldAlert size={14} /> Review Absence
+                                </button>
+                            );
+                        }
+
+                        if ((sub.status === 'missed' || sub.status === 'upcoming') && user?.role === 'learner') {
+                            return (
+                                <button className="mlab-btn" style={{ color: sub.status === 'missed' ? '#dc2626' : '#d97706' }} onClick={handleViewClick}>
+                                    <Eye size={14} /> View
+                                </button>
+                            );
+                        }
+
+                        return (
+                            <button className="mlab-btn" style={{ color: 'green' }} onClick={handleViewClick}>
+                                <Eye size={14} /> View
+                            </button>
+                        );
+                    })()}
                 </td>
             </tr>
         );
     };
 
-    // DYNAMIC TABLE BODY RENDERER
     const renderTableBody = () => {
         if (sortBy === 'module') {
-            // Group by module
             const groups: Record<string, LearnerSubmission[]> = {};
             filteredSubmissions.forEach(sub => {
                 const mod = sub.moduleNumber || 'Unlinked Assessments';
@@ -989,34 +1166,47 @@ export const ViewPortfolio: React.FC = () => {
 
             const sortedKeys = Object.keys(groups).sort((a, b) => sortOrder === 'asc' ? a.localeCompare(b) : b.localeCompare(a));
 
-            return sortedKeys.map(modCode => (
-                <React.Fragment key={modCode}>
-                    <tr style={{ background: '#f8fafc' }}>
-                        <td colSpan={5} style={{ padding: '12px 16px', borderBottom: '2px solid #e2e8f0', borderTop: '1px solid #e2e8f0' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <Layers size={16} color="var(--mlab-blue)" />
-                                <span style={{ fontWeight: 800, color: 'var(--mlab-blue)', fontSize: '0.85rem', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
-                                    {modCode}
-                                </span>
-                            </div>
-                        </td>
-                    </tr>
-                    {groups[modCode].map(sub => renderTableRow(sub, true))}
-                </React.Fragment>
-            ));
+            return sortedKeys.map(modCode => {
+                const actionableLogs = groups[modCode]
+                    .filter(s => s.moduleType === 'workplace' && (s as any).rawLogData)
+                    .map(s => (s as any).rawLogData);
+
+                return (
+                    <React.Fragment key={modCode}>
+                        <tr style={{ background: '#f8fafc' }}>
+                            <td colSpan={sortBy !== 'module' ? 6 : 5} style={{ padding: '12px 16px', borderBottom: '2px solid #e2e8f0', borderTop: '1px solid #e2e8f0' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <Layers size={16} color="var(--mlab-blue)" />
+                                        <span style={{ fontWeight: 800, color: 'var(--mlab-blue)', fontSize: '0.85rem', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                                            {modCode}
+                                        </span>
+                                    </div>
+
+                                    {activeTab === 'workplace' && actionableLogs.length > 0 && (
+                                        <button
+                                            onClick={() => handleTriggerCompiledModulePrint(modCode, actionableLogs)}
+                                            disabled={isCompilingPrint}
+                                            className="mlab-btn mlab-btn--outline mlab-btn--sm"
+                                            style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'white', borderColor: '#cbd5e1', color: '#073f4e', fontWeight: 600, height: '28px', padding: '0 10px', cursor: 'pointer' }}
+                                        >
+                                            {isCompilingPrint ? <Loader2 size={12} className="vp-spin" /> : <Printer size={12} />}
+                                            Print Module Logbook ({actionableLogs.length})
+                                        </button>
+                                    )}
+                                </div>
+                            </td>
+                        </tr>
+                        {groups[modCode].map(sub => renderTableRow(sub, true))}
+                    </React.Fragment>
+                );
+            });
         } else {
-            // Standard Paginated Flat View
             return paginatedSubmissions.map(sub => renderTableRow(sub, false));
         }
     };
 
-
-    const activeCohort = cohorts.find(c => c.id === (targetCohortId || enrollment?.cohortId));
-    const activeCohortName = (enrollment as any)?.cohortName || activeCohort?.name;
-
-    const effectiveStartDate = enrollment?.trainingStartDate || activeCohort?.startDate;
-    const effectiveEndDate = (enrollment as any)?.trainingEndDate || activeCohort?.endDate;
-
+    // ─── 5. UI RETURN RENDER BLOCK ───
     if (learnersLoading && !enrollment) {
         return (
             <div className="admin-layout" style={{ alignItems: 'center', justifyContent: 'center' }}>
@@ -1028,19 +1218,13 @@ export const ViewPortfolio: React.FC = () => {
     if (!enrollment || !enrollment.idNumber) {
         return (
             <div className="admin-layout">
-                <Sidebar
-                    role={user?.role}
-                    currentNav={user?.role === 'learner' ? 'dashboard' : 'learners'}
-                    onLogout={() => signOut(auth).then(() => navigate('/login'))}
-                />
+                <Sidebar role={user?.role} currentNav={user?.role === 'learner' ? 'dashboard' : 'learners'} onLogout={() => signOut(auth).then(() => navigate('/login'))} />
                 <main className="main-wrapper" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <div className="vp-empty-state vp-empty-state--large" style={{ padding: '3rem', border: '1px dashed #cbd5e1', background: 'white' }}>
                         <AlertTriangle size={64} color="#ef4444" />
                         <h2 style={{ marginTop: '1.5rem', color: '#0f172a' }}>Invalid Learner Data</h2>
                         <p style={{ maxWidth: '400px', margin: '0.5rem auto 2rem', color: '#64748b' }}>
-                            This learner profile is incomplete or corrupted (Missing ID or Full Name).
-                            Grading tools are disabled to prevent database errors.
-                            Please contact an Administrator to repair or delete this record.
+                            This learner profile is incomplete or corrupted (Missing ID or Full Name). Grading tools are disabled to prevent database errors.
                         </p>
                         <button onClick={() => navigate(-1)} className="mlab-btn mlab-btn--primary">
                             <ChevronLeft size={16} /> Return to Directory
@@ -1056,22 +1240,35 @@ export const ViewPortfolio: React.FC = () => {
             <ToastContainer toasts={toast.toasts} onClose={toast.closeToast} />
 
             {remediationTarget && (
-                <RemediationModal
-                    submissionTitle={remediationTarget.title}
-                    attemptNumber={remediationTarget.attemptNumber || 1}
-                    onClose={() => setRemediationTarget(null)}
-                    onSubmit={executeRemediation}
-                />
+                <RemediationModal submissionTitle={remediationTarget.title} attemptNumber={remediationTarget.attemptNumber || 1} onClose={() => setRemediationTarget(null)} onSubmit={executeRemediation} />
             )}
 
             {showExportModal && (
-                <ExportModal
-                    submissions={filteredSubmissions}
-                    onClose={() => setShowExportModal(false)}
-                />
+                <ExportModal submissions={filteredSubmissions} onClose={() => setShowExportModal(false)} />
             )}
 
-            {/* Admin Mobile Header */}
+            {showLogModal && (
+                <WorkplaceLogViewerModal log={selectedLog} allowEdit={false} onClose={() => { setShowLogModal(false); setSelectedLog(null); }} />
+            )}
+
+            {/* ⚙️ PORTAL LAYER INJECTION FOR AGGREGATED BATCH VIEW PRINTING */}
+            {bulkPrintPayload && createPortal(
+                <WorkplaceModuleBulkPrintable
+                    moduleCode={bulkPrintPayload.moduleCode}
+                    moduleTopics={bulkPrintPayload.moduleTopics}
+                    logs={bulkPrintPayload.logs}
+                    learnerName={enrollment?.fullName || 'Candidate Learner'}
+                    learnerIdNumber={enrollment?.idNumber || ''}
+                    learnerSig={bulkPrintPayload.learnerSig}
+                    mentorSig={bulkPrintPayload.mentorSig}
+                    assessorSig={bulkPrintPayload.assessorSig}
+                    mentorName={bulkPrintPayload.mentorName}
+                    assessorName={bulkPrintPayload.assessorName}
+                    employerDetails={bulkPrintPayload.employerDetails} // 🚀 INJECTED DIRECTLY FROM STATE
+                />,
+                document.body
+            )}
+
             <div className="admin-mobile-header">
                 <div className="admin-mobile-header-left">
                     <button className="admin-hamburger-btn" onClick={() => setIsMobileMenuOpen(true)}>
@@ -1084,7 +1281,6 @@ export const ViewPortfolio: React.FC = () => {
                 </div>
             </div>
 
-            {/* Admin Sidebar & Overlay */}
             {isMobileMenuOpen && (
                 <div className="admin-sidebar-overlay" onClick={() => setIsMobileMenuOpen(false)} />
             )}
@@ -1093,16 +1289,10 @@ export const ViewPortfolio: React.FC = () => {
                 <button className="admin-close-btn" onClick={() => setIsMobileMenuOpen(false)}>
                     <X size={24} />
                 </button>
-                <Sidebar
-                    role={user?.role}
-                    currentNav={user?.role === 'learner' ? 'dashboard' : 'learners'}
-                    onLogout={() => signOut(auth).then(() => navigate('/login'))}
-                />
+                <Sidebar role={user?.role} currentNav={user?.role === 'learner' ? 'dashboard' : 'learners'} onLogout={() => signOut(auth).then(() => navigate('/login'))} />
             </div>
 
-            {/* Main Content using standard Main Wrapper */}
             <main className="main-wrapper" style={{ padding: 16, paddingBottom: '5%' }}>
-
                 <header className="dashboard-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <div className="header-title">
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
@@ -1126,7 +1316,6 @@ export const ViewPortfolio: React.FC = () => {
                 </header>
 
                 <div className="admin-content">
-                    {/* Profile Card */}
                     <div className="vp-profile-card">
                         <div className="vp-profile-avatar">
                             {(enrollment as any).profilePhotoUrl ? (
@@ -1141,11 +1330,12 @@ export const ViewPortfolio: React.FC = () => {
                                 <span><strong>ID:</strong> {enrollment.idNumber}</span>
                                 <span className="vp-profile-divider">|</span>
                                 <span>
-                                    <Calendar size={14} /><strong>Programme Start & End Date: </strong>
+                                    <Calendar size={14} /><strong>Programme Window: </strong>
                                     {effectiveStartDate ? new Date(effectiveStartDate).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Unknown Start'}
                                     {' — '}
                                     {effectiveEndDate ? new Date(effectiveEndDate).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Unknown End'}
-                                </span>                                    <>
+                                </span>
+                                <>
                                     <span className="vp-profile-divider">|</span>
                                     <span><Briefcase size={14} /> {activeCohortName || "Dormant Profile (Unassigned)"}</span>
                                 </>
@@ -1159,7 +1349,6 @@ export const ViewPortfolio: React.FC = () => {
                         </div>
                     </div>
 
-                    {/* Tabs */}
                     <nav className="vp-tabs" role="tablist">
                         {TABS.map(tab => {
                             const Icon = tab.icon;
@@ -1189,11 +1378,9 @@ export const ViewPortfolio: React.FC = () => {
                         })}
                     </nav>
 
-                    {/* Tab Content */}
                     <div className="vp-content">
                         {activeTab === 'overview' && (
                             <div className="vp-grid vp-grid--2col">
-
                                 {user?.role !== 'learner' && (
                                     <div className="vp-grid-span-2">
                                         <PoEGenerator learnerId={enrollment.learnerId || enrollment.id} requestedByUid={user?.uid || ''} />
@@ -1253,10 +1440,7 @@ export const ViewPortfolio: React.FC = () => {
                                     </div>
                                 </div>
 
-                                {/* Standard mLab Toolbar */}
                                 <div className="mlab-toolbar" style={{ borderTop: 'none', margin: 10, display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
-
-                                    {/* Search Bar */}
                                     <div className="mlab-select-wrap" style={{ height: '38px', border: '1px solid var(--mlab-border)', borderRadius: '6px', background: 'white', display: 'flex', alignItems: 'center', flex: '1', minWidth: '220px', overflow: 'hidden' }}>
                                         <Search size={16} color="var(--mlab-grey)" style={{ marginLeft: '12px', flexShrink: 0 }} />
                                         <input
@@ -1268,7 +1452,6 @@ export const ViewPortfolio: React.FC = () => {
                                         />
                                     </div>
 
-                                    {/* Status Filter */}
                                     <div className="mlab-select-wrap" style={{ height: '38px', border: '1px solid var(--mlab-border)', borderRadius: '6px', background: 'white', display: 'flex', alignItems: 'center', overflow: 'hidden' }}>
                                         <Filter size={16} color="var(--mlab-grey)" style={{ marginLeft: '12px', flexShrink: 0 }} />
                                         <select
@@ -1288,7 +1471,6 @@ export const ViewPortfolio: React.FC = () => {
                                         </select>
                                     </div>
 
-                                    {/* Sort By Filter */}
                                     <div className="mlab-select-wrap" style={{ height: '38px', border: '1px solid var(--mlab-border)', borderRadius: '6px', background: 'white', display: 'flex', alignItems: 'center', overflow: 'hidden' }}>
                                         <ArrowUpDown size={16} color="var(--mlab-grey)" style={{ marginLeft: '12px', flexShrink: 0 }} />
                                         <select
@@ -1303,7 +1485,6 @@ export const ViewPortfolio: React.FC = () => {
                                         </select>
                                     </div>
 
-                                    {/* Sort Order Button */}
                                     <button
                                         className="mlab-btn mlab-btn--ghost"
                                         onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
@@ -1312,7 +1493,6 @@ export const ViewPortfolio: React.FC = () => {
                                     >
                                         {sortOrder === 'asc' ? '↑ Asc' : '↓ Desc'}
                                     </button>
-
                                 </div>
 
                                 {loadingSubmissions ? (
@@ -1321,11 +1501,7 @@ export const ViewPortfolio: React.FC = () => {
                                     <div className="vp-empty-state">
                                         <FileText size={40} />
                                         <p>No assessments found matching your criteria</p>
-                                        <button
-                                            className="mlab-btn mlab-btn--ghost"
-                                            onClick={() => { setSearchTerm(''); setStatusFilter('all'); }}
-                                            style={{ marginTop: '1rem' }}
-                                        >
+                                        <button className="mlab-btn mlab-btn--ghost" onClick={() => { setSearchTerm(''); setStatusFilter('all'); }} style={{ marginTop: '1rem' }}>
                                             Clear Filters
                                         </button>
                                     </div>
@@ -1349,31 +1525,15 @@ export const ViewPortfolio: React.FC = () => {
                                             </table>
                                         </div>
 
-                                        {/* Pagination (Hidden in Grouped View) */}
                                         {sortBy !== 'module' && totalPages > 1 && (
-                                            <div style={{
-                                                display: 'flex',
-                                                justifyContent: 'center',
-                                                alignItems: 'center',
-                                                gap: '0.5rem',
-                                                padding: '1rem',
-                                                borderTop: '1px solid var(--mlab-border)'
-                                            }}>
-                                                <button
-                                                    className="mlab-btn mlab-btn--ghost mlab-btn--sm"
-                                                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                                                    disabled={currentPage === 1}
-                                                >
+                                            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', padding: '1rem', borderTop: '1px solid var(--mlab-border)' }}>
+                                                <button className="mlab-btn mlab-btn--ghost mlab-btn--sm" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>
                                                     <ChevronLeft size={16} /> Prev
                                                 </button>
                                                 <span style={{ fontFamily: 'var(--font-heading)', fontSize: '0.9rem', color: 'var(--mlab-blue)' }}>
                                                     Page {currentPage} of {totalPages}
                                                 </span>
-                                                <button
-                                                    className="mlab-btn mlab-btn--ghost mlab-btn--sm"
-                                                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                                                    disabled={currentPage === totalPages}
-                                                >
+                                                <button className="mlab-btn mlab-btn--ghost mlab-btn--sm" onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}>
                                                     Next <ChevronRight size={16} />
                                                 </button>
                                             </div>
@@ -1411,9 +1571,9 @@ export const ViewPortfolio: React.FC = () => {
 
                                         return (
                                             <>
-                                                {renderDocRow('National ID', 'id', idUrl)}
+                                                {renderDocRow('Certified ID Copy', 'id', idUrl)}
                                                 {renderDocRow('Highest Qualification', 'qual', qualUrl)}
-                                                {renderDocRow('Detailed CV', 'cv', cvUrl)}
+                                                {renderDocRow('Updated CV', 'cv', cvUrl)}
 
                                                 {customDocs.map((doc: any, idx: number) => (
                                                     renderDocRow(doc.name || 'Additional Document', doc.id || `custom_${idx}`, doc.url)
@@ -1439,4 +1599,3 @@ export const ViewPortfolio: React.FC = () => {
 };
 
 export default ViewPortfolio;
-

@@ -8553,3 +8553,17 @@
   color: #fca5a5;
   border-top-color: rgba(239, 68, 68, 0.15);
 }
+
+/* Hide the timing audit block on the screen, show only on print */
+@media screen {
+  .ap-print-only-timing-block {
+    display: none !important;
+  }
+}
+
+@media print {
+  .ap-print-only-timing-block {
+    display: block !important;
+    break-inside: avoid; /* Prevents the box from splitting across pages */
+  }
+}

@@ -541,27 +541,89 @@ const AssessmentPlayer: React.FC = () => {
 
     // ─── LIVE COUNTDOWN TICKER FOR "IN PROGRESS" USERS ──────────────────────
     useEffect(() => {
-        if (isPracticalModule || timeLeft === null || isLocked || showGate || isMissed) return;
-        if (timeLeft <= 0) { toast.error("Time is up! Auto-submitting."); forceAutoSubmit(submission.id, answers); return; }
+        // Added strict null checks for assessment and submission!
+        if (!assessment || !submission || isPracticalModule || isLocked || showGate || isMissed) return;
+
+        const baseLimit = assessment.moduleInfo?.timeLimit || 0;
+        if (baseLimit <= 0) return; // Untimed assessment
+
+        // Auto-initialize the timer if it's null (e.g., after a page refresh)
+        if (timeLeft === null) {
+            const now = getSecureNow();
+            const extraTime = submission.extraTimeGranted || 0;
+            const totalAllowedTimeMs = (baseLimit + extraTime) * 60 * 1000;
+            let endMs;
+
+            if (assessment.isScheduled && assessment.scheduledDate && !submission.overrideUnlock) {
+                endMs = moment(assessment.scheduledDate).valueOf() + totalAllowedTimeMs;
+            } else if (submission.startedAt) {
+                endMs = new Date(submission.startedAt).getTime() + totalAllowedTimeMs;
+            }
+
+            if (endMs) {
+                setTimeLeft(Math.max(0, Math.floor((endMs - now) / 1000)));
+            }
+            return;
+        }
+
+        // STALE CLOSURE FIX: We securely grab the LATEST answers right before auto-submitting
+        if (timeLeft <= 0) {
+            toast.error("Time is up! Auto-submitting.");
+            setAnswers(latestAnswers => {
+                // Double-check submission.id exists before executing the save
+                if (submission?.id) {
+                    forceAutoSubmit(submission.id, latestAnswers);
+                }
+                return latestAnswers; // return state unchanged
+            });
+            return;
+        }
 
         const id = setInterval(() => {
             const now = getSecureNow();
             const extraTime = submission.extraTimeGranted || 0;
-            const totalAllowedTimeMs = (assessment.moduleInfo.timeLimit + extraTime) * 60 * 1000;
+            const totalAllowedTimeMs = (baseLimit + extraTime) * 60 * 1000;
 
             let endMs;
 
             if (assessment.isScheduled && assessment.scheduledDate && !submission.overrideUnlock) {
                 endMs = moment(assessment.scheduledDate).valueOf() + totalAllowedTimeMs;
-            } else {
+            } else if (submission.startedAt) {
                 endMs = new Date(submission.startedAt).getTime() + totalAllowedTimeMs;
             }
 
-            setTimeLeft(Math.max(0, Math.floor((endMs - now) / 1000)));
+            if (endMs) {
+                setTimeLeft(Math.max(0, Math.floor((endMs - now) / 1000)));
+            }
         }, 1000);
 
         return () => clearInterval(id);
-    }, [timeLeft, isLocked, showGate, submission?.startedAt, isPracticalModule, submission?.extraTimeGranted, isMissed, assessment]);
+    }, [timeLeft, isLocked, showGate, submission?.startedAt, isPracticalModule, submission?.extraTimeGranted, isMissed, assessment, submission?.id, submission?.overrideUnlock]);
+
+
+    // // ─── LIVE COUNTDOWN TICKER FOR "IN PROGRESS" USERS ──────────────────────
+    // useEffect(() => {
+    //     if (isPracticalModule || timeLeft === null || isLocked || showGate || isMissed) return;
+    //     if (timeLeft <= 0) { toast.error("Time is up! Auto-submitting."); forceAutoSubmit(submission.id, answers); return; }
+
+    //     const id = setInterval(() => {
+    //         const now = getSecureNow();
+    //         const extraTime = submission.extraTimeGranted || 0;
+    //         const totalAllowedTimeMs = (assessment.moduleInfo.timeLimit + extraTime) * 60 * 1000;
+
+    //         let endMs;
+
+    //         if (assessment.isScheduled && assessment.scheduledDate && !submission.overrideUnlock) {
+    //             endMs = moment(assessment.scheduledDate).valueOf() + totalAllowedTimeMs;
+    //         } else {
+    //             endMs = new Date(submission.startedAt).getTime() + totalAllowedTimeMs;
+    //         }
+
+    //         setTimeLeft(Math.max(0, Math.floor((endMs - now) / 1000)));
+    //     }, 1000);
+
+    //     return () => clearInterval(id);
+    // }, [timeLeft, isLocked, showGate, submission?.startedAt, isPracticalModule, submission?.extraTimeGranted, isMissed, assessment]);
 
 
     useEffect(() => {
@@ -1386,7 +1448,22 @@ const AssessmentPlayer: React.FC = () => {
                             </button>
                         )}
                         {isLocked && <button className="ap-topbar-print-btn" onClick={() => window.print()}><Printer size={16} /> <span className="ap-hide-mobile">Print Audit</span></button>}
-                        {!isLocked && !isPracticalModule && timeLeft !== null && <div className={`ap-timer${timeLeft < 300 ? ' ap-timer--warning' : ''}`}><Timer size={14} /> {formatTime(timeLeft)}</div>}
+                        {/* {!isLocked && !isPracticalModule && timeLeft !== null && <div className={`ap-timer${timeLeft < 300 ? ' ap-timer--warning' : ''}`}><Timer size={14} /> {formatTime(timeLeft)}</div>} */}
+                        {/* Active Countdown Timer */}
+                        {!isLocked && !isPracticalModule && timeLeft !== null && (
+                            <div className={`ap-timer${timeLeft < 300 ? ' ap-timer--warning' : ''}`}>
+                                <Timer size={14} /> {formatTime(timeLeft)}
+                            </div>
+                        )}
+
+                        {/* Frozen 'Time Taken' Badge (Shows ONLY when submitted) */}
+                        {isLocked && !isPracticalModule && submission?.startedAt && submission?.submittedAt && (
+                            <div className="ap-timer" style={{ backgroundColor: '#e2e8f0', color: '#475569', border: '1px solid #cbd5e1' }}>
+                                <Timer size={14} />
+                                {formatTime(Math.floor((new Date(submission.submittedAt).getTime() - new Date(submission.startedAt).getTime()) / 1000))} taken
+                            </div>
+                        )}
+
                         {!isLocked && isPracticalModule && <div className="ap-timer ap-timer--untimed ap-hide-mobile"><Info size={13} /> {assessment?.moduleType === 'workplace' ? 'Workplace Logbook' : 'Untimed Task'}</div>}
                         <span className={`ap-save-indicator${saving ? ' ap-save-indicator--saving' : ''} ap-hide-mobile`}>
                             {saving ? <><div className="ap-spinner ap-spinner--sm" /> Saving…</> : <><CheckCircle size={12} /> Saved</>}
@@ -1530,6 +1607,29 @@ const AssessmentPlayer: React.FC = () => {
                                             LEARNER {assessment?.moduleType === 'workplace' ? 'WORKPLACE LOGBOOK' : 'WORKBOOK'}
                                         </h2>
                                     </div>
+
+                                    {/* Timing & Duration Audit */}
+                                    {isLocked && !isPracticalModule && (
+                                        <div className="ap-print-only-timing-block" style={{
+                                            marginTop: '20px',
+                                            marginBottom: '20px',
+                                            borderRadius: '8px',
+                                        }}>
+                                            <div className="print-cover__table-heading">TIMING & DURATION AUDIT</div>
+                                            <table className="print-table">
+                                                <tbody>
+                                                    <tr><td className="print-table__label">Maximum Allowed Time: </td><td> {(assessment?.moduleInfo?.timeLimit || 0) + (submission?.extraTimeGranted || 0) > 0
+                                                        ? `${(assessment?.moduleInfo?.timeLimit || 0) + (submission?.extraTimeGranted || 0)} Minutes`
+                                                        : 'Untimed'}</td></tr>
+                                                    <tr><td className="print-table__label">Actual Time Taken:  </td><td>{submission?.startedAt && submission?.submittedAt
+                                                        ? formatTime(Math.floor((new Date(submission.submittedAt).getTime() - new Date(submission.startedAt).getTime()) / 1000))
+                                                        : 'N/A'}</td></tr>
+                                                    <tr><td className="print-table__label">Session Started: </td><td>{submission?.startedAt ? getSafeDate(submission.startedAt) : 'N/A'}</td></tr>
+                                                    <tr><td className="print-table__label">Session Submitted:</td><td>{submission?.submittedAt ? getSafeDate(submission.submittedAt) : 'N/A'}</td></tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    )}
                                     <div className="print-cover__tables">
                                         <div className="print-cover__table-group">
                                             <div className="print-cover__table-heading">MODULE INFORMATION</div>

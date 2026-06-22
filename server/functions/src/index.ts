@@ -7116,33 +7116,59 @@ export const generateWeeklyMentorLinks = onSchedule(
         return;
       }
 
-      // 2. Group logs by Mentor Email (Linking Learner -> Active Placement -> Mentor)
-      const logsByMentor: Record<string, { name: string; logs: string[] }> = {};
+      // 2. Group logs directly by the Immutable mentorId stamped on the log
+      const logsByMentor: Record<
+        string,
+        { name: string; logs: string[]; mentorId: string }
+      > = {};
 
       for (const docSnap of logsSnap.docs) {
         const logData = docSnap.data();
         const learnerId = logData.learnerId;
+        const mentorId = logData.mentorId; // 🚀 Explicitly stamped by the UI
 
-        // Find the active placement for this learner
-        const placementSnap = await db
-          .collection("placements")
-          .where("learnerId", "==", learnerId)
-          .where("status", "in", ["Active", "active"])
-          .get();
+        if (mentorId) {
+          // 🚀 Fetch the actual mentor profile from the 'users' collection
+          const mentorProfileSnap = await db
+            .collection("users")
+            .doc(mentorId)
+            .get();
 
-        if (!placementSnap.empty) {
-          const placement = placementSnap.docs[0].data();
-          const mentorEmail = placement.mentorEmail;
+          if (mentorProfileSnap.exists) {
+            const mentorData = mentorProfileSnap.data()!;
 
-          if (mentorEmail) {
-            if (!logsByMentor[mentorEmail]) {
-              logsByMentor[mentorEmail] = {
-                name: placement.mentorName || "Workplace Mentor",
-                logs: [],
-              };
+            // 🚀 STRICT GATES: Must be a mentor, must not be archived, must have an email
+            if (
+              mentorData.role === "mentor" &&
+              mentorData.status !== "archived" &&
+              mentorData.email
+            ) {
+              const verifiedEmail = mentorData.email.toLowerCase().trim();
+              const verifiedName =
+                mentorData.fullName || logData.mentorName || "Workplace Mentor";
+
+              if (!logsByMentor[verifiedEmail]) {
+                logsByMentor[verifiedEmail] = {
+                  name: verifiedName,
+                  mentorId: mentorId,
+                  logs: [],
+                };
+              }
+              logsByMentor[verifiedEmail].logs.push(docSnap.id);
+            } else {
+              logger.warn(
+                `Mentor ${mentorId} for Learner ${learnerId} failed compliance gates (Archived, Invalid Role, or Missing Email).`,
+              );
             }
-            logsByMentor[mentorEmail].logs.push(docSnap.id);
+          } else {
+            logger.warn(
+              `Mentor profile ${mentorId} not found in users collection for Learner ${learnerId}.`,
+            );
           }
+        } else {
+          logger.warn(
+            `Pending Log ${docSnap.id} for Learner ${learnerId} is missing an immutable mentorId. Sweeper cannot route this log.`,
+          );
         }
       }
 
@@ -7158,11 +7184,12 @@ export const generateWeeklyMentorLinks = onSchedule(
         const expireDate = new Date();
         expireDate.setDate(expireDate.getDate() + 7); // Valid for 7 days
 
-        // Store the token in the DB
+        // Store the secure token in the DB
         const tokenRef = db.collection("mentor_tokens").doc(tokenId);
         batch.set(tokenRef, {
           mentorEmail: email,
           mentorName: data.name,
+          mentorId: data.mentorId, // Store the verified mentor UID
           logIds: data.logs,
           status: "pending",
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -7209,11 +7236,15 @@ export const generateWeeklyMentorLinks = onSchedule(
       if (tokenCount > 0) {
         await batch.commit();
         logger.info(
-          `Successfully saved ${tokenCount} mentor magic tokens to Firestore.`,
+          `Successfully saved ${tokenCount} verified mentor magic tokens to Firestore.`,
         );
         await Promise.all(emailPromises);
         logger.info(
           `Successfully dispatched ${emailPromises.length} secure mentor emails.`,
+        );
+      } else {
+        logger.info(
+          "No valid mentors resolved for the pending logs. Zero emails dispatched.",
         );
       }
     } catch (error) {
@@ -7222,6 +7253,7 @@ export const generateWeeklyMentorLinks = onSchedule(
   },
 );
 
+// ─── MANUAL TRIGGER FOR TESTING ───
 // ─── MANUAL TRIGGER FOR TESTING ───
 export const testGenerateWeeklyMentorLinks = onRequest(
   { secrets: [mailgunSecret], timeoutSeconds: 120, memory: "256MiB" },
@@ -7245,16 +7277,67 @@ export const testGenerateWeeklyMentorLinks = onRequest(
 
         const TEST_EMAIL = "codetribe@mlab.co.za";
 
-        const logsByMentor: Record<string, { name: string; logs: string[] }> =
-          {};
+        // Mirror exact verification logic in Test mode
+        const logsByMentor: Record<
+          string,
+          { name: string; logs: string[]; mentorId: string }
+        > = {};
+
         for (const docSnap of logsSnap.docs) {
-          if (!logsByMentor[TEST_EMAIL]) {
-            logsByMentor[TEST_EMAIL] = {
-              name: "Test Mentor (Admin)",
-              logs: [],
-            };
+          const logData = docSnap.data();
+          const mentorId = logData.mentorId;
+          const learnerId = logData.learnerId; // 🚀 Kept and used below to fix the ts(6133) warning!
+
+          if (mentorId) {
+            const mentorProfileSnap = await db
+              .collection("users")
+              .doc(mentorId)
+              .get();
+
+            if (mentorProfileSnap.exists) {
+              const mentorData = mentorProfileSnap.data()!;
+
+              if (
+                mentorData.role === "mentor" &&
+                mentorData.status !== "archived"
+              ) {
+                const verifiedName =
+                  mentorData.fullName || logData.mentorName || "Test Mentor";
+
+                // Overwrite the destination email to the test email, but keep real logic
+                if (!logsByMentor[TEST_EMAIL]) {
+                  logsByMentor[TEST_EMAIL] = {
+                    name: `${verifiedName} (TEST MODE)`,
+                    mentorId: mentorId,
+                    logs: [],
+                  };
+                }
+                logsByMentor[TEST_EMAIL].logs.push(docSnap.id);
+              } else {
+                // 🚀 Explicitly using learnerId to provide contextual audit trails
+                logger.warn(
+                  `Test Sweeper: Mentor ${mentorId} for Learner ${learnerId || "Unknown"} failed compliance gates.`,
+                );
+              }
+            } else {
+              logger.warn(
+                `Test Sweeper: Mentor Profile ${mentorId} not found for Learner ${learnerId || "Unknown"}.`,
+              );
+            }
+          } else {
+            logger.warn(
+              `Test Sweeper: Log ${docSnap.id} for Learner ${learnerId || "Unknown"} is missing a mentorId.`,
+            );
           }
-          logsByMentor[TEST_EMAIL].logs.push(docSnap.id);
+        }
+
+        if (Object.keys(logsByMentor).length === 0) {
+          res.status(200).send({
+            success: true,
+            message:
+              "No valid mentors resolved for pending logs in Test mode. Check your Firebase logs for compliance warnings.",
+          });
+          return;
         }
 
         const batch = db.batch();
@@ -7267,8 +7350,9 @@ export const testGenerateWeeklyMentorLinks = onRequest(
 
           const tokenRef = db.collection("mentor_tokens").doc(tokenId);
           batch.set(tokenRef, {
-            mentorEmail: email,
+            mentorEmail: email, // Will be the test email
             mentorName: data.name,
+            mentorId: data.mentorId,
             logIds: data.logs,
             status: "pending",
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -7384,6 +7468,7 @@ export const getMentorVerificationDetails = onCall(async (request) => {
     throw new HttpsError("internal", "Failed to verify token.");
   }
 });
+
 export const submitMentorApproval = onCall(async (request) => {
   // EXTRACT BOTH signatureBase64 (if new) OR existingSignatureUrl (if reused)
   const {
@@ -7455,6 +7540,8 @@ export const submitMentorApproval = onCall(async (request) => {
         processedBy: data.mentorEmail,
         approvalIpAddress: request.rawRequest?.ip || "Remote IP",
         userAgent: userAgent || "Unknown",
+        // 🚀 INJECT EXACT MENTOR UID INTO THE LOG METADATA AUDIT TRAIL
+        verifiedMentorId: data.mentorId || null,
       };
 
       if (finalSignatureUrl)
@@ -7494,6 +7581,7 @@ export const submitMentorApproval = onCall(async (request) => {
     );
   }
 });
+
 // ============================================================================
 // GEOSPATIAL REVERSE-GEOCODING ENGINE (BOOTCAMP ADDRESSES)
 // ============================================================================
