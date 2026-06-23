@@ -34,7 +34,6 @@ interface EvidenceLineItem {
 interface LearnerWorkplaceLogModalProps {
     learner: any;
     existingLog?: any;
-    // 🚀 Context payload containing the specific employment bounds mapped from the unified view
     placementContext?: { placementId?: string, employerId?: string, mentorId?: string };
     onClose: () => void;
 }
@@ -44,18 +43,18 @@ export const LearnerWorkplaceLogModal: React.FC<LearnerWorkplaceLogModalProps> =
     const { cohorts, fetchCohorts } = useStore() as any;
     const [isSaving, setIsSaving] = useState(false);
 
-    // ─── 🚀 DEBUG INJECTION: LOG CONTEXT ON MOUNT ───
-    useEffect(() => {
-        console.group('🚀 [DEBUG] MODAL MOUNT: INJECTED PLACEMENT CONTEXT');
-        console.log('Raw Placement Context Prop:', placementContext);
-        console.log('Fallback Learner Object IDs:', {
-            employerId: learner?.employerId,
-            mentorId: learner?.mentorId
-        });
-        console.log('Final Resolved Mentor ID:', placementContext?.mentorId || learner?.mentorId);
-        console.log('Final Resolved Employer ID:', placementContext?.employerId || learner?.employerId);
-        console.groupEnd();
-    }, [placementContext, learner]);
+    // // ─── 🚀 DEBUG INJECTION: LOG CONTEXT ON MOUNT ───
+    // useEffect(() => {
+    //     console.group('🚀 [DEBUG] MODAL MOUNT: INJECTED PLACEMENT CONTEXT');
+    //     console.log('Raw Placement Context Prop:', placementContext);
+    //     console.log('Fallback Learner Object IDs:', {
+    //         employerId: learner?.employerId,
+    //         mentorId: learner?.mentorId
+    //     });
+    //     console.log('Final Resolved Mentor ID:', placementContext?.mentorId || learner?.mentorId);
+    //     console.log('Final Resolved Employer ID:', placementContext?.employerId || learner?.employerId);
+    //     console.groupEnd();
+    // }, [placementContext, learner]);
 
     // ─── FORM STATE ───
     const [selectedCohortId, setSelectedCohortId] = useState(existingLog ? existingLog.cohortId : (learner.cohortId || ''));
