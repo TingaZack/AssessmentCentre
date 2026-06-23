@@ -411,25 +411,52 @@ const AssessmentPlayer: React.FC = () => {
 
 
     // ─── GRAND TOTALS ──────────────────────────────────────────────────────
+    // const getBlockGrading = (blockId: string) => {
+    //     if (!isFacDone) return { score: undefined, feedback: '', facFeedback: '', assFeedback: '', modFeedback: '', facIsCorrect: null, assIsCorrect: null, modIsCorrect: null, isCorrect: null, criteriaResults: [] };
+    //     const g = submission?.grading || {};
+    //     const m = submission?.moderation || {};
+    //     const mLayer = m.breakdown?.[blockId] || {};
+    //     const aLayer = g.assessorBreakdown?.[blockId] || {};
+    //     const fLayer = g.facilitatorBreakdown?.[blockId] || {};
+    //     const legacyLayer = g.breakdown?.[blockId] || {};
+    //     let activeLayer: any = legacyLayer;
+    //     if (isFacDone) activeLayer = fLayer;
+    //     if (isAssDone) activeLayer = aLayer;
+    //     if (isModDone) activeLayer = mLayer;
+    //     return {
+    //         score: activeLayer.score, isCorrect: activeLayer.isCorrect,
+    //         facIsCorrect: fLayer.isCorrect !== undefined ? fLayer.isCorrect : legacyLayer.isCorrect,
+    //         assIsCorrect: aLayer.isCorrect, modIsCorrect: mLayer.isCorrect,
+    //         feedback: activeLayer.feedback || '', facFeedback: fLayer.feedback || legacyLayer.feedback || '',
+    //         assFeedback: aLayer.feedback || '', modFeedback: mLayer.feedback || '',
+    //         criteriaResults: activeLayer.criteriaResults || [],
+    //     };
+    // };
+
     const getBlockGrading = (blockId: string) => {
-        if (!isFacDone) return { score: undefined, feedback: '', facFeedback: '', assFeedback: '', modFeedback: '', facIsCorrect: null, assIsCorrect: null, modIsCorrect: null, isCorrect: null, criteriaResults: [] };
         const g = submission?.grading || {};
         const m = submission?.moderation || {};
         const mLayer = m.breakdown?.[blockId] || {};
         const aLayer = g.assessorBreakdown?.[blockId] || {};
         const fLayer = g.facilitatorBreakdown?.[blockId] || {};
         const legacyLayer = g.breakdown?.[blockId] || {};
-        let activeLayer: any = legacyLayer;
-        if (isFacDone) activeLayer = fLayer;
-        if (isAssDone) activeLayer = aLayer;
-        if (isModDone) activeLayer = mLayer;
+
+        // Dynamically use live data from whichever agent has evaluated the item
+        let activeLayer = fLayer || legacyLayer || {};
+        if (isAssDone || g.assessorBreakdown?.[blockId]) activeLayer = aLayer;
+        if (isModDone || m.breakdown?.[blockId]) activeLayer = mLayer;
+
         return {
-            score: activeLayer.score, isCorrect: activeLayer.isCorrect,
-            facIsCorrect: fLayer.isCorrect !== undefined ? fLayer.isCorrect : legacyLayer.isCorrect,
-            assIsCorrect: aLayer.isCorrect, modIsCorrect: mLayer.isCorrect,
-            feedback: activeLayer.feedback || '', facFeedback: fLayer.feedback || legacyLayer.feedback || '',
-            assFeedback: aLayer.feedback || '', modFeedback: mLayer.feedback || '',
-            criteriaResults: activeLayer.criteriaResults || [],
+            score: activeLayer?.score,
+            isCorrect: activeLayer?.isCorrect,
+            facIsCorrect: fLayer?.isCorrect !== undefined ? fLayer.isCorrect : legacyLayer?.isCorrect,
+            assIsCorrect: aLayer?.isCorrect,
+            modIsCorrect: mLayer?.isCorrect,
+            feedback: activeLayer?.feedback || '',
+            facFeedback: fLayer?.feedback || legacyLayer?.feedback || '',
+            assFeedback: aLayer?.feedback || '',
+            modFeedback: mLayer?.feedback || '',
+            criteriaResults: activeLayer?.criteriaResults || fLayer?.criteriaResults || legacyLayer?.criteriaResults || [],
         };
     };
 

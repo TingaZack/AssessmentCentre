@@ -1,6 +1,6 @@
 // src/components/views/AssessmentPlayer/AssessmentPlayerContent.tsx
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
     ArrowLeft, Save, CheckCircle, Info, ShieldAlert, AlertCircle, Play, Clock,
     GraduationCap, BookOpen, Scale, Wifi, UserCheck, Timer, AlertTriangle,
@@ -47,6 +47,7 @@ const formatTime = (s: number) => {
     return h > 0 ? `${h}h ${m}m ${sec.toString().padStart(2, '0')}s` : `${m}m ${sec.toString().padStart(2, '0')}s`;
 };
 
+
 const quillModules = { toolbar: [['bold', 'italic', 'underline', 'code-block'], [{ list: 'ordered' }, { list: 'bullet' }], ['clean']] };
 const quillFormats = ['bold', 'italic', 'underline', 'code-block', 'list', 'bullet'];
 
@@ -74,6 +75,79 @@ const ProgressRing: React.FC<{ progress: number; size?: number; strokeWidth?: nu
                 style={{ transition: 'stroke-dashoffset 0.5s ease-out', transform: 'rotate(-90deg)', transformOrigin: '50% 50%' }}
             />
         </svg>
+    );
+};
+
+// ───  QCTO UI TOOLKIT: REAL-TIME COMPLIANCE WRAPPER ───────────────────
+const CollapsibleEvidenceWrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+    const [isExpanded, setIsExpanded] = useState(false);
+    const contentRef = useRef<HTMLDivElement>(null);
+    const [needsCollapse, setNeedsCollapse] = useState(false);
+
+    useEffect(() => {
+        if (contentRef.current) {
+            // If content is larger than 160px, it qualifies for a glimpse fold
+            setNeedsCollapse(contentRef.current.scrollHeight > 160);
+        }
+    }, [children]);
+
+    const showFold = needsCollapse && !isExpanded;
+
+    return (
+        <div style={{ position: 'relative', marginTop: '8px' }}>
+            <div
+                ref={contentRef}
+                style={{
+                    maxHeight: isExpanded ? 'none' : '160px',
+                    overflow: 'hidden',
+                    transition: 'max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                    position: 'relative',
+                    borderRadius: '4px',
+                    border: '1px solid #e2e8f0',
+                    background: '#f8fafc'
+                }}
+            >
+                <div style={{ padding: '12px' }}>{children}</div>
+
+                {/* Overlay gradient mask to indicate there is more text/file below */}
+                {showFold && (
+                    <div style={{
+                        position: 'absolute',
+                        bottom: 0,
+                        left: 0,
+                        right: 0,
+                        height: '40px',
+                        background: 'linear-gradient(to top, #f8fafc, transparent)',
+                        pointerEvents: 'none'
+                    }} />
+                )}
+            </div>
+
+            {needsCollapse && (
+                <div style={{ display: 'flex', justifyContent: 'flex-start', marginTop: '6px' }}>
+                    <button
+                        type="button"
+                        onClick={() => setIsExpanded(!isExpanded)}
+                        style={{
+                            fontSize: '0.72rem',
+                            fontWeight: 'bold',
+                            color: '#4f46e5',
+                            background: '#eff6ff',
+                            border: '1px solid #bfdbfe',
+                            padding: '4px 10px',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            userSelect: 'none'
+                        }}
+                    >
+                        {isExpanded ? 'Collapse Evidence View ↑' : 'Expand Evidence View ↓'}
+                    </button>
+                </div>
+            )}
+        </div>
     );
 };
 
@@ -250,11 +324,18 @@ export const AssessmentPlayerContent: React.FC<AssessmentPlayerContentProps> = (
         return acc;
     }, []) || [];
 
+    // const displayStatus = submission.status.replace('_', ' ');
+    // const canEditTask = !isGloballyLocked;
+    // const canEditChecklist = !isGloballyLocked;
+    // const canEditLogbook = !isGloballyLocked;
+    // const canEditWorkplace = !isGloballyLocked;
+
     const displayStatus = submission.status.replace('_', ' ');
+
     const canEditTask = !isGloballyLocked;
-    const canEditChecklist = !isGloballyLocked;
+    const canEditChecklist = !isGloballyLocked || isAwaitingSignoff;
     const canEditLogbook = !isGloballyLocked;
-    const canEditWorkplace = !isGloballyLocked;
+    const canEditWorkplace = !isGloballyLocked || isAwaitingSignoff;
 
     // ─── Render block image helper ──────────────────────────────────────────
     const renderBlockImage = (block: any) => {
@@ -690,10 +771,14 @@ export const AssessmentPlayerContent: React.FC<AssessmentPlayerContentProps> = (
                                     const typeChipClass = block.type === 'checklist' ? 'ap-block-type-chip--chk' : block.type === 'logbook' ? 'ap-block-type-chip--log' : block.type === 'qcto_workplace' ? 'ap-block-type-chip--qcto' : block.type === 'task' ? 'ap-block-type-chip--task' : 'ap-block-type-chip--q';
                                     const typeLabel = block.type === 'checklist' ? 'CHK' : block.type === 'logbook' ? 'LOG' : block.type === 'qcto_workplace' ? 'QCTO' : `Q${qNum}.`;
 
+                                    // // ─── 🚀 LIVE UPLOAD LOCK MECHANISM ──
+                                    // // Determines if the user is allowed to edit or upload evidence for THIS specific block
+                                    // const isSectionVerified = isBlockVerified(block.id);
+                                    // const isUploadLocked = isGloballyLocked || isSectionVerified;
                                     // ─── 🚀 LIVE UPLOAD LOCK MECHANISM ──
-                                    // Determines if the user is allowed to edit or upload evidence for THIS specific block
+                                    // Bypasses global lock during the sign-off phase so learners can upload pending evidence
                                     const isSectionVerified = isBlockVerified(block.id);
-                                    const isUploadLocked = isGloballyLocked || isSectionVerified;
+                                    const isUploadLocked = isAwaitingSignoff ? false : (isGloballyLocked || isSectionVerified);
 
                                     return (
                                         <div key={block.id} id={`block-${block.id}`} className={`ap-block-question${isUploadLocked && !isAwaitingSignoff ? ' ap-block-question--locked' : ''}`}>
@@ -776,12 +861,28 @@ export const AssessmentPlayerContent: React.FC<AssessmentPlayerContentProps> = (
                                                                     <Info size={14} /> You may attach your evidence now. This section will lock automatically once your Facilitator/Mentor verifies it.
                                                                 </div>
                                                             )}
-                                                            {isSectionVerified && !isGloballyLocked && (
+                                                            {/* {isSectionVerified && !isGloballyLocked && (
                                                                 <div className="ap-evidence-lock-banner" style={{ background: '#f0fdf4', borderColor: '#bbf7d0', color: '#166534', marginBottom: '10px' }}>
                                                                     <Lock size={14} color="#166534" />
                                                                     Evidence Locked: A facilitator has officially verified this section. You can no longer alter these files.
                                                                 </div>
+                                                            )} */}
+                                                            {isSectionVerified && !isGloballyLocked && !isAwaitingSignoff && (
+                                                                <div className="ap-checklist__lock-notice" style={{ background: '#f0fdf4', borderColor: '#bbf7d0', color: '#166534' }}>
+                                                                    <Lock size={14} color="#166534" />
+                                                                    Evidence Locked: A facilitator has officially verified this section. You can no longer alter these files.
+                                                                </div>
                                                             )}
+                                                            {isAwaitingSignoff && (
+                                                                <div className="ap-checklist__lock-notice" style={{ background: '#fffbeb', borderColor: '#fef3c7', color: '#b45309' }}>
+                                                                    <AlertTriangle size={14} color="#d97706" style={{ marginRight: '6px' }} />
+                                                                    <strong>Observation Complete — Evidence Required:</strong> Your mentor has finalized their tracking. Please attach the matching proof artifacts to each verified item below before submitting.
+                                                                </div>
+                                                            )}
+                                                            {!isAwaitingSignoff && !isSubmitted && !isSectionVerified && (
+                                                                <div className="ap-checklist__lock-notice"><Lock size={14} /> Evidence uploads will be unlocked <strong>after</strong> your Mentor completes the live evaluation window.</div>
+                                                            )}
+
                                                             <div className="ap-tab-bar no-print">
                                                                 {taskTabs.map(t => <button key={t.id} className={`ap-tab${activeTabId === t.id ? ' ap-tab--active' : ''}`} onClick={() => setActiveTabs({ ...activeTabs, [block.id]: t.id })}>{t.icon} {t.label} {!!t.val && <CheckCircle size={11} className="ap-tab__done" />}</button>)}
                                                             </div>
@@ -811,20 +912,26 @@ export const AssessmentPlayerContent: React.FC<AssessmentPlayerContentProps> = (
                                                         </div>
                                                     );
                                                 })()}
-
                                                 {/* CHECKLIST */}
                                                 {block.type === 'checklist' && (
                                                     <div className="ap-checklist">
                                                         <p className="ap-checklist__info"><Info size={14} style={{ flexShrink: 0 }} /> Your Mentor/Assessor evaluates each item. Upload evidence for each if required below.</p>
 
-                                                        {isSectionVerified && !isGloballyLocked && (
+                                                        {/* ── Dynamic Layout Lock Notice Banners ── */}
+                                                        {isSectionVerified && !isGloballyLocked && !isAwaitingSignoff && (
                                                             <div className="ap-checklist__lock-notice" style={{ background: '#f0fdf4', borderColor: '#bbf7d0', color: '#166534' }}>
                                                                 <Lock size={14} color="#166534" />
                                                                 Evidence Locked: A facilitator has officially verified this section. You can no longer alter these files.
                                                             </div>
                                                         )}
+                                                        {isAwaitingSignoff && (
+                                                            <div className="ap-checklist__lock-notice" style={{ background: '#fffbeb', borderColor: '#fef3c7', color: '#b45309' }}>
+                                                                <AlertTriangle size={14} color="#d97706" style={{ marginRight: '6px' }} />
+                                                                <strong>Observation Complete — Evidence Required:</strong> Your mentor has finalized their tracking. Please attach the matching proof artifacts to each verified item below before submitting.
+                                                            </div>
+                                                        )}
                                                         {!isAwaitingSignoff && !isSubmitted && !isSectionVerified && (
-                                                            <div className="ap-checklist__lock-notice"><Lock size={14} /> Evidence uploads will be unlocked <strong>after</strong> your Mentor completes the observation.</div>
+                                                            <div className="ap-checklist__lock-notice"><Lock size={14} /> Evidence uploads will be unlocked <strong>after</strong> your Mentor completes the live evaluation window.</div>
                                                         )}
 
                                                         {block.criteria?.map((crit: string, i: number) => {
@@ -840,6 +947,10 @@ export const AssessmentPlayerContent: React.FC<AssessmentPlayerContentProps> = (
                                                                 { id: 'text', icon: <FileText size={12} />, label: 'Notes', val: critEv?.text },
                                                             ];
 
+                                                            // Flags to calculate dynamic evaluation callouts
+                                                            const hasUploadedEvidence = !!(critEv.uploadUrl || critEv.url || critEv.code || critEv.text);
+                                                            const isObserved = !!res.status;
+
                                                             const tabs = (!canEditChecklist || isUploadLocked) ? allTabs.filter(t => t.val) : allTabs;
                                                             const activeCtab = activeTabs[cTabKey] || tabs[0]?.id || 'upload';
                                                             const progress = uploadProgress[`${block.id}_${critKey}`];
@@ -847,36 +958,134 @@ export const AssessmentPlayerContent: React.FC<AssessmentPlayerContentProps> = (
                                                             return (
                                                                 <div key={i} className="ap-checklist__item">
                                                                     <p className="ap-checklist__item-title">{i + 1}. {crit}</p>
+
                                                                     <div className="ap-checklist__assessor-row">
-                                                                        {isFacDone ? (
-                                                                            <><span className={`ap-checklist__status-chip${res.status === 'C' ? ' ap-checklist__status-chip--c' : res.status === 'NYC' ? ' ap-checklist__status-chip--nyc' : ' ap-checklist__status-chip--pending'}`}>{res.status ? (savedFacRole === 'mentor' ? (res.status === 'C' ? 'Observed ✓' : 'Not Observed ✗') : (res.status === 'C' ? 'Competent (C)' : 'Not Yet Competent (NYC)')) : 'Not Graded'}</span>{res.comment && <span className="ap-checklist__assessor-comment">"{res.comment}"</span>}</>
-                                                                        ) : <span className="ap-checklist__status-chip ap-checklist__status-chip--pending">Pending Observation</span>}
+                                                                        {/* 🚀 Dynamic live item metrics stream (Unblocks real-time evaluation states) */}
+                                                                        {res.status ? (
+                                                                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                                                                <div>
+                                                                                    <span className={`ap-checklist__status-chip ${res.status === 'C' ? 'ap-checklist__status-chip--c' : 'ap-checklist__status-chip--nyc'}`}>
+                                                                                        {savedFacRole === 'mentor'
+                                                                                            ? (res.status === 'C' ? 'Observed ✓' : 'Not Observed ✗')
+                                                                                            : (res.status === 'C' ? 'Competent (C)' : 'Not Yet Competent (NYC)')}
+                                                                                    </span>
+                                                                                </div>
+                                                                                {res.comment && <span className="ap-checklist__assessor-comment">"{res.comment}"</span>}
+                                                                            </div>
+                                                                        ) : (
+                                                                            <span className="ap-checklist__status-chip ap-checklist__status-chip--pending">Pending Observation</span>
+                                                                        )}
                                                                     </div>
+
                                                                     {block.requireEvidencePerCriterion !== false && (
                                                                         <div className="ap-checklist__evidence-tabs">
+
+                                                                            {/* ⚠️ Case A: Mentor has filled out their checklist but corresponding learner files are missing */}
+                                                                            {isObserved && !hasUploadedEvidence && (
+                                                                                <div style={{ background: '#fffbeb', border: '1px solid #fef3c7', padding: '10px 12px', borderRadius: '6px', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px', color: '#b45309', fontSize: '0.78rem', fontWeight: 'bold' }}>
+                                                                                    <AlertTriangle size={14} style={{ color: '#d97706', flexShrink: 0 }} />
+                                                                                    <span>EVIDENCE PENDING: Please upload a file, paste a link, or write a reflection below to back up this observation.</span>
+                                                                                </div>
+                                                                            )}
+
+                                                                            {/* ✅ Case B: Uploaded file draft is saved and visible on the mentor's dashboard */}
+                                                                            {hasUploadedEvidence && !isGloballyLocked && (
+                                                                                <div style={{ background: '#f5f3ff', border: '1px solid #e0e7ff', padding: '10px 12px', borderRadius: '6px', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px', color: '#6d28d9', fontSize: '0.78rem', fontWeight: 'bold' }}>
+                                                                                    <CheckCircle size={14} style={{ color: '#8b5cf6', flexShrink: 0 }} />
+                                                                                    <span>Evidence Saved (Draft Preview visible to Mentor)</span>
+                                                                                </div>
+                                                                            )}
+
                                                                             <div className="ap-checklist__tab-bar">
                                                                                 {tabs.length > 0 ? tabs.map(t => <button key={t.id} className={`ap-checklist__tab${activeCtab === t.id ? ' ap-checklist__tab--active' : ''}`} onClick={() => setActiveTabs({ ...activeTabs, [cTabKey]: t.id })}>{t.icon} {t.label} {!!t.val && <CheckCircle size={10} color="#10b981" />}</button>) : <div className="ap-checklist__no-evidence">No evidence provided.</div>}
                                                                             </div>
+
                                                                             {tabs.length > 0 && (
-                                                                                <div className="ap-checklist__tab-panel">
-                                                                                    {activeCtab === 'upload' && (progress !== undefined ? <UploadProgress progress={progress} /> : critEv.uploadUrl ? <FilePreview url={critEv.uploadUrl} onRemove={!isUploadLocked && canEditChecklist ? () => handleNestedAnswerChange(block.id, critKey, 'uploadUrl', '') : undefined} disabled={isUploadLocked || !canEditChecklist} /> : <input type="file" disabled={isUploadLocked || !canEditChecklist} onChange={e => e.target.files?.[0] && handleFileUpload(e.target.files[0], block.id, critKey)} style={{ fontSize: '0.82rem', width: '100%' }} />)}
-                                                                                    {activeCtab === 'url' && (<div>{canEditChecklist && !isUploadLocked && <div className="ap-url-note"><strong>Note:</strong> Ensure Google Drive links are set to <em>"Anyone with the link can view"</em>.</div>}{critEv.url && (isUploadLocked || !canEditChecklist) ? <UrlPreview url={critEv.url} /> : <input type="url" className="ab-input" value={critEv.url || ''} onChange={e => handleNestedAnswerChange(block.id, critKey, 'url', e.target.value)} disabled={isUploadLocked || !canEditChecklist} placeholder="https://…" />}</div>)}
-                                                                                    {activeCtab === 'code' && <textarea className="ap-code-textarea" rows={3} value={critEv.code || ''} onChange={e => handleNestedAnswerChange(block.id, critKey, 'code', e.target.value)} disabled={isUploadLocked || !canEditChecklist} placeholder="Paste code snippet…" onCopyCapture={preventCopyPasteAndDrop} onCutCapture={preventCopyPasteAndDrop} onPasteCapture={preventCopyPasteAndDrop} onDropCapture={preventCopyPasteAndDrop} onKeyDownCapture={preventCopyPasteAndDrop} />}
-                                                                                    {activeCtab === 'text' && (
-                                                                                        <div className={`ap-quill-wrapper${isUploadLocked || !canEditChecklist ? ' locked' : ''}`} onCopyCapture={preventCopyPasteAndDrop} onCutCapture={preventCopyPasteAndDrop} onPasteCapture={preventCopyPasteAndDrop} onDropCapture={preventCopyPasteAndDrop} onKeyDownCapture={preventCopyPasteAndDrop}>
-                                                                                            {isGloballyLocked && !isAwaitingSignoff ? (
-                                                                                                // FIXED HTML PARSING FOR CHECKLIST TEXT
-                                                                                                <div className="quill-read-only-content" style={{ padding: '1rem', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(critEv.text) || '<em>No notes provided.</em>' }} />
-                                                                                            ) : (
-                                                                                                <ReactQuill theme="snow" value={critEv.text || ''} onChange={c => handleNestedAnswerChange(block.id, critKey, 'text', c)} readOnly={isUploadLocked || !canEditChecklist} modules={quillModules} formats={quillFormats} placeholder="Type evidence notes…" />
-                                                                                            )}
-                                                                                        </div>
-                                                                                    )}
-                                                                                </div>
+                                                                                /* 🚀 Wrapped inside the smart collapsible observer fold to prevent layout stretching */
+                                                                                <CollapsibleEvidenceWrapper>
+                                                                                    <div className="ap-checklist__tab-panel">
+                                                                                        {activeCtab === 'upload' && (progress !== undefined ? <UploadProgress progress={progress} /> : critEv.uploadUrl ? <FilePreview url={critEv.uploadUrl} onRemove={!isUploadLocked && canEditChecklist ? () => handleNestedAnswerChange(block.id, critKey, 'uploadUrl', '') : undefined} disabled={isUploadLocked || !canEditChecklist} /> : <input type="file" disabled={isUploadLocked || !canEditChecklist} onChange={e => e.target.files?.[0] && handleFileUpload(e.target.files[0], block.id, critKey)} style={{ fontSize: '0.82rem', width: '100%' }} />)}
+                                                                                        {activeCtab === 'url' && (<div>{canEditChecklist && !isUploadLocked && <div className="ap-url-note"><strong>Note:</strong> Ensure Google Drive links are set to <em>"Anyone with the link can view"</em>.</div>}{critEv.url && (isUploadLocked || !canEditChecklist) ? <UrlPreview url={critEv.url} /> : <input type="url" className="ab-input" value={critEv.url || ''} onChange={e => handleNestedAnswerChange(block.id, critKey, 'url', e.target.value)} disabled={isUploadLocked || !canEditChecklist} placeholder="https://…" />}</div>)}
+                                                                                        {activeCtab === 'code' && <textarea className="ap-code-textarea" rows={3} value={critEv.code || ''} onChange={e => handleNestedAnswerChange(block.id, critKey, 'code', e.target.value)} disabled={isUploadLocked || !canEditChecklist} placeholder="Paste code snippet…" onCopyCapture={preventCopyPasteAndDrop} onCutCapture={preventCopyPasteAndDrop} onPasteCapture={preventCopyPasteAndDrop} onDropCapture={preventCopyPasteAndDrop} onKeyDownCapture={preventCopyPasteAndDrop} />}
+                                                                                        {activeCtab === 'text' && (
+                                                                                            <div className={`ap-quill-wrapper${isUploadLocked || !canEditChecklist ? ' locked' : ''}`} onCopyCapture={preventCopyPasteAndDrop} onCutCapture={preventCopyPasteAndDrop} onPasteCapture={preventCopyPasteAndDrop} onDropCapture={preventCopyPasteAndDrop} onKeyDownCapture={preventCopyPasteAndDrop}>
+                                                                                                {isGloballyLocked && !isAwaitingSignoff ? (
+                                                                                                    <div className="quill-read-only-content" style={{ padding: '1rem', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(critEv.text) || '<em>No notes provided.</em>' }} />
+                                                                                                ) : (
+                                                                                                    <ReactQuill theme="snow" value={critEv.text || ''} onChange={c => handleNestedAnswerChange(block.id, critKey, 'text', c)} readOnly={isUploadLocked || !canEditChecklist} modules={quillModules} formats={quillFormats} placeholder="Type evidence notes…" />
+                                                                                                )}
+                                                                                            </div>
+                                                                                        )}
+                                                                                    </div>
+                                                                                </CollapsibleEvidenceWrapper>
                                                                             )}
                                                                         </div>
                                                                     )}
                                                                 </div>
+                                                                // <div key={i} className="ap-checklist__item">
+                                                                //     <p className="ap-checklist__item-title">{i + 1}. {crit}</p>
+
+                                                                //     <div className="ap-checklist__assessor-row">
+                                                                //         {/* 🚀 Dynamic live item metrics stream (Unblocks real-time evaluation states) */}
+                                                                //         {res.status ? (
+                                                                //             <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                                                //                 <div>
+
+                                                                //                     <span className={`ap-checklist__status-chip ${res.status === 'C' ? 'ap-checklist__status-chip--c' : 'ap-checklist__status-chip--nyc'}`}>
+                                                                //                         {savedFacRole === 'mentor'
+                                                                //                             ? (res.status === 'C' ? 'Observed ✓' : 'Not Observed ✗')
+                                                                //                             : (res.status === 'C' ? 'Competent (C)' : 'Not Yet Competent (NYC)')}
+                                                                //                     </span>
+                                                                //                 </div>
+                                                                //                 {res.comment && <span className="ap-checklist__assessor-comment">"{res.comment}"</span>}
+                                                                //             </div>
+                                                                //         ) : (
+                                                                //             <span className="ap-checklist__status-chip ap-checklist__status-chip--pending">Pending Observation</span>
+                                                                //         )}
+                                                                //     </div>
+
+                                                                //     {block.requireEvidencePerCriterion !== false && (
+                                                                //         <div className="ap-checklist__evidence-tabs">
+
+                                                                //             {/* ⚠️ Case A: Mentor has filled out their checklist but corresponding learner files are missing */}
+                                                                //             {isObserved && !hasUploadedEvidence && (
+                                                                //                 <div style={{ background: '#fffbeb', border: '1px solid #fef3c7', padding: '10px 12px', borderRadius: '6px', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px', color: '#b45309', fontSize: '0.78rem', fontWeight: 'bold' }}>
+                                                                //                     <AlertTriangle size={14} style={{ color: '#d97706', flexShrink: 0 }} />
+                                                                //                     <span>EVIDENCE PENDING: Please upload a file, paste a link, or write a reflection below to back up this observation.</span>
+                                                                //                 </div>
+                                                                //             )}
+
+                                                                //             ✅ Case B: Uploaded file draft is saved and visible on the mentor's dashboard
+                                                                //             {hasUploadedEvidence && !isGloballyLocked && (
+                                                                //                 <div style={{ background: '#f5f3ff', border: '1px solid #e0e7ff', padding: '10px 12px', borderRadius: '6px', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px', color: '#6d28d9', fontSize: '0.78rem', fontWeight: 'bold' }}>
+                                                                //                     <CheckCircle size={14} style={{ color: '#8b5cf6', flexShrink: 0 }} />
+                                                                //                     <span>Evidence Saved (Draft Preview visible to Mentor)</span>
+                                                                //                 </div>
+                                                                //             )}
+
+                                                                //             <div className="ap-checklist__tab-bar">
+                                                                //                 {tabs.length > 0 ? tabs.map(t => <button key={t.id} className={`ap-checklist__tab${activeCtab === t.id ? ' ap-checklist__tab--active' : ''}`} onClick={() => setActiveTabs({ ...activeTabs, [cTabKey]: t.id })}>{t.icon} {t.label} {!!t.val && <CheckCircle size={10} color="#10b981" />}</button>) : <div className="ap-checklist__no-evidence">No evidence provided.</div>}
+                                                                //             </div>
+
+                                                                //             {tabs.length > 0 && (
+                                                                //                 <div className="ap-checklist__tab-panel">
+                                                                //                     {activeCtab === 'upload' && (progress !== undefined ? <UploadProgress progress={progress} /> : critEv.uploadUrl ? <FilePreview url={critEv.uploadUrl} onRemove={!isUploadLocked && canEditChecklist ? () => handleNestedAnswerChange(block.id, critKey, 'uploadUrl', '') : undefined} disabled={isUploadLocked || !canEditChecklist} /> : <input type="file" disabled={isUploadLocked || !canEditChecklist} onChange={e => e.target.files?.[0] && handleFileUpload(e.target.files[0], block.id, critKey)} style={{ fontSize: '0.82rem', width: '100%' }} />)}
+                                                                //                     {activeCtab === 'url' && (<div>{canEditChecklist && !isUploadLocked && <div className="ap-url-note"><strong>Note:</strong> Ensure Google Drive links are set to <em>"Anyone with the link can view"</em>.</div>}{critEv.url && (isUploadLocked || !canEditChecklist) ? <UrlPreview url={critEv.url} /> : <input type="url" className="ab-input" value={critEv.url || ''} onChange={e => handleNestedAnswerChange(block.id, critKey, 'url', e.target.value)} disabled={isUploadLocked || !canEditChecklist} placeholder="https://…" />}</div>)}
+                                                                //                     {activeCtab === 'code' && <textarea className="ap-code-textarea" rows={3} value={critEv.code || ''} onChange={e => handleNestedAnswerChange(block.id, critKey, 'code', e.target.value)} disabled={isUploadLocked || !canEditChecklist} placeholder="Paste code snippet…" onCopyCapture={preventCopyPasteAndDrop} onCutCapture={preventCopyPasteAndDrop} onPasteCapture={preventCopyPasteAndDrop} onDropCapture={preventCopyPasteAndDrop} onKeyDownCapture={preventCopyPasteAndDrop} />}
+                                                                //                     {activeCtab === 'text' && (
+                                                                //                         <div className={`ap-quill-wrapper${isUploadLocked || !canEditChecklist ? ' locked' : ''}`} onCopyCapture={preventCopyPasteAndDrop} onCutCapture={preventCopyPasteAndDrop} onPasteCapture={preventCopyPasteAndDrop} onDropCapture={preventCopyPasteAndDrop} onKeyDownCapture={preventCopyPasteAndDrop}>
+                                                                //                             {isGloballyLocked && !isAwaitingSignoff ? (
+                                                                //                                 <div className="quill-read-only-content" style={{ padding: '1rem', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(critEv.text) || '<em>No notes provided.</em>' }} />
+                                                                //                             ) : (
+                                                                //                                 <ReactQuill theme="snow" value={critEv.text || ''} onChange={c => handleNestedAnswerChange(block.id, critKey, 'text', c)} readOnly={isUploadLocked || !canEditChecklist} modules={quillModules} formats={quillFormats} placeholder="Type evidence notes…" />
+                                                                //                             )}
+                                                                //                         </div>
+                                                                //                     )}
+                                                                //                 </div>
+                                                                //             )}
+                                                                //         </div>
+                                                                //     )}
+                                                                // </div>
                                                             );
                                                         })}
                                                     </div>

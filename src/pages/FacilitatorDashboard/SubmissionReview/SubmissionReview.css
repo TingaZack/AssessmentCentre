@@ -12,6 +12,20 @@
   overflow-y: scroll;
 }
 
+.datetime-input {
+  padding: 2px 6px;
+  font-size: 0.75rem;
+  border-radius: 4px;
+  border: 1px solid #cbd5e1;
+  background: transparent;
+  color: black;
+}
+
+.datetime-input::-webkit-calendar-picker-indicator {
+  filter: invert(35%) sepia(90%) saturate(1000%) hue-rotate(200deg);
+  cursor: pointer;
+}
+
 .sr-loading {
   display: flex;
   flex-direction: column;

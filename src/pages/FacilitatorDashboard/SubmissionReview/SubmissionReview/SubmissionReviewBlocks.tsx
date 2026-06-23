@@ -9,6 +9,7 @@ import moment from 'moment';
 import { LogbookHoursTally } from './SubmissionReviewHelpers';
 import { FilePreview } from './SubmissionReviewPreviews';
 import { UrlPreview } from '../../../../components/common/UrlPreview';
+import '../SubmissionReview';
 
 // ─── TYPES (mirror the original) ─────────────────────────────────────────────
 export interface CriterionResult {
@@ -532,12 +533,15 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
                                     const modResult = mData.criteriaResults?.[i] || { status: null, comment: '' };
                                     const myResult = activeData.criteriaResults?.[i] || { status: null, comment: '', startTime: '', endTime: '' };
 
-                                    let durationStr = '';
+                                    // ─── TIMER MATH (Prevents Negative Time Bug) ───
+                                    let durationStr = '0m 0s';
                                     if (myResult.startTime && myResult.endTime) {
                                         const diffMs = new Date(myResult.endTime).getTime() - new Date(myResult.startTime).getTime();
-                                        const m = Math.floor(diffMs / 60000);
-                                        const s = Math.floor((diffMs % 60000) / 1000);
-                                        durationStr = `${m}m ${s}s`;
+                                        if (diffMs > 0) {
+                                            const m = Math.floor(diffMs / 60000);
+                                            const s = Math.floor((diffMs % 60000) / 1000);
+                                            durationStr = `${m}m ${s}s`;
+                                        }
                                     }
 
                                     return (
@@ -547,21 +551,120 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
                                             {block.requireEvidencePerCriterion !== false && (() => {
                                                 const rawEv = learnerAns?.[`evidence_${i}`];
                                                 const critEvidence = typeof rawEv === 'string' ? { text: rawEv } : (rawEv || {});
-                                                if (!critEvidence.uploadUrl && !critEvidence.url && !critEvidence.code && !critEvidence.text) {
-                                                    return <p style={{ margin: '0 0 12px 0', fontSize: '0.8rem', color: '#7c3aed', fontStyle: 'italic', background: '#f5f3ff', padding: '8px', borderRadius: '4px' }}>No evidence provided for this criterion.</p>;
+
+                                                // Clean out rich text tags to check for genuine text input
+                                                const cleanTextCheck = critEvidence.text ? critEvidence.text.replace(/<[^>]*>/g, '').trim() : '';
+                                                const isTextTrulyEmpty = cleanTextCheck.length === 0;
+
+                                                // Structural mapping for dynamic tabs
+                                                const allTabs = [
+                                                    { id: 'upload', icon: <UploadCloud size={13} />, label: 'File Artifact', val: critEvidence.uploadUrl, render: () => <FilePreview url={critEvidence.uploadUrl} /> },
+                                                    { id: 'url', icon: <LinkIcon size={13} />, label: 'Web Link', val: critEvidence.url, render: () => <UrlPreview url={critEvidence.url} /> },
+                                                    { id: 'code', icon: <Code size={13} />, label: 'Source Code', val: critEvidence.code, render: () => <pre style={{ background: '#1e293b', color: '#f8fafc', padding: '0.5rem', borderRadius: '4px', overflowX: 'auto', margin: 0, fontFamily: 'monospace', fontSize: '0.82rem' }}><code>{critEvidence.code}</code></pre> },
+                                                    { id: 'text', icon: <FileText size={13} />, label: 'Learner Notes', val: isTextTrulyEmpty ? null : critEvidence.text, render: () => <div className="quill-read-only-content" dangerouslySetInnerHTML={{ __html: cleanRichText(critEvidence.text) }} /> }
+                                                ];
+
+                                                // Strict filtering: Only display tabs holding real values
+                                                const activeEvidenceTabs = allTabs.filter(t => !!t.val);
+                                                const hasUploadedEvidence = activeEvidenceTabs.length > 0;
+                                                const isObservedOrTimed = !!(myResult.startTime || myResult.status || mentorResult.status || assessorResult.status);
+
+                                                if (!hasUploadedEvidence) {
+                                                    // State A: Mentor observed or timed it, but Learner files are missing
+                                                    if (isObservedOrTimed) {
+                                                        return (
+                                                            <div style={{ background: '#fffbeb', border: '1px solid #fef3c7', padding: '12px 15px', borderRadius: '6px', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '8px', color: '#b45309' }}>
+                                                                <AlertCircle size={18} className="animate-pulse" style={{ color: '#d97706', flexShrink: 0 }} />
+                                                                <div>
+                                                                    <span style={{ fontSize: '0.8rem', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block' }}>Evidence Pending</span>
+                                                                    <span style={{ fontSize: '0.75rem', color: '#78350f' }}>Observation logged, but waiting for the learner to upload their supporting files.</span>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    }
+                                                    // State B: Untouched entry completely empty
+                                                    return <p style={{ margin: '0 0 12px 0', fontSize: '0.8rem', color: '#64748b', fontStyle: 'italic', background: '#f1f5f9', padding: '8px', borderRadius: '4px' }}>Awaiting learner evidence upload.</p>;
                                                 }
+
+                                                // State C: Valid learner files or entries exist
+                                                const isDraft = ['not_started', 'in_progress'].includes(String(submission?.status || '').toLowerCase());
+                                                const subTabKey = `${block.id}_ev_${i}`;
+                                                const activeSubTab = activeTabs[subTabKey] || activeEvidenceTabs[0]?.id;
+                                                const selectedTabConfig = activeEvidenceTabs.find(t => t.id === activeSubTab) || activeEvidenceTabs[0];
+
+                                                const expandKey = `${subTabKey}_expanded`;
+                                                const isTabExpanded = activeTabs[expandKey] === 'true';
+
                                                 return (
-                                                    <div style={{ background: '#f5f3ff', border: '1px solid #c4b5fd', padding: '15px', borderRadius: '6px', marginBottom: '15px' }}>
-                                                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', fontWeight: 'bold', color: '#6d28d9', marginBottom: '10px', textTransform: 'uppercase' }}><Layers size={16} /> Learner Evidence Submitted</label>
-                                                        {critEvidence.uploadUrl && <FilePreview url={critEvidence.uploadUrl} />}
-                                                        {critEvidence.url && <UrlPreview url={critEvidence.url} />}
-                                                        {critEvidence.code && <pre style={{ background: '#1e293b', color: '#f8fafc', padding: '0.5rem', borderRadius: '4px', overflowX: 'auto' }}><code>{critEvidence.code}</code></pre>}
-                                                        {critEvidence.text && <div className="quill-read-only-content" dangerouslySetInnerHTML={{ __html: cleanRichText(critEvidence.text) }} />}
+                                                    <div style={{
+                                                        // 🚀 UPDATED: Distinct amber theme for unsubmitted drafts vs purple theme for submitted work
+                                                        background: isDraft ? '#fffdf5' : '#f5f3ff',
+                                                        border: isDraft ? '1px solid #fef08a' : '1px solid #c4b5fd',
+                                                        padding: '15px',
+                                                        borderRadius: '6px',
+                                                        marginBottom: '15px'
+                                                    }}>
+                                                        {/* Header Frame Label with Live Draft Tracking Warning Pill */}
+                                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
+                                                            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', fontWeight: 'bold', color: isDraft ? '#b45309' : '#6d28d9', textTransform: 'uppercase' }}>
+                                                                <Layers size={16} /> {isDraft ? 'Learner Evidence (Live Draft Preview)' : 'Learner Evidence Submitted'}
+                                                            </label>
+
+                                                            {isDraft && (
+                                                                <span style={{ fontSize: '0.68rem', background: '#d97706', color: 'white', padding: '2px 8px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                                                    Learner Modifying · Not Yet Submitted
+                                                                </span>
+                                                            )}
+                                                        </div>
+
+                                                        {/* Navigation Tab selection menu row */}
+                                                        <div className="no-print" style={{ display: 'flex', borderBottom: '1px solid #cbd5e1', gap: '4px', marginBottom: '10px', overflowX: 'auto', paddingBottom: '2px' }}>
+                                                            {activeEvidenceTabs.map(tab => (
+                                                                <button
+                                                                    key={tab.id}
+                                                                    type="button"
+                                                                    onClick={() => setActiveTabs({ ...activeTabs, [subTabKey]: tab.id })}
+                                                                    style={{
+                                                                        display: 'flex', alignItems: 'center', gap: '5px', padding: '6px 12px', fontSize: '0.75rem', border: 'none', borderBottom: activeSubTab === tab.id ? (isDraft ? '2px solid #b45309' : '2px solid #6d28d9') : '2px solid transparent', background: activeSubTab === tab.id ? 'white' : 'transparent', color: activeSubTab === tab.id ? (isDraft ? '#b45309' : '#6d28d9') : '#64748b', fontWeight: activeSubTab === tab.id ? 'bold' : 'normal', cursor: 'pointer', whiteSpace: 'nowrap', borderRadius: '4px 4px 0 0'
+                                                                    }}
+                                                                >
+                                                                    {tab.icon} {tab.label}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+
+                                                        {/* Collapsible View Height-Limiter Panel Box Container */}
+                                                        <div style={{ position: 'relative' }}>
+                                                            <div style={{
+                                                                maxHeight: isTabExpanded ? 'none' : '150px',
+                                                                overflow: 'hidden',
+                                                                transition: 'max-height 0.2s ease-out',
+                                                                border: '1px solid #cbd5e1',
+                                                                borderRadius: '4px',
+                                                                padding: '10px',
+                                                                background: 'white'
+                                                            }}>
+                                                                {selectedTabConfig?.render()}
+                                                                {!isTabExpanded && (
+                                                                    <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '30px', background: 'linear-gradient(to top, white, transparent)', pointerEvents: 'none' }} />
+                                                                )}
+                                                            </div>
+
+                                                            <div style={{ marginTop: '6px', display: 'flex', justifyContent: 'flex-start' }}>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setActiveTabs({ ...activeTabs, [expandKey]: isTabExpanded ? 'false' : 'true' })}
+                                                                    style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', padding: '3px 8px', fontSize: '0.7rem', fontWeight: 'bold', color: '#475569', borderRadius: '4px', cursor: 'pointer' }}
+                                                                >
+                                                                    {isTabExpanded ? 'Collapse Evidence View ↑' : 'Expand Evidence View ↓'}
+                                                                </button>
+                                                            </div>
+                                                        </div>
                                                     </div>
                                                 );
                                             })()}
 
-                                            {/* READ ONLY LAYERS */}
+                                            {/* READ ONLY REVIEW PANEL SECTIONS BLOCK */}
                                             {(isFacDone || mentorResult.status) && (!canFacilitatorMark || isPrintMode) && (
                                                 <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '6px', padding: '10px', marginBottom: '10px' }}>
                                                     <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#1d4ed8', textTransform: 'uppercase', display: 'flex', gap: '5px' }}>
@@ -600,25 +703,50 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
                                                 </div>
                                             )}
 
-                                            {/* ACTIVE EVALUATION CONTROLS */}
+                                            {/* ACTIVE INTERACTIVE EVALUATION CONTROLS */}
                                             {(!isPrintMode && isActiveRole) && (
                                                 <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', flexWrap: 'wrap', borderTop: '1px dashed #cbd5e1', paddingTop: '15px', marginTop: '5px' }}>
                                                     {block.requirePerCriterionTiming !== false && !canModerate && (
-                                                        <div style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px', background: '#f1f5f9', padding: '8px 12px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-                                                            <Timer size={16} color="#64748b" />
+                                                        <div style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px', background: '#f1f5f9', padding: '8px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', flexWrap: 'wrap' }}>
+                                                            <Timer size={16} color="#64748b" style={{ flexShrink: 0 }} />
                                                             <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#475569', minWidth: '80px' }}>Task Timer:</span>
+
                                                             {!myResult.startTime ? (
-                                                                <button onClick={() => handleCriterionChange(block.id, i, 'startTime', new Date().toISOString())} className="ab-btn sm" style={{ background: '#10b981', color: 'white', border: 'none', padding: '4px 12px', borderRadius: '4px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px' }}><Play size={12} /> Start</button>
-                                                            ) : !myResult.endTime ? (
-                                                                <>
-                                                                    <span style={{ fontSize: '0.75rem', color: '#0ea5e9', fontWeight: 'bold', fontStyle: 'italic' }}>In progress since {new Date(myResult.startTime).toLocaleTimeString()}...</span>
-                                                                    <button onClick={() => handleCriterionChange(block.id, i, 'endTime', new Date().toISOString())} className="ab-btn sm" style={{ background: '#ef4444', color: 'white', border: 'none', padding: '4px 12px', borderRadius: '4px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px', marginLeft: 'auto' }}><Square size={12} /> Stop</button>
-                                                                </>
+                                                                <button onClick={() => handleCriterionChange(block.id, i, 'startTime', new Date().toISOString())} className="ab-btn sm" style={{ background: '#10b981', color: 'white', border: 'none', padding: '4px 12px', borderRadius: '4px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}><Play size={12} /> Start</button>
                                                             ) : (
-                                                                <div style={{ display: 'flex', gap: '15px', fontSize: '0.75rem', color: '#334155' }}>
-                                                                    <span><strong>Start:</strong> {new Date(myResult.startTime).toLocaleTimeString()}</span>
-                                                                    <span><strong>End:</strong> {new Date(myResult.endTime).toLocaleTimeString()}</span>
-                                                                    <span style={{ color: '#0ea5e9', fontWeight: 'bold', background: '#e0f2fe', padding: '2px 6px', borderRadius: '4px' }}>Duration: {durationStr}</span>
+                                                                <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', alignItems: 'center', flex: 1 }}>
+                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#334155' }}>
+                                                                        <strong>Start:</strong>
+                                                                        <input
+                                                                            type="datetime-local"
+                                                                            className="datetime-input"
+                                                                            value={myResult.startTime ? moment(myResult.startTime).format('YYYY-MM-DDTHH:mm') : ''}
+                                                                            onChange={(e) => {
+                                                                                handleCriterionChange(block.id, i, 'startTime', e.target.value ? new Date(e.target.value).toISOString() : '');
+                                                                            }}
+                                                                            style={{ padding: '2px 6px', fontSize: '0.75rem', borderRadius: '4px', border: '1px solid #cbd5e1', background: 'white', color: 'black' }}
+                                                                        />
+                                                                    </div>
+
+                                                                    {!myResult.endTime ? (
+                                                                        <button onClick={() => handleCriterionChange(block.id, i, 'endTime', new Date().toISOString())} className="ab-btn sm" style={{ background: '#ef4444', color: 'white', border: 'none', padding: '4px 12px', borderRadius: '4px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}><Square size={12} /> Stop</button>
+                                                                    ) : (
+                                                                        <>
+                                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#334155' }}>
+                                                                                <strong>End:</strong>
+                                                                                <input
+                                                                                    type="datetime-local"
+                                                                                    className="datetime-input"
+                                                                                    value={myResult.endTime ? moment(myResult.endTime).format('YYYY-MM-DDTHH:mm') : ''}
+                                                                                    onChange={(e) => {
+                                                                                        handleCriterionChange(block.id, i, 'endTime', e.target.value ? new Date(e.target.value).toISOString() : '');
+                                                                                    }}
+                                                                                    style={{ padding: '2px 6px', fontSize: '0.75rem', borderRadius: '4px', border: '1px solid #cbd5e1', background: 'white', color: 'black' }}
+                                                                                />
+                                                                            </div>
+                                                                            <span style={{ color: '#0ea5e9', fontWeight: 'bold', background: '#e0f2fe', padding: '4px 8px', borderRadius: '4px', fontSize: '0.75rem' }}>Duration: {durationStr}</span>
+                                                                        </>
+                                                                    )}
                                                                 </div>
                                                             )}
                                                         </div>
