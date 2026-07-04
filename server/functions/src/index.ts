@@ -7793,7 +7793,6 @@ export const generateSetaAuditPack = onCall(
       );
     }
 
-    // 🚀 1. Accept the enriched data directly from the frontend Pre-Flight Payload
     const {
       learnerId,
       placementId,
@@ -7814,17 +7813,15 @@ export const generateSetaAuditPack = onCall(
     const bucket = admin.storage().bucket();
 
     try {
-      // 🚀 2. DECODE COMPOSITE IDs (e.g. "CohortID_IDNumber")
       let actualDocId = learnerId;
       let extractedCohortId = "";
 
       if (learnerId.includes("_")) {
         const parts = learnerId.split("_");
         extractedCohortId = parts[0];
-        actualDocId = parts[1]; // The actual 13-digit ID
+        actualDocId = parts[1];
       }
 
-      // 3. Fetch Primary Documents & Historical Disbursement Records Subcollection
       const [learnerSnap, placementSnap, disbursementsSnap] = await Promise.all(
         [
           db.collection("learners").doc(actualDocId).get(),
@@ -7836,7 +7833,6 @@ export const generateSetaAuditPack = onCall(
       const learner = learnerSnap.data() || {};
       const placement = placementSnap.exists ? placementSnap.data() || {} : {};
 
-      // Parse disbursements array from subcollection
       const disbursementsList = disbursementsSnap.docs
         .map((doc) => doc.data())
         .sort((a, b) => String(a.monthYear).localeCompare(String(b.monthYear)));
@@ -7854,6 +7850,46 @@ export const generateSetaAuditPack = onCall(
       const cohortId =
         placement.cohortId || learner.cohortId || extractedCohortId;
 
+      // 🚀 4. FETCH THE FULL EMPLOYER PROFILE FOR THE MASTER REGISTRY
+      let employer: any = {};
+      const targetEmployerId = placement.employerId || learner.employerId;
+
+      if (targetEmployerId) {
+        const empSnap = await db
+          .collection("employers")
+          .doc(targetEmployerId)
+          .get();
+        if (empSnap.exists) {
+          employer = empSnap.data() || {};
+        }
+      }
+
+      // Extract Employer Details prioritizing the actual employer document
+      const empName =
+        employerName ||
+        employer.name ||
+        placement.employerName ||
+        "Registered Host Employer";
+      const empAddress =
+        employer.physicalAddress ||
+        employer.address ||
+        placement.employerAddress ||
+        placement.employerPhysicalAddress ||
+        "N/A";
+      const empPhone =
+        employer.contactPhone ||
+        employer.phone ||
+        placement.employerPhone ||
+        placement.employerTelephone ||
+        "N/A";
+      const empEmail =
+        employer.contactEmail ||
+        employer.email ||
+        placement.employerEmail ||
+        "N/A";
+      const moduleCode =
+        learner.qualificationCode || "Software Developer (SAQA ID: 118707)";
+
       const JSZipModule = require("jszip");
       const JSZip =
         typeof JSZipModule === "function"
@@ -7861,7 +7897,6 @@ export const generateSetaAuditPack = onCall(
           : JSZipModule.default || JSZipModule;
       const zip = new JSZip();
 
-      // AGGRESSIVE WORKPLACE LOG RESOLUTION ENGINE
       const logQueries = [
         db
           .collection("workplace_logs")
@@ -7895,7 +7930,6 @@ export const generateSetaAuditPack = onCall(
 
       const logs = Array.from(allLogsMap.values());
 
-      // BIOMETRIC CLASSROOM ATTENDANCE RESOLUTION ENGINE
       let classroomRecords: any[] = [];
       if (cohortId && finalIdNumber) {
         const attendanceSnap = await db
@@ -7943,7 +7977,6 @@ export const generateSetaAuditPack = onCall(
               checkOut: scanData?.checkOutAt
                 ? formatScanTime(scanData.checkOutAt)
                 : "—",
-              finalizedBy: att.finalizedBy || "system-auto",
             };
           })
           .filter(Boolean)
@@ -7957,8 +7990,29 @@ export const generateSetaAuditPack = onCall(
       const folderClassroom = "02_Theory_and_Practical_Classroom_Evidence/";
       const folderWorkplace = "03_Workplace_Logbooks_and_Timesheets/";
       const folderFinancial = "04_Financial_and_Payroll_Evidence/";
+      const folderEvidenceArtifacts = `${folderWorkplace}Evidence_Artifacts/`;
 
-      // FILE RESOLUTION STRATEGY
+      const fetchImageAsBase64 = async (url: string | null | undefined) => {
+        if (!url) return null;
+        try {
+          const response = await axios.get(url, {
+            responseType: "arraybuffer",
+          });
+          const base64 = Buffer.from(response.data, "binary").toString(
+            "base64",
+          );
+          const mimeType =
+            url.toLowerCase().includes(".jpg") ||
+            url.toLowerCase().includes(".jpeg")
+              ? "image/jpeg"
+              : "image/png";
+          return `data:${mimeType};base64,${base64}`;
+        } catch (error) {
+          logger.warn(`[AuditPack] Failed to fetch signature: ${url}`);
+          return null;
+        }
+      };
+
       let idUrl =
         learner.documents?.idDocument ||
         learner.idUrl ||
@@ -7981,7 +8035,6 @@ export const generateSetaAuditPack = onCall(
         ...(placement.uploadedDocuments || []),
         ...(learnerUserDoc?.uploadedDocuments || []),
       ];
-
       arraysToScan.forEach((doc: any) => {
         const docId = String(doc.id || "").toLowerCase();
         const name = String(doc.name || "").toLowerCase();
@@ -8016,10 +8069,6 @@ export const generateSetaAuditPack = onCall(
           zip.file(`${folderPath}${filename}`, response.data);
           return true;
         } catch (e: any) {
-          logger.error(
-            `Failed to execute download file layout setup for ${filename}:`,
-            e.message,
-          );
           return false;
         }
       };
@@ -8031,43 +8080,40 @@ export const generateSetaAuditPack = onCall(
 
       const getExtensionFromUrl = (url: string, defaultExt: string = "pdf") => {
         try {
-          const urlWithoutQuery = url.split("?")[0];
-          const parts = urlWithoutQuery.split(".");
-          const ext = parts[parts.length - 1].toLowerCase();
-          if (["pdf", "jpg", "jpeg", "png", "docx"].includes(ext)) return ext;
-          return defaultExt;
+          const ext = url.split("?")[0].split(".").pop()?.toLowerCase();
+          return ["pdf", "jpg", "jpeg", "png", "docx", "webp"].includes(
+            ext || "",
+          )
+            ? ext
+            : defaultExt;
         } catch {
           return defaultExt;
         }
       };
 
-      if (idUrl) {
-        const idExt = getExtensionFromUrl(idUrl, "pdf");
+      if (idUrl)
         await appendUrlToZipFolder(
           idUrl,
           folderLegal,
-          `ID_Document_${safeLearnerName}.${idExt}`,
+          `ID_Document_${safeLearnerName}.${getExtensionFromUrl(idUrl, "pdf")}`,
         );
-      } else {
+      else
         zip.file(
           `${folderLegal}⚠️_MISSING_IDENTITY_DOCUMENT.txt`,
           "Compliance Alert: No certified ID file or passport was uploaded.",
         );
-      }
 
-      if (wblpaUrl) {
-        const wblpaExt = getExtensionFromUrl(wblpaUrl, "pdf");
+      if (wblpaUrl)
         await appendUrlToZipFolder(
           wblpaUrl,
           folderLegal,
-          `Fully_Executed_WBLPA_Contract_${safeLearnerName}.${wblpaExt}`,
+          `Fully_Executed_WBLPA_Contract_${safeLearnerName}.${getExtensionFromUrl(wblpaUrl, "pdf")}`,
         );
-      } else {
+      else
         zip.file(
           `${folderLegal}⚠️_MISSING_WBLPA_CONTRACT.txt`,
           "Compliance Alert: No signed tripartite WBLPA agreement link could be fetched.",
         );
-      }
 
       const formatCurrency = (val: any) =>
         new Intl.NumberFormat("en-ZA", {
@@ -8076,271 +8122,399 @@ export const generateSetaAuditPack = onCall(
           maximumFractionDigits: 0,
         }).format(Number(val) || 0);
 
-      // 8. BUILD AND INJECT DYNAMIC FINANCIAL DISBURSEMENT LEDGER PAGE
+      // ─── GENERATE FINANCIAL LEDGER HTML ───
       let financialHtml = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <style>
-            @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@400;700&display=swap');
-            body { font-family: 'Trebuchet MS', Arial, sans-serif; font-size: 11px; color: #1a2e35; padding: 20px; }
-            h1 { color: #073f4e; text-align: center; text-transform: uppercase; font-family: 'Oswald', sans-serif; letter-spacing: 0.05em; }
-            .meta { background: #fffbeb; border-left: 4px solid #d97706; padding: 15px; margin-bottom: 20px; border-radius: 4px; border: 1px solid #fef3c7; }
-            table { width: 100%; border-collapse: collapse; margin-top: 10px; table-layout: fixed; }
-            th, td { border: 1px solid #dde4e8; padding: 10px; text-align: left; vertical-align: middle; word-wrap: break-word; overflow-wrap: break-word; word-break: break-word; }
-            th { background-color: #073f4e; color: white; font-family: 'Oswald', sans-serif; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
-            tr:nth-child(even) { background-color: #f8fafb; }
-          </style>
-        </head>
-        <body>
-          <h1>Stipend Disbursement Compliance Ledger</h1>
-          <div class="meta">
-            <strong>Learner Name:</strong> ${learnerName || "Unknown"}<br/>
-            <strong>Identity Number:</strong> ${finalIdNumber || "Unknown"}<br/>
-            <strong>Host Employer:</strong> ${employerName || "Unknown"}<br/>
-            <strong>SARS Employment Verification Status:</strong> Active Tracking Account
-          </div>
-          <table>
-            <thead>
-              <tr>
-                <th width="15%">Month</th>
-                <th width="18%">Total Earnings</th>
-                <th width="12%">Log Days</th>
-                <th width="20%">Net Payment</th>
-                <th width="15%">ETI Claimed</th>
-                <th width="20%">Bank Reference</th>
-              </tr>
-            </thead>
-            <tbody>
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: 'Trebuchet MS', Arial, sans-serif; color: #333; font-size: 14px; }
+          h1 { color: #0f172a; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; }
+          table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+          th, td { border: 1px solid #cbd5e1; padding: 10px; text-align: left; }
+          th { background-color: #f8fafc; font-weight: bold; text-transform: uppercase; font-size: 12px; }
+        </style>
+      </head>
+      <body>
+        <h1>Stipend Disbursement Ledger</h1>
+        <p><strong>Candidate:</strong> ${learnerName} | <strong>ID Number:</strong> ${finalIdNumber}</p>
       `;
 
       if (disbursementsList.length === 0) {
-        financialHtml += `
-          <tr>
-            <td><strong>${new Date().toISOString().slice(0, 7)}</strong></td>
-            <td>${formatCurrency(placement.stipendAmount)}</td>
-            <td>${placement.currentMonthApprovedDays || 0} / ${placement.expectedWorkingDaysThisMonth || 21} d</td>
-            <td style="font-weight:bold; color:#16a34a;">${formatCurrency(placement.currentMonthEarnedStipend)}</td>
-            <td>${formatCurrency(placement.etiMonthlyValue)}</td>
-            <td style="font-family:monospace; font-size:10px; color:#475569;">MLAB-PENDING-SYNC</td>
-          </tr>
-        `;
+        financialHtml += `<p style="padding: 20px; background: #fef2f2; border: 1px solid #fca5a5; color: #991b1b;">No verified financial disbursements recorded on the ledger.</p>`;
       } else {
-        disbursementsList.forEach((disb: any) => {
+        financialHtml += `
+          <table>
+            <thead><tr><th>Month/Year</th><th>Amount Disbursed</th><th>Payment Status</th><th>Payment Date</th></tr></thead>
+            <tbody>
+        `;
+        disbursementsList.forEach((disb) => {
           financialHtml += `
             <tr>
-              <td><strong>${disb.monthYear}</strong></td>
-              <td>${formatCurrency(disb.totalEarnings)}</td>
-              <td>${disb.daysApproved} / ${disb.daysExpected} d</td>
-              <td style="font-weight:bold; color:#16a34a;">${formatCurrency(disb.netPayment)}</td>
-              <td>${formatCurrency(disb.etiClaimed)}</td>
-              <td style="font-family:monospace; font-size:10px; color:#475569;">${disb.bankReference || "—"}</td>
+              <td>${disb.monthYear || "N/A"}</td>
+              <td style="font-weight: bold;">${formatCurrency(disb.amount)}</td>
+              <td style="color: ${disb.status === "Paid" ? "#166534" : "#d97706"}; font-weight: bold;">${disb.status || "Pending"}</td>
+              <td>${disb.paymentDate ? new Date(disb.paymentDate).toLocaleDateString() : "—"}</td>
             </tr>
           `;
         });
+        financialHtml += `</tbody></table>`;
       }
-      financialHtml += `</tbody></table></body></html>`;
+      financialHtml += `</body></html>`;
 
-      // 9. RENDER THE CLASSROOM ATTENDANCE PDF SUMMARY
-      const totalSessions = classroomRecords.length;
-      const totalPresent = classroomRecords.filter(
-        (r) => r.status === "Present",
-      ).length;
-      const attendanceRatio =
-        totalSessions > 0
-          ? Math.round((totalPresent / totalSessions) * 100)
-          : 0;
-
+      // ─── GENERATE CLASSROOM ATTENDANCE HTML ───
       let classroomHtml = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <style>
-            @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@400;700&display=swap');
-            body { font-family: 'Trebuchet MS', Arial, sans-serif; font-size: 11px; color: #1a2e35; padding: 20px; }
-            h1 { color: #073f4e; text-align: center; text-transform: uppercase; font-family: 'Oswald', sans-serif; letter-spacing: 0.05em; }
-            .meta { background: #f0f9ff; border-left: 4px solid #0ea5e9; padding: 15px; margin-bottom: 20px; border-radius: 4px; border: 1px solid #bae6fd; }
-            table { width: 100%; border-collapse: collapse; margin-top: 10px; table-layout: fixed; }
-            th, td { border: 1px solid #dde4e8; padding: 10px; text-align: left; vertical-align: middle; word-wrap: break-word; overflow-wrap: break-word; word-break: break-word; }
-            th { background-color: #073f4e; color: white; font-family: 'Oswald', sans-serif; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
-            tr:nth-child(even) { background-color: #f8fafb; }
-            .badge-present { color: #166534; font-weight: bold; background: #dcfce7; padding: 2px 6px; border: 1px solid #bbf7d0; text-transform: uppercase; font-size: 9px; }
-            .badge-absent { color: #991b1b; font-weight: bold; background: #fee2e2; padding: 2px 6px; border: 1px solid #fecaca; text-transform: uppercase; font-size: 9px; }
-          </style>
-        </head>
-        <body>
-          <h1>Classroom Attendance Verification Ledger</h1>
-          <div class="meta">
-            <strong>Learner Name:</strong> ${learnerName || "Unknown"}<br/>
-            <strong>Identity Number:</strong> ${finalIdNumber || "Unknown"}<br/>
-            <strong>Class Cohort ID:</strong> ${cohortId || "Unknown"}<br/>
-            <strong>Theoretical Compliance Threshold:</strong> 80% Required<br/>
-            <strong>Actual Classroom Attendance Ratio:</strong> <span style="color: ${attendanceRatio >= 80 ? "#16a34a" : "#dc2626"}; font-weight: bold;">${attendanceRatio}% (${totalPresent} / ${totalSessions} sessions)</span>
-          </div>
-          <table>
-            <thead>
-              <tr><th>Session Date</th><th>Enrolment Status</th><th>Check-In (SAST)</th><th>Lunch Break Out/In</th><th>Check-Out (SAST)</th><th>Validation Stream</th></tr>
-            </thead>
-            <tbody>
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: 'Trebuchet MS', Arial, sans-serif; color: #333; font-size: 14px; }
+          h1 { color: #0f172a; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; }
+          table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+          th, td { border: 1px solid #cbd5e1; padding: 8px; text-align: left; font-size: 13px; }
+          th { background-color: #f8fafc; font-weight: bold; text-transform: uppercase; font-size: 12px; }
+          .present { color: #166534; font-weight: bold; }
+          .absent { color: #991b1b; font-weight: bold; }
+        </style>
+      </head>
+      <body>
+        <h1>Theory & Classroom Attendance Ledger</h1>
+        <p><strong>Candidate:</strong> ${learnerName} | <strong>ID Number:</strong> ${finalIdNumber}</p>
       `;
 
       if (classroomRecords.length === 0) {
-        classroomHtml += `<tr><td colspan="6" style="text-align:center; padding: 30px;">No historical campus registration sequences located in the logs database.</td></tr>`;
+        classroomHtml += `<p style="padding: 20px; background: #fef2f2; border: 1px solid #fca5a5; color: #991b1b;">No biometric or manual classroom attendance records found for this candidate.</p>`;
       } else {
+        classroomHtml += `
+          <table>
+            <thead><tr><th>Date</th><th>Status</th><th>Check In</th><th>Lunch Out</th><th>Lunch In</th><th>Check Out</th></tr></thead>
+            <tbody>
+        `;
         classroomRecords.forEach((rec) => {
-          const statusBadge =
-            rec.status === "Present"
-              ? `<span class="badge-present">Present</span>`
-              : `<span class="badge-absent">Absent</span>`;
-          classroomHtml += `<tr><td><strong>${rec.date}</strong></td><td>${statusBadge}</td><td>${rec.checkIn}</td><td>${rec.lunchOut} → ${rec.lunchIn}</td><td>${rec.checkOut}</td><td style="color:#64748b; font-family: monospace;">${rec.finalizedBy}</td></tr>`;
+          classroomHtml += `
+            <tr>
+              <td><strong>${rec.date}</strong></td>
+              <td class="${rec.status === "Present" ? "present" : "absent"}">${rec.status}</td>
+              <td>${rec.checkIn}</td>
+              <td>${rec.lunchOut}</td>
+              <td>${rec.lunchIn}</td>
+              <td>${rec.checkOut}</td>
+            </tr>
+          `;
         });
+        classroomHtml += `</tbody></table>`;
       }
-      classroomHtml += `</tbody></table></body></html>`;
+      classroomHtml += `</body></html>`;
 
-      // 10. RENDER THE WORKPLACE LOGBOOK PDF TEMPLATE
+      // ─── GENERATE WORKPLACE LOGBOOK HTML (LANDSCAPE) ───
       logs.sort(
         (a, b) =>
           new Date(a.dateString).getTime() - new Date(b.dateString).getTime(),
       );
-
       const totalHours = logs.reduce(
         (sum, l) => sum + (Number(l.totalHours) || 0),
         0,
       );
 
-      // 🚀 EXTRACT THE *LAST* MENTOR SIGNATURE FOR THE FINAL SIGN-OFF (Chronologically)
+      const matrixMap = new Map();
+      const cwkMap = new Map();
+      logs.forEach((l) => {
+        (l.selectedMilestones || []).forEach((code: string) => {
+          const desc =
+            l.milestoneLabels?.[code] ||
+            "Workplace Activity Metric / Milestone";
+          if (code.startsWith("CWK")) cwkMap.set(code, desc);
+          else matrixMap.set(code, desc);
+        });
+      });
+
       const lastSignedLog = [...logs]
         .reverse()
         .find((l) => l.mentorSignatureUrl);
-      const mentorSignature = lastSignedLog?.mentorSignatureUrl || null;
-      const finalSignoffMentorName =
-        lastSignedLog?.processedBy || resolvedMentorName;
-
-      const learnerSignature =
+      const rawMentorSigUrl = lastSignedLog?.mentorSignatureUrl || null;
+      const rawLearnerSigUrl =
         learnerUserDoc?.signatureUrl || learner.signatureUrl || null;
-      const signatureDate =
-        logs.length > 0
-          ? logs[logs.length - 1].dateString
-          : "_________________________";
+
+      const [base64MentorSignature, base64LearnerSignature] = await Promise.all(
+        [
+          fetchImageAsBase64(rawMentorSigUrl),
+          fetchImageAsBase64(rawLearnerSigUrl),
+        ],
+      );
+
+      const currentDateStr = new Date().toLocaleDateString("en-GB");
 
       let logsHtml = `
         <!DOCTYPE html>
         <html>
         <head>
           <style>
-            @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@400;700&display=swap');
-            body { font-family: 'Trebuchet MS', Arial, sans-serif; font-size: 11px; color: #1a2e35; padding: 20px; }
-            h1 { color: #073f4e; text-align: center; text-transform: uppercase; font-family: 'Oswald', sans-serif; letter-spacing: 0.05em; }
-            .meta { background: #f8fafc; border-left: 4px solid #94c73d; padding: 15px; margin-bottom: 20px; border-radius: 4px; border: 1px solid #dde4e8; }
-            
-            /* 🚀 STRICT TABLE BOUNDARIES TO PREVENT TEXT STRETCHING */
-            table { width: 100%; border-collapse: collapse; margin-top: 10px; table-layout: fixed; }
-            th, td { border: 1px solid #dde4e8; padding: 10px; text-align: left; vertical-align: top; word-wrap: break-word; overflow-wrap: break-word; word-break: break-word; }
-            th { background-color: #073f4e; color: white; font-family: 'Oswald', sans-serif; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
-            tr:nth-child(even) { background-color: #f8fafb; }
-            
-            /* 🚀 QUILL HTML RENDER FORMATTING */
-            .quill-content { font-size: 11px; line-height: 1.5; color: #334155; white-space: normal; }
-            .quill-content * { word-wrap: break-word !important; overflow-wrap: break-word !important; word-break: break-word !important; max-width: 100%; }
-            .quill-content p { margin: 0 0 5px 0; }
-            .quill-content ul, .quill-content ol { margin: 4px 0; padding-left: 18px; }
-            .quill-content a { color: #0ea5e9; text-decoration: underline; word-break: break-all; }
-            .quill-content pre { background-color: #f1f5f9; padding: 8px; border-radius: 4px; white-space: pre-wrap; font-family: monospace; font-size: 9px; overflow-x: hidden; border: 1px solid #dde4e8; }
-            .quill-content blockquote { border-left: 3px solid #94a3b8; padding-left: 8px; margin: 8px 0; color: #475569; font-style: italic; }
-            .quill-content img { max-width: 100%; height: auto; }
-            
-            .signature-block { margin-top: 40px; page-break-inside: avoid; border-top: 2px solid #073f4e; padding-top: 20px; }
-            .signature-table { width: 100%; border: none; margin-top: 30px; table-layout: fixed; }
-            .signature-table td { border: none; background: transparent !important; padding: 0; }
-            .sig-line { border-bottom: 1px solid #1a2e35; height: 40px; margin-bottom: 5px; }
+            body { background: #ffffff; color: #000000; font-family: Arial, Helvetica, sans-serif; font-size: 10pt; line-height: 1.4; margin: 0; padding: 0; box-sizing: border-box; }
+            * { box-sizing: border-box; }
+            .print-page-break { page-break-after: always; width: 100%; clear: both; padding-bottom: 20px; }
+            .bulk-header-block { width: 100%; border-collapse: collapse; margin-bottom: 20px; border: 2px solid #000000; }
+            .bulk-header-block td { border: 1px solid #000000; padding: 10px 14px; font-weight: bold; font-size: 10pt; }
+            .bulk-header-block td span { font-weight: normal; margin-left: 12px; display: inline-block; }
+            .statutory-declaration-box { border: 2px solid #000000; padding: 14px; margin-bottom: 20px; background: #ffffff; page-break-inside: avoid; }
+            .bulk-ledger-table { width: 100%; table-layout: fixed; border-collapse: collapse; border: 2px solid #000000; margin-bottom: 20px; }
+            .bulk-ledger-table th, .bulk-ledger-table td { border: 1px solid #000000; padding: 10px; vertical-align: top; word-break: break-word; overflow-wrap: break-word; white-space: normal; }
+            .bulk-ledger-table th { background-color: #f1f5f9; text-align: left; font-weight: bold; font-size: 9.5pt; text-transform: uppercase; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .ledger-html-content { display: block; word-wrap: break-word; overflow-wrap: break-word; max-width: 100%; color: #1e293b; }
+            .ledger-html-content p { margin: 0 0 4px 0; font-size: 9.5pt; }
+            .row-sig-container { display: flex; flex-direction: column; gap: 6px; font-size: 7.5pt; }
+            .row-sig-item { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px dashed #cbd5e1; padding-bottom: 3px; }
+            .row-sig-item:last-child { border-bottom: none; padding-bottom: 0; }
+            .row-sig-img { max-height: 22px; max-width: 80px; object-fit: contain; mix-blend-mode: multiply; }
+            .bulk-signatures-strip { display: table; width: 100%; margin-top: 30px; table-layout: fixed; page-break-inside: avoid; }
+            .bulk-sig-col { display: table-cell; width: 33.33%; padding: 0 15px; vertical-align: bottom; text-align: center; }
+            .bulk-sig-img-wrap { height: 45px; display: flex; align-items: center; justify-content: center; margin-bottom: 4px; }
+            .bulk-sig-img-wrap img { max-height: 45px; max-width: 120px; object-fit: contain; mix-blend-mode: multiply; }
+            .bulk-sig-line { border-top: 1.5px solid #000000; padding-top: 6px; font-size: 8.5pt; font-weight: bold; text-transform: uppercase; }
+            .bulk-print-se-block { margin-top: 8px; padding: 6px 10px; background: #ffffff; border: 1px solid #000000; display: flex; flex-direction: column; gap: 4px; page-break-inside: avoid; }
+            .bulk-print-se-tag { background: #000000; color: #ffffff; font-weight: 800; font-size: 7pt; padding: 1px 4px; border-radius: 2px; font-family: monospace; }
           </style>
         </head>
         <body>
-          <h1>Official QCTO Workplace Evidence Logbook</h1>
-          <div class="meta">
-            <strong>Learner Name:</strong> ${learnerName || "Unknown"}<br/>
-            <strong>Identity Number:</strong> ${finalIdNumber || "Unknown"}<br/>
-            <strong>Host Employer:</strong> ${employerName || "Unknown"}<br/>
-            <strong>Current Workplace Mentor:</strong> ${resolvedMentorName}<br/>
-            <strong>Total Approved Workplace Hours:</strong> ${totalHours.toFixed(1)} hrs
+          <!-- PAGE 1: MASTER REGISTRY -->
+          <div class="print-page-break">
+            <div style="text-align: center; margin-bottom: 25px; border-bottom: 2px dashed #000; padding-bottom: 15px;">
+              <h1 style="font-size: 18pt; margin: 0 0 4px 0; letter-spacing: 0.5px;">OFFICIAL LOGBOOK STATEMENT OF WORK EXPERIENCE</h1>
+              <h2 style="font-size: 12pt; font-weight: bold; color: #333; margin: 0 0 6px 0; text-transform: uppercase;">Occupational Certificate: ${moduleCode}</h2>
+              <span style="font-size: 10pt; font-weight: bold; background: #f1f5f9; padding: 3px 10px; border-radius: 4px;">NQF LEVEL 5 | DESIGNATED COMPLIANCE SCOPE NOTIONAL HOURS: 150</span>
+            </div>
+
+            <table class="bulk-header-block">
+              <thead>
+                <tr style="background-color: #f1f5f9;"><th colspan="4" style="padding: 8px 14px; text-align: left; font-size: 10pt;">LEARNER AND EMPLOYER MASTER REGISTRY</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td style="width: 20%;">CANDIDATE NAME</td>
+                  <td style="width: 30%;"><span>${learnerName}</span></td>
+                  <td style="width: 20%;">COMPANY NAME</td>
+                  <td style="width: 30%;"><span>${empName}</span></td>
+                </tr>
+                <tr>
+                  <td>CURRICULUM SPEC</td>
+                  <td><span>${moduleCode}</span></td>
+                  <td>PHYSICAL ADDRESS</td>
+                  <td><span>${empAddress}</span></td>
+                </tr>
+                <tr>
+                  <td>SUPERVISOR NAME</td>
+                  <td><span>${resolvedMentorName}</span></td>
+                  <td>WORK TELEPHONE</td>
+                  <td><span>${empPhone}</span></td>
+                </tr>
+                <tr>
+                  <td>ASSESSOR NAME</td>
+                  <td><span style="color: #d97706; font-style: italic; font-weight: bold;">Pending Assignment</span></td>
+                  <td>E-MAIL</td>
+                  <td><span>${empEmail}</span></td>
+                </tr>
+                <tr>
+                  <td colspan="2">TOTAL TARGET HOURS: <span style="font-weight: normal; margin-left: 8px;">150 Hours</span></td>
+                  <td colspan="2">ACCUMULATED HOURS: <span style="font-weight: normal; margin-left: 8px;">${totalHours.toFixed(1)} Hours Verified</span></td>
+                </tr>
+              </tbody>
+            </table>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+              <div class="statutory-declaration-box">
+                <h3 style="margin: 0 0 8px 0; font-size: 10pt; text-transform: uppercase; border-bottom: 1px solid #000; padding-bottom: 4px;">Acknowledgment of Receipt</h3>
+                <p style="font-size: 9pt; margin: 0 0 15px 0; line-height: 1.45; text-align: justify;">I hereby acknowledge receipt of the official Work Experience Module logbook guidelines. The operational frameworks, expected milestones, and continuous tracking protocols have been explicitly outlined and communicated to me.</p>
+                <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: 20px;">
+                  <div>
+                    <div class="bulk-sig-img-wrap" style="justify-content: flex-start; height: 30px;">
+                      ${base64LearnerSignature ? `<img src="${base64LearnerSignature}" style="max-height: 30px; mix-blend-mode: multiply;" />` : ""}
+                    </div>
+                    <div style="border-top: 1px solid #000; width: 220px; font-size: 7.5pt; font-weight: bold;">CANDIDATE SIGNATURE</div>
+                    <div style="font-size: 7.5pt; color: #475569; margin-top: 2px;">ID No: ${finalIdNumber}</div>
+                  </div>
+                  <div style="font-size: 8.5pt;">DATE: ${currentDateStr}</div>
+                </div>
+              </div>
+
+              <div class="statutory-declaration-box">
+                <h3 style="margin: 0 0 8px 0; font-size: 10pt; text-transform: uppercase; border-bottom: 1px solid #000; padding-bottom: 4px;">Declaration of Authenticity</h3>
+                <p style="font-size: 9pt; margin: 0 0 15px 0; line-height: 1.45; text-align: justify;">I hereby declare that the logged workplace activities, descriptive entries, and submitted evidence metrics constitute a true and accurate reflection of my own practical work exposure and professional output inside the enterprise environment.</p>
+                <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: 20px;">
+                  <div>
+                    <div class="bulk-sig-img-wrap" style="justify-content: flex-start; height: 30px;">
+                      ${base64MentorSignature ? `<img src="${base64MentorSignature}" style="max-height: 30px; mix-blend-mode: multiply;" />` : ""}
+                    </div>
+                    <div style="border-top: 1px solid #000; width: 220px; font-size: 7.5pt; font-weight: bold;">MENTOR SIGNATURE</div>
+                  </div>
+                  <div style="font-size: 8.5pt;">DATE: ${currentDateStr}</div>
+                </div>
+              </div>
+            </div>
           </div>
-          <table>
-            <thead>
-              <tr><th width="12%">Date</th><th width="15%">Time Logged</th><th width="18%">SETA Module</th><th width="55%">Tasks Performed & Supervisor Validation</th></tr>
-            </thead>
-            <tbody>
+
+          <!-- PAGE 2: QCTO MATRIX -->
+          <div class="print-page-break">
+            <h3 style="margin: 0 0 6px 0; font-size: 11pt; text-transform: uppercase; letter-spacing: 0.5px;">QCTO Module Specification Matrix & Milestone Checklist</h3>
+            <table class="bulk-ledger-table" style="font-size: 9pt;">
+              <thead>
+                <tr>
+                  <th style="width: 15%;">CODE</th>
+                  <th style="width: 57%;">WORK EXPERIENCE MODULE ACTIVITY METRICS SPECIFICATION</th>
+                  <th style="width: 14%; text-align: center;">CONTROL DATA</th>
+                  <th style="width: 14%; text-align: center;">STATUS VALIDATION</th>
+                </tr>
+              </thead>
+              <tbody>
       `;
 
-      if (logs.length === 0) {
-        logsHtml += `<tr><td colspan="4" style="text-align:center; padding: 30px; font-weight: bold; color: #dc2626;">No approved workplace logs found.</td></tr>`;
+      if (matrixMap.size === 0) {
+        logsHtml += `<tr><td colspan="4" style="text-align: center; padding: 20px; font-style: italic;">No specific roadmap milestones mapped yet.</td></tr>`;
       } else {
-        logs.forEach((log) => {
-          // 🚀 KEEP QUILL HTML, INJECT DIRECTLY INTO .quill-content
-          const formattedTasks =
-            log.tasksPerformed ||
-            "<em style='color:#94a3b8'>No description provided</em>";
-          const logSignatureImg = log.mentorSignatureUrl
-            ? `<img src="${log.mentorSignatureUrl}" style="max-height: 25px; mix-blend-mode: multiply; display: block;" />`
-            : `<span style="font-size: 9px; color: #166534; font-weight: bold;">✔ VERIFIED ONLINE</span>`;
-          const logApprover = log.processedBy || resolvedMentorName;
-          const logApprovalDate = log.processedAt
-            ? new Date(log.processedAt).toLocaleDateString("en-ZA", {
-                timeZone: "Africa/Johannesburg",
-              })
-            : log.dateString;
-
+        logsHtml += `<tr style="background-color: #f8fafc;"><td colspan="4" style="font-weight: bold; font-size: 8.5pt; border-bottom: 2px solid #000;">SUB-SECTION UNIT: WORKPLACE ACTIVITIES</td></tr>`;
+        matrixMap.forEach((desc, code) => {
           logsHtml += `
-            <tr>
-              <td><strong>${log.dateString}</strong></td>
-              <td>${log.startTime} to ${log.endTime}<br/><em style="color:#0ea5e9;">(${Number(log.totalHours).toFixed(1)} hrs)</em></td>
-              <td><strong>${log.workActivityCode || log.moduleCode || "N/A"}</strong></td>
-              <td>
-                <div class="quill-content">${formattedTasks}</div>
-                <div style="background: #f8fafc; border: 1px solid #dde4e8; border-left: 3px solid #0ea5e9; padding: 6px; display: flex; align-items: center; gap: 10px; margin-top: 8px;">
-                  <div style="width: 80px;">${logSignatureImg}</div>
-                  <div style="font-size: 9px; color: #475569;">
-                    <strong>Supervisor:</strong> ${logApprover}<br/>
-                    <strong>Date Verified:</strong> ${logApprovalDate}
-                  </div>
-                </div>
+            <tr style="height: 26px;">
+              <td><strong>${code}</strong></td>
+              <td>${desc}</td>
+              <td style="text-align: center; font-size: 8pt; vertical-align: middle;">Dynamic Trace</td>
+              <td style="text-align: center; vertical-align: middle; font-weight: bold;">
+                ${base64MentorSignature ? `<div style="display: flex; align-items: center; justify-content: center; gap: 4px;"><img src="${base64MentorSignature}" style="max-height: 15px; mix-blend-mode: multiply;"/><span style="font-size: 7.5pt; color: #166534;">SIGNED</span></div>` : `<span style="color: #166534;">✔️ APPROVED</span>`}
               </td>
             </tr>
           `;
         });
       }
 
-      // 🚀 INJECT THE "LAST MENTOR" SIGNATURE INTO THE FINAL DECLARATION
+      if (cwkMap.size > 0) {
+        logsHtml += `<tr style="background-color: #f0f9ff;"><td colspan="4" style="font-weight: bold; font-size: 8.5pt; border-bottom: 2px solid #000; color: #0369a1;">SUB-SECTION UNIT: CWK — CONTEXTUALIZED WORKPLACE KNOWLEDGE</td></tr>`;
+        cwkMap.forEach((desc, code) => {
+          logsHtml += `
+            <tr style="height: 26px;">
+              <td><strong style="color: #0369a1;">${code}</strong></td>
+              <td>${desc}</td>
+              <td style="text-align: center; font-size: 8pt; vertical-align: middle;">Dynamic Trace</td>
+              <td style="text-align: center; vertical-align: middle; font-weight: bold;">
+                ${base64MentorSignature ? `<div style="display: flex; align-items: center; justify-content: center; gap: 4px;"><img src="${base64MentorSignature}" style="max-height: 15px; mix-blend-mode: multiply;"/><span style="font-size: 7.5pt; color: #166534;">SIGNED</span></div>` : `<span style="color: #166534;">✔️ APPROVED</span>`}
+              </td>
+            </tr>
+          `;
+        });
+      }
+
       logsHtml += `
-            </tbody>
-          </table>
-          <div class="signature-block">
-            <h3 style="color: #073f4e; text-transform: uppercase; font-family: 'Oswald', sans-serif; margin-bottom: 10px;">Official Sign-Off & Declaration</h3>
-            <p style="font-size: 11px; line-height: 1.6; color: #475569;">
-              I, the undersigned Workplace Mentor, hereby declare that the learner <strong>${learnerName}</strong> has authentically completed <strong>${totalHours.toFixed(1)}</strong> hours of workplace experience at <strong>${employerName}</strong> as detailed in the logs above. I confirm that the tasks performed align with the required SETA/QCTO curriculum outcomes, and the evidence provided is valid, authentic, and current.
-            </p>
-            <table class="signature-table">
-              <tr>
-                <td style="width: 45%;">
-                  ${mentorSignature ? `<img src="${mentorSignature}" style="max-height: 40px; mix-blend-mode: multiply; margin-bottom: 4px;" />` : `<div class="sig-line"></div>`}
-                  <div style="font-weight: bold;">Workplace Mentor Signature</div>
-                  <div style="color: #64748b; font-size: 10px; margin-top: 4px;">Name: ${finalSignoffMentorName}</div>
-                  <div style="color: #64748b; font-size: 10px; margin-top: 2px;">Date: ${signatureDate}</div>
-                </td>
-                <td style="width: 10%;"></td>
-                <td style="width: 45%;">
-                  ${learnerSignature ? `<img src="${learnerSignature}" style="max-height: 40px; mix-blend-mode: multiply; margin-bottom: 4px;" />` : `<div class="sig-line"></div>`}
-                  <div style="font-weight: bold;">Learner Signature</div>
-                  <div style="color: #64748b; font-size: 10px; margin-top: 4px;">Name: ${learnerName || "_________________________"}</div>
-                  <div style="color: #64748b; font-size: 10px; margin-top: 2px;">Date: ${signatureDate}</div>
-                </td>
-              </tr>
+              </tbody>
             </table>
+          </div>
+
+          <!-- PAGE 3: GRANULAR LEDGER -->
+          <div class="print-page-break">
+            <h3 style="margin: 0 0 6px 0; font-size: 11pt; text-transform: uppercase; letter-spacing: 0.5px;">Granular Daily Activity Diary & Evidence Ledger</h3>
+            <table class="bulk-ledger-table">
+              <thead>
+                <tr>
+                  <th style="width: 12%;">DATE / SHIFT</th>
+                  <th style="width: 56%;">DIARY ENTRY OF WORKPLACE EVIDENCE & PERFORMED TASKS</th>
+                  <th style="width: 8%; text-align: center;">HOURS</th>
+                  <th style="width: 24%; text-align: left;">AUTHENTICATION & VERIFICATION MAP</th>
+                </tr>
+              </thead>
+              <tbody>
+      `;
+
+      if (logs.length === 0) {
+        logsHtml += `<tr><td colspan="4" style="text-align:center; padding: 30px; font-weight: bold; color: #dc2626;">No approved workplace logs found.</td></tr>`;
+      } else {
+        for (const entry of logs) {
+          const entryDateStr = entry.dateString || "N/A";
+          const formattedTasks =
+            entry.tasksPerformed ||
+            "<em style='color:#94a3b8'>No descriptive logs recorded.</em>";
+
+          const base64DailySig = await fetchImageAsBase64(
+            entry.mentorSignatureUrl,
+          );
+
+          logsHtml += `
+            <tr style="page-break-inside: avoid;">
+              <td>
+                <strong>${entryDateStr}</strong>
+                <div style="font-size: 8pt; margin-top: 4px; color: #475569;">Shift: ${entry.startTime || "08:00"} - ${entry.endTime || "16:00"}</div>
+              </td>
+              <td>
+                <div class="ledger-html-content">${formattedTasks}</div>
+          `;
+
+          if (
+            entry.customEvidenceTracking &&
+            entry.customEvidenceTracking.length > 0
+          ) {
+            logsHtml += `<div style="margin-top: 10px; padding-top: 8px; border-top: 1px dashed #cbd5e1;"><div style="font-size: 8pt; font-weight: bold; text-transform: uppercase; color: #4f46e5; margin-bottom: 4px;">📎 Version Bound Artifact Evidence:</div>`;
+            entry.customEvidenceTracking.forEach((seItem: any) => {
+              logsHtml += `
+                <div class="bulk-print-se-block">
+                  <div>
+                    <span class="bulk-print-se-tag">${seItem.code}</span>
+                    <strong style="font-size: 8.5pt; margin-left: 4px;">${seItem.description}</strong>
+                  </div>
+                  <div style="font-size: 7.5pt; font-family: monospace; color: #334155; word-break: break-all; background: #f8fafc; padding: 2px 4px; margin-top: 2px; border: 1px solid #cbd5e1;">Location URI: ${seItem.fileUrl || "N/A"}</div>
+                </div>
+              `;
+            });
+            logsHtml += `</div>`;
+          }
+
+          logsHtml += `
+              </td>
+              <td style="text-transform: uppercase; text-align: center; font-weight: bold; vertical-align: middle; font-size: 10.5pt;">${entry.totalHours || "0"}</td>
+              <td style="vertical-align: middle;">
+                <div class="row-sig-container">
+                  <div class="row-sig-item">
+                    <span>Learner:</span>
+                    ${base64LearnerSignature ? `<img src="${base64LearnerSignature}" class="row-sig-img"/>` : `<span style="color: #64748b; font-style: italic; font-size: 7pt;">System Authenticated</span>`}
+                  </div>
+                  <div class="row-sig-item">
+                    <span>Supervisor:</span>
+                    ${base64DailySig ? `<img src="${base64DailySig}" class="row-sig-img"/>` : `<span style="color: #166534; font-weight: bold; font-size: 7pt;">VERIFIED</span>`}
+                  </div>
+                </div>
+              </td>
+            </tr>
+          `;
+        }
+      }
+
+      logsHtml += `
+              </tbody>
+            </table>
+            
+            <div class="bulk-signatures-strip">
+              <div class="bulk-sig-col">
+                <div class="bulk-sig-img-wrap">
+                  ${base64MentorSignature ? `<img src="${base64MentorSignature}" alt="Supervisor Certified Stamp" />` : `<div style="height: 35px;"></div>`}
+                </div>
+                <div class="bulk-sig-line">SUPERVISOR SIGNATURE</div>
+                <div style="font-size: 7.5pt; margin-top: 2px; color: #333;">${resolvedMentorName}</div>
+              </div>
+              <div class="bulk-sig-col">
+                <div class="bulk-sig-img-wrap">
+                  <div style="height: 35px; display: flex; align-items: center; justify-content: center; color: #d97706; font-size: 8pt; font-style: italic; font-weight: bold;">Pending Review</div>
+                </div>
+                <div class="bulk-sig-line">ASSESSOR SIGNATURE</div>
+                <div style="font-size: 7.5pt; margin-top: 2px; color: #333;">Internal/External Quality Assessor</div>
+              </div>
+              <div class="bulk-sig-col">
+                <div class="bulk-sig-img-wrap">
+                  ${base64LearnerSignature ? `<img src="${base64LearnerSignature}" alt="Candidate Signature" />` : `<div style="height: 35px;"></div>`}
+                </div>
+                <div class="bulk-sig-line">LEARNER SIGNATURE</div>
+                <div style="font-size: 7.5pt; margin-top: 2px; color: #333;">${learnerName}</div>
+              </div>
+            </div>
           </div>
         </body>
         </html>
       `;
 
-      // 11. SPAWN CHROMIUM AND CONVERT PAGES
+      // ─── SPAWN CHROMIUM AND CONVERT PAGES ───
       logger.info(
         "[AuditPack] Spawning chromium instance for PDF generation...",
       );
@@ -8351,6 +8525,7 @@ export const generateSetaAuditPack = onCall(
         headless: chromium.headless,
       });
 
+      // Render Portrait Classroom
       const pageClassroom = await browser.newPage();
       await pageClassroom.setContent(classroomHtml, {
         waitUntil: ["load", "networkidle0"],
@@ -8361,16 +8536,19 @@ export const generateSetaAuditPack = onCall(
         margin: { top: "15mm", right: "15mm", bottom: "15mm", left: "15mm" },
       });
 
+      // Render Landscape QCTO Logbook
       const pageWorkplace = await browser.newPage();
       await pageWorkplace.setContent(logsHtml, {
         waitUntil: ["load", "networkidle0"],
       });
       const workplacePdfBuffer = await pageWorkplace.pdf({
         format: "A4",
+        landscape: true,
         printBackground: true,
-        margin: { top: "15mm", right: "15mm", bottom: "20mm", left: "15mm" },
+        margin: { top: "10mm", right: "12mm", bottom: "10mm", left: "12mm" },
       });
 
+      // Render Portrait Financial Ledger
       const pageFinancial = await browser.newPage();
       await pageFinancial.setContent(financialHtml, {
         waitUntil: ["load", "networkidle0"],
@@ -8383,7 +8561,7 @@ export const generateSetaAuditPack = onCall(
 
       await browser.close();
 
-      // 12. POPULATE THE ZIP STRUCTURE
+      // ─── COMPILE ZIP ───
       zip.file(
         `${folderClassroom}Campus_Attendance_Register_Summary_${safeLearnerName}.pdf`,
         classroomPdfBuffer,
@@ -8393,23 +8571,58 @@ export const generateSetaAuditPack = onCall(
         workplacePdfBuffer,
       );
       zip.file(
-        `${folderFinancial}Official_Stipend_Disbursement_Ledger_${safeLearnerName}.pdf`,
+        `${folderFinancial}Financial_Stipend_Ledger_${safeLearnerName}.pdf`,
         financialPdfBuffer,
       );
 
-      // Loop through historical disbursements to push actual uploaded financial files as sub-annexures
-      for (const disb of disbursementsList) {
-        if (disb.payslipEftUrl) {
-          const ext = getExtensionFromUrl(disb.payslipEftUrl, "pdf");
+      for (const logItem of logs) {
+        const logDateStr = logItem.dateString || "UnknownDate";
+
+        if (logItem.evidenceUrl && typeof logItem.evidenceUrl === "string") {
+          const ext = getExtensionFromUrl(logItem.evidenceUrl, "pdf");
           await appendUrlToZipFolder(
-            disb.payslipEftUrl,
-            folderFinancial,
-            `Bank_Cleared_Receipt_${disb.monthYear}.${ext}`,
+            logItem.evidenceUrl,
+            folderEvidenceArtifacts,
+            `Shift_Summary_Proof_${logDateStr}.${ext}`,
           );
+        }
+
+        if (logItem.cwkEvidence && typeof logItem.cwkEvidence === "object") {
+          for (const [cwkCode, cwkUrl] of Object.entries(logItem.cwkEvidence)) {
+            if (cwkUrl && typeof cwkUrl === "string") {
+              const ext = getExtensionFromUrl(cwkUrl, "pdf");
+              await appendUrlToZipFolder(
+                cwkUrl,
+                folderEvidenceArtifacts,
+                `${cwkCode}_Proof_${logDateStr}.${ext}`,
+              );
+            }
+          }
+        }
+
+        if (Array.isArray(logItem.customEvidenceTracking)) {
+          for (const asset of logItem.customEvidenceTracking) {
+            if (
+              asset.type !== "link" &&
+              asset.fileUrl &&
+              typeof asset.fileUrl === "string"
+            ) {
+              const ext = getExtensionFromUrl(asset.fileUrl, "pdf");
+              const cleanDesc = String(
+                asset.description || "Portfolio_Artifact",
+              )
+                .replace(/[^a-zA-Z0-9]/g, "_")
+                .substring(0, 30);
+              await appendUrlToZipFolder(
+                asset.fileUrl,
+                folderEvidenceArtifacts,
+                `${asset.code}_${cleanDesc}_${logDateStr}.${ext}`,
+              );
+            }
+          }
         }
       }
 
-      // 13. COMPILE AND GENERATE SECURE EXPIRES URL
       const finalZipBuffer = await zip.generateAsync({
         type: "nodebuffer",
         compression: "DEFLATE",
@@ -9020,5 +9233,103 @@ export const finalizeBulkJob = onDocumentUpdated(
         await event.data?.after.ref.update({ status: "failed" });
       }
     }
+  },
+);
+
+const MAX_PAYLOAD_BYTES = 5 * 1024 * 1024; // 5MB ceiling, adjust as needed
+
+export const saveCodeSnapshot = onCall(
+  { region: "us-central1", memory: "256MiB", timeoutSeconds: 30 },
+  async (request) => {
+    const { auth, data } = request;
+    if (!auth) throw new HttpsError("unauthenticated", "Must be signed in.");
+
+    const { submissionId, blockId, files, dependencies } = data as {
+      submissionId: string;
+      blockId: string;
+      files: Record<string, string>;
+      dependencies?: Record<string, string>;
+    };
+
+    if (!submissionId || !blockId || !files) {
+      throw new HttpsError(
+        "invalid-argument",
+        "Missing submissionId, blockId, or files.",
+      );
+    }
+
+    // Confirm the caller owns this submission
+    const subRef = admin
+      .firestore()
+      .collection("learner_submissions")
+      .doc(submissionId);
+    const subSnap = await subRef.get();
+    if (!subSnap.exists)
+      throw new HttpsError("not-found", "Submission not found.");
+    const subData = subSnap.data()!;
+    if (subData.authUid !== auth.uid) {
+      throw new HttpsError("permission-denied", "Not your submission.");
+    }
+    if (["submitted", "graded", "moderated"].includes(subData.status)) {
+      throw new HttpsError("failed-precondition", "Submission is locked.");
+    }
+
+    const payload = JSON.stringify({ files, dependencies: dependencies || {} });
+    const sizeBytes = Buffer.byteLength(payload, "utf8");
+
+    if (sizeBytes > MAX_PAYLOAD_BYTES) {
+      throw new HttpsError(
+        "resource-exhausted",
+        `Snapshot too large (${(sizeBytes / 1024 / 1024).toFixed(1)}MB). Please remove unused files.`,
+      );
+    }
+
+    const storagePath = `code_snapshots/${submissionId}/${blockId}.json`;
+    const bucket = admin.storage().bucket();
+    const file = bucket.file(storagePath);
+    await file.save(payload, { contentType: "application/json" });
+
+    const lastSavedAt = new Date().toISOString();
+
+    await subRef.update({
+      [`answers.${blockId}`]: {
+        storagePath,
+        fileCount: Object.keys(files).length,
+        sizeBytes,
+        lastSavedAt,
+      },
+    });
+
+    return { success: true, storagePath, sizeBytes, lastSavedAt };
+  },
+);
+
+export const getCodeSnapshot = onCall(
+  { region: "us-central1" },
+  async (request) => {
+    const { auth, data } = request;
+    if (!auth) throw new HttpsError("unauthenticated", "Must be signed in.");
+
+    const { submissionId, blockId } = data as {
+      submissionId: string;
+      blockId: string;
+    };
+
+    const subSnap = await admin
+      .firestore()
+      .collection("learner_submissions")
+      .doc(submissionId)
+      .get();
+    if (!subSnap.exists)
+      throw new HttpsError("not-found", "Submission not found.");
+
+    const answerEntry = subSnap.data()?.answers?.[blockId];
+    if (!answerEntry?.storagePath) {
+      return { files: {}, dependencies: {} };
+    }
+
+    const bucket = admin.storage().bucket();
+    const [contents] = await bucket.file(answerEntry.storagePath).download();
+    return JSON.parse(contents.toString("utf8"));
   },
 );

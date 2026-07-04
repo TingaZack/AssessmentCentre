@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { doc, getDoc, updateDoc, collection, query, where, getDocs, setDoc, onSnapshot } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, collection, query, where, getDocs, setDoc, onSnapshot, clearIndexedDbPersistence } from 'firebase/firestore';
 import { getStorage, ref as fbStorageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db } from '../../../lib/firebase';
@@ -77,7 +77,10 @@ const AssessmentPlayer: React.FC = () => {
 
     // ─── REFS ────────────────────────────────────────────────────────────────
     const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const codeSaveTimeoutRef = useRef<Record<string, NodeJS.Timeout>>({});
 
+    // ─── CODE SANDBOX SNAPSHOT STATE (loaded from Storage via callable) ──────
+    const [codeSnapshots, setCodeSnapshots] = useState<Record<string, any>>({});
     // ─── COMPUTED DERIVED STATES ───────────────────────────────────────────
     const currentStatus = String(submission?.status || '').toLowerCase();
     const isMissed = currentStatus === 'missed';
@@ -264,6 +267,28 @@ const AssessmentPlayer: React.FC = () => {
 
         if (timeOffset !== null) load();
     }, [assessmentId, user?.uid, timeOffset]);
+
+    // ─── LOAD CODE SANDBOX SNAPSHOTS ────────────────────────────────────────
+    useEffect(() => {
+        if (!submission?.id || !assessment?.blocks) return;
+        const codeBlocks = assessment.blocks.filter((b: any) => b.type === 'code_sandbox');
+        if (codeBlocks.length === 0) return;
+
+        codeBlocks.forEach(async (block: any) => {
+            const entry = answers[block.id];
+            if (entry?.storagePath) {
+                try {
+                    const functions = getFunctions();
+                    const getFn = httpsCallable(functions, 'getCodeSnapshot');
+                    const res: any = await getFn({ submissionId: submission.id, blockId: block.id });
+                    setCodeSnapshots(prev => ({ ...prev, [block.id]: res.data }));
+                } catch (err) {
+                    console.error(`Failed to load snapshot for ${block.id}:`, err);
+                    toast.error(`Could not load saved code for "${block.title || block.id}".`);
+                }
+            }
+        });
+    }, [submission?.id, assessment?.blocks]);
 
     // ─── FETCH COMPLIANCE LOGS ─────────────────────────────────────────────
     useEffect(() => {
@@ -554,26 +579,76 @@ const AssessmentPlayer: React.FC = () => {
         }
     };
 
-    // ─── AUTOSAVE ──────────────────────────────────────────────────────────
     const triggerAutoSave = (newAnswers: any) => {
         if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
         setSaving(true);
+
         saveTimeoutRef.current = setTimeout(async () => {
             if (!submission?.id) return;
+
+            // Keep the safety cap, but remove the flaky stringify verification!
+            const payloadStr = JSON.stringify(newAnswers);
+            if (payloadStr.length > 900000) {
+                setSaving(false);
+                toast.error('Save skipped: your text payload is too large. Please trim excess data.');
+                return;
+            }
+
             try {
-                await updateDoc(doc(db, 'learner_submissions', submission.id), { answers: newAnswers, lastSavedAt: new Date(getSecureNow()).toISOString() });
-            } catch {
-                toast.error('Auto-save failed.');
+                // Securely save the answers (and the lightweight Cloud Storage pointers)
+                await updateDoc(doc(db, 'learner_submissions', submission.id), {
+                    answers: newAnswers,
+                    lastSavedAt: new Date().toISOString()
+                });
+
+            } catch (err: any) {
+                console.error('Auto-save failed:', err);
+                toast.error('Auto-save failed. Retrying shortly.');
             } finally {
                 setSaving(false);
             }
         }, 1200);
     };
 
-    const handleAnswerChange = (blockId: string, value: any) => {
+    const saveCodeSnapshot = (blockId: string, files: Record<string, string>, dependencies?: Record<string, string>, immediate: boolean = false) => {
+        if (!submission?.id) return;
+        if (codeSaveTimeoutRef.current[blockId]) clearTimeout(codeSaveTimeoutRef.current[blockId]);
+        setSaving(true);
+
+        const doSave = async () => {
+            try {
+                const functions = getFunctions();
+                const saveFn = httpsCallable(functions, 'saveCodeSnapshot');
+                const res: any = await saveFn({ submissionId: submission.id, blockId, files, dependencies });
+                setCodeSnapshots(prev => ({ ...prev, [blockId]: { files, dependencies: dependencies || {} } }));
+                setSubmission((p: any) => ({
+                    ...p,
+                    answers: {
+                        ...p.answers,
+                        [blockId]: { storagePath: res.data.storagePath, fileCount: Object.keys(files).length, sizeBytes: res.data.sizeBytes, lastSavedAt: res.data.lastSavedAt }
+                    }
+                }));
+                if (immediate) toast.success('Code saved to server.');
+            } catch (err: any) {
+                console.error('Code snapshot save failed:', err);
+                toast.error(`SAVE FAILED: ${err?.code || 'unknown'} — ${err?.message || 'no message'}`);
+            } finally {
+                setSaving(false);
+            }
+        };
+
+        if (immediate) {
+            doSave(); // fire right away — no debounce for import/pull/zip actions
+        } else {
+            codeSaveTimeoutRef.current[blockId] = setTimeout(doSave, 2000);
+        }
+    };
+
+    const handleAnswerChange = (blockId: string, value: any) => {  // ← this line must survive intact
         if (isGloballyLocked || isBlockVerified(blockId)) return;
         setAnswers(p => { const n = { ...p, [blockId]: value }; triggerAutoSave(n); return n; });
     };
+
     const handleTaskAnswerChange = (blockId: string, field: string, value: any) => {
         if (isGloballyLocked || isBlockVerified(blockId)) return;
         setAnswers(p => { const n = { ...p, [blockId]: { ...(p[blockId] || {}), [field]: value } }; triggerAutoSave(n); return n; });
@@ -696,14 +771,50 @@ const AssessmentPlayer: React.FC = () => {
         setShowSubmitConfirm(true);
     };
 
+    // // ─── EXECUTE SUBMIT ────────────────────────────────────────────────────
+    // const executeSubmit = async () => {
+    //     setShowSubmitConfirm(false);
+    //     setSaving(true);
+    //     const t = new Date(getSecureNow()).toISOString();
+    //     const nextStatus = isAwaitingSignoff ? 'facilitator_reviewed' : 'submitted';
+    //     const payload = {
+    //         answers,
+    //         status: nextStatus,
+    //         submittedAt: t,
+    //         learnerDeclaration: {
+    //             agreed: true,
+    //             timestamp: t,
+    //             learnerName: learnerProfile?.fullName || user?.fullName || 'Unknown',
+    //             learnerIdNumber: learnerProfile?.idNumber || 'Unknown',
+    //             signatureUrl: learnerProfile?.signatureUrl || null
+    //         }
+    //     };
+    //     try {
+    //         await updateDoc(doc(db, 'learner_submissions', submission.id), payload);
+    //         toast.success(isAwaitingSignoff ? 'Observation acknowledged and submitted!' : 'Assessment submitted successfully!');
+    //         setSubmission((p: any) => ({ ...p, status: nextStatus, learnerDeclaration: payload.learnerDeclaration }));
+    //         setTimeout(() => window.scrollTo(0, 0), 1000);
+    //     } catch (error: any) {
+    //         console.error("❌ Submission Error:", error);
+    //         toast.error(`Failed to submit: ${error.message}`);
+    //     } finally { setSaving(false); }
+    // };
+
     // ─── EXECUTE SUBMIT ────────────────────────────────────────────────────
     const executeSubmit = async () => {
         setShowSubmitConfirm(false);
         setSaving(true);
+
+        // Code sandbox snapshots are already persisted continuously via saveCodeSnapshot()
+        // (Cloud Function → Cloud Storage). `answers[blockId]` already holds the lightweight
+        // storagePath pointer, so no extra capture is needed here.
+
         const t = new Date(getSecureNow()).toISOString();
+
         const nextStatus = isAwaitingSignoff ? 'facilitator_reviewed' : 'submitted';
+
         const payload = {
-            answers,
+            answers, //  safely includes all the Code Sandbox snapshots!
             status: nextStatus,
             submittedAt: t,
             learnerDeclaration: {
@@ -714,6 +825,7 @@ const AssessmentPlayer: React.FC = () => {
                 signatureUrl: learnerProfile?.signatureUrl || null
             }
         };
+
         try {
             await updateDoc(doc(db, 'learner_submissions', submission.id), payload);
             toast.success(isAwaitingSignoff ? 'Observation acknowledged and submitted!' : 'Assessment submitted successfully!');
@@ -722,7 +834,9 @@ const AssessmentPlayer: React.FC = () => {
         } catch (error: any) {
             console.error("❌ Submission Error:", error);
             toast.error(`Failed to submit: ${error.message}`);
-        } finally { setSaving(false); }
+        } finally {
+            setSaving(false);
+        }
     };
 
     // ─── EXECUTE APPEAL ────────────────────────────────────────────────────
@@ -925,6 +1039,8 @@ const AssessmentPlayer: React.FC = () => {
             handleTaskAnswerChange={handleTaskAnswerChange}
             handleNestedAnswerChange={handleNestedAnswerChange}
             handleFileUpload={handleFileUpload}
+            saveCodeSnapshot={saveCodeSnapshot}
+            codeSnapshots={codeSnapshots}
             triggerSubmitConfirm={triggerSubmitConfirm}
             executeSubmit={executeSubmit}
             executeAppeal={executeAppeal}

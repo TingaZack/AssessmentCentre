@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Isolated Coding Shell</title>
+    <script src="https://unpkg.com/@stackblitz/sdk/bundles/sdk.umd.js"></script>
+    <style>
+      html,
+      body,
+      #embed-target {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        background: #1e293b;
+        overflow: hidden;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="embed-target"></div>
+
+    <script>
+      let vmInstance = null;
+
+      window.addEventListener("message", async (event) => {
+        const message = event.data;
+
+        if (message.type === "INIT_SANDBOX") {
+          try {
+            vmInstance = await StackBlitzSDK.embedProject(
+              "embed-target",
+              message.projectPayload,
+              message.embedOptions,
+            );
+
+            window.parent.postMessage({ type: "BOOT_SUCCESS" }, "*");
+
+            setInterval(async () => {
+              if (vmInstance) {
+                const snapshot = await vmInstance.getFsSnapshot();
+                window.parent.postMessage(
+                  { type: "AUTO_SAVE_SNAPSHOT", snapshot },
+                  "*",
+                );
+              }
+            }, 10000);
+          } catch (err) {
+            window.parent.postMessage(
+              { type: "BOOT_FAILURE", error: err.message },
+              "*",
+            );
+          }
+        }
+
+        if (message.type === "TRIGGER_FORCE_SAVE") {
+          if (vmInstance) {
+            const snapshot = await vmInstance.getFsSnapshot();
+            window.parent.postMessage(
+              { type: "FORCE_SAVE_SNAPSHOT", snapshot },
+              "*",
+            );
+          }
+        }
+      });
+    </script>
+  </body>
+</html>

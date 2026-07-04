@@ -10,8 +10,9 @@ import { LogbookHoursTally } from './SubmissionReviewHelpers';
 import { FilePreview } from './SubmissionReviewPreviews';
 import { UrlPreview } from '../../../../components/common/UrlPreview';
 import '../SubmissionReview';
+import { CodeSandboxPlayer } from '../../../../components/common/CodeSandboxPlayer/CodeSandboxPlayer';
 
-// ─── TYPES (mirror the original) ─────────────────────────────────────────────
+// ─── TYPES ───────────────────────────────────────────────────────────────────
 export interface CriterionResult {
     status: 'C' | 'NYC' | null;
     comment: string;
@@ -71,10 +72,9 @@ interface RenderBlocksProps {
     handleSetToNow: (blockId: string, field: 'obsDate' | 'obsStartTime' | 'obsEndTime') => void;
 }
 
-// ─── HELPER: CLEAN RICH TEXT (FIXES THE WORD-BREAK BUG) ──────────────────────
+// ─── HELPER: CLEAN RICH TEXT ─────────────────────────────────────────────────
 const cleanRichText = (html?: string) => {
     if (!html) return '';
-    // Replaces Non-Breaking Spaces (&nbsp;) with standard spaces so the browser can wrap words normally!
     return html.replace(/&nbsp;/g, ' ');
 };
 
@@ -145,8 +145,8 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
             );
         }
 
-        // ── QUESTION / TASK / CHECKLIST / LOGBOOK / WORKPLACE ───────────────────
-        if (['mcq', 'text', 'task', 'checklist', 'logbook', 'qcto_workplace'].includes(block.type)) {
+        // ── QUESTION / TASK / CHECKLIST / LOGBOOK / WORKPLACE / CODE SANDBOX ──
+        if (['mcq', 'text', 'task', 'checklist', 'logbook', 'qcto_workplace', 'code_sandbox'].includes(block.type)) {
             qNum++;
             const learnerAns = submission.answers?.[block.id];
             const maxM = block.marks || 0;
@@ -172,7 +172,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
             const renderAssReadOnly = (isAssDone || aData?.feedback || aData?.score > 0) && (!canGrade || isPrintMode);
             const renderModReadOnly = (isModDone || mData?.feedback) && (!canModerate || isPrintMode);
 
-            const mentorActiveOnScorableBlock = isMentor && canFacilitatorMark && ['mcq', 'text', 'task'].includes(block.type);
+            const mentorActiveOnScorableBlock = isMentor && canFacilitatorMark && ['mcq', 'text', 'task', 'code_sandbox'].includes(block.type);
 
             let decData = activeData;
             let isDeclarationInteractive = isActiveRole;
@@ -184,7 +184,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
                 isDeclarationInteractive = false;
             }
 
-            // ── READ ONLY LAYERS (reused inside each block) ──────────────────────────
+            // ── READ ONLY LAYERS ─────────────────────────────────────────────────
             const renderReadOnlyLayers = () => (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: (!isPrintMode && isActiveRole) ? '1rem' : '0' }}>
                     {renderFacReadOnly && (
@@ -221,6 +221,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
                 </div>
             );
 
+            // ── ACTIVE GRADE CONTROLS ────────────────────────────────────────────
             const renderActiveGradeControls = (blockId: string) => {
                 if (canModerate && isWorkplaceModule) {
                     return (
@@ -265,7 +266,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
                 }
 
                 return (
-                    <>
+                    <div>
                         <div className="sr-score-input-wrap" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
                             <label style={{ color: activeInkColor, fontWeight: 'bold', fontSize: '0.85rem' }}>Total Marks Awarded for this block:</label>
                             <input
@@ -288,9 +289,56 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
                                 onChange={e => handleFeedbackChange(blockId, e.target.value)}
                             />
                         </div>
-                    </>
+                    </div>
                 );
             };
+
+            // ── CODE SANDBOX ──────────────────────────────────────────────────
+            if (block.type === 'code_sandbox') {
+                return (
+                    <div key={block.id} className="sr-q-card" style={{ borderTop: '4px solid black', marginBottom: '2rem' }}>
+                        <div className="sr-q-header">
+                            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', width: '100%' }}>
+                                <span className="sr-q-num" style={{ background: '#eff6ff', color: '#3b82f6', flexShrink: 0 }}>IDE</span>
+                                <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
+                                    <div className="ap-code-sandbox-instructions" style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '1rem', width: '100%' }}>
+                                        {block.title && (
+                                            <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#0f172a', marginBottom: '0.75rem', borderBottom: '1px solid #e2e8f0', paddingBottom: '0.5rem' }}>
+                                                {block.title}
+                                            </h3>
+                                        )}
+                                        {block.question && (
+                                            <div className="quill-read-only-content" style={{ wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap', color: '#334155' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.question) }} />
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {!isPrintMode && isActiveRole && !isMentor && !(canModerate && isWorkplaceModule) && (
+                                <div className="sr-visual-mark" style={{ flexShrink: 0, marginLeft: '10px' }}>
+                                    <button onClick={() => handleVisualMark(block.id, true, maxM)} className="sr-mark-btn" style={activeData.isCorrect === true ? { color: activeInkColor, border: `1px solid ${activeInkColor}`, background: 'white' } : {}} title="Mark Correct"><Check size={20} /></button>
+                                    <button onClick={() => handleVisualMark(block.id, false, maxM)} className="sr-mark-btn" style={activeData.isCorrect === false ? { color: activeInkColor, border: `1px solid ${activeInkColor}`, background: 'white' } : {}} title="Mark Incorrect"><X size={20} /></button>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="sr-q-body">
+                            {renderBlockImage(block)}
+
+                            <CodeSandboxPlayer
+                                block={block}
+                                learnerAns={learnerAns}
+                                readOnly={true}
+                            />
+
+                            <div className="sr-grade-box" style={{ borderLeft: `4px solid ${activeInkColor}`, marginTop: '1rem', padding: '1rem', background: 'white', borderRadius: '6px' }}>
+                                {renderReadOnlyLayers()}
+                                {(!isPrintMode && isActiveRole) && renderActiveGradeControls(block.id)}
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
 
             // ── MCQ ────────────────────────────────────────────────────────────────
             if (block.type === 'mcq') {
@@ -370,6 +418,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
                     { id: 'upload', icon: <UploadCloud size={14} />, label: 'File Upload', val: safeLearnerAns.uploadUrl },
                     { id: 'code', icon: <Code size={14} />, label: 'Code', val: safeLearnerAns.code }
                 ].filter(t => !!t.val);
+
                 const activeTabId = activeTabs[block.id] || taskTabs[0]?.id;
 
                 return (
@@ -390,6 +439,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
                             {renderBlockImage(block)}
                             <div className="sr-answer-box">
                                 <div className="sr-answer-label" style={{ color: 'black', display: 'flex', alignItems: 'center', gap: '6px' }}><Layers size={14} /> Learner Evidence Submitted:</div>
+
                                 {(!learnerAns || Object.keys(learnerAns).length === 0) ? (
                                     <span style={{ color: '#64748b', fontStyle: 'italic', display: 'block', padding: '10px' }}>No evidence uploaded by learner.</span>
                                 ) : isPrintMode ? (
@@ -450,7 +500,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
                                 {entries.length === 0 ? (
                                     <span style={{ color: '#64748b', fontStyle: 'italic', display: 'block', padding: '10px' }}>No entries logged by learner.</span>
                                 ) : (
-                                    <>
+                                    <div>
                                         <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: '6px' }}>
                                             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem', textAlign: 'left', background: 'white' }}>
                                                 <thead>
@@ -501,7 +551,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
                                                 />
                                             </div>
                                         )}
-                                    </>
+                                    </div>
                                 )}
                             </div>
                         </div>
@@ -533,7 +583,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
                                     const modResult = mData.criteriaResults?.[i] || { status: null, comment: '' };
                                     const myResult = activeData.criteriaResults?.[i] || { status: null, comment: '', startTime: '', endTime: '' };
 
-                                    // ─── TIMER MATH (Prevents Negative Time Bug) ───
+                                    // ─── TIMER MATH ───
                                     let durationStr = '0m 0s';
                                     if (myResult.startTime && myResult.endTime) {
                                         const diffMs = new Date(myResult.endTime).getTime() - new Date(myResult.startTime).getTime();
@@ -552,11 +602,9 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
                                                 const rawEv = learnerAns?.[`evidence_${i}`];
                                                 const critEvidence = typeof rawEv === 'string' ? { text: rawEv } : (rawEv || {});
 
-                                                // Clean out rich text tags to check for genuine text input
                                                 const cleanTextCheck = critEvidence.text ? critEvidence.text.replace(/<[^>]*>/g, '').trim() : '';
                                                 const isTextTrulyEmpty = cleanTextCheck.length === 0;
 
-                                                // Structural mapping for dynamic tabs
                                                 const allTabs = [
                                                     { id: 'upload', icon: <UploadCloud size={13} />, label: 'File Artifact', val: critEvidence.uploadUrl, render: () => <FilePreview url={critEvidence.uploadUrl} /> },
                                                     { id: 'url', icon: <LinkIcon size={13} />, label: 'Web Link', val: critEvidence.url, render: () => <UrlPreview url={critEvidence.url} /> },
@@ -564,13 +612,11 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
                                                     { id: 'text', icon: <FileText size={13} />, label: 'Learner Notes', val: isTextTrulyEmpty ? null : critEvidence.text, render: () => <div className="quill-read-only-content" dangerouslySetInnerHTML={{ __html: cleanRichText(critEvidence.text) }} /> }
                                                 ];
 
-                                                // Strict filtering: Only display tabs holding real values
                                                 const activeEvidenceTabs = allTabs.filter(t => !!t.val);
                                                 const hasUploadedEvidence = activeEvidenceTabs.length > 0;
                                                 const isObservedOrTimed = !!(myResult.startTime || myResult.status || mentorResult.status || assessorResult.status);
 
                                                 if (!hasUploadedEvidence) {
-                                                    // State A: Mentor observed or timed it, but Learner files are missing
                                                     if (isObservedOrTimed) {
                                                         return (
                                                             <div style={{ background: '#fffbeb', border: '1px solid #fef3c7', padding: '12px 15px', borderRadius: '6px', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '8px', color: '#b45309' }}>
@@ -582,11 +628,9 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
                                                             </div>
                                                         );
                                                     }
-                                                    // State B: Untouched entry completely empty
                                                     return <p style={{ margin: '0 0 12px 0', fontSize: '0.8rem', color: '#64748b', fontStyle: 'italic', background: '#f1f5f9', padding: '8px', borderRadius: '4px' }}>Awaiting learner evidence upload.</p>;
                                                 }
 
-                                                // State C: Valid learner files or entries exist
                                                 const isDraft = ['not_started', 'in_progress'].includes(String(submission?.status || '').toLowerCase());
                                                 const subTabKey = `${block.id}_ev_${i}`;
                                                 const activeSubTab = activeTabs[subTabKey] || activeEvidenceTabs[0]?.id;
@@ -597,14 +641,12 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 
                                                 return (
                                                     <div style={{
-                                                        // 🚀 UPDATED: Distinct amber theme for unsubmitted drafts vs purple theme for submitted work
                                                         background: isDraft ? '#fffdf5' : '#f5f3ff',
                                                         border: isDraft ? '1px solid #fef08a' : '1px solid #c4b5fd',
                                                         padding: '15px',
                                                         borderRadius: '6px',
                                                         marginBottom: '15px'
                                                     }}>
-                                                        {/* Header Frame Label with Live Draft Tracking Warning Pill */}
                                                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
                                                             <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', fontWeight: 'bold', color: isDraft ? '#b45309' : '#6d28d9', textTransform: 'uppercase' }}>
                                                                 <Layers size={16} /> {isDraft ? 'Learner Evidence (Live Draft Preview)' : 'Learner Evidence Submitted'}
@@ -617,7 +659,6 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
                                                             )}
                                                         </div>
 
-                                                        {/* Navigation Tab selection menu row */}
                                                         <div className="no-print" style={{ display: 'flex', borderBottom: '1px solid #cbd5e1', gap: '4px', marginBottom: '10px', overflowX: 'auto', paddingBottom: '2px' }}>
                                                             {activeEvidenceTabs.map(tab => (
                                                                 <button
@@ -633,7 +674,6 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
                                                             ))}
                                                         </div>
 
-                                                        {/* Collapsible View Height-Limiter Panel Box Container */}
                                                         <div style={{ position: 'relative' }}>
                                                             <div style={{
                                                                 maxHeight: isTabExpanded ? 'none' : '150px',
@@ -731,7 +771,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
                                                                     {!myResult.endTime ? (
                                                                         <button onClick={() => handleCriterionChange(block.id, i, 'endTime', new Date().toISOString())} className="ab-btn sm" style={{ background: '#ef4444', color: 'white', border: 'none', padding: '4px 12px', borderRadius: '4px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}><Square size={12} /> Stop</button>
                                                                     ) : (
-                                                                        <>
+                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                                                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#334155' }}>
                                                                                 <strong>End:</strong>
                                                                                 <input
@@ -745,7 +785,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
                                                                                 />
                                                                             </div>
                                                                             <span style={{ color: '#0ea5e9', fontWeight: 'bold', background: '#e0f2fe', padding: '4px 8px', borderRadius: '4px', fontSize: '0.75rem' }}>Duration: {durationStr}</span>
-                                                                        </>
+                                                                        </div>
                                                                     )}
                                                                 </div>
                                                             )}
@@ -855,8 +895,6 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
                                 const modResult = mData.activityResults?.[actIdx] || { status: null, comment: '' };
                                 const myResult = activeData.activityResults?.[actIdx] || { status: null, comment: '' };
 
-                                const displayResult = canModerate ? assessorResult : myResult;
-
                                 return (
                                     <div key={wa.id} style={{ marginBottom: '2rem', border: '1px solid #cbd5e1', borderRadius: '8px', background: isActiveRole ? 'white' : '#f8fafc' }}>
                                         <div style={{ padding: '1rem', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
@@ -889,14 +927,14 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
                                             </div>
 
                                             <div style={{ borderTop: '1px dashed #cbd5e1', paddingTop: '1rem' }}>
-                                                {/* READ ONLY LAYERS (Stacked perfectly) */}
+                                                {/* READ ONLY LAYERS */}
                                                 {(isFacDone || mentorResult.status) && (!canFacilitatorMark || isPrintMode) && (
                                                     <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '6px', padding: '10px', marginBottom: '10px' }}>
                                                         <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#1d4ed8', textTransform: 'uppercase', display: 'flex', gap: '5px' }}>
-                                                            <ShieldCheck size={12} /> {savedFacRole === 'mentor' ? 'Workplace Mentor Verification' : 'Facilitator Pre-Mark'}
+                                                            <ShieldCheck size={12} /> {savedFacRole === 'mentor' ? 'Workplace Mentor Observation' : 'Facilitator Pre-Mark'}
                                                         </span>
                                                         <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: mentorResult.status === 'C' ? '#166534' : mentorResult.status === 'NYC' ? '#991b1b' : '#64748b' }}>
-                                                            {mentorResult.status === 'C' ? 'Verified ✓' : mentorResult.status === 'NYC' ? 'Not Verified ✗' : 'Not Reviewed'}
+                                                            {mentorResult.status === 'C' ? (savedFacRole === 'mentor' ? 'Observed ✓' : 'Competent (C)') : mentorResult.status === 'NYC' ? (savedFacRole === 'mentor' ? 'Not Observed ✗' : 'NYC') : 'Not Reviewed'}
                                                         </span>
                                                         {mentorResult.comment && <div style={{ fontSize: '0.82rem', color: '#1e40af', fontStyle: 'italic', marginTop: '4px' }}>{mentorResult.comment}</div>}
                                                     </div>
@@ -928,7 +966,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
                                                     </div>
                                                 )}
 
-                                                {/* ACTIVE EVALUATION CONTROLS */}
+                                                {/* ACTIVE INTERACTIVE EVALUATION CONTROLS */}
                                                 {(!isPrintMode && isActiveRole) && (
                                                     <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', flexWrap: 'wrap', borderTop: '1px dashed #cbd5e1', paddingTop: '10px', marginTop: '10px' }}>
                                                         <div style={{ display: 'flex', gap: '10px' }}>
@@ -960,8 +998,18 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
                                 );
                             })}
                             <div className="ap-workplace__toggles" style={{ marginTop: '1rem' }}>
-                                {block.requireSelfAssessment !== false && <label className={`ap-workplace__toggle${learnerAns?.selfAssessmentDone ? ' ap-workplace__toggle--checked' : ''}`}><CheckCircle size={16} color={learnerAns?.selfAssessmentDone ? 'var(--mlab-green)' : 'var(--mlab-grey-light)'} /><span className="ap-workplace__toggle-label" style={{ color: learnerAns?.selfAssessmentDone ? 'black' : 'var(--mlab-grey-light)' }}>Learner completed self-assessment.</span></label>}
-                                {block.requireGoalPlanning !== false && <label className={`ap-workplace__toggle${learnerAns?.goalPlanningDone ? ' ap-workplace__toggle--checked' : ''}`}><CheckCircle size={16} color={learnerAns?.goalPlanningDone ? 'var(--mlab-green)' : 'var(--mlab-grey-light)'} /><span className="ap-workplace__toggle-label" style={{ color: learnerAns?.goalPlanningDone ? 'black' : 'var(--mlab-grey-light)' }}>Learner updated goal planning document.</span></label>}
+                                {block.requireSelfAssessment !== false && (
+                                    <label className={`ap-workplace__toggle${learnerAns?.selfAssessmentDone ? ' ap-workplace__toggle--checked' : ''}`}>
+                                        <CheckCircle size={16} color={learnerAns?.selfAssessmentDone ? 'var(--mlab-green)' : 'var(--mlab-grey-light)'} />
+                                        <span className="ap-workplace__toggle-label" style={{ color: learnerAns?.selfAssessmentDone ? 'black' : 'var(--mlab-grey-light)' }}>Learner completed self-assessment.</span>
+                                    </label>
+                                )}
+                                {block.requireGoalPlanning !== false && (
+                                    <label className={`ap-workplace__toggle${learnerAns?.goalPlanningDone ? ' ap-workplace__toggle--checked' : ''}`}>
+                                        <CheckCircle size={16} color={learnerAns?.goalPlanningDone ? 'var(--mlab-green)' : 'var(--mlab-grey-light)'} />
+                                        <span className="ap-workplace__toggle-label" style={{ color: learnerAns?.goalPlanningDone ? 'black' : 'var(--mlab-grey-light)' }}>Learner updated goal planning document.</span>
+                                    </label>
+                                )}
                             </div>
 
                             <div className="sr-grade-box" style={{ borderTop: `1px dashed #cbd5e1`, marginTop: '1rem', paddingTop: '1rem' }}>

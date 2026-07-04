@@ -16,6 +16,8 @@ import { db } from '../../../lib/firebase';
 import 'react-quill-new/dist/quill.snow.css';
 import './AssessmentPreview.css';
 
+import { CodeSandboxPlayer } from '../../../components/common/CodeSandboxPlayer/CodeSandboxPlayer';
+
 /* ─── HELPER: CLEAN RICH TEXT (FIXES WORD-BREAK BUG) ─────────────────────── */
 const cleanRichText = (html?: string) => {
     if (!html) return '';
@@ -58,7 +60,9 @@ export const AssessmentPreview: React.FC = () => {
 
     // Derived stats
     const blocks = assessment.blocks || [];
-    const qBlocks = blocks.filter((b: any) => ['text', 'mcq', 'task', 'checklist', 'qcto_workplace'].includes(b.type));
+
+    // 🚀 FIXED: Added 'code_sandbox' to the question block filters
+    const qBlocks = blocks.filter((b: any) => ['text', 'mcq', 'task', 'checklist', 'qcto_workplace', 'code_sandbox'].includes(b.type));
     const qCount = qBlocks.length;
     const totalMarks = assessment.totalMarks ?? blocks.reduce((s: number, b: any) => s + (Number(b.marks) || 0), 0);
     const timeLimit = assessment.moduleInfo?.timeLimit;
@@ -169,8 +173,8 @@ export const AssessmentPreview: React.FC = () => {
                         {blocks.reduce((acc: any[], block: any) => {
                             if (block.type === 'section') {
                                 acc.push({ type: 'section', label: extractPlainText(block.title) || 'Section', id: block.id });
-                            } else if (['text', 'mcq', 'task', 'checklist', 'logbook', 'qcto_workplace'].includes(block.type)) {
-                                // 🚀 EXTRACT PURE PLAIN TEXT FOR MENU LINKS
+                            } else if (['text', 'mcq', 'task', 'checklist', 'logbook', 'qcto_workplace', 'code_sandbox'].includes(block.type)) {
+                                // 🚀 FIXED: Added 'code_sandbox' to the sidebar navigation mapping array
                                 const cleanLabel = extractPlainText(block.question) || extractPlainText(block.title) || 'Workplace Checkpoint';
                                 acc.push({ type: 'q', label: cleanLabel, id: block.id });
                             }
@@ -379,6 +383,41 @@ export const AssessmentPreview: React.FC = () => {
                                                 {block.allowUpload && <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', background: '#f5f3ff', padding: '4px 10px', borderRadius: '20px', color: '#8b5cf6', border: '1px solid #ddd6fe' }}><UploadCloud size={12} /> File Upload ({block.allowedFileTypes})</span>}
                                                 {block.allowCode && <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', background: '#fdf2f8', padding: '4px 10px', borderRadius: '20px', color: '#ec4899', border: '1px solid #fbcfe8' }}><Code size={12} /> IDE / Code ({block.codeLanguage})</span>}
                                             </div>
+                                        </div>
+                                    </div>
+                                );
+                            }
+
+                            /* 🚀 NEW: LIVE IDE / CODE SANDBOX PREVIEW */
+                            if (block.type === 'code_sandbox') {
+                                qNum++;
+                                return (
+                                    <div key={block.id} id={`block-${block.id}`} className="mlab-block-question">
+                                        <div className="mlab-block-question__header">
+                                            <span className="mlab-block-question__num" style={{ background: '#eff6ff', color: '#3b82f6' }}>IDE</span>
+                                            <div className="mlab-block-question__text">
+                                                <div className="ap-code-sandbox-instructions" style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '1rem', width: '100%' }}>
+                                                    {block.title && (
+                                                        <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#0f172a', marginBottom: '0.75rem', borderBottom: '1px solid #e2e8f0', paddingBottom: '0.5rem' }}>
+                                                            {block.title}
+                                                        </h3>
+                                                    )}
+                                                    {block.question && (
+                                                        <div className="quill-read-only-content" style={{ wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap', color: '#334155' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.question) }} />
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <span className="mlab-block-question__marks">{block.marks} Marks</span>
+                                        </div>
+                                        <div className="mlab-block-question__body">
+                                            {renderBlockImage(block)}
+
+                                            <CodeSandboxPlayer
+                                                block={block}
+                                                learnerAns={undefined} // Ensures it loads from the block template
+                                                onChange={() => { }} // Dummy handler for preview
+                                                readOnly={false} // Lets the facilitator actually type code
+                                            />
                                         </div>
                                     </div>
                                 );
