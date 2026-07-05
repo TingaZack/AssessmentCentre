@@ -6978,6 +6978,22 @@
   margin: 0 0 0.5em;
 }
 
+/* Prevent the Quill Formula Embed from trapping the cursor */
+.ql-editor .ql-formula {
+  display: inline-flex !important;
+  align-items: center;
+  padding: 2px 6px;
+  margin: 0 4px;
+  background-color: rgba(236, 72, 153, 0.08);
+  border-radius: 4px;
+  cursor: text;
+}
+
+/* Ensure there's always an accessible insertion point after an embed */
+.ql-editor .ql-formula::after {
+  content: "\200B"; /* Inserts an invisible zero-width space */
+}
+
 /* ── ab- utility inputs (shared with AssessmentBuilder) ──────────────────── */
 .ab-input {
   width: 100%;
