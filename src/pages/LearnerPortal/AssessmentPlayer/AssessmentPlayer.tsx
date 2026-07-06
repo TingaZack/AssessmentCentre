@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { doc, getDoc, updateDoc, collection, query, where, getDocs, setDoc, onSnapshot } from 'firebase/firestore';
-import { getStorage, ref as fbStorageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { getStorage, ref as fbStorageRef, uploadBytesResumable, getDownloadURL, uploadString } from 'firebase/storage';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db } from '../../../lib/firebase';
 import { useStore } from '../../../store/useStore';
@@ -78,6 +78,8 @@ const AssessmentPlayer: React.FC = () => {
 
     // ─── REFS ────────────────────────────────────────────────────────────────
     const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const answersRef = useRef(answers);
+    useEffect(() => { answersRef.current = answers; }, [answers]);
 
     // ─── COMPUTED DERIVED STATES ───────────────────────────────────────────
     const currentStatus = String(submission?.status || '').toLowerCase();
@@ -571,9 +573,54 @@ const AssessmentPlayer: React.FC = () => {
         }, 1200);
     };
 
-    const saveCodeSnapshot = useCallback((blockId: string, snapshot: any) => {
+    // const saveCodeSnapshot = useCallback((blockId: string, snapshot: any) => {
+    //     setCodeSnapshots(prev => ({ ...prev, [blockId]: snapshot }));
+    // }, []);
+    const SNAPSHOT_INLINE_LIMIT = 200_000; // ~200KB — leaves headroom under Firestore's 1MB doc cap
+
+    const codeSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+    const saveCodeSnapshot = useCallback(async (blockId: string, snapshot: any, dependencies?: Record<string, string>, immediate?: boolean) => {
         setCodeSnapshots(prev => ({ ...prev, [blockId]: snapshot }));
-    }, []);
+
+        const doWrite = async () => {
+            if (!submission?.id) return;
+            setSaving(true);
+            try {
+                let fieldPayload: any;
+
+                if (typeof snapshot === 'string' && snapshot.length > SNAPSHOT_INLINE_LIMIT) {
+                    // Large project — offload to Storage, keep Firestore doc lean
+                    const path = `code_snapshots/${submission.id}/${blockId}.json`;
+                    await uploadString(fbStorageRef(getStorage(), path), snapshot);
+                    fieldPayload = { storagePath: path, dependencies: dependencies || {}, lastSavedAt: new Date().toISOString() };
+                } else {
+                    fieldPayload = { snapshot, dependencies: dependencies || {}, lastSavedAt: new Date().toISOString() };
+                }
+
+                // Partial write: only this block's answer field, not the whole `answers` map
+                await updateDoc(doc(db, 'learner_submissions', submission.id), {
+                    [`answers.${blockId}`]: fieldPayload,
+                    lastSavedAt: new Date().toISOString()
+                });
+
+                setAnswers(prev => ({ ...prev, [blockId]: fieldPayload }));
+            } catch (err) {
+                toast.error('Failed to save your code changes.');
+                throw err;
+            } finally {
+                setSaving(false);
+            }
+        };
+
+        if (immediate) {
+            if (codeSaveTimeoutRef.current) clearTimeout(codeSaveTimeoutRef.current);
+            await doWrite();
+        } else {
+            if (codeSaveTimeoutRef.current) clearTimeout(codeSaveTimeoutRef.current);
+            codeSaveTimeoutRef.current = setTimeout(() => { doWrite(); }, 1200);
+        }
+    }, [submission?.id, toast]);
 
     const handleAnswerChange = (blockId: string, value: any) => {
         if (isGloballyLocked || isBlockVerified(blockId)) return;

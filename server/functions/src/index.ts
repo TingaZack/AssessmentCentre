@@ -313,9 +313,15 @@ export const createStaffAccount = onCall(
     } = request.data;
     const auth = request.auth;
 
+    console.log(
+      `[createStaffAccount] 🟢 INITIATED: Request received to create ${role} account for ${email}`,
+    );
+
     // Authorization Checks
-    if (!auth)
+    if (!auth) {
+      console.error("[createStaffAccount] ❌ ERROR: Unauthenticated request.");
       throw new HttpsError("unauthenticated", "Authentication required.");
+    }
 
     const callerDoc = await admin
       .firestore()
@@ -323,31 +329,48 @@ export const createStaffAccount = onCall(
       .doc(auth.uid)
       .get();
 
-    if (!callerDoc.exists || callerDoc.data()?.role !== "admin")
+    if (!callerDoc.exists || callerDoc.data()?.role !== "admin") {
+      console.error(
+        `[createStaffAccount] ❌ ERROR: Permission denied for UID: ${auth.uid}`,
+      );
       throw new HttpsError(
         "permission-denied",
         "Only Admins can provision staff accounts.",
       );
+    }
 
     if (role === "admin" && !email.toLowerCase().endsWith("@mlab.co.za")) {
+      console.error(
+        `[createStaffAccount] ❌ ERROR: Domain policy violation for email: ${email}`,
+      );
       throw new HttpsError(
         "permission-denied",
         "Security Policy Violation: Admin accounts can only be provisioned for official @mlab.co.za domains.",
       );
     }
 
+    console.log(
+      "[createStaffAccount] ✅ Validation passed. Proceeding with Auth creation...",
+    );
+
     try {
-      // Create User in Firebase Auth
+      // 1. Create User in Firebase Auth
       const userRecord = await admin
         .auth()
         .createUser({ email, displayName: fullName, emailVerified: true });
 
-      // Set Custom Claims (Role-based access)
+      console.log(
+        `[createStaffAccount] ✅ Firebase Auth user created successfully. UID: ${userRecord.uid}`,
+      );
+
+      // 2. Set Custom Claims (Role-based access)
       await admin.auth().setCustomUserClaims(userRecord.uid, {
         role,
         ...(role === "admin" && isSuperAdmin ? { isSuperAdmin: true } : {}),
       });
+      console.log("[createStaffAccount] ✅ Custom claims set.");
 
+      // 3. Prepare Firestore Data
       const userData: any = {
         uid: userRecord.uid,
         fullName,
@@ -371,70 +394,112 @@ export const createStaffAccount = onCall(
         userData.assessorRegNumber = assessorRegNumber;
       }
 
+      // 4. Save to Firestore
       await admin
         .firestore()
         .collection("users")
         .doc(userRecord.uid)
         .set(userData);
 
-      // Generate Secure Reset Link & Extract oobCode
-      const defaultFirebaseLink = await admin
-        .auth()
-        .generatePasswordResetLink(email);
-      const urlObj = new URL(defaultFirebaseLink);
-      const oobCode = urlObj.searchParams.get("oobCode");
+      console.log(`[createStaffAccount] ✅ User profile written to Firestore.`);
 
-      // Construct the clean mLab React Link
-      const customReactLink = `${APP_URL}/reset-password?oobCode=${oobCode}`;
+      // ==========================================
+      // ISOLATED EMAIL LOGIC
+      // ==========================================
+      let emailSent = true;
+      let emailErrorMsg = "";
 
-      // Format Role for Email Display
-      const displayRole =
-        role === "admin" && isSuperAdmin
-          ? "Super Administrator"
-          : role.charAt(0).toUpperCase() + role.slice(1).replace("_", " ");
+      try {
+        console.log(
+          "[createStaffAccount] 📧 Generating password reset link...",
+        );
 
-      const emailParams = {
-        title: "Welcome to mLab",
-        subtitle: "Action Required: Activate your account",
-        recipientName: fullName,
-        bodyHtml: `
-          <p>Welcome to the <strong>mLab Assessment Platform</strong>! Your account has been successfully provisioned, and you have been granted access as a <strong>${displayRole}</strong>.</p>
-          
-          <p>For security reasons, we do not auto-generate passwords. To gain access to the platform and your dashboard, you must first create your own private password. Please follow these steps carefully:</p>
-          
-          <ol style="margin-top: 15px; margin-bottom: 25px; padding-left: 20px; color: #475569; line-height: 1.6;">
-              <li style="margin-bottom: 8px;">Click the <strong>Create My Password</strong> button below to open the secure setup page.</li>
-              <li style="margin-bottom: 8px;">Enter and confirm a strong password that you will remember.</li>
-              <li style="margin-bottom: 8px;">Once saved, you will be redirected to the main login screen. Use your email address and your new password to sign in.</li>
-          </ol>
-          
-          <div style="background-color: #f8fafc; padding: 15px; border-radius: 6px; border: 1px solid #dde4e8; border-left: 4px solid #0ea5e9; margin: 20px 0;">
-              <p style="margin: 0; color: #475569; font-size: 13px;"><strong>Bookmark Your Portal:</strong><br/> 
-              After your password is created, you can access your dashboard directly at any time by visiting:<br/>
-              <a href="${APP_URL}/login" style="color: #0ea5e9; font-weight: bold; text-decoration: none;">${APP_URL}/login</a></p>
-          </div>
+        // Generate Secure Reset Link & Extract oobCode
+        const defaultFirebaseLink = await admin
+          .auth()
+          .generatePasswordResetLink(email);
 
-          <p>If you require any assistance getting started, please reach out to your mLab system administrator.</p>
-        `,
-        ctaText: "Create My Password",
-        ctaLink: customReactLink,
-        showStepIndicator: false,
-      };
+        const urlObj = new URL(defaultFirebaseLink);
+        const oobCode = urlObj.searchParams.get("oobCode");
 
-      await sendMailgunEmail({
-        to: email,
-        subject: `Action Required: Access Granted - ${displayRole}`,
-        text: buildMlabEmailPlainText(emailParams),
-        html: buildMlabEmailHtml(emailParams),
-      });
+        // Construct the clean mLab React Link
+        const customReactLink = `${APP_URL}/reset-password?oobCode=${oobCode}`;
 
+        // Format Role for Email Display
+        const displayRole =
+          role === "admin" && isSuperAdmin
+            ? "Super Administrator"
+            : role.charAt(0).toUpperCase() + role.slice(1).replace("_", " ");
+
+        const emailParams = {
+          title: "Welcome to mLab",
+          subtitle: "Action Required: Activate your account",
+          recipientName: fullName,
+          bodyHtml: `
+            <p>Welcome to the <strong>mLab Assessment Platform</strong>! Your account has been successfully provisioned, and you have been granted access as a <strong>${displayRole}</strong>.</p>
+            
+            <p>For security reasons, we do not auto-generate passwords. To gain access to the platform and your dashboard, you must first create your own private password. Please follow these steps carefully:</p>
+            
+            <ol style="margin-top: 15px; margin-bottom: 25px; padding-left: 20px; color: #475569; line-height: 1.6;">
+                <li style="margin-bottom: 8px;">Click the <strong>Create My Password</strong> button below to open the secure setup page.</li>
+                <li style="margin-bottom: 8px;">Enter and confirm a strong password that you will remember.</li>
+                <li style="margin-bottom: 8px;">Once saved, you will be redirected to the main login screen. Use your email address and your new password to sign in.</li>
+            </ol>
+            
+            <div style="background-color: #f8fafc; padding: 15px; border-radius: 6px; border: 1px solid #dde4e8; border-left: 4px solid #0ea5e9; margin: 20px 0;">
+                <p style="margin: 0; color: #475569; font-size: 13px;"><strong>Bookmark Your Portal:</strong><br/> 
+                After your password is created, you can access your dashboard directly at any time by visiting:<br/>
+                <a href="${APP_URL}/login" style="color: #0ea5e9; font-weight: bold; text-decoration: none;">${APP_URL}/login</a></p>
+            </div>
+
+            <p>If you require any assistance getting started, please reach out to your mLab system administrator.</p>
+          `,
+          ctaText: "Create My Password",
+          ctaLink: customReactLink,
+          showStepIndicator: false,
+        };
+
+        console.log("[createStaffAccount] 📧 Sending request to Mailgun...");
+        await sendMailgunEmail({
+          to: email,
+          subject: `Action Required: Access Granted - ${displayRole}`,
+          text: buildMlabEmailPlainText(emailParams),
+          html: buildMlabEmailHtml(emailParams),
+        });
+
+        console.log(
+          "[createStaffAccount] ✅ Email successfully dispatched via Mailgun.",
+        );
+      } catch (emailError: any) {
+        // We catch the email error so it doesn't crash the whole function
+        console.error(
+          "[createStaffAccount] ⚠️ MAILGUN ERROR: Failed to send welcome email:",
+          emailError,
+        );
+        emailSent = false;
+        emailErrorMsg = emailError.message || "Unknown mailer error";
+      }
+
+      // Return a successful response regardless of email success,
+      // but inform the frontend if the email failed to send.
+      console.log(
+        `[createStaffAccount] 🏁 COMPLETE. Success: true. Email Sent: ${emailSent}`,
+      );
       return {
         success: true,
-        message: `Account created securely for ${email}`,
+        message:
+          `Account created successfully.` +
+          (!emailSent
+            ? ` However, the welcome email failed to send: ${emailErrorMsg}`
+            : ""),
         uid: userRecord.uid,
+        emailSent: emailSent,
       };
     } catch (error: any) {
-      console.error("Error creating staff:", error);
+      console.error(
+        "[createStaffAccount] ❌ FATAL ERROR during account creation:",
+        error,
+      );
       throw new HttpsError(
         "internal",
         error.message || "Unable to create account.",

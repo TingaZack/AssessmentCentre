@@ -114,6 +114,11 @@ const PROFILE_KEYS = [
   "cohortId",
   "campusId",
   "qualification",
+  "uploadedDocuments",
+  "documentHistory",
+  "complianceDocs",
+  "nextOfKin",
+  "sameAsResidential",
 ];
 
 // Helper to scrub undefined values before Firestore writes
@@ -795,17 +800,36 @@ export const useStore = create<StoreState>()(
 
       try {
         const state = get();
-        const existingRow = state.learners.find((l) => l.id === id);
 
-        //  STRICT VALIDATION: No fallbacks. Reject update if record is missing.
+        // 🚀 FIX 1: Robust ID Matching
+        // Since `l.id` is often the composite Enrollment ID (e.g., Cohort_IDNumber),
+        // we must check all ID variations to find the correct local record.
+        let existingRow = state.learners.find(
+          (l) =>
+            l.id === id ||
+            l.learnerId === id ||
+            l.idNumber === id ||
+            l.authUid === id,
+        );
+
+        // 🚀 FIX 2: Database Fallback (For Learner Portal)
+        // If state.learners is empty (because a learner is editing their own profile), fetch directly from Firebase.
+        if (!existingRow) {
+          const docSnap = await getDoc(doc(db, "learners", id));
+          if (docSnap.exists()) {
+            existingRow = { id: docSnap.id, ...docSnap.data() } as any;
+          }
+        }
+
+        // STRICT VALIDATION: Reject update if record is totally missing.
         if (!existingRow) {
           throw new ReferenceError(
-            `Update Failed: Learner record with ID ${id} not found in local state.`,
+            `Update Failed: Learner record with ID ${id} not found in database or local state.`,
           );
         }
 
         // DETERMINISTIC ANCHOR: Use the physical ID Number for collection targeting.
-        const learnerIdNumber = existingRow.idNumber;
+        const learnerIdNumber = existingRow.idNumber || existingRow.id;
         const oldCohortId = existingRow.cohortId || "";
         const newCohortId = updates.cohortId;
 
@@ -832,7 +856,6 @@ export const useStore = create<StoreState>()(
         );
 
         // HANDLE RELATIONAL SYNC (The Ledger Logic)
-        // Check if a cohort movement or assignment change is happening
         const isCohortChanging =
           newCohortId !== undefined && newCohortId !== oldCohortId;
 
@@ -840,13 +863,11 @@ export const useStore = create<StoreState>()(
           // A. TRANSFER TO NEW CLASS (Create New Ledger)
           if (newCohortId && newCohortId !== "") {
             const newEnrollmentId = `${newCohortId}_${learnerIdNumber}`;
-
-            // GENERATE OFFICIAL STUDENT ID FOR THE NEW CLASS
             const studentId = generateStudentId(newCohortId, newEnrollmentId);
 
             const newEnrollmentData = {
-              ...existingRow, // Maintain existing data
-              ...updates, // Apply new changes (campus, qualification, etc)
+              ...existingRow,
+              ...updates,
               id: newEnrollmentId,
               learnerId: learnerIdNumber,
               cohortId: newCohortId,
@@ -866,7 +887,6 @@ export const useStore = create<StoreState>()(
               { merge: true },
             );
 
-            // Update New Cohort Class List
             batch.update(doc(db, "cohorts", newCohortId), {
               learnerIds: arrayUnion(learnerIdNumber),
             });
@@ -877,7 +897,6 @@ export const useStore = create<StoreState>()(
             const oldEnrollmentId = `${oldCohortId}_${learnerIdNumber}`;
             batch.delete(doc(db, "enrollments", oldEnrollmentId));
 
-            // Remove from Old Cohort Class List
             batch.update(doc(db, "cohorts", oldCohortId), {
               learnerIds: arrayRemove(learnerIdNumber),
             });
@@ -887,19 +906,15 @@ export const useStore = create<StoreState>()(
           batch.delete(doc(db, "enrollments", `Unassigned_${learnerIdNumber}`));
         } else if (existingRow.enrollmentId) {
           // ─── STANDARD LEDGER UPDATE (No Class Change) ───
-          // Update the existing ledger document if non-relational fields changed
           const enrollmentUpdates: any = {
             updatedAt: timestamp,
             updatedBy: CURRENT_USER_ID,
           };
 
-          // Sync critical fields to the ledger even if cohort stayed the same
           if (updates.status) enrollmentUpdates.status = updates.status;
           if (updates.campusId) enrollmentUpdates.campusId = updates.campusId;
           if (updates.qualification)
             enrollmentUpdates.qualification = updates.qualification;
-
-          // 🚀 FIX: Map and save curriculum module arrays directly to the active enrollment document
           if (updates.knowledgeModules)
             enrollmentUpdates.knowledgeModules = updates.knowledgeModules;
           if (updates.practicalModules)
@@ -907,8 +922,6 @@ export const useStore = create<StoreState>()(
           if (updates.workExperienceModules)
             enrollmentUpdates.workExperienceModules =
               updates.workExperienceModules;
-
-          // Sync secondary timeline data to prevent discrepancy flags
           if (updates.trainingStartDate)
             enrollmentUpdates.trainingStartDate = updates.trainingStartDate;
           if (updates.trainingEndDate)
@@ -928,17 +941,21 @@ export const useStore = create<StoreState>()(
         }
 
         // ATOMIC COMMIT
-        // batch.commit() will throw a system-defined error if security rules fail
         await batch.commit();
 
         // LOCAL STATE SYNCHRONIZATION
         set((state) => {
-          const index = state.learners.findIndex((l) => l.id === id);
+          const index = state.learners.findIndex(
+            (l) =>
+              l.id === id ||
+              l.idNumber === id ||
+              l.learnerId === id ||
+              l.authUid === id,
+          );
           if (index !== -1) {
             state.learners[index] = {
               ...state.learners[index],
               ...updates,
-              // If cohort changed, update the pointer in local state
               enrollmentId:
                 isCohortChanging && newCohortId !== ""
                   ? `${newCohortId}_${learnerIdNumber}`
@@ -955,11 +972,12 @@ export const useStore = create<StoreState>()(
           }
         });
 
-        // 6. 🚿 FRESH RE-FETCH
-        await get().fetchLearners(true);
+        // 6. 🚿 FRESH RE-FETCH (Only if we are in the Admin panel where state.learners is used)
+        if (state.learners.length > 0) {
+          await get().fetchLearners(true);
+        }
         if ((get() as any).fetchCohorts) await (get() as any).fetchCohorts();
       } catch (systemError: any) {
-        // Log raw system details and propagate the actual Error object to the UI
         console.error(" updateLearner Sync Failure:", systemError);
         throw systemError;
       }

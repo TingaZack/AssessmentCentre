@@ -5,9 +5,6 @@ import { X, Save, Loader2, ShieldCheck, Briefcase, UserPlus } from 'lucide-react
 import type { UserRole } from '../../types/auth.types';
 import { useStore } from '../../store/useStore';
 
-// Assuming LearnerFormModal.css handles the lfm- classes globally or is imported higher up.
-// import './LearnerFormModal/LearnerFormModal.css'; 
-
 interface StaffFormProps {
     staff?: any;
     onClose: () => void;
@@ -39,6 +36,16 @@ export const StaffFormModal: React.FC<StaffFormProps> = ({ staff, onClose, onSav
         e.preventDefault();
         setError('');
 
+        if (!formData.fullName.trim()) {
+            setError('Full Name is strictly required.');
+            return;
+        }
+
+        if (!formData.email.trim()) {
+            setError('Email Address is strictly required.');
+            return;
+        }
+
         if (formData.role === 'mentor' && !formData.employerId) {
             setError('Workplace Mentors must be linked to a Host Company.');
             return;
@@ -46,14 +53,20 @@ export const StaffFormModal: React.FC<StaffFormProps> = ({ staff, onClose, onSav
 
         setLoading(true);
 
-        const payload = { ...formData };
+        // 🚀 FIX: Heavily sanitize payload so Cloud Functions/Mailgun don't crash on undefined/empty values
+        const payload = {
+            fullName: formData.fullName.trim(),
+            email: formData.email.trim().toLowerCase(),
+            role: formData.role,
+            phone: formData.phone.trim() || 'N/A', // Send N/A instead of '' to protect mailers
+            assessorRegNumber: 'N/A',
+            employerId: 'N/A'
+        };
+
         if (payload.role === 'mentor') {
-            payload.assessorRegNumber = '';
+            payload.employerId = formData.employerId;
         } else if (['assessor', 'moderator'].includes(payload.role)) {
-            payload.employerId = '';
-        } else {
-            payload.assessorRegNumber = '';
-            payload.employerId = '';
+            payload.assessorRegNumber = formData.assessorRegNumber.trim() || 'Pending';
         }
 
         try {
@@ -125,7 +138,7 @@ export const StaffFormModal: React.FC<StaffFormProps> = ({ staff, onClose, onSav
                             {['assessor', 'moderator'].includes(formData.role) && (
                                 <div className="lfm-fg lfm-fg--full" style={{ background: '#fef2f2', padding: '16px', borderRadius: '8px', border: '1px solid #fecaca', marginTop: '4px' }}>
                                     <label style={{ color: '#b91c1c', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px', fontWeight: 600, fontSize: '0.85rem' }}>
-                                        <ShieldCheck size={14} /> SETA Registration Number
+                                        <ShieldCheck size={14} /> SETA Registration Number or ID Number *
                                     </label>
                                     <input
                                         className="lfm-input"

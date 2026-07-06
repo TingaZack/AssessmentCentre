@@ -746,7 +746,8 @@ export const AssessmentPlayerContent: React.FC<AssessmentPlayerContentProps> = (
                                                                 snapshot: resolvedSnapshots[block.id] || codeSnapshots[block.id] || learnerAns?.snapshot
                                                             }}
                                                             readOnly={isUploadLocked || !canEditCode}
-                                                            onChange={(val) => saveCodeSnapshot(block.id, val.snapshot, val.dependencies, val.immediate)}
+                                                            // onChange={(val) => saveCodeSnapshot(block.id, val.snapshot, val.dependencies, val.immediate)}
+                                                            onChange={async (val) => await saveCodeSnapshot(block.id, val.snapshot, val.dependencies, val.immediate)}
                                                         />
                                                     )
                                                 )}

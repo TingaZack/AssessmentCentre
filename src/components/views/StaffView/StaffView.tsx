@@ -1,7 +1,7 @@
 // src/components/views/StaffView/StaffView.tsx
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Plus, Trash2, Edit2, Search, Users, Building2, X, Filter } from 'lucide-react';
+import { Plus, Trash2, Edit2, Search, Users, Building2, X, Filter, Eye } from 'lucide-react';
 import { useStore, type StaffMember } from '../../../store/useStore';
 import '../../admin/WorkplacesManager/WorkplacesManager.css';
 import '../../../components/views/LearnersView/LearnersView.css';
@@ -15,6 +15,7 @@ interface StaffViewProps {
     onAdd: () => void;
     onEdit: (staff: StaffMember) => void;
     onDelete: (staff: StaffMember) => void;
+    onView: (staff: StaffMember) => void; // 🚀 NEW PROP
 }
 
 const ROLE_CONFIG = {
@@ -24,11 +25,16 @@ const ROLE_CONFIG = {
     mentor: { label: 'Mentor', dotClass: 'mlab-role-badge__dot', badge: 'mlab-role-badge--mentor' },
 } as const;
 
-export const StaffView: React.FC<StaffViewProps> = ({ staff, onAdd, onEdit, onDelete }) => {
+const formatDate = (dateString?: string) => {
+    if (!dateString) return '—';
+    const d = new Date(dateString);
+    return isNaN(d.getTime()) ? '—' : d.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
+};
+
+export const StaffView: React.FC<StaffViewProps> = ({ staff, onAdd, onEdit, onDelete, onView }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [roleFilter, setRoleFilter] = useState<RoleFilter>('all');
 
-    // We need the employers list to map the employerId to an actual company name
     const { employers, fetchEmployers } = useStore();
 
     useEffect(() => {
@@ -68,8 +74,6 @@ export const StaffView: React.FC<StaffViewProps> = ({ staff, onAdd, onEdit, onDe
 
     return (
         <div className="wm-root animate-fade-in">
-
-            {/* ── PAGE HEADER (Reusing wm-page-header styling) ── */}
             <div className="wm-page-header">
                 <div className="wm-page-header__left">
                     <div className="wm-page-header__icon"><Users size={22} /></div>
@@ -83,7 +87,6 @@ export const StaffView: React.FC<StaffViewProps> = ({ staff, onAdd, onEdit, onDe
                 </button>
             </div>
 
-            {/* ── TOOLBAR (Reusing wm-toolbar styling) ── */}
             <div className="wm-toolbar" style={{ flexWrap: 'wrap' }}>
                 <div className="wm-search">
                     <Search size={15} className="wm-search__icon" />
@@ -99,7 +102,6 @@ export const StaffView: React.FC<StaffViewProps> = ({ staff, onAdd, onEdit, onDe
                     )}
                 </div>
 
-                {/* Role Filter mapped to wm-search input style for consistency */}
                 <div className="wm-search" style={{ flex: 'none', minWidth: '200px' }}>
                     <Filter size={15} className="wm-search__icon" />
                     <select
@@ -121,7 +123,6 @@ export const StaffView: React.FC<StaffViewProps> = ({ staff, onAdd, onEdit, onDe
                 </div>
             </div>
 
-            {/* ── TABLE (Restored original mlab-table structure) ── */}
             <div className="mlab-table-wrap">
                 <table className="mlab-table">
                     <thead>
@@ -130,6 +131,7 @@ export const StaffView: React.FC<StaffViewProps> = ({ staff, onAdd, onEdit, onDe
                             <th>Role</th>
                             <th>Contact Info</th>
                             <th>Workplace / Registry Info</th>
+                            <th>Added / Updated</th>
                             <th style={{ textAlign: 'right' }}>Actions</th>
                         </tr>
                     </thead>
@@ -138,15 +140,12 @@ export const StaffView: React.FC<StaffViewProps> = ({ staff, onAdd, onEdit, onDe
                             const cfg = ROLE_CONFIG[s.role as keyof typeof ROLE_CONFIG];
                             return (
                                 <tr key={s.id}>
-
-                                    {/* Name */}
                                     <td>
                                         <span className="mlab-staff-name" style={{ fontWeight: 'bold', color: 'var(--mlab-blue)' }}>
                                             {s.fullName}
                                         </span>
                                     </td>
 
-                                    {/* Role Badge */}
                                     <td>
                                         <span className={`mlab-role-badge ${cfg?.badge ?? ''}`}>
                                             <span className="mlab-role-badge__dot" />
@@ -154,7 +153,6 @@ export const StaffView: React.FC<StaffViewProps> = ({ staff, onAdd, onEdit, onDe
                                         </span>
                                     </td>
 
-                                    {/* Contact Info */}
                                     <td>
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                                             <span className="mlab-contact">{s.email}</span>
@@ -164,7 +162,6 @@ export const StaffView: React.FC<StaffViewProps> = ({ staff, onAdd, onEdit, onDe
                                         </div>
                                     </td>
 
-                                    {/* Meta / Workplace Info */}
                                     <td>
                                         {s.role === 'mentor' ? (
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', color: '#b45309', background: '#fffbeb', padding: '4px 8px', borderRadius: '4px', border: '1px solid #fde68a', width: 'fit-content' }}>
@@ -180,9 +177,29 @@ export const StaffView: React.FC<StaffViewProps> = ({ staff, onAdd, onEdit, onDe
                                         )}
                                     </td>
 
-                                    {/* Actions */}
+                                    <td>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                            <span style={{ fontSize: '0.8rem', color: '#475569' }}>
+                                                <strong>Added:</strong> {formatDate(s.createdAt)}
+                                            </span>
+                                            {s.updatedAt && s.updatedAt !== s.createdAt && (
+                                                <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+                                                    <strong>Updated:</strong> {formatDate(s.updatedAt)}
+                                                </span>
+                                            )}
+                                        </div>
+                                    </td>
+
                                     <td style={{ textAlign: 'right' }}>
                                         <div className="mlab-icon-btn-group" style={{ justifyContent: 'flex-end' }}>
+                                            {/* 🚀 NEW: View Profile Button */}
+                                            <button
+                                                className="mlab-icon-btn mlab-icon-btn--emerald"
+                                                onClick={() => onView(s)}
+                                                title="View Staff Profile"
+                                            >
+                                                <Eye size={15} />
+                                            </button>
                                             <button
                                                 className="mlab-icon-btn mlab-icon-btn--blue"
                                                 onClick={() => onEdit(s)}
@@ -203,10 +220,9 @@ export const StaffView: React.FC<StaffViewProps> = ({ staff, onAdd, onEdit, onDe
                             );
                         })}
 
-                        {/* Empty / No Results */}
                         {filtered.length === 0 && (
                             <tr>
-                                <td colSpan={5} className="mlab-table-empty">
+                                <td colSpan={6} className="mlab-table-empty">
                                     <div className="mlab-empty">
                                         <Users size={40} color="var(--mlab-green)" className="mlab-empty-icon" />
                                         <p className="mlab-empty__title">
@@ -227,4 +243,3 @@ export const StaffView: React.FC<StaffViewProps> = ({ staff, onAdd, onEdit, onDe
         </div>
     );
 };
-

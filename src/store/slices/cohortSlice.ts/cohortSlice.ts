@@ -71,6 +71,7 @@ export const createCohortSlice: StateCreator<
   // },
   fetchCohorts: async (force = false) => {
     const { cohorts } = get();
+
     if (!force && cohorts.length > 0) {
       console.log(
         "[DEBUG useStore] Cohorts already in memory. Skipping fetch.",

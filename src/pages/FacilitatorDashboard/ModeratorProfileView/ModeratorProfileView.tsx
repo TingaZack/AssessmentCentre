@@ -1,10 +1,11 @@
 // src/pages/FacilitatorDashboard/ModeratorProfileView/ModeratorProfileView.tsx
 
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
     User, Mail, Phone, ShieldCheck, FileText, Edit3, Save, X,
     Fingerprint, GraduationCap, AlertCircle, Info, Loader2,
-    Camera, Award, Calendar, Briefcase, PenTool, Scale, MapPin, Plus
+    Camera, Award, Calendar, Briefcase, PenTool, Scale, MapPin, Plus, History, Eye
 } from 'lucide-react';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -14,6 +15,8 @@ import Autocomplete from "react-google-autocomplete";
 import '../AssessorProfileView/AssessorProfileView.css';
 import { DynamicDocUpload, type DynamicDocument } from '../../LearnerPortal/LearnerProfileSetup/LearnerProfileSetup';
 import { SignatureSetupModal } from '../../../components/auth/SignatureSetupModal';
+import { StatusModal } from '../../../components/common/StatusModal/StatusModal';
+import { useStore } from '../../../store/useStore';
 
 // ─── DICTIONARIES ─────────────────────────────────────────────────────────
 const QCTO_PROVINCES = [
@@ -21,18 +24,32 @@ const QCTO_PROVINCES = [
     "KwaZulu-Natal", "North West", "Gauteng", "Mpumalanga", "Limpopo"
 ].map(p => ({ label: p, value: p }));
 
+// 🚀 HELPER: Extracts the readable filename directly from the Firebase Storage URL
+const extractFilename = (url: string) => {
+    if (!url) return 'Saved Document';
+    try {
+        const decoded = decodeURIComponent(url.split('?')[0]);
+        const parts = decoded.split('/');
+        return parts[parts.length - 1];
+    } catch {
+        return 'Saved Document';
+    }
+};
+
 interface ProfileProps {
     profile?: any;
     user: any;
     onUpdate: (id: string, updates: any) => Promise<void>;
+    hideSignaturePrompt?: boolean;
 }
 
-export const ModeratorProfileView: React.FC<ProfileProps> = ({ profile, user, onUpdate }) => {
+export const ModeratorProfileView: React.FC<ProfileProps> = ({ profile, user, onUpdate, hideSignaturePrompt = false }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [saving, setSaving] = useState(false);
 
     // Modal state controller
     const [isSigModalOpen, setIsSigModalOpen] = useState(false);
+    const [confirmDocOverwrite, setConfirmDocOverwrite] = useState(false); // 🚀 Overwrite Shield State
 
     const [liveProfile, setLiveProfile] = useState<any>(profile || user || {});
     const [formData, setFormData] = useState<any>({});
@@ -42,6 +59,14 @@ export const ModeratorProfileView: React.FC<ProfileProps> = ({ profile, user, on
 
     const targetId = profile?.uid || profile?.id || user?.uid;
 
+    const { employers, fetchEmployers } = useStore();
+
+    useEffect(() => {
+        if (employers.length === 0) {
+            fetchEmployers();
+        }
+    }, [employers.length, fetchEmployers]);
+
     // 1. REAL-TIME LISTENER: Keep liveProfile perfectly in sync with Firestore
     useEffect(() => {
         if (!targetId) return;
@@ -49,8 +74,11 @@ export const ModeratorProfileView: React.FC<ProfileProps> = ({ profile, user, on
         const unsubscribe = onSnapshot(doc(db, 'users', targetId), (docSnap) => {
             if (docSnap.exists()) {
                 const data = docSnap.data();
-                // Safely merge so we don't accidentally wipe out initial state
-                setLiveProfile((prev: any) => ({ ...prev, ...data }));
+                setLiveProfile((prev: any) => ({
+                    ...prev,
+                    ...data,
+                    documentHistory: prev.documentHistory || data.documentHistory || [] // 🚀 Track history
+                }));
             }
         });
 
@@ -95,6 +123,15 @@ export const ModeratorProfileView: React.FC<ProfileProps> = ({ profile, user, on
             setDocsList(currentDocs);
         }
     }, [liveProfile, isEditing]);
+
+    // 3. STRICT COMPLIANCE: Trigger Signature Modal automatically if missing
+    useEffect(() => {
+        if (hideSignaturePrompt) return;
+
+        if (liveProfile && Object.keys(liveProfile).length > 0 && !liveProfile.signatureUrl && ['assessor', 'moderator', 'facilitator'].includes(liveProfile.role)) {
+            setIsSigModalOpen(true);
+        }
+    }, [liveProfile.signatureUrl, liveProfile.role, hideSignaturePrompt]);
 
     // ─── Handlers ──────────────────────────────────────────────────────────
     const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -143,7 +180,18 @@ export const ModeratorProfileView: React.FC<ProfileProps> = ({ profile, user, on
         setDocsList(prev => prev.map(doc => doc.id === id ? { ...doc, [field]: value } : doc));
     };
 
-    const handleSave = async () => {
+    // 🚀 NEW: Overwrite Shield
+    const handleSaveClick = () => {
+        const isOverwriting = docsList.some(d => d.file && d.url);
+
+        if (isOverwriting) {
+            setConfirmDocOverwrite(true);
+        } else {
+            executeSave();
+        }
+    };
+
+    const executeSave = async () => {
         if (!targetId) return;
         setSaving(true);
 
@@ -158,13 +206,24 @@ export const ModeratorProfileView: React.FC<ProfileProps> = ({ profile, user, on
 
             // PROCESS ALL DYNAMIC DOCUMENTS
             const finalUploadedDocs = [];
-            const legacyDocsObject: any = { ...(liveProfile.complianceDocs || {}) }; // Keep backward compatibility
+            const legacyDocsObject: any = { ...(liveProfile.complianceDocs || {}) };
+            const newHistory = [...(liveProfile.documentHistory || [])]; // 🚀 Track history
 
             for (const docItem of docsList) {
                 let finalUrl = docItem.url;
 
                 // Upload newly selected file
                 if (docItem.file) {
+                    // Archive the old document before overwriting
+                    if (docItem.url) {
+                        newHistory.push({
+                            id: docItem.id,
+                            name: docItem.name || 'Legacy Document',
+                            url: docItem.url,
+                            replacedAt: new Date().toISOString()
+                        });
+                    }
+
                     const ext = docItem.file.name.split('.').pop();
                     finalUrl = await handleFileUpload(docItem.file, `staff/${targetId}/${docItem.id}_${Date.now()}.${ext}`);
                 }
@@ -193,13 +252,15 @@ export const ModeratorProfileView: React.FC<ProfileProps> = ({ profile, user, on
                 postalAddress: postalLine1,
                 customPostalCode: postalCodeFinal,
                 profilePhotoUrl: finalPhotoUrl,
-                uploadedDocuments: finalUploadedDocs, // 👈 New robust array format
-                complianceDocs: legacyDocsObject      // 👈 Legacy fallback
+                uploadedDocuments: finalUploadedDocs,
+                documentHistory: newHistory, // 👈 Save the audit trail
+                complianceDocs: legacyDocsObject,
+                updatedAt: new Date().toISOString()
             };
 
-            await onUpdate(targetId, updatedData);
+            await onUpdate(profile?.id || targetId, updatedData);
 
-            // Cleanup edit state. The snapshot listener will instantly update liveProfile and the UI.
+            // Cleanup edit state
             setIsEditing(false);
             setProfilePhoto(null);
 
@@ -219,6 +280,9 @@ export const ModeratorProfileView: React.FC<ProfileProps> = ({ profile, user, on
     // We strictly determine if postal is mapped to residential for the UI
     const isPostalSame = formData.sameAsResidential !== false;
 
+    // Determine Role Formatting
+    const roleLabel = (liveProfile?.role || 'staff').charAt(0).toUpperCase() + (liveProfile?.role || 'staff').slice(1).replace('_', ' ');
+
     // DYNAMIC DOCUMENT VAULT RENDERER
     const renderDocumentVault = () => {
         return (
@@ -227,12 +291,25 @@ export const ModeratorProfileView: React.FC<ProfileProps> = ({ profile, user, on
                     // EDIT MODE: Render dynamic upload cards
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.5rem' }}>
                         {docsList.map((docItem) => (
-                            <DynamicDocUpload
-                                key={docItem.id}
-                                document={docItem}
-                                onUpdate={(field, val) => handleDocUpdate(docItem.id, field, val)}
-                                onRemove={() => handleRemoveDocument(docItem.id)}
-                            />
+                            <div key={docItem.id} style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                <DynamicDocUpload
+                                    document={docItem}
+                                    onUpdate={(field, val) => handleDocUpdate(docItem.id, field, val)}
+                                    onRemove={() => handleRemoveDocument(docItem.id)}
+                                />
+                                {/* 🚀 Visual preview for existing files during edit */}
+                                {docItem.url && !docItem.file && (
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
+                                        <span style={{ fontSize: '0.75rem', color: '#475569', display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                            <FileText size={14} color="var(--mlab-green)" />
+                                            <span style={{ fontWeight: 600 }}>{extractFilename(docItem.url)}</span>
+                                        </span>
+                                        <a href={docItem.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.75rem', color: 'var(--mlab-green)', fontWeight: 700, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+                                            <Eye size={14} /> View File
+                                        </a>
+                                    </div>
+                                )}
+                            </div>
                         ))}
                     </div>
                 ) : (
@@ -244,6 +321,28 @@ export const ModeratorProfileView: React.FC<ProfileProps> = ({ profile, user, on
                         {docsList.length === 0 && <span style={{ fontSize: '0.85rem', color: 'var(--mlab-grey)' }}>No documents uploaded.</span>}
                     </>
                 )}
+
+                {/* 🚀 Document History Log Renderer */}
+                {liveProfile?.documentHistory && liveProfile.documentHistory.length > 0 && !isEditing && (
+                    <div style={{ marginTop: '1.5rem', borderTop: '1px solid #e2e8f0', paddingTop: '1rem' }}>
+                        <h4 style={{ fontSize: '0.8rem', color: '#64748b', textTransform: 'uppercase', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <History size={14} /> Document History Log
+                        </h4>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            {liveProfile.documentHistory.map((hDoc: any, idx: number) => (
+                                <div key={idx} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '8px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <a href={hDoc.url} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--mlab-green)', textDecoration: 'none' }}>
+                                        <FileText size={14} /> {hDoc.name || 'Archived Document'}
+                                    </a>
+                                    <div style={{ textAlign: 'right' }}>
+                                        <div style={{ fontSize: '0.65rem', color: '#475569', fontWeight: 'bold' }}>{new Date(hDoc.replacedAt).toLocaleDateString()}</div>
+                                        <div style={{ fontSize: '0.6rem', color: '#94a3b8' }}>{new Date(hDoc.replacedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
             </div>
         );
     };
@@ -254,15 +353,32 @@ export const ModeratorProfileView: React.FC<ProfileProps> = ({ profile, user, on
     return (
         <div className="lpv-wrapper animate-fade-in">
 
+            {/* 🚀 Overwrite Confirmation Modal */}
+            {confirmDocOverwrite && createPortal(
+                <StatusModal
+                    type="warning"
+                    title="Overwrite Existing Documents?"
+                    message="You are about to replace one or more existing documents. The old versions will be securely archived in the Document History log. Do you want to proceed?"
+                    confirmText="Yes, Overwrite"
+                    onClose={() => {
+                        setConfirmDocOverwrite(false);
+                        executeSave();
+                    }}
+                    onCancel={() => setConfirmDocOverwrite(false)}
+                />,
+                document.body
+            )}
+
             {/* STRICT SIGNATURE MODAL */}
-            {isSigModalOpen && (
+            {isSigModalOpen && createPortal(
                 <SignatureSetupModal
                     userUid={targetId}
                     existingSignatureUrl={liveProfile?.signatureUrl}
                     onComplete={() => {
                         setIsSigModalOpen(false);
                     }}
-                />
+                />,
+                document.body
             )}
 
             {/* ── Practitioner Status Banner ────────────────────────────── */}
@@ -313,7 +429,7 @@ export const ModeratorProfileView: React.FC<ProfileProps> = ({ profile, user, on
                             <div style={{ position: 'relative' }}>
                                 <div style={{ width: '70px', height: '70px', borderRadius: '50%', background: '#e2e8f0', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '3px solid white', boxShadow: '0 2px 5px rgba(0,0,0,0.1)' }}>
                                     {photoPreview ? (
-                                        <img src={photoPreview} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                        <img src={photoPreview} alt="Profile" crossOrigin="anonymous" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                     ) : (
                                         <User size={36} color="#94a3b8" />
                                     )}
@@ -328,7 +444,7 @@ export const ModeratorProfileView: React.FC<ProfileProps> = ({ profile, user, on
                             <div>
                                 <h4 style={{ margin: '0 0 0.25rem 0', color: '#0f172a', fontSize: '1.05rem' }}>{displayData?.fullName || 'Practitioner'}</h4>
                                 <p style={{ margin: 0, color: '#64748b', fontSize: '0.85rem' }}>
-                                    {isEditing ? 'Click the camera icon to update your photo.' : 'Internal Moderator'}
+                                    System Role: <strong>{roleLabel}</strong>
                                 </p>
                             </div>
                         </div>
@@ -405,30 +521,32 @@ export const ModeratorProfileView: React.FC<ProfileProps> = ({ profile, user, on
                         )}
                     </section>
 
-                    {/* FIXED: VISIBLE SIGNATURE PREVIEW SECTION */}
+                    {/* VISIBLE SIGNATURE PREVIEW SECTION */}
                     <section className="lpv-panel">
                         <div className="lpv-panel__header">
                             <h3 className="lpv-panel__title">
                                 <PenTool size={16} /> Digital Signature Certificate
                             </h3>
-                            <button
-                                className="lpv-edit-btn"
-                                onClick={(e) => {
-                                    e.preventDefault();
-                                    setIsSigModalOpen(true);
-                                }}
-                            >
-                                <Edit3 size={13} /> {liveProfile?.signatureUrl ? 'Update Signature' : 'Add Signature'}
-                            </button>
+                            {!hideSignaturePrompt && (
+                                <button
+                                    className="lpv-edit-btn"
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        setIsSigModalOpen(true);
+                                    }}
+                                >
+                                    <Edit3 size={13} /> {liveProfile?.signatureUrl ? 'Update Signature' : 'Add Signature'}
+                                </button>
+                            )}
                         </div>
                         <div style={{ padding: '1.5rem', background: '#f8fafc', border: '1px dashed #cbd5e1', borderRadius: '8px', textAlign: 'center' }}>
                             {liveProfile?.signatureUrl ? (
                                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                                    {/* FIXED: White background card prevents transparent PNGs from disappearing */}
                                     <div style={{ background: 'white', padding: '10px 20px', borderRadius: '8px', border: '1px solid #e2e8f0', width: '100%', maxWidth: '350px' }}>
                                         <img
                                             src={liveProfile.signatureUrl}
                                             alt="Registered Moderator Signature"
+                                            crossOrigin="anonymous"
                                             style={{
                                                 height: '60px',
                                                 width: '100%',
@@ -448,6 +566,34 @@ export const ModeratorProfileView: React.FC<ProfileProps> = ({ profile, user, on
                                 </div>
                             )}
                         </div>
+
+                        {/* 🚀 SIGNATURE HISTORY RENDERER */}
+                        {liveProfile?.signatureHistory && liveProfile.signatureHistory.length > 0 && (
+                            <div style={{ marginTop: '1.5rem' }}>
+                                <h4 style={{ fontSize: '0.8rem', color: '#64748b', textTransform: 'uppercase', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <History size={14} /> Signature History Log
+                                </h4>
+                                <div style={{ display: 'flex', gap: '10px', overflowX: 'auto', paddingBottom: '10px' }}>
+                                    {liveProfile.signatureHistory.map((sig: any, idx: number) => (
+                                        <div key={idx} style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '10px', minWidth: '120px', textAlign: 'center', flexShrink: 0 }}>
+                                            <img
+                                                src={sig.url}
+                                                alt={`Historical Signature ${idx}`}
+                                                crossOrigin="anonymous"
+                                                style={{ height: '35px', width: '100%', objectFit: 'contain', marginBottom: '8px' }}
+                                            />
+                                            <div style={{ fontSize: '0.65rem', color: '#475569', fontWeight: 'bold' }}>
+                                                {new Date(sig.date).toLocaleDateString()}
+                                            </div>
+                                            <div style={{ fontSize: '0.6rem', color: '#94a3b8' }}>
+                                                {new Date(sig.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
                         <p style={{ marginTop: '1rem', fontSize: '0.75rem', color: '#64748b', fontStyle: 'italic' }}>
                             Signatures are color-coded to Green Ink for official QA endorsement declarations per QCTO compliance standards.
                         </p>
@@ -524,7 +670,7 @@ export const ModeratorProfileView: React.FC<ProfileProps> = ({ profile, user, on
                     </div>
 
                     {isEditing && (
-                        <button className="lpv-save-btn" style={{ background: 'var(--mlab-green)' }} onClick={handleSave} disabled={saving}>
+                        <button className="lpv-save-btn" style={{ background: 'var(--mlab-green)' }} onClick={handleSaveClick} disabled={saving}>
                             {saving ? <><Loader2 size={16} className="lpv-spin" /> Saving…</> : <><Save size={16} /> Confirm Changes</>}
                         </button>
                     )}
