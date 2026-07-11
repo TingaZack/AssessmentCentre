@@ -78,7 +78,7 @@ const ReviewStageCard = ({ colorTheme, title, status, lockedMessage, awaitingTit
                     ) : (
                         <div style={{ background: 'white', padding: '1rem', borderRadius: '8px', border: '1px solid #e2e8f0', marginTop: '1rem' }}>
                             <p style={{ margin: '0 0 8px 0', fontSize: '0.75rem', fontWeight: 'bold', color: themeVar, textTransform: 'uppercase' }}>{signatureLabel}</p>
-                            {signatureUrl ? <img src={signatureUrl} alt="Signature" style={{ height: '40px', objectFit: 'contain', filter: `brightness(0) saturate(100%) ${colorTheme === 'blue' ? 'invert(31%) sepia(94%) saturate(1413%) hue-rotate(185deg) brightness(101%) contrast(101%)' : colorTheme === 'red' ? 'invert(13%) sepia(94%) saturate(7454%) hue-rotate(0deg) brightness(94%) contrast(116%)' : 'invert(29%) sepia(96%) saturate(1352%) hue-rotate(120deg) brightness(92%) contrast(101%)'}`, marginBottom: '8px' }} /> : <div style={{ height: '40px', color: themeVar, display: 'flex', alignItems: 'center', fontSize: '0.8rem', fontStyle: 'italic' }}>System Authenticated</div>}
+                            {signatureUrl ? <img src={signatureUrl} alt="Signature" crossOrigin="anonymous" style={{ height: '40px', objectFit: 'contain', filter: `brightness(0) saturate(100%) ${colorTheme === 'blue' ? 'invert(31%) sepia(94%) saturate(1413%) hue-rotate(185deg) brightness(101%) contrast(101%)' : colorTheme === 'red' ? 'invert(13%) sepia(94%) saturate(7454%) hue-rotate(0deg) brightness(94%) contrast(116%)' : 'invert(29%) sepia(96%) saturate(1352%) hue-rotate(120deg) brightness(92%) contrast(101%)'}`, marginBottom: '8px' }} /> : <div style={{ height: '40px', color: themeVar, display: 'flex', alignItems: 'center', fontSize: '0.8rem', fontStyle: 'italic' }}>System Authenticated</div>}
                             <p style={{ margin: '0 0 4px 0', fontSize: '0.85rem', fontWeight: 'bold', color: themeVar }}>{signatureName}</p>
                             {signatureMeta && <p style={{ margin: '0 0 4px 0', fontSize: '0.8rem', color: themeVar }}>{signatureMeta}</p>}
                             {signatureDate && <p style={{ margin: 0, fontSize: '0.75rem', color: themeVar }}><Clock size={10} style={{ display: 'inline', verticalAlign: 'middle', marginRight: '4px' }} />{signatureDate}</p>}
@@ -1462,7 +1462,7 @@ export const SubmissionReview: React.FC = () => {
                                 <div className="sr-sig-box" style={{ borderColor: 'blue', color: 'blue', flex: '0 1 300px' }}>
                                     <span style={{ color: 'blue' }}>Facilitator Declaration</span>
                                     {(submission.latestCoachingLog.facilitatorSignatureUrl || facilitatorProfile?.signatureUrl) ? (
-                                        <img src={submission.latestCoachingLog.facilitatorSignatureUrl || facilitatorProfile?.signatureUrl} alt="Facilitator Signature" style={filterBlue} />
+                                        <img src={submission.latestCoachingLog.facilitatorSignatureUrl || facilitatorProfile?.signatureUrl} alt="Facilitator Signature" crossOrigin="anonymous" style={filterBlue} />
                                     ) : <div className="sr-sig-no-image" style={{ color: 'blue', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontStyle: 'italic' }}>System Authenticated</div>}
                                     <strong style={{ color: 'blue' }}>{submission.latestCoachingLog.facilitatorName}</strong>
                                     <em style={{ color: 'blue' }}>Logged: {new Date(submission.latestCoachingLog.date).toLocaleDateString()}</em>
@@ -1473,7 +1473,7 @@ export const SubmissionReview: React.FC = () => {
                                     {submission.latestCoachingLog.acknowledged ? (
                                         <>
                                             {(submission.latestCoachingLog.learnerSignatureUrl || learnerProfile?.signatureUrl) ? (
-                                                <img src={submission.latestCoachingLog.learnerSignatureUrl || learnerProfile?.signatureUrl} alt="Learner Signature" style={filterBlack} />
+                                                <img src={submission.latestCoachingLog.learnerSignatureUrl || learnerProfile?.signatureUrl} alt="Learner Signature" crossOrigin="anonymous" style={filterBlack} />
                                             ) : <div className="sr-sig-no-image" style={{ color: 'black', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontStyle: 'italic' }}>Digitally Authenticated</div>}
                                             <strong style={{ color: 'black' }}>{learner?.fullName || learnerProfile?.fullName}</strong>
                                             <em style={{ color: 'black' }}>Acknowledged: {new Date(submission.latestCoachingLog.acknowledgedAt).toLocaleDateString()}</em>
@@ -1564,7 +1564,7 @@ export const SubmissionReview: React.FC = () => {
                         {isSubmitted ? (
                             <>
                                 {(submission.learnerDeclaration?.signatureUrl || learnerProfile?.signatureUrl) ? (
-                                    <img src={submission.learnerDeclaration?.signatureUrl || learnerProfile?.signatureUrl} alt="Learner signature" style={filterBlack} />
+                                    <img src={submission.learnerDeclaration?.signatureUrl || learnerProfile?.signatureUrl} alt="Learner signature" crossOrigin="anonymous" style={filterBlack} />
                                 ) : <div className="sr-sig-no-image" style={{ color: 'black', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontStyle: 'italic' }}>Digitally Authenticated</div>}
                                 <strong style={{ color: 'black' }}>{submission.learnerDeclaration?.learnerName || learnerProfile?.fullName || learner?.fullName}</strong>
                                 <em style={{ color: 'black' }}>Signed: {new Date(submission.learnerDeclaration?.timestamp || submission.submittedAt).toLocaleDateString()}</em>
@@ -1577,7 +1577,7 @@ export const SubmissionReview: React.FC = () => {
                         {isFacDone ? (
                             <>
                                 {(submission.grading?.facilitatorSignatureUrl || facilitatorProfile?.signatureUrl) ? (
-                                    <img src={submission.grading?.facilitatorSignatureUrl || facilitatorProfile?.signatureUrl} alt="Facilitator Signature" style={filterBlue} />
+                                    <img src={submission.grading?.facilitatorSignatureUrl || facilitatorProfile?.signatureUrl} alt="Facilitator Signature" crossOrigin="anonymous" style={filterBlue} />
                                 ) : <div className="sr-sig-no-image" style={{ color: 'blue', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontStyle: 'italic' }}>System Authenticated</div>}
                                 <strong style={{ color: 'blue' }}>{submission.grading?.facilitatorName || 'Facilitator'}</strong>
                                 <em style={{ color: 'blue' }}>Signed: {new Date(submission.grading?.facilitatorReviewedAt).toLocaleDateString()}</em>
@@ -1590,7 +1590,7 @@ export const SubmissionReview: React.FC = () => {
                         {isAssDone ? (
                             <>
                                 {(submission.grading?.assessorSignatureUrl || assessorProfile?.signatureUrl) ? (
-                                    <img src={submission.grading?.assessorSignatureUrl || assessorProfile?.signatureUrl} alt="Assessor Signature" style={filterRed} />
+                                    <img src={submission.grading?.assessorSignatureUrl || assessorProfile?.signatureUrl} alt="Assessor Signature" crossOrigin="anonymous" style={filterRed} />
                                 ) : <div className="sr-sig-no-image" style={{ color: 'red', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontStyle: 'italic' }}>System Authenticated</div>}
                                 <strong style={{ color: 'red' }}>{submission.grading?.assessorName || 'N/A'}</strong>
                                 <em style={{ color: 'red' }}>Reg: {assessorProfile?.assessorRegNumber || submission.grading?.assessorRegNumber || 'N/A'}</em>
@@ -1604,7 +1604,7 @@ export const SubmissionReview: React.FC = () => {
                         {isModDone ? (
                             <>
                                 {(submission.moderation?.moderatorSignatureUrl || moderatorProfile?.signatureUrl) ? (
-                                    <img src={submission.moderation?.moderatorSignatureUrl || moderatorProfile?.signatureUrl} alt="Moderator Signature" style={filterGreen} />
+                                    <img src={submission.moderation?.moderatorSignatureUrl || moderatorProfile?.signatureUrl} alt="Moderator Signature" crossOrigin="anonymous" style={filterGreen} />
                                 ) : <div className="sr-sig-no-image" style={{ color: 'green', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontStyle: 'italic' }}>System Authenticated</div>}
                                 <strong style={{ color: 'green' }}>{moderatorProfile?.fullName || submission.moderation?.moderatorName || '—'}</strong>
                                 <em style={{ color: 'green' }}>Outcome: {submission.moderation?.outcome}</em>
@@ -1708,24 +1708,33 @@ export const SubmissionReview: React.FC = () => {
                                         <Undo2 size={14} style={{ marginRight: '6px' }} /> Return to Learner for Corrections
                                     </button>
                                 )}
-                                {((submission.status === 'in_progress' && assessment?.moduleInfo?.timeLimit > 0) || ['not_started', 'submitted', 'facilitator_reviewed', 'awaiting_learner_signoff'].includes(submission.status)) && (
+
+                                {/* 🚀 SECURITY LOCK: Only Facilitators & Admins can see Overrides */}
+                                {(isFacilitator || isAdmin) && ((submission.status === 'in_progress' && assessment?.moduleInfo?.timeLimit > 0) || ['not_started', 'submitted', 'facilitator_reviewed', 'awaiting_learner_signoff'].includes(submission.status)) && (
                                     <div className="no-print" style={{ marginTop: '10px', background: '#eff6ff', padding: '12px', borderRadius: '8px', border: '1px solid #bfdbfe' }}>
                                         <p style={{ margin: '0 0 8px 0', fontSize: '0.85rem', color: '#1e3a8a', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                             <ShieldAlert size={14} /> Facilitator Overrides
                                         </p>
-                                        {submission.status !== 'not_started' && (
-                                            <div style={{ marginBottom: '12px', borderBottom: '1px dashed #bfdbfe', paddingBottom: '10px' }}>
-                                                <label style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#1e40af', display: 'block', marginBottom: '4px', textTransform: 'uppercase' }}>Learner Task Timer Override (Mins)</label>
-                                                <input type="number" min="1" placeholder="Enter true duration in minutes..." style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }} value={learnerTimeOverride} onChange={(e) => handleLearnerTimeOverrideChange(e.target.value)} disabled={saving} />
-                                            </div>
+
+                                        {!isPureKnowledge && (
+                                            <>
+                                                {submission.status !== 'not_started' && (
+                                                    <div style={{ marginBottom: '12px', borderBottom: '1px dashed #bfdbfe', paddingBottom: '10px' }}>
+                                                        <label style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#1e40af', display: 'block', marginBottom: '4px', textTransform: 'uppercase' }}>Learner Task Timer Override (Mins)</label>
+                                                        <input type="number" min="1" placeholder="Enter true duration in minutes..." style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }} value={learnerTimeOverride} onChange={(e) => handleLearnerTimeOverrideChange(e.target.value)} disabled={saving} />
+                                                    </div>
+                                                )}
+                                                {submission.status === 'in_progress' && assessment?.moduleInfo?.timeLimit > 0 && (
+                                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px' }}>
+                                                        <button onClick={() => grantExtraTime(15)} className="mlab-btn mlab-btn--sm" style={{ background: '#3b82f6', color: 'white', padding: '6px 10px', fontSize: '0.75rem', border: 'none' }}>+15 Mins</button>
+                                                        <button onClick={() => grantExtraTime(30)} className="mlab-btn mlab-btn--sm" style={{ background: '#2563eb', color: 'white', padding: '6px 10px', fontSize: '0.75rem', border: 'none' }}>+30 Mins</button>
+                                                        {submission.extraTimeGranted > 0 && <span style={{ fontSize: '0.75rem', color: '#0ea5e9', fontWeight: 'bold' }}>({submission.extraTimeGranted} min active)</span>}
+                                                    </div>
+                                                )}
+                                            </>
                                         )}
-                                        {submission.status === 'in_progress' && assessment?.moduleInfo?.timeLimit > 0 && (
-                                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px' }}>
-                                                <button onClick={() => grantExtraTime(15)} className="mlab-btn mlab-btn--sm" style={{ background: '#3b82f6', color: 'white', padding: '6px 10px', fontSize: '0.75rem', border: 'none' }}>+15 Mins</button>
-                                                <button onClick={() => grantExtraTime(30)} className="mlab-btn mlab-btn--sm" style={{ background: '#2563eb', color: 'white', padding: '6px 10px', fontSize: '0.75rem', border: 'none' }}>+30 Mins</button>
-                                                {submission.extraTimeGranted > 0 && <span style={{ fontSize: '0.75rem', color: '#0ea5e9', fontWeight: 'bold' }}>({submission.extraTimeGranted} min active)</span>}
-                                            </div>
-                                        )}
+
+                                        {/* Deferred Access applies to both KMs and PMs, so it stays outside the !isPureKnowledge check */}
                                         {(submission.status === 'not_started') && (
                                             <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                                                 <button onClick={toggleDeferredAccess} className="mlab-btn mlab-btn--sm" style={{ background: submission.overrideUnlock ? '#ef4444' : '#10b981', color: 'white', padding: '6px 10px', fontSize: '0.75rem', border: 'none', display: 'flex', alignItems: 'center', gap: '4px' }}>

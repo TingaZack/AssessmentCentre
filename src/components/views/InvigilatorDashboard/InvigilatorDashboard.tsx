@@ -63,7 +63,7 @@ const HistoryModal: React.FC<{ session: ProctorSession; onClose: () => void }> =
                                     <strong className="invig-history-item__reason">{v.reason}</strong>
                                     {v.imageUrl ? (
                                         <div className="invig-history-item__img-wrap">
-                                            <img src={v.imageUrl} alt="Violation Evidence" className="invig-history-item__img" />
+                                            <img src={v.imageUrl} alt="Violation Evidence" crossOrigin="anonymous" className="invig-history-item__img" />
                                             <div className="invig-history-item__img-label"><Camera size={11} /> Captured Evidence</div>
                                         </div>
                                     ) : (
@@ -243,7 +243,7 @@ const InvigilatorDashboard: React.FC = () => {
                                     <div className="invig-card__content">
                                         {isViolation && latestImage ? (
                                             <>
-                                                <img src={latestImage} alt="Latest Violation Snapshot" className="invig-card__snapshot" />
+                                                <img src={latestImage} alt="Latest Violation Snapshot" crossOrigin="anonymous" className="invig-card__snapshot" />
                                                 <div className="invig-card__snapshot-label"><Camera size={11} /> Latest Capture</div>
                                             </>
                                         ) : (

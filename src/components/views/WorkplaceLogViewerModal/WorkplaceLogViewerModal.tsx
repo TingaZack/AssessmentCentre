@@ -613,7 +613,7 @@ export const WorkplaceLogViewerModal: React.FC<WorkplaceLogViewerModalProps> = (
                                                                     {isPreviewOpen && cwkUrl && (
                                                                         <div className="animate-fade-in" style={{ padding: '6px', border: '1px solid #cbd5e1', borderRadius: '6px', background: '#f8fafc', marginTop: '4px', marginLeft: '48px', display: 'flex', justifyContent: 'center' }}>
                                                                             {isImageFile(cwkUrl) ? (
-                                                                                <img src={cwkUrl} alt="CWK Render" style={{ maxWidth: '100%', maxHeight: '200px', objectFit: 'contain' }} />
+                                                                                <img src={cwkUrl} alt="CWK Render" crossOrigin="anonymous" style={{ maxWidth: '100%', maxHeight: '200px', objectFit: 'contain' }} />
                                                                             ) : (
                                                                                 <iframe src={cwkUrl} title="CWK Preview Frame" style={{ width: '100%', height: '200px', border: 'none', background: 'white' }} />
                                                                             )}
@@ -691,7 +691,7 @@ export const WorkplaceLogViewerModal: React.FC<WorkplaceLogViewerModalProps> = (
                                                                     {isCustomPreviewOpen && seItem.type !== 'link' && seItem.fileUrl && (
                                                                         <div className="animate-fade-in" style={{ padding: '6px', border: '1px solid #cbd5e1', borderRadius: '6px', background: '#f8fafc', marginTop: '4px', display: 'flex', justifyContent: 'center' }}>
                                                                             {isImageFile(seItem.fileUrl) ? (
-                                                                                <img src={seItem.fileUrl} alt="Artifact inline render" style={{ maxWidth: '100%', maxHeight: '250px', objectFit: 'contain' }} />
+                                                                                <img src={seItem.fileUrl} alt="Artifact inline render" crossOrigin="anonymous" style={{ maxWidth: '100%', maxHeight: '250px', objectFit: 'contain' }} />
                                                                             ) : (
                                                                                 <iframe src={seItem.fileUrl} title="Artifact Frame Preview" style={{ width: '100%', height: '250px', border: 'none', background: 'white' }} />
                                                                             )}
@@ -714,7 +714,7 @@ export const WorkplaceLogViewerModal: React.FC<WorkplaceLogViewerModalProps> = (
                                                         </div>
                                                         <div style={{ width: '100%', minHeight: '250px', background: 'white', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
                                                             {isImageFile(version.evidenceUrl) ? (
-                                                                <img src={version.evidenceUrl} alt="Evidence Frame" style={{ maxWidth: '100%', maxHeight: '400px', objectFit: 'contain' }} />
+                                                                <img src={version.evidenceUrl} alt="Evidence Frame" crossOrigin="anonymous" style={{ maxWidth: '100%', maxHeight: '400px', objectFit: 'contain' }} />
                                                             ) : (
                                                                 <iframe src={version.evidenceUrl} title="Evidence Frame" style={{ width: '100%', height: '350px', border: 'none' }} />
                                                             )}

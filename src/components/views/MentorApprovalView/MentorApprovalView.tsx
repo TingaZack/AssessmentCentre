@@ -509,7 +509,7 @@ export const MentorApprovalView: React.FC = () => {
               {pendingSignatureBase64 || existingSignatureUrl ? (
                 <>
                   <div style={{ background: "#f8fafc", width: "100%", borderRadius: "6px", border: "1px dashed #e2e8f0", padding: "10px", display: "flex", justifyContent: "center", alignItems: "center", minHeight: "80px" }}>
-                    <img src={`${pendingSignatureBase64 || existingSignatureUrl}`} alt="Signature Preview" style={{ maxHeight: "70px", maxWidth: "100%", objectFit: "contain" }} />
+                    <img src={`${pendingSignatureBase64 || existingSignatureUrl}`} alt="Signature Preview" crossOrigin="anonymous" style={{ maxHeight: "70px", maxWidth: "100%", objectFit: "contain" }} />
                   </div>
                   <button
                     onClick={() => setShowSignatureModal(true)}
@@ -684,7 +684,7 @@ export const MentorApprovalView: React.FC = () => {
                                       {isPreviewOpen && cwkFileUrl && (
                                         <div className="animate-fade-in" style={{ marginLeft: '48px', padding: '4px', border: '1px solid #cbd5e1', borderRadius: '6px', background: '#f8fafc', marginTop: '4px', display: 'flex', justifyContent: 'center' }}>
                                           {isImageFile(cwkFileUrl) ? (
-                                            <img src={cwkFileUrl} alt="CWK Artifact inline" style={{ maxWidth: '100%', maxHeight: '200px', objectFit: 'contain' }} />
+                                            <img src={cwkFileUrl} alt="CWK Artifact inline" crossOrigin="anonymous" style={{ maxWidth: '100%', maxHeight: '200px', objectFit: 'contain' }} />
                                           ) : (
                                             <iframe src={cwkFileUrl} title="CWK Preview Frame" style={{ width: '100%', height: '200px', border: 'none', background: 'white' }} />
                                           )}
@@ -760,7 +760,7 @@ export const MentorApprovalView: React.FC = () => {
                                     {isCustomPreviewOpen && seItem.type !== 'link' && seItem.fileUrl && (
                                       <div className="animate-fade-in" style={{ padding: '6px', border: '1px solid #cbd5e1', borderRadius: '6px', background: '#ffffff', marginTop: '4px', display: 'flex', justifyContent: 'center' }}>
                                         {isImageFile(seItem.fileUrl) ? (
-                                          <img src={seItem.fileUrl} alt="Artifact Frame inline" style={{ maxWidth: '100%', maxHeight: '240px', objectFit: 'contain' }} />
+                                          <img src={seItem.fileUrl} alt="Artifact Frame inline" crossOrigin="anonymous" style={{ maxWidth: '100%', maxHeight: '240px', objectFit: 'contain' }} />
                                         ) : (
                                           <iframe src={seItem.fileUrl} title="Artifact Preview Frame" style={{ width: '100%', height: '240px', border: 'none', background: 'white' }} />
                                         )}
@@ -868,7 +868,7 @@ export const MentorApprovalView: React.FC = () => {
                               {previewEvidenceId === entry.id && (
                                 <div className="animate-fade-in" style={{ padding: '8px', border: '1px solid #e2e8f0', borderRadius: '8px', background: '#f8fafc', marginTop: '4px', display: 'flex', justifyContent: 'center' }}>
                                   {isImageFile(entry.evidenceUrl) ? (
-                                    <img src={entry.evidenceUrl} alt="Evidence Render inline" style={{ maxWidth: '100%', maxHeight: '350px', objectFit: 'contain' }} />
+                                    <img src={entry.evidenceUrl} alt="Evidence Render inline" crossOrigin="anonymous" style={{ maxWidth: '100%', maxHeight: '350px', objectFit: 'contain' }} />
                                   ) : (
                                     <iframe
                                       src={entry.evidenceUrl}

@@ -451,7 +451,7 @@ export const WorkplaceLogPrintable: React.FC<WorkplaceLogPrintableProps> = ({
                             <div className="print-signatures-grid">
                                 <div className="bulk-sig-col">
                                     <div className="bulk-sig-img-wrap">
-                                        {currentMentorSig ? <img src={currentMentorSig} alt="Supervisor Certified Stamp" /> : <div style={{ height: '35px' }}></div>}
+                                        {currentMentorSig ? <img src={currentMentorSig} alt="Supervisor Certified Stamp" crossOrigin="anonymous" /> : <div style={{ height: '35px' }}></div>}
                                     </div>
                                     <div className="print-sig-line">SUPERVISOR SIGNATURE</div>
                                     <div style={{ fontSize: '7.5pt', marginTop: '2px', color: '#333' }}>{mentorName || '________________________'}</div>
@@ -459,7 +459,7 @@ export const WorkplaceLogPrintable: React.FC<WorkplaceLogPrintableProps> = ({
                                 <div className="bulk-sig-col">
                                     <div className="bulk-sig-img-wrap">
                                         {assessorSig ? (
-                                            <img src={assessorSig} alt="Internal Assessor Stamp" />
+                                            <img src={assessorSig} alt="Internal Assessor Stamp" crossOrigin="anonymous" />
                                         ) : (
                                             <div style={{ height: '35px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#d97706', fontSize: '8pt', fontStyle: 'italic', fontWeight: 'bold' }}>
                                                 Pending Assignment
@@ -473,7 +473,7 @@ export const WorkplaceLogPrintable: React.FC<WorkplaceLogPrintableProps> = ({
                                 </div>
                                 <div className="bulk-sig-col">
                                     <div className="bulk-sig-img-wrap">
-                                        {currentLearnerSig ? <img src={currentLearnerSig} alt="Candidate Signature" /> : <div style={{ height: '35px' }}></div>}
+                                        {currentLearnerSig ? <img src={currentLearnerSig} alt="Candidate Signature" crossOrigin="anonymous" /> : <div style={{ height: '35px' }}></div>}
                                     </div>
                                     <div className="print-sig-line">LEARNER SIGNATURE</div>
                                     <div style={{ fontSize: '7.5pt', marginTop: '2px', color: '#333' }}>{log.learnerName || '________________________'}</div>
@@ -581,7 +581,7 @@ export const WorkplaceLogPrintable: React.FC<WorkplaceLogPrintableProps> = ({
                                         </div>
                                     ) : isImage ? (
                                         <div className="print-evidence-frame-box">
-                                            <img src={seItem.fileUrl} className="print-evidence-embedded-image" alt="" onLoad={handlePdfLoaded} />
+                                            <img src={seItem.fileUrl} className="print-evidence-embedded-image" alt="file" crossOrigin="anonymous" onLoad={handlePdfLoaded} />
                                         </div>
                                     ) : (
                                         <PrintablePdfUnroller url={seItem.fileUrl} />
@@ -607,7 +607,7 @@ export const WorkplaceLogPrintable: React.FC<WorkplaceLogPrintableProps> = ({
 
                                 {isPrintableImage(version.evidenceUrl) ? (
                                     <div className="print-evidence-frame-box">
-                                        <img src={version.evidenceUrl} className="print-evidence-embedded-image" alt="" onLoad={handlePdfLoaded} />
+                                        <img src={version.evidenceUrl} className="print-evidence-embedded-image" alt="Evidence" crossOrigin="anonymous" onLoad={handlePdfLoaded} />
                                     </div>
                                 ) : (
                                     <PrintablePdfUnroller url={version.evidenceUrl} />
@@ -639,7 +639,7 @@ export const WorkplaceLogPrintable: React.FC<WorkplaceLogPrintableProps> = ({
 
                             {isPrintableImage(attachment.url) ? (
                                 <div className="print-evidence-frame-box">
-                                    <img src={attachment.url} className="print-evidence-embedded-image" alt="" onLoad={handlePdfLoaded} />
+                                    <img src={attachment.url} className="print-evidence-embedded-image" alt="Supplementary Attachment" crossOrigin="anonymous" onLoad={handlePdfLoaded} />
                                 </div>
                             ) : (
                                 <PrintablePdfUnroller url={attachment.url} />

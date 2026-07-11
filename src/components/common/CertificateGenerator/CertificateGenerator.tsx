@@ -325,7 +325,7 @@ export const CertificateGenerator: React.FC<CertificateGeneratorProps> = ({ lear
                                     {/* Header */}
                                     <header className="cert-header">
                                         <div className="cert-logo-container">
-                                            <img src={logoUrl} alt="Institution Logo" className="cert-logo" />
+                                            <img src={logoUrl} crossOrigin="anonymous" alt="Institution Logo" className="cert-logo" />
                                         </div>
                                         <div className="cert-institution">
                                             <h3>{institutionName}</h3>
@@ -373,7 +373,7 @@ export const CertificateGenerator: React.FC<CertificateGeneratorProps> = ({ lear
                                     <footer className="cert-footer-new">
                                         <div className="cert-signature-block">
                                             <div className="cert-signature-image-container">
-                                                <img src={sigUrl} alt="Signature" className="cert-signature-img" />
+                                                <img src={sigUrl} alt="Signature" crossOrigin="anonymous" className="cert-signature-img" />
                                             </div>
                                             <div className="cert-signature-line" />
                                             <div className="cert-signature-name">{signatoryName}</div>

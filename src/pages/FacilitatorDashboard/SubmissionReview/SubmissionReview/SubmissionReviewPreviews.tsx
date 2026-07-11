@@ -79,7 +79,7 @@ export const FilePreview: React.FC<FilePreviewProps> = ({ url, onRemove, disable
             </div>
 
             <div className="no-print" style={{ background: '#f1f5f9', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', padding: isImage || isVideo ? '10px' : '0', minHeight: '100px' }}>
-                {isImage && <img src={url} alt="Preview" style={{ maxWidth: '100%', maxHeight: '400px', objectFit: 'contain', borderRadius: '4px' }} />}
+                {isImage && <img src={url} alt="Preview" crossOrigin="anonymous" style={{ maxWidth: '100%', maxHeight: '400px', objectFit: 'contain', borderRadius: '4px' }} />}
                 {isVideo && <video src={url} controls style={{ maxWidth: '100%', maxHeight: '400px', borderRadius: '4px' }} />}
                 {isPdf && <iframe src={url} style={{ width: '100%', height: '500px', border: 'none' }} title="PDF Preview" />}
                 {isOffice && (

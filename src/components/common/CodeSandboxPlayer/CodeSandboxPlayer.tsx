@@ -583,6 +583,8 @@ export const CodeSandboxPlayer: React.FC<CodeSandboxPlayerProps> = ({ block, lea
     const [bootFailed, setBootFailed] = useState(false);
     const previewOriginRef = useRef<string>('');
 
+    const wcInstanceRef = useRef<WebContainer | null>(null);
+
     const [activeTerminalTab, setActiveTerminalTab] = useState<'logs' | 'shell'>('logs');
 
     const debugTerminalRef = useRef<HTMLDivElement>(null);
@@ -790,7 +792,10 @@ export const CodeSandboxPlayer: React.FC<CodeSandboxPlayerProps> = ({ block, lea
             try {
                 const wc = await getWebContainer();
                 if (!mounted) return;
+
+                // Track the instance in both State and Ref for bulletproof teardowns
                 setWcInstance(wc);
+                wcInstanceRef.current = wc;
 
                 if (devProcessRef.current) { try { devProcessRef.current.kill(); } catch { } devProcessRef.current = null; }
                 if (shellProcessRef.current) { try { shellProcessRef.current.kill(); } catch { } shellProcessRef.current = null; }
@@ -885,17 +890,42 @@ export const CodeSandboxPlayer: React.FC<CodeSandboxPlayerProps> = ({ block, lea
 
         setBootFailed(false);
         boot();
+        //Catch page refreshes and tab closes
+        const handleUnload = () => {
+            if (devProcessRef.current) { try { devProcessRef.current.kill(); } catch (e) { } }
+            if (shellProcessRef.current) { try { shellProcessRef.current.kill(); } catch (e) { } }
+            if (wcInstanceRef.current) {
+                try { wcInstanceRef.current.teardown(); } catch (e) { }
+            }
+        };
+        window.addEventListener('beforeunload', handleUnload);
 
         return () => {
             mounted = false;
+            window.removeEventListener('beforeunload', handleUnload);
+
             if (resizeObserverRef.current) resizeObserverRef.current.disconnect();
             if (shellResizeObserverRef.current) shellResizeObserverRef.current.disconnect();
             if (shellInputListener) shellInputListener.dispose();
             if (serverReadyUnsub) serverReadyUnsub();
+
             debugTerm.dispose();
             shellTerm.dispose();
+
             if (devProcessRef.current) { try { devProcessRef.current.kill(); } catch (e) { } }
             if (shellProcessRef.current) { try { shellProcessRef.current.kill(); } catch (e) { } }
+
+            // FATAL LEAK FIX: Explicitly destroy the OS container on 'Back' clicks
+            if (wcInstanceRef.current) {
+                try {
+                    wcInstanceRef.current.teardown();
+                    console.log("[MLAB] WebContainer explicitly torn down on unmount.");
+                } catch (e) {
+                    console.error("Failed to teardown WebContainer", e);
+                }
+                wcInstanceRef.current = null;
+            }
+            setWcInstance(null);
         };
 
     }, [runId, template, assignedPort, safeBlockId, hasBeenVisible]);

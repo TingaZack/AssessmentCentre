@@ -56,7 +56,7 @@ export const FilePreview = ({
             </div>
 
             <div className={`ap-file-preview__body${isImage || isVideo ? ' ap-file-preview__body--padded' : ''} no-print`}>
-                {isImage && <img src={url} alt="Preview" className="ap-file-preview__img" />}
+                {isImage && <img src={url} alt="Preview" crossOrigin="anonymous" className="ap-file-preview__img" />}
                 {isVideo && <video src={url} controls className="ap-file-preview__video" />}
                 {isPdf && <iframe src={url} className="ap-file-preview__iframe" title="PDF Preview" />}
                 {isOffice && (

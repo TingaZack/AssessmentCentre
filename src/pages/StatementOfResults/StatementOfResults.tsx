@@ -623,7 +623,7 @@ const StatementOfResults: React.FC = () => {
                             <div className="signature-area">
                                 <div className="signature-block">
                                     <div className="signature-image-container">
-                                        <img src={(settings as any)?.signatureUrl || zackSignature} height={200} alt="Authorized Signature" />
+                                        <img src={(settings as any)?.signatureUrl || zackSignature} height={200} alt="Authorized Signature" crossOrigin="anonymous" />
                                     </div>
                                     <div className="signature-line"></div>
                                     <div className="signature-name">{learnerData.issuedBy.name}</div>

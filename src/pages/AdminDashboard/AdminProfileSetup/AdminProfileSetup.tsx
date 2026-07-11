@@ -340,7 +340,7 @@ export const AdminProfileSetup: React.FC = () => {
 
                         <div className="setup-photo-upload">
                             <div className="setup-avatar-circle">
-                                {photoPreview ? <img src={photoPreview} alt="Preview" style={{ objectFit: 'cover', width: '100%', height: '100%' }} /> : <User size={40} color="#94a3b8" />}
+                                {photoPreview ? <img src={photoPreview} alt="Preview" crossOrigin="anonymous" style={{ objectFit: 'cover', width: '100%', height: '100%' }} /> : <User size={40} color="#94a3b8" />}
                             </div>
                             <label className="setup-camera-btn" style={{ background: '#0f172a' }}>
                                 <Camera size={16} />

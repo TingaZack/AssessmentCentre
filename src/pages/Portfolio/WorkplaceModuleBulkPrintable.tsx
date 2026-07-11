@@ -321,7 +321,7 @@ export const WorkplaceModuleBulkPrintable: React.FC<GroupedModulePrintProps> = (
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: '20px' }}>
                             <div>
                                 <div className="bulk-sig-img-wrap" style={{ justifyContent: 'flex-start', height: '30px' }}>
-                                    {learnerSig ? <img src={learnerSig} style={{ maxHeight: '30px' }} alt="" /> : null}
+                                    {learnerSig ? <img src={learnerSig} style={{ maxHeight: '30px' }} alt="Learner Signature" crossOrigin="anonymous" /> : null}
                                 </div>
                                 <div style={{ borderTop: '1px solid #000', width: '220px', fontSize: '7.5pt', fontWeight: 'bold' }}>CANDIDATE SIGNATURE</div>
                                 <div style={{ fontSize: '7.5pt', color: '#475569', marginTop: '2px' }}>ID No: {learnerIdNumber}</div>
@@ -340,7 +340,7 @@ export const WorkplaceModuleBulkPrintable: React.FC<GroupedModulePrintProps> = (
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: '20px' }}>
                             <div>
                                 <div className="bulk-sig-img-wrap" style={{ justifyContent: 'flex-start', height: '30px' }}>
-                                    {mentorSig ? <img src={mentorSig} style={{ maxHeight: '30px' }} alt="" /> : null}
+                                    {mentorSig ? <img src={mentorSig} style={{ maxHeight: '30px' }} alt="Mentor Signature" crossOrigin="anonymous" /> : null}
                                 </div>
                                 <div style={{ borderTop: '1px solid #000', width: '220px', fontSize: '7.5pt', fontWeight: 'bold' }}>MENTOR SIGNATURE</div>
                             </div>
@@ -401,7 +401,7 @@ export const WorkplaceModuleBulkPrintable: React.FC<GroupedModulePrintProps> = (
                                                     {isApprovedElsewhere ? (
                                                         mentorSig ? (
                                                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
-                                                                <img src={mentorSig} style={{ maxHeight: '15px', objectFit: 'contain' }} alt="" />
+                                                                <img src={mentorSig} style={{ maxHeight: '15px', objectFit: 'contain' }} alt="Mentor Signature" crossOrigin="anonymous" />
                                                                 <span style={{ fontSize: '7.5pt', color: '#166534' }}>SIGNED</span>
                                                             </div>
                                                         ) : <span style={{ color: '#166534' }}>✔️ APPROVED</span>
@@ -440,7 +440,7 @@ export const WorkplaceModuleBulkPrintable: React.FC<GroupedModulePrintProps> = (
                                                 {isApprovedElsewhere ? (
                                                     mentorSig ? (
                                                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
-                                                            <img src={mentorSig} style={{ maxHeight: '15px', objectFit: 'contain' }} alt="" />
+                                                            <img src={mentorSig} style={{ maxHeight: '15px', objectFit: 'contain' }} alt="Mentor Signature" crossOrigin="anonymous" />
                                                             <span style={{ fontSize: '7.5pt', color: '#166534' }}>SIGNED</span>
                                                         </div>
                                                     ) : <span style={{ color: '#166534' }}>✔️ APPROVED</span>
@@ -479,7 +479,7 @@ export const WorkplaceModuleBulkPrintable: React.FC<GroupedModulePrintProps> = (
                                 <td style={{ textAlign: 'center', verticalAlign: 'middle' }}>-</td>
                                 <td style={{ textAlign: 'center', verticalAlign: 'middle' }}>
                                     {assessorSig ? (
-                                        <img src={assessorSig} style={{ maxHeight: '18px', objectFit: 'contain' }} alt="Assessor Signed" />
+                                        <img src={assessorSig} style={{ maxHeight: '18px', objectFit: 'contain' }} alt="Assessor Signed" crossOrigin="anonymous" />
                                     ) : (
                                         <span style={{ color: '#d97706', fontSize: '7.5pt', fontWeight: 'bold' }}>Pending</span>
                                     )}
@@ -608,7 +608,7 @@ export const WorkplaceModuleBulkPrintable: React.FC<GroupedModulePrintProps> = (
                                             <div className="row-sig-item">
                                                 <span>Learner:</span>
                                                 {currentLearnerSig ? (
-                                                    <img src={currentLearnerSig} className="row-sig-img" alt="" />
+                                                    <img src={currentLearnerSig} className="row-sig-img" alt="Learner Signature" crossOrigin="anonymous" />
                                                 ) : (
                                                     <span style={{ color: '#64748b', fontStyle: 'italic', fontSize: '7pt' }}>System Authenticated</span>
                                                 )}
@@ -616,7 +616,7 @@ export const WorkplaceModuleBulkPrintable: React.FC<GroupedModulePrintProps> = (
                                             <div className="row-sig-item">
                                                 <span>Supervisor:</span>
                                                 {entry.status === 'Approved' && currentMentorSig ? (
-                                                    <img src={currentMentorSig} className="row-sig-img" alt="" />
+                                                    <img src={currentMentorSig} className="row-sig-img" alt="Mentor Signature" crossOrigin="anonymous" />
                                                 ) : entry.status === 'Rejected' ? (
                                                     <span style={{ color: '#b91c1c', fontWeight: 'bold', fontSize: '7pt' }}>Returned Spec</span>
                                                 ) : (
@@ -634,7 +634,7 @@ export const WorkplaceModuleBulkPrintable: React.FC<GroupedModulePrintProps> = (
                 <div className="bulk-signatures-strip">
                     <div className="bulk-sig-col">
                         <div className="bulk-sig-img-wrap">
-                            {mentorSig ? <img src={mentorSig} alt="Supervisor Certified Stamp" /> : <div style={{ height: '35px' }}></div>}
+                            {mentorSig ? <img src={mentorSig} alt="Supervisor Certified Stamp" crossOrigin="anonymous" /> : <div style={{ height: '35px' }}></div>}
                         </div>
                         <div className="bulk-sig-line">SUPERVISOR SIGNATURE</div>
                         <div style={{ fontSize: '7.5pt', marginTop: '2px', color: '#333' }}>{mentorName}</div>
@@ -642,7 +642,7 @@ export const WorkplaceModuleBulkPrintable: React.FC<GroupedModulePrintProps> = (
                     <div className="bulk-sig-col">
                         <div className="bulk-sig-img-wrap">
                             {assessorSig ? (
-                                <img src={assessorSig} alt="Internal Assessor Stamp" />
+                                <img src={assessorSig} alt="Internal Assessor Stamp" crossOrigin="anonymous" />
                             ) : (
                                 <div style={{ height: '35px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#d97706', fontSize: '8pt', fontStyle: 'italic', fontWeight: 'bold' }}>
                                     Pending Review
@@ -656,7 +656,7 @@ export const WorkplaceModuleBulkPrintable: React.FC<GroupedModulePrintProps> = (
                     </div>
                     <div className="bulk-sig-col">
                         <div className="bulk-sig-img-wrap">
-                            {learnerSig ? <img src={learnerSig} alt="Candidate Signature" /> : <div style={{ height: '35px' }}></div>}
+                            {learnerSig ? <img src={learnerSig} alt="Candidate Signature" crossOrigin="anonymous" /> : <div style={{ height: '35px' }}></div>}
                         </div>
                         <div className="bulk-sig-line">LEARNER SIGNATURE</div>
                         <div style={{ fontSize: '7.5pt', marginTop: '2px', color: '#333' }}>{learnerName}</div>
@@ -720,7 +720,7 @@ export const WorkplaceModuleBulkPrintable: React.FC<GroupedModulePrintProps> = (
                             </div>
                         ) : isImg ? (
                             <div className="bulk-print-evidence-frame">
-                                <img src={evidenceItem.fileUrl} className="bulk-print-evidence-img-payload" alt="Portfolio Artifact" />
+                                <img src={evidenceItem.fileUrl} className="bulk-print-evidence-img-payload" alt="Portfolio Artifact" crossOrigin="anonymous" />
                             </div>
                         ) : (
                             <div className="bulk-print-evidence-frame" style={{ textAlign: 'left', padding: '0' }}>

@@ -138,13 +138,13 @@ const AILessonPlanModal: React.FC<any> = ({ isOpen, onClose, onSave, onShowStatu
                         const data = response.data as any;
                         if (data.success && data.html) {
                             let finalHtml = data.html;
-                            if (user?.signatureUrl) finalHtml = finalHtml.replace(`<strong>Delivered By:</strong> ${user?.fullName}</p>`, `<strong>Delivered By:</strong> ${user?.fullName}</p><img src="${user.signatureUrl}" style="max-height: 50px; display: block; margin: 10px 0;" alt="Digital Signature" />`);
+                            if (user?.signatureUrl) finalHtml = finalHtml.replace(`<strong>Delivered By:</strong> ${user?.fullName}</p>`, `<strong>Delivered By:</strong> ${user?.fullName}</p><img src="${user.signatureUrl}" crossOrigin="anonymous" style="max-height: 50px; display: block; margin: 10px 0;" alt="Digital Signature" />`);
                             setPlanHtml(finalHtml);
                             onShowStatus('success', 'AI Generation Complete', 'OpenAI has drafted your lesson plan.');
                         } else throw new Error("Invalid HTML returned from AI");
                     } catch (error: any) {
                         onShowStatus('warning', 'AI Unavailable', "OpenAI service busy. Loaded standard template instead.");
-                        setPlanHtml(`<h3>1. Programme Information</h3><p><strong>Programme:</strong> ${activeProgramme?.name || cohort?.name}</p><p><strong>SAQA ID:</strong> ${activeProgramme?.saqaId || 'N/A'}</p><ul>${topicList}</ul><hr/><p><strong>Delivered By:</strong> ${user?.fullName}</p>${user?.signatureUrl ? `<img src="${user.signatureUrl}" style="max-height: 50px;"/>` : ''}`);
+                        setPlanHtml(`<h3>1. Programme Information</h3><p><strong>Programme:</strong> ${activeProgramme?.name || cohort?.name}</p><p><strong>SAQA ID:</strong> ${activeProgramme?.saqaId || 'N/A'}</p><ul>${topicList}</ul><hr/><p><strong>Delivered By:</strong> ${user?.fullName}</p>${user?.signatureUrl ? `<img src="${user.signatureUrl}" crossOrigin="anonymous" style="max-height: 50px;"/>` : ''}`);
                     } finally {
                         setIsGenerating(false);
                     }
@@ -235,7 +235,7 @@ const AILessonPlanModal: React.FC<any> = ({ isOpen, onClose, onSave, onShowStatu
 
                                     {authorSignature ? (
                                         <div style={{ background: 'white', padding: '12px', borderRadius: '4px', border: '1px dashed #bbf7d0', textAlign: 'center' }}>
-                                            <img src={authorSignature} alt="Signature" style={{ maxHeight: '60px', maxWidth: '100%', objectFit: 'contain', mixBlendMode: 'multiply' }} />
+                                            <img src={authorSignature} alt="Signature" crossOrigin="anonymous" style={{ maxHeight: '60px', maxWidth: '100%', objectFit: 'contain', mixBlendMode: 'multiply' }} />
                                             <div style={{ fontSize: '0.65rem', color: '#166534', marginTop: '6px', fontWeight: 'bold' }}>VERIFIED: {displayName?.toUpperCase()}</div>
                                         </div>
                                     ) : (

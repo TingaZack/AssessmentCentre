@@ -293,7 +293,7 @@ export const AdminProfileView: React.FC<ProfileProps> = ({ profile, user, onUpda
                             <div className="lpv-profile-header" style={{ marginBottom: '2rem' }}>
                                 <div className="lpv-avatar-wrapper">
                                     <div className="lpv-avatar">
-                                        {photoPreview ? <img src={photoPreview} alt="Profile" style={{ objectFit: 'cover', width: '100%', height: '100%' }} /> : <User size={30} color="#94a3b8" />}
+                                        {photoPreview ? <img src={photoPreview} alt="Profile" crossOrigin="anonymous" style={{ objectFit: 'cover', width: '100%', height: '100%' }} /> : <User size={30} color="#94a3b8" />}
                                     </div>
                                     {isEditing && (
                                         <label className="lpv-avatar-upload" style={{ background: isSuper ? '#ef4444' : '#0f172a' }}>
@@ -416,7 +416,7 @@ export const AdminProfileView: React.FC<ProfileProps> = ({ profile, user, onUpda
                                 <div style={{ background: '#f8fafc', border: '1px dashed #cbd5e1', padding: '1rem', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', minHeight: '100px', borderRadius: '6px' }}>
                                     {liveProfile?.signatureUrl ? (
                                         <>
-                                            <img src={liveProfile.signatureUrl} alt="Signature" style={{ maxHeight: '70px', maxWidth: '100%', objectFit: 'contain' }} />
+                                            <img src={liveProfile.signatureUrl} alt="Signature" crossOrigin="anonymous" style={{ maxHeight: '70px', maxWidth: '100%', objectFit: 'contain' }} />
                                             <button
                                                 type="button"
                                                 onClick={(e) => { e.preventDefault(); setShowSignatureModal(true); }}

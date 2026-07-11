@@ -336,7 +336,7 @@ export const FacilitatorProfileView: React.FC<ProfileProps> = ({ profile, user, 
                             <div style={{ position: 'relative' }}>
                                 <div style={{ width: '70px', height: '70px', borderRadius: '50%', background: '#e2e8f0', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '3px solid white', boxShadow: '0 2px 5px rgba(0,0,0,0.1)' }}>
                                     {photoPreview ? (
-                                        <img src={photoPreview} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                        <img src={photoPreview} alt="Profile" crossOrigin="anonymous" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                     ) : (
                                         <User size={36} color="#94a3b8" />
                                     )}

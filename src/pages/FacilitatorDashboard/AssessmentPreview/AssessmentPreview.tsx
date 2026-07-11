@@ -1,6 +1,6 @@
 // src/pages/FacilitatorDashboard/AssessmentPreview/AssessmentPreview.tsx
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { doc, getDoc } from 'firebase/firestore';
 import {
@@ -10,13 +10,29 @@ import {
     Scale,
     Award,
     ShieldAlert,
-    Video
+    Video,
+    BarChart,
+    Sigma,
+    Pencil,
+    Lock,
+    ChevronUp,
+    ChevronDown
 } from 'lucide-react';
 import { db } from '../../../lib/firebase';
 import 'react-quill-new/dist/quill.snow.css';
 import './AssessmentPreview.css';
 
 import { CodeSandboxPlayer } from '../../../components/common/CodeSandboxPlayer/CodeSandboxPlayer';
+
+// 🚀 Core Charting Engine Registration
+import { CartesianPlane } from '@zakq/axisjs';
+
+// 🚀 Math Support Configuration
+import katex from "katex";
+import "katex/dist/katex.min.css";
+import "mathlive";
+
+(window as any).katex = katex;
 
 /* ─── HELPER: CLEAN RICH TEXT (FIXES WORD-BREAK BUG) ─────────────────────── */
 const cleanRichText = (html?: string) => {
@@ -32,6 +48,101 @@ const extractPlainText = (htmlString?: string) => {
     return (tmp.textContent || tmp.innerText || "").trim().replace(/\s+/g, ' ');
 };
 
+const POINT_COLORS = ["#ef4444", "#2563eb", "#94c73d", "#f59e0b", "#a855f7", "#0891b2"];
+
+/* ─── AXISJS GRAPH PLOT TEMPLATE PREVIEW CONTAINER ────────────────────────── */
+const PreviewAxisGraph: React.FC<{ block: any, showMemo?: boolean }> = ({ block, showMemo }) => {
+    const containerRef = useRef<HTMLDivElement>(null);
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const planeRef = useRef<CartesianPlane | null>(null);
+
+    useEffect(() => {
+        if (!canvasRef.current) return;
+
+        // Establish the layout-defensive instance configuration
+        const plane = new CartesianPlane(canvasRef.current, {
+            stepSequences: [1, 2, 5],
+            autoFit: false,
+        });
+        planeRef.current = plane;
+
+        const ro = new ResizeObserver(() => {
+            plane.resize();
+        });
+        if (containerRef.current) {
+            ro.observe(containerRef.current);
+        }
+
+        return () => {
+            ro.disconnect();
+            plane.destroy();
+            planeRef.current = null;
+        };
+    }, []);
+
+    useEffect(() => {
+        const plane = planeRef.current;
+        if (!plane) return;
+
+        plane.clear();
+
+        const allCoords: { x: number; y: number }[] = [];
+
+        // If we are showing the memorandum, plot the expected nodes and vectors
+        if (showMemo && block.memoGraph) {
+            const pointsList = block.memoGraph.points || [];
+            const shapesList = block.memoGraph.shapes || [];
+
+            pointsList.forEach((p: any, i: number) => {
+                const px = parseFloat(String(p.x));
+                const py = parseFloat(String(p.y));
+                if (!isNaN(px) && !isNaN(py)) {
+                    allCoords.push({ x: px, y: py });
+                    const color = POINT_COLORS[i % POINT_COLORS.length];
+                    plane.addPoint(px, py, color, `(${px}, ${py})`, true, 5);
+                }
+            });
+
+            shapesList.forEach((shape: any) => {
+                const shapeCoords: { x: number; y: number }[] = [];
+                shape.points?.forEach((p: any) => {
+                    const px = parseFloat(String(p.x));
+                    const py = parseFloat(String(p.y));
+                    if (!isNaN(px) && !isNaN(py)) {
+                        shapeCoords.push({ x: px, y: py });
+                        allCoords.push({ x: px, y: py });
+                    }
+                });
+
+                if (shapeCoords.length > 0) {
+                    plane.addPolygon(shapeCoords, `${shape.color}1f`, shape.color, 2);
+                    shapeCoords.forEach((coord) => {
+                        plane.addPoint(coord.x, coord.y, shape.color, `(${coord.x}, ${coord.y})`, false, 5);
+                    });
+                }
+            });
+        }
+
+        // Auto-focus the viewport map
+        if (allCoords.length > 0) {
+            setTimeout(() => {
+                plane.animateToFit(allCoords);
+            }, 100);
+        } else {
+            setTimeout(() => {
+                plane.animateToFit([{ x: -10, y: -10 }, { x: 10, y: 10 }], 0);
+            }, 50);
+        }
+
+    }, [block, showMemo]);
+
+    return (
+        <div ref={containerRef} style={{ position: 'relative', width: '100%', height: '420px', border: '1px solid #cbd5e1', background: '#ffffff', borderRadius: '6px', overflow: 'hidden' }}>
+            <canvas ref={canvasRef} style={{ display: 'block', width: '100%', height: '100%' }} />
+        </div>
+    );
+};
+
 export const AssessmentPreview: React.FC = () => {
     const { assessmentId } = useParams<{ assessmentId: string }>();
     const navigate = useNavigate();
@@ -39,6 +150,13 @@ export const AssessmentPreview: React.FC = () => {
     const [loading, setLoading] = useState(true);
 
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+    // 🚀 Accordion State for Graph Memos
+    const [expandedGraphMemos, setExpandedGraphMemos] = useState<Record<string, boolean>>({});
+
+    const toggleGraphMemo = (blockId: string) => {
+        setExpandedGraphMemos(prev => ({ ...prev, [blockId]: !prev[blockId] }));
+    };
 
     useEffect(() => {
         const fetchAssessment = async () => {
@@ -61,16 +179,13 @@ export const AssessmentPreview: React.FC = () => {
     // Derived stats
     const blocks = assessment.blocks || [];
 
-    // 🚀 FIXED: Added 'code_sandbox' to the question block filters
-    const qBlocks = blocks.filter((b: any) => ['text', 'mcq', 'task', 'checklist', 'qcto_workplace', 'code_sandbox'].includes(b.type));
+    const qBlocks = blocks.filter((b: any) => ['text', 'mcq', 'task', 'checklist', 'qcto_workplace', 'code_sandbox', 'graph', 'mathpad'].includes(b.type));
     const qCount = qBlocks.length;
     const totalMarks = assessment.totalMarks ?? blocks.reduce((s: number, b: any) => s + (Number(b.marks) || 0), 0);
     const timeLimit = assessment.moduleInfo?.timeLimit;
 
-    // Running question number across all blocks
     let qNum = 0;
 
-    // Helper to render attached images across different block types
     const renderBlockImage = (block: any) => {
         if (!block.imageUrl) return null;
         return (
@@ -92,7 +207,6 @@ export const AssessmentPreview: React.FC = () => {
     return (
         <div className="mlab-preview">
 
-            {/* OVERLAY FOR MOBILE SIDEBAR */}
             {isMobileMenuOpen && (
                 <div
                     className="mlab-sidebar-overlay no-print"
@@ -100,7 +214,6 @@ export const AssessmentPreview: React.FC = () => {
                 />
             )}
 
-            {/* ── Admin warning banner ── */}
             <div className="mlab-preview-banner no-print">
                 <span className="mlab-preview-banner__title">Admin Preview Mode</span>
                 <span className="mlab-preview-banner__body">
@@ -108,10 +221,8 @@ export const AssessmentPreview: React.FC = () => {
                 </span>
             </div>
 
-            {/* ── TOP BAR (Matching Player) ── */}
             <div className="mlab-preview-topbar no-print">
                 <div className="mlab-preview-topbar__left">
-                    {/* MOBILE HAMBURGER MENU */}
                     <button
                         className="mlab-hamburger-btn no-print"
                         onClick={() => setIsMobileMenuOpen(true)}
@@ -129,7 +240,6 @@ export const AssessmentPreview: React.FC = () => {
                 </div>
 
                 <div className="mlab-preview-topbar__right">
-                    {/* OPEN BOOK PDF BUTTON IN PREVIEW TOPBAR */}
                     {assessment?.isOpenBook && assessment?.referenceManualUrl && (
                         <button className="mlab-topbar-manual-btn" onClick={() => window.open(assessment.referenceManualUrl, '_blank', 'noopener,noreferrer')} title="Open Reference Manual">
                             <FileArchive size={16} /> <span className="mlab-hide-mobile">View Manual</span>
@@ -148,12 +258,9 @@ export const AssessmentPreview: React.FC = () => {
                 </div>
             </div>
 
-            {/* ── BODY WRAPPER FOR DRAWER ── */}
             <div className="mlab-preview-body">
 
-                {/* ── LEFT SIDEBAR (Mobile Drawer) ── */}
                 <nav className={`mlab-sidebar no-print ${isMobileMenuOpen ? 'open' : ''}`}>
-                    {/* CLOSE BUTTON FOR MOBILE SIDEBAR */}
                     <button
                         className="mlab-close-btn"
                         onClick={() => setIsMobileMenuOpen(false)}
@@ -173,8 +280,7 @@ export const AssessmentPreview: React.FC = () => {
                         {blocks.reduce((acc: any[], block: any) => {
                             if (block.type === 'section') {
                                 acc.push({ type: 'section', label: extractPlainText(block.title) || 'Section', id: block.id });
-                            } else if (['text', 'mcq', 'task', 'checklist', 'logbook', 'qcto_workplace', 'code_sandbox'].includes(block.type)) {
-                                // 🚀 FIXED: Added 'code_sandbox' to the sidebar navigation mapping array
+                            } else if (['text', 'mcq', 'task', 'checklist', 'logbook', 'qcto_workplace', 'code_sandbox', 'graph', 'mathpad'].includes(block.type)) {
                                 const cleanLabel = extractPlainText(block.question) || extractPlainText(block.title) || 'Workplace Checkpoint';
                                 acc.push({ type: 'q', label: cleanLabel, id: block.id });
                             }
@@ -187,9 +293,7 @@ export const AssessmentPreview: React.FC = () => {
                     </div>
                 </nav>
 
-                {/* ── CONTENT ── */}
                 <div className="mlab-preview-doc">
-                    {/* ── Assessment Header ── */}
                     <header className="mlab-preview-header">
                         <span className="mlab-preview-header__eyebrow">
                             {assessment.moduleType?.toUpperCase() || 'Assessment'} · {assessment.moduleInfo?.moduleNumber || ''}
@@ -212,7 +316,6 @@ export const AssessmentPreview: React.FC = () => {
                                 </span>
                             ) : null}
 
-                            {/* PROCTORING BADGE ON PREVIEW */}
                             {assessment?.requiresInvigilation && (
                                 <span className="mlab-meta-chip" style={{ background: '#fff1f2', color: '#e11d48', border: '1px solid #fecdd3' }}>
                                     <Video size={11} /> Live Proctoring Enabled
@@ -221,7 +324,6 @@ export const AssessmentPreview: React.FC = () => {
                         </div>
                     </header>
 
-                    {/* PROCTORING WARNING BANNER (Only on Knowledge Exams) */}
                     {assessment?.requiresInvigilation && (
                         <div className="mlab-openbook-banner" style={{ background: '#fff1f2', borderColor: '#fecdd3', borderLeftColor: '#e11d48', marginTop: '1.5rem' }}>
                             <strong className="mlab-openbook-banner__title" style={{ color: '#be123c' }}>
@@ -233,7 +335,6 @@ export const AssessmentPreview: React.FC = () => {
                         </div>
                     )}
 
-                    {/* ── Open Book Banner ── */}
                     {assessment?.isOpenBook && assessment?.referenceManualUrl && (
                         <div className="mlab-openbook-banner" style={{ marginTop: '1.5rem' }}>
                             <strong className="mlab-openbook-banner__title"><FileArchive size={16} /> Open Book Assessment</strong>
@@ -244,11 +345,9 @@ export const AssessmentPreview: React.FC = () => {
                         </div>
                     )}
 
-                    {/* ── Instructions ── */}
                     {assessment.instructions && (
                         <div className="mlab-preview-instructions">
                             <span className="mlab-preview-instructions__label">Learner Instructions</span>
-                            {/* 🚀 FIXED HTML PARSING */}
                             <div className="quill-read-only-content mlab-preview-instructions__text" style={{ wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(assessment.instructions) }} />
                         </div>
                     )}
@@ -256,12 +355,10 @@ export const AssessmentPreview: React.FC = () => {
                     {assessment.purpose && (
                         <div className="mlab-preview-instructions" style={{ marginTop: '1rem' }}>
                             <span className="mlab-preview-instructions__label">Module Purpose</span>
-                            {/* 🚀 FIXED HTML PARSING */}
                             <div className="quill-read-only-content mlab-preview-instructions__text" style={{ wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(assessment.purpose) }} />
                         </div>
                     )}
 
-                    {/* ── Blocks ── */}
                     <div className="mlab-blocks">
                         {blocks.map((block: any) => {
 
@@ -270,7 +367,6 @@ export const AssessmentPreview: React.FC = () => {
                                 <div key={block.id} id={`block-${block.id}`} className="mlab-block-section" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                                     <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a' }}>{block.title}</div>
                                     {block.content && (
-                                        // 🚀 FIXED HTML PARSING
                                         <div className="quill-read-only-content" style={{ fontSize: '0.95rem', color: '#475569', wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.content) }} />
                                     )}
                                     {renderBlockImage(block)}
@@ -283,7 +379,6 @@ export const AssessmentPreview: React.FC = () => {
                                     <div className="mlab-block-info__label">
                                         <Info size={13} /> Reading Material
                                     </div>
-                                    {/* 🚀 FIXED HTML PARSING */}
                                     <div className="quill-read-only-content mlab-block-info__content" style={{ wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap', color: '#475569' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.content) }} />
                                     {renderBlockImage(block)}
                                 </div>
@@ -296,7 +391,6 @@ export const AssessmentPreview: React.FC = () => {
                                     <div key={block.id} id={`block-${block.id}`} className="mlab-block-question">
                                         <div className="mlab-block-question__header">
                                             <span className="mlab-block-question__num">Q{qNum}</span>
-                                            {/* 🚀 FIXED HTML PARSING */}
                                             <div className="mlab-block-question__text">
                                                 {block.question ? <div className="quill-read-only-content" style={{ wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.question) }} /> : 'Untitled Question'}
                                             </div>
@@ -322,7 +416,6 @@ export const AssessmentPreview: React.FC = () => {
                                     <div key={block.id} id={`block-${block.id}`} className="mlab-block-question">
                                         <div className="mlab-block-question__header">
                                             <span className="mlab-block-question__num">Q{qNum}</span>
-                                            {/* 🚀 FIXED HTML PARSING */}
                                             <div className="mlab-block-question__text">
                                                 {block.question ? <div className="quill-read-only-content" style={{ wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.question) }} /> : 'Untitled Question'}
                                             </div>
@@ -364,7 +457,6 @@ export const AssessmentPreview: React.FC = () => {
                                     <div key={block.id} id={`block-${block.id}`} className="mlab-block-question">
                                         <div className="mlab-block-question__header">
                                             <span className="mlab-block-question__num" style={{ background: '#ede9fe', color: '#8b5cf6' }}>Q{qNum}</span>
-                                            {/* 🚀 FIXED HTML PARSING */}
                                             <div className="mlab-block-question__text">
                                                 {block.question ? <div className="quill-read-only-content" style={{ wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.question) }} /> : 'Untitled Question'}
                                             </div>
@@ -388,7 +480,7 @@ export const AssessmentPreview: React.FC = () => {
                                 );
                             }
 
-                            /* 🚀 NEW: LIVE IDE / CODE SANDBOX PREVIEW */
+                            /* LIVE IDE / CODE SANDBOX PREVIEW */
                             if (block.type === 'code_sandbox') {
                                 qNum++;
                                 return (
@@ -414,10 +506,118 @@ export const AssessmentPreview: React.FC = () => {
 
                                             <CodeSandboxPlayer
                                                 block={block}
-                                                learnerAns={undefined} // Ensures it loads from the block template
-                                                onChange={() => { }} // Dummy handler for preview
-                                                readOnly={false} // Lets the facilitator actually type code
+                                                learnerAns={undefined}
+                                                onChange={() => { }}
+                                                readOnly={false}
                                             />
+                                        </div>
+                                    </div>
+                                );
+                            }
+
+                            /* 🚀 CARTEESIAN ENGINE WORKSPACE PLOT PREVIEW 🚀 */
+                            if (block.type === 'graph') {
+                                qNum++;
+                                return (
+                                    <div key={block.id} id={`block-${block.id}`} className="mlab-block-question">
+                                        <div className="mlab-block-question__header">
+                                            <span className="mlab-block-question__num" style={{ background: '#ccfbf1', color: '#0f766e' }}>PLOT</span>
+                                            <div className="mlab-block-question__text">
+                                                {block.question ? <div className="quill-read-only-content" style={{ wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.question) }} /> : 'Untitled Graphing Task'}
+                                            </div>
+                                            <span className="mlab-block-question__marks">{block.marks} Marks</span>
+                                        </div>
+                                        <div className="mlab-block-question__body">
+                                            {renderBlockImage(block)}
+                                            <div style={{ marginBottom: '8px', fontSize: '0.85rem', color: '#334155', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                <BarChart size={14} /> Blank Cartesian Graph Grid Workspace Preview:
+                                            </div>
+                                            <PreviewAxisGraph block={block} />
+                                        </div>
+                                    </div>
+                                );
+                            }
+
+                            /* 🚀 MATHPAD */
+                            if (block.type === 'mathpad') {
+                                qNum++;
+                                const isGraphMemoExpanded = expandedGraphMemos[block.id] || false;
+
+                                return (
+                                    <div key={block.id} id={`block-${block.id}`} className="mlab-block-question">
+                                        <div className="mlab-block-question__header">
+                                            <span className="mlab-block-question__num" style={{ background: '#fce7f3', color: '#db2777' }}>MATH</span>
+                                            <div className="mlab-block-question__text">
+                                                {block.question ? <div className="quill-read-only-content" style={{ wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.question) }} /> : 'Untitled Question'}
+                                            </div>
+                                            <span className="mlab-block-question__marks">{block.marks} Marks</span>
+                                        </div>
+                                        <div className="mlab-block-question__body">
+                                            {renderBlockImage(block)}
+
+                                            <div className="mlab-answer-box" style={{ background: '#f8fafc', padding: '1rem', borderRadius: '6px', border: '1px dashed #cbd5e1' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                                                    <Sigma size={16} color="#db2777" />
+                                                    <span style={{ fontSize: '0.85rem', color: '#334155', fontWeight: 'bold' }}>Mathematical Workspace (Learner View):</span>
+                                                </div>
+                                                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                                                    <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', background: '#fdf2f8', padding: '4px 10px', borderRadius: '20px', color: '#be185d', border: '1px solid #fbcfe8' }}><Sigma size={12} /> Equation Editor</span>
+                                                    {block.allowGraphing !== false && <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', background: '#f0fdf4', padding: '4px 10px', borderRadius: '20px', color: '#166534', border: '1px solid #bbf7d0' }}><BarChart size={12} /> Graphing Calculator</span>}
+                                                    {block.allowDrawing !== false && <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', background: '#eff6ff', padding: '4px 10px', borderRadius: '20px', color: '#1d4ed8', border: '1px solid #bfdbfe' }}><Pencil size={12} /> Whiteboard Canvas</span>}
+                                                </div>
+                                            </div>
+
+                                            {(block.correctAnswer || block.modelSolution || (block.memoGraph?.points?.length > 0 || block.memoGraph?.shapes?.length > 0)) && (
+                                                <div style={{ marginTop: '1rem', padding: '1rem', background: '#fdf2f8', border: '1px solid #fbcfe8', borderRadius: '6px' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#be185d', fontSize: '0.85rem', marginBottom: '12px', fontWeight: 'bold' }}>
+                                                        <Lock size={14} /> Assessor Memorandum (Hidden from Learner)
+                                                    </div>
+
+                                                    {block.correctAnswer && (
+                                                        <div style={{ marginBottom: '12px' }}>
+                                                            <div style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#9d174d', marginBottom: '4px', textTransform: 'uppercase' }}>Expected Final Answer</div>
+                                                            {React.createElement('math-field', {
+                                                                'read-only': 'true',
+                                                                style: { width: '100%', fontSize: '1.2rem', padding: '8px', background: 'white', border: '1px solid #fbcfe8', borderRadius: '4px', color: '#0f172a' }
+                                                            }, block.correctAnswer)}
+                                                        </div>
+                                                    )}
+
+                                                    {block.modelSolution && (
+                                                        <div style={{ marginBottom: '12px' }}>
+                                                            <div style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#9d174d', marginBottom: '4px', textTransform: 'uppercase' }}>Step-by-Step Solution</div>
+                                                            <div className="quill-read-only-content" style={{ background: 'white', padding: '10px', borderRadius: '4px', border: '1px dashed #fbcfe8', fontSize: '0.9rem', color: '#334155' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.modelSolution) }} />
+                                                        </div>
+                                                    )}
+
+                                                    {(block.memoGraph?.points?.length > 0 || block.memoGraph?.shapes?.length > 0) && (
+                                                        <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px dashed #fbcfe8' }}>
+                                                            <div
+                                                                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', background: '#fce7f3', padding: '8px 12px', borderRadius: '6px', border: '1px solid #fbcfe8' }}
+                                                                onClick={(e) => { e.stopPropagation(); toggleGraphMemo(block.id); }}
+                                                            >
+                                                                <div>
+                                                                    <label style={{ color: '#9d174d', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', margin: 0, fontWeight: 'bold', fontSize: '0.8rem', textTransform: 'uppercase' }}>
+                                                                        <BarChart size={14} /> Expected Graph Solution
+                                                                    </label>
+                                                                    <p style={{ fontSize: '0.75rem', color: '#be185d', margin: '2px 0 0 0' }}>
+                                                                        Click to {isGraphMemoExpanded ? 'collapse' : 'expand'} the expected visual solution graph.
+                                                                    </p>
+                                                                </div>
+                                                                <div style={{ color: '#9d174d', padding: '4px', background: '#fdf2f8', borderRadius: '4px' }}>
+                                                                    {isGraphMemoExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                                                                </div>
+                                                            </div>
+
+                                                            {isGraphMemoExpanded && (
+                                                                <div style={{ marginTop: '12px', animation: 'fadeIn 0.2s ease-out' }}>
+                                                                    <PreviewAxisGraph block={block} showMemo={true} />
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 );
@@ -431,7 +631,6 @@ export const AssessmentPreview: React.FC = () => {
                                         <div className="mlab-block-question__header">
                                             <span className="mlab-block-question__num" style={{ background: '#ccfbf1', color: '#0d9488' }}>CHK</span>
                                             <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                                {/* 🚀 FIXED HTML PARSING */}
                                                 <div className="quill-read-only-content mlab-block-question__text" style={{ wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.title) }} />
                                                 <span style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '4px' }}>This section is completed by the Assessor/Mentor during observation.</span>
                                             </div>
@@ -492,7 +691,6 @@ export const AssessmentPreview: React.FC = () => {
                                             <span className="mlab-block-question__text">{block.title}</span>
                                         </div>
                                         <div className="mlab-block-question__body">
-                                            {/* 🚀 FIXED HTML PARSING */}
                                             <div className="quill-read-only-content" style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '10px', wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.content) }} />
 
                                             <div style={{ width: '100%', overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: '6px' }}>
@@ -528,7 +726,6 @@ export const AssessmentPreview: React.FC = () => {
                                         <div className="mlab-block-question__header">
                                             <span className="mlab-block-question__num" style={{ background: '#ffe4e6', color: '#e11d48' }}>QCTO</span>
                                             <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                                {/* 🚀 FIXED HTML PARSING */}
                                                 <div className="quill-read-only-content mlab-block-question__text" style={{ wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.title || 'Workplace Experience Checkpoint') }} />
                                                 <span style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '4px' }}>SETA Compliant Workplace Reflection & Evidence.</span>
                                             </div>

@@ -1189,7 +1189,7 @@ export const SettingsPage: React.FC = () => {
                                 <div className="settings-card brand-assets-grid">
                                     <div className="asset-upload-box">
                                         <h3 className="asset-title">Primary Logo</h3>
-                                        <div className="asset-preview"><img src={formData.logoUrl || fallbackLogo} alt="Institution Logo" /></div>
+                                        <div className="asset-preview"><img src={formData.logoUrl || fallbackLogo} alt="Institution Logo" crossOrigin="anonymous" /></div>
                                         <label className="mlab-btn mlab-btn--outline-blue mlab-btn--sm mt-3 cursor-pointer">
                                             {isUploadingLogo ? <Loader2 className="spin" size={14} /> : <UploadCloud size={14} />} Replace Logo
                                             <input type="file" accept="image/*" hidden onChange={(e) => handleFileUpload(e, 'logoUrl')} />
@@ -1197,7 +1197,7 @@ export const SettingsPage: React.FC = () => {
                                     </div>
                                     <div className="asset-upload-box">
                                         <h3 className="asset-title">Authorized Signature</h3>
-                                        <div className="asset-preview"><img src={formData.signatureUrl || fallbackSignature} alt="Authorized Signature" /></div>
+                                        <div className="asset-preview"><img src={formData.signatureUrl || fallbackSignature} alt="Authorized Signature" crossOrigin="anonymous" /></div>
                                         <label className="mlab-btn mlab-btn--outline-blue mlab-btn--sm mt-3 cursor-pointer">
                                             {isUploadingSignature ? <Loader2 className="spin" size={14} /> : <UploadCloud size={14} />} Replace Signature
                                             <input type="file" accept="image/*" hidden onChange={(e) => handleFileUpload(e, 'signatureUrl')} />

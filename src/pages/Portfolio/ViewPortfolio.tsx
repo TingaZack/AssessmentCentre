@@ -1319,7 +1319,7 @@ export const ViewPortfolio: React.FC = () => {
                     <div className="vp-profile-card">
                         <div className="vp-profile-avatar">
                             {(enrollment as any).profilePhotoUrl ? (
-                                <img src={(enrollment as any).profilePhotoUrl} alt="" />
+                                <img src={(enrollment as any).profilePhotoUrl} alt="Profile" crossOrigin="anonymous" />
                             ) : (
                                 <User size={32} />
                             )}

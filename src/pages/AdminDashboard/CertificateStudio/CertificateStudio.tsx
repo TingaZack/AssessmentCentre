@@ -160,7 +160,7 @@ const OfficialTemplate = ({ data, finalType }: { data: any, finalType: string })
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 'auto' }}>
                 <div style={{ width: '250px' }}>
                     <div style={{ height: '70px', display: 'flex', alignItems: 'flex-end', marginBottom: '10px' }}>
-                        {data.sigUrl && <img src={data.sigUrl} alt="Signature" style={{ height: 190, objectFit: 'contain', marginBottom: -70 }} crossOrigin="anonymous" />}
+                        {data.sigUrl && <img src={data.sigUrl} alt="Signature" crossOrigin="anonymous" style={{ height: 190, objectFit: 'contain', marginBottom: -70 }} crossOrigin="anonymous" />}
                     </div>
                     <div style={{ borderTop: '1px solid var(--mlab-blue)', paddingTop: '10px' }}>
                         <p style={{ margin: 0, fontWeight: 'bold', color: 'var(--mlab-blue)', fontSize: '14px' }}>{data.signatoryName}</p>
@@ -183,7 +183,7 @@ const ModernTemplate = ({ data, finalType }: { data: any, finalType: string }) =
     <div style={{ width: '100%', height: '100%', backgroundColor: '#f8fafc', position: 'relative', fontFamily: 'system-ui, sans-serif', display: 'flex' }}>
         <div style={{ width: '280px', backgroundColor: 'var(--mlab-blue)', height: '100%', padding: '60px 40px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', color: 'white', boxSizing: 'border-box' }}>
             <div>
-                {data.logoUrl && <img src={data.logoUrl} alt="Logo" style={{ height: '60px', objectFit: 'contain', }} crossOrigin="anonymous" />}
+                {data.logoUrl && <img src={data.logoUrl} alt="Logo" crossOrigin="anonymous" style={{ height: '60px', objectFit: 'contain', }} crossOrigin="anonymous" />}
                 <div style={{ marginTop: '40px', width: '40px', height: '4px', backgroundColor: 'var(--mlab-green)' }}></div>
             </div>
             <div>
@@ -217,7 +217,7 @@ const ModernTemplate = ({ data, finalType }: { data: any, finalType: string }) =
 
             <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-end' }}>
                 <div style={{ width: '200px' }}>
-                    {data.sigUrl && <img src={data.sigUrl} alt="Signature" style={{ height: 190, objectFit: 'contain', marginBottom: -70 }} crossOrigin="anonymous" />}
+                    {data.sigUrl && <img src={data.sigUrl} alt="Signature" crossOrigin="anonymous" style={{ height: 190, objectFit: 'contain', marginBottom: -70 }} crossOrigin="anonymous" />}
                     <div style={{ borderTop: '2px solid #cbd5e1', paddingTop: '10px' }}>
                         <p style={{ margin: 0, fontWeight: 'bold', color: 'var(--mlab-blue)', fontSize: '14px' }}>{data.signatoryName}</p>
                         <p style={{ margin: '2px 0 0', color: '#64748b', fontSize: '12px' }}>{data.signatoryTitle}</p>
