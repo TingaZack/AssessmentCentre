@@ -14,6 +14,9 @@ import '../SubmissionReview';
 import { CodeSandboxPlayer } from '../../../../components/common/CodeSandboxPlayer/CodeSandboxPlayer';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 
+// 🚀 Direct Firestore Import for Real-Time Unlocks
+import { getFirestore, doc, setDoc } from 'firebase/firestore';
+
 // 🚀 Core Charting Engine Registration
 import { CartesianPlane } from '@zakq/axisjs';
 import "mathlive";
@@ -144,7 +147,6 @@ const ReviewAxisGraph: React.FC<{ block: any; learnerAns: any }> = ({ block, lea
         const pointsList = learnerAns?.points || [];
         const shapesList = learnerAns?.shapes || [];
 
-        // Track 1: Re-draw loose points with absolute labels
         pointsList.forEach((p: any, i: number) => {
             const px = parseFloat(String(p.x));
             const py = parseFloat(String(p.y));
@@ -155,7 +157,6 @@ const ReviewAxisGraph: React.FC<{ block: any; learnerAns: any }> = ({ block, lea
             }
         });
 
-        // Track 2: Re-draw geometrical vectors with automated vertex labels
         shapesList.forEach((shape: any) => {
             const shapeCoords: { x: number; y: number }[] = [];
             shape.points?.forEach((p: any) => {
@@ -170,13 +171,11 @@ const ReviewAxisGraph: React.FC<{ block: any; learnerAns: any }> = ({ block, lea
             if (shapeCoords.length > 0) {
                 plane.addPolygon(shapeCoords, `${shape.color}1f`, shape.color, 2);
                 shapeCoords.forEach((coord) => {
-                    // 🚀 Crisp coordinate labels mapped automatically on shape paths
                     plane.addPoint(coord.x, coord.y, shape.color, `(${coord.x}, ${coord.y})`, false, 5);
                 });
             }
         });
 
-        // If the canvas is completely blank, we just center on the origin so it doesn't look broken
         if (allCoords.length > 0) {
             setTimeout(() => {
                 planeRef.current?.animateToFit(allCoords);
@@ -199,8 +198,11 @@ const ReviewAxisGraph: React.FC<{ block: any; learnerAns: any }> = ({ block, lea
 const ReviewCodeSandbox: React.FC<{ block: any, learnerAns: any, submissionId: string }> = ({ block, learnerAns, submissionId }) => {
     const [snapshot, setSnapshot] = useState<any>(learnerAns?.snapshot || null);
     const [isLoading, setIsLoading] = useState<boolean>(!!learnerAns?.storagePath && !learnerAns?.snapshot);
+    const [isBooted, setIsBooted] = useState<boolean>(false);
 
     useEffect(() => {
+        if (!isBooted) return;
+
         let isMounted = true;
 
         if (learnerAns?.storagePath && !learnerAns?.snapshot) {
@@ -223,7 +225,23 @@ const ReviewCodeSandbox: React.FC<{ block: any, learnerAns: any, submissionId: s
         }
 
         return () => { isMounted = false; };
-    }, [learnerAns, submissionId, block.id]);
+    }, [learnerAns, submissionId, block.id, isBooted]);
+
+    if (!isBooted) {
+        return (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '3rem', background: '#f8fafc', border: '1px dashed #cbd5e1', borderRadius: '8px', color: '#64748b', gap: '10px' }}>
+                <Code size={32} color="#94a3b8" />
+                <p style={{ margin: 0, fontSize: '0.9rem', fontWeight: 'bold', color: '#334155' }}>Facilitator Code Preview is Paused</p>
+                <p style={{ margin: '0 0 10px 0', fontSize: '0.8rem', textAlign: 'center', maxWidth: '400px' }}>This button only boots the IDE on <strong>YOUR</strong> screen to conserve memory. Use the Network Control switch above to unlock the Learner's screen.</p>
+                <button
+                    onClick={() => setIsBooted(true)}
+                    style={{ background: '#3b82f6', color: 'white', padding: '8px 16px', borderRadius: '6px', border: 'none', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem', boxShadow: '0 2px 4px rgba(59,130,246,0.3)' }}
+                >
+                    <Play size={14} /> Boot Facilitator Preview (Local)
+                </button>
+            </div>
+        );
+    }
 
     if (isLoading) {
         return (
@@ -235,11 +253,13 @@ const ReviewCodeSandbox: React.FC<{ block: any, learnerAns: any, submissionId: s
     }
 
     return (
-        <CodeSandboxPlayer
-            block={block}
-            learnerAns={{ ...(learnerAns || {}), snapshot }}
-            readOnly={true}
-        />
+        <div style={{ height: '600px', width: '100%', border: '1px solid #cbd5e1', borderRadius: '6px', overflow: 'hidden' }}>
+            <CodeSandboxPlayer
+                block={block}
+                learnerAns={{ ...(learnerAns || {}), snapshot }}
+                readOnly={true}
+            />
+        </div>
     );
 };
 
@@ -256,11 +276,58 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
         handleGlobalChecklistChange, handleSetToNow
     } = props;
 
-    // 🚀 NEW STATE: To control the Mathpad Assessor Memorandum graph accordion independently
     const [expandedGraphMemos, setExpandedGraphMemos] = useState<Record<string, boolean>>({});
+    const [togglingIDE, setTogglingIDE] = useState<string | null>(null);
 
     const toggleGraphMemo = (blockId: string) => {
         setExpandedGraphMemos(prev => ({ ...prev, [blockId]: !prev[blockId] }));
+    };
+
+    const handleNetworkIDEToggle = async (blockId: string, currentState: boolean) => {
+        if (!submission?.id) return;
+        setTogglingIDE(blockId);
+        try {
+            const db = getFirestore();
+            const subRef = doc(db, 'learner_submissions', submission.id);
+            // Using setDoc with merge creates the nested map safely without overwriting other properties
+            await setDoc(subRef, { ideUnlocks: { [blockId]: !currentState } }, { merge: true });
+        } catch (err) {
+            console.error("Failed to toggle IDE network access:", err);
+            // Optional: You can toast the error if you pass toast as a prop, but logging is fine for now
+        } finally {
+            setTogglingIDE(null);
+        }
+    };
+
+    const renderNetworkIDEToggleUI = (block: any) => {
+        const hasIDE = block.type === 'code_sandbox' || (['task', 'checklist', 'qcto_workplace'].includes(block.type) && block.allowCode !== false);
+        if (!hasIDE || isPrintMode) return null;
+
+        const isUnlocked = submission?.ideUnlocks?.[block.id] === true;
+        const isProcessing = togglingIDE === block.id;
+
+        return (
+            <div className="no-print" style={{ marginBottom: '1rem', background: isUnlocked ? '#eff6ff' : '#f8fafc', border: isUnlocked ? '1px solid #bfdbfe' : '1px dashed #cbd5e1', borderRadius: '6px', padding: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{ background: isUnlocked ? '#dbeafe' : '#e2e8f0', padding: '8px', borderRadius: '8px' }}>
+                        <Code size={18} color={isUnlocked ? '#2563eb' : '#64748b'} />
+                    </div>
+                    <div>
+                        <div style={{ fontSize: '0.85rem', fontWeight: 'bold', color: isUnlocked ? '#1e3a8a' : '#334155' }}>Network IDE Access (Remote Control)</div>
+                        <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>Remotely unlock the Live IDE on the learner's screen in real-time.</div>
+                    </div>
+                </div>
+                <button
+                    type="button"
+                    disabled={isProcessing}
+                    onClick={() => handleNetworkIDEToggle(block.id, isUnlocked)}
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px', background: isUnlocked ? '#2563eb' : 'white', color: isUnlocked ? 'white' : '#475569', padding: '6px 12px', borderRadius: '20px', border: isUnlocked ? '1px solid #2563eb' : '1px solid #cbd5e1', cursor: isProcessing ? 'wait' : 'pointer', fontWeight: 'bold', fontSize: '0.8rem', transition: 'all 0.2s ease' }}
+                >
+                    {isProcessing ? <Loader2 size={14} className="animate-spin" /> : (isUnlocked ? <CheckCircle size={14} /> : <Lock size={14} />)}
+                    {isUnlocked ? 'Unlocked for Learner' : 'Unlock for Learner'}
+                </button>
+            </div>
+        );
     };
 
     let qNum = 0;
@@ -380,36 +447,40 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
                     const renderActiveGradeControls = (blockId: string) => {
                         if (canModerate && isWorkplaceModule) {
                             return (
-                                <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '6px', padding: '1rem', marginTop: '1rem' }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px', color: '#15803d', fontWeight: 'bold', fontSize: '0.8rem', textTransform: 'uppercase' }}>
-                                        <ShieldCheck size={14} /> Moderator QA Notes
+                                <div>
+                                    <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '6px', padding: '1rem', marginTop: '1rem' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px', color: '#15803d', fontWeight: 'bold', fontSize: '0.8rem', textTransform: 'uppercase' }}>
+                                            <ShieldCheck size={14} /> Moderator QA Notes
+                                        </div>
+                                        <textarea
+                                            className="sr-feedback-input"
+                                            rows={2}
+                                            style={{ width: '100%', color: 'green', fontStyle: 'italic', padding: '8px', border: '1px solid #bbf7d0', borderRadius: '4px', resize: 'vertical', background: 'white' }}
+                                            placeholder="Moderator Green Pen QA notes for this item (optional)..."
+                                            value={activeData.feedback || ''}
+                                            onChange={e => handleFeedbackChange(blockId, e.target.value)}
+                                        />
                                     </div>
-                                    <textarea
-                                        className="sr-feedback-input"
-                                        rows={2}
-                                        style={{ width: '100%', color: 'green', fontStyle: 'italic', padding: '8px', border: '1px solid #bbf7d0', borderRadius: '4px', resize: 'vertical', background: 'white' }}
-                                        placeholder="Moderator Green Pen QA notes for this item (optional)..."
-                                        value={activeData.feedback || ''}
-                                        onChange={e => handleFeedbackChange(blockId, e.target.value)}
-                                    />
                                 </div>
                             );
                         }
 
                         if (mentorActiveOnScorableBlock) {
                             return (
-                                <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '6px', padding: '1rem', marginTop: '1rem' }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px', color: '#1d4ed8', fontWeight: 'bold', fontSize: '0.8rem', textTransform: 'uppercase' }}>
-                                        <ShieldCheck size={14} /> Supervisor Observation Comments
+                                <div>
+                                    <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '6px', padding: '1rem', marginTop: '1rem' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px', color: '#1d4ed8', fontWeight: 'bold', fontSize: '0.8rem', textTransform: 'uppercase' }}>
+                                            <ShieldCheck size={14} /> Supervisor Observation Comments
+                                        </div>
+                                        <textarea
+                                            className="sr-feedback-input"
+                                            rows={2}
+                                            style={{ width: '100%', color: 'blue', fontStyle: 'italic', padding: '8px', border: '1px solid #bfdbfe', borderRadius: '4px', resize: 'vertical', background: 'white' }}
+                                            placeholder="Add any supervisor observation notes for this item (optional)..."
+                                            value={activeData.feedback || ''}
+                                            onChange={e => handleFeedbackChange(blockId, e.target.value)}
+                                        />
                                     </div>
-                                    <textarea
-                                        className="sr-feedback-input"
-                                        rows={2}
-                                        style={{ width: '100%', color: 'blue', fontStyle: 'italic', padding: '8px', border: '1px solid #bfdbfe', borderRadius: '4px', resize: 'vertical', background: 'white' }}
-                                        placeholder="Add any supervisor observation notes for this item (optional)..."
-                                        value={activeData.feedback || ''}
-                                        onChange={e => handleFeedbackChange(blockId, e.target.value)}
-                                    />
                                 </div>
                             );
                         }
@@ -465,8 +536,6 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
                                         <div className="sr-answer-label" style={{ color: 'black', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                                             <BarChart size={14} /> Learner's Plotted Cartesian Graph:
                                         </div>
-
-                                        {/* Dynamic read-only instance of your AxisJS plane */}
                                         <ReviewAxisGraph block={block} learnerAns={learnerAns} />
                                     </div>
 
@@ -490,17 +559,14 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 
                     // ── MATHPAD ──────────────────────────────────────────────────────────
                     if (block.type === 'mathpad') {
-                        // 🚀 Normalize the learner response into an object so we can read its tracks safely
                         const safeLearnerAns = typeof learnerAns === 'object' && learnerAns !== null ? learnerAns : { equation: learnerAns };
 
-                        // 🚀 Build available workspace tabs with themed colors
                         const mathTabs = [
                             { id: 'equation', icon: <Sigma size={13} />, label: 'Equation Editor', val: safeLearnerAns.equation !== undefined ? safeLearnerAns.equation : null, theme: { text: '#be185d', bg: '#fdf2f8', border: '#fbcfe8', activeBg: '#fce7f3' } },
                             { id: 'graph', icon: <BarChart size={13} />, label: 'Graphing Calculator', val: safeLearnerAns.graphState, theme: { text: '#166534', bg: '#f0fdf4', border: '#bbf7d0', activeBg: '#dcfce7' } }
                         ].filter(t => t.val !== null && t.val !== undefined);
 
                         const activeTabId = activeTabs[block.id] || (mathTabs.length > 0 ? mathTabs[0].id : 'equation');
-
                         const isGraphMemoExpanded = expandedGraphMemos[block.id] || false;
 
                         return (
@@ -525,7 +591,6 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
                                             <Layers size={14} style={{ display: 'inline', marginBottom: '-2px', marginRight: '4px' }} />Learner's Math Response:
                                         </div>
 
-                                        {/* 🚀 Render multi-modal math tabs with colored pills */}
                                         {mathTabs.length === 0 ? (
                                             <span style={{ color: '#64748b', fontStyle: 'italic' }}>No answer provided.</span>
                                         ) : (
@@ -568,8 +633,6 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
                                                             }, safeLearnerAns.equation || '')}
                                                         </div>
                                                     )}
-
-                                                    {/* 🚀 Hook up the AxisJS graph renderer securely inside the tab block */}
                                                     {activeTabId === 'graph' && (
                                                         <ReviewAxisGraph block={block} learnerAns={safeLearnerAns.graphState} />
                                                     )}
@@ -600,7 +663,6 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
                                                     </div>
                                                 )}
 
-                                                {/* 🚀 NEW: Accordion for the Expected Graph Solution */}
                                                 {(block.memoGraph?.points?.length > 0 || block.memoGraph?.shapes?.length > 0) && (
                                                     <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px dashed #fbcfe8' }}>
                                                         <div
@@ -670,6 +732,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
                                 </div>
 
                                 <div className="sr-q-body">
+                                    {renderNetworkIDEToggleUI(block)}
                                     {renderBlockImage(block)}
 
                                     <ReviewCodeSandbox
@@ -759,12 +822,12 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
                     if (block.type === 'task') {
                         const safeLearnerAns = learnerAns || {};
                         const taskTabs = [
-                            { id: 'text', icon: <FileText size={13} />, label: 'Rich Text', allowed: block.allowText !== false, val: safeLearnerAns.text, theme: { text: '#1d4ed8', bg: '#eff6ff', border: '#bfdbfe', activeBg: '#dbeafe' } },
-                            { id: 'audio', icon: <Mic size={13} />, label: 'Audio', allowed: block.allowAudio === true, val: safeLearnerAns.audioUrl, theme: { text: '#7e22ce', bg: '#faf5ff', border: '#e9d5ff', activeBg: '#f3e8ff' } },
-                            { id: 'url', icon: <LinkIcon size={13} />, label: 'Link', allowed: block.allowUrl !== false, val: safeLearnerAns.url, theme: { text: '#0f766e', bg: '#f0fdfa', border: '#ccfbf1', activeBg: '#99f6e4' } },
-                            { id: 'upload', icon: <UploadCloud size={13} />, label: 'File Upload', allowed: block.allowUpload !== false, val: safeLearnerAns.uploadUrl, theme: { text: '#c2410c', bg: '#fff7ed', border: '#fed7aa', activeBg: '#ffedd5' } },
-                            { id: 'code', icon: <Code size={13} />, label: 'Live IDE', allowed: block.allowCode !== false, val: safeLearnerAns.codeData?.snapshot || safeLearnerAns.code, theme: { text: '#4338ca', bg: '#eef2ff', border: '#c7d2fe', activeBg: '#e0e7ff' } }
-                        ].filter(t => t.allowed);
+                            { id: 'text', icon: <FileText size={14} />, label: 'Rich Text', val: safeLearnerAns.text },
+                            { id: 'audio', icon: <Mic size={14} />, label: 'Audio', val: safeLearnerAns.audioUrl },
+                            { id: 'url', icon: <LinkIcon size={14} />, label: 'Link', val: safeLearnerAns.url },
+                            { id: 'upload', icon: <UploadCloud size={14} />, label: 'File Upload', val: safeLearnerAns.uploadUrl },
+                            { id: 'code', icon: <Code size={14} />, label: 'Code', val: safeLearnerAns.code }
+                        ].filter(t => !!t.val);
 
                         const activeTabId = activeTabs[block.id] || taskTabs[0]?.id;
 
@@ -783,6 +846,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
                                     )}
                                 </div>
                                 <div className="sr-q-body">
+                                    {renderNetworkIDEToggleUI(block)}
                                     {renderBlockImage(block)}
                                     <div className="sr-answer-box">
                                         <div className="sr-answer-label" style={{ color: 'black', display: 'flex', alignItems: 'center', gap: '6px' }}><Layers size={14} /> Learner Evidence Submitted:</div>
@@ -801,34 +865,13 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
                                             <span style={{ color: '#64748b', fontStyle: 'italic' }}>No evidence provided.</span>
                                         ) : (
                                             <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden', background: 'white' }}>
-                                                {taskTabs.length > 1 && (
-                                                    <div className="no-print" style={{ display: 'flex', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', overflowX: 'auto', padding: '10px' }}>
-                                                        {taskTabs.map(t => {
-                                                            const isActive = activeTabId === t.id;
-                                                            return (
-                                                                <button
-                                                                    key={t.id}
-                                                                    onClick={() => setActiveTabs({ ...activeTabs, [block.id]: t.id })}
-                                                                    style={{
-                                                                        display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem',
-                                                                        background: isActive ? t.theme.activeBg : t.theme.bg,
-                                                                        padding: '6px 14px', borderRadius: '20px', color: t.theme.text,
-                                                                        border: `1px solid ${isActive ? t.theme.text : t.theme.border}`,
-                                                                        cursor: 'pointer', fontWeight: isActive ? 'bold' : 'normal',
-                                                                        boxShadow: isActive ? `0 2px 4px ${t.theme.border}` : 'none',
-                                                                        transition: 'all 0.2s ease',
-                                                                        opacity: isActive ? 1 : 0.7,
-                                                                        whiteSpace: 'nowrap'
-                                                                    }}
-                                                                    onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
-                                                                    onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.opacity = '0.7'; }}
-                                                                >
-                                                                    {t.icon} {t.label}
-                                                                </button>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                )}
+                                                <div className="no-print" style={{ display: 'flex', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', overflowX: 'auto' }}>
+                                                    {taskTabs.map(t => (
+                                                        <button key={t.id} onClick={() => setActiveTabs({ ...activeTabs, [block.id]: t.id })} style={{ padding: '10px 15px', border: 'none', borderBottom: activeTabId === t.id ? '2px solid var(--mlab-blue)' : '2px solid transparent', background: activeTabId === t.id ? 'white' : 'transparent', color: activeTabId === t.id ? 'var(--mlab-blue)' : '#64748b', fontWeight: activeTabId === t.id ? 'bold' : 'normal', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                                                            {t.icon} {t.label}
+                                                        </button>
+                                                    ))}
+                                                </div>
                                                 <div style={{ padding: '15px' }}>
                                                     {activeTabId === 'text' && <div className="quill-read-only-content" style={{ wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(safeLearnerAns.text) }} />}
                                                     {activeTabId === 'audio' && <audio controls src={safeLearnerAns.audioUrl} style={{ width: '100%', height: '40px' }} />}
@@ -943,6 +986,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
                                     </div>
                                 </div>
                                 <div className="sr-q-body">
+                                    {renderNetworkIDEToggleUI(block)}
                                     {renderBlockImage(block)}
                                     <div style={{ marginTop: '1rem' }}>
                                         {block.criteria?.map((crit: string, i: number) => {
@@ -972,10 +1016,10 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
                                                         const isTextTrulyEmpty = cleanTextCheck.length === 0;
 
                                                         const allTabs = [
-                                                            { id: 'upload', icon: <UploadCloud size={13} />, label: 'File Artifact', val: critEvidence.uploadUrl, render: () => <FilePreview url={critEvidence.uploadUrl} />, theme: { text: '#c2410c', bg: '#fff7ed', border: '#fed7aa', activeBg: '#ffedd5' } },
-                                                            { id: 'url', icon: <LinkIcon size={13} />, label: 'Web Link', val: critEvidence.url, render: () => <UrlPreview url={critEvidence.url} />, theme: { text: '#0f766e', bg: '#f0fdfa', border: '#ccfbf1', activeBg: '#99f6e4' } },
-                                                            { id: 'code', icon: <Code size={13} />, label: 'Source Code', val: critEvidence.code, render: () => <pre style={{ background: '#1e293b', color: '#f8fafc', padding: '0.5rem', borderRadius: '4px', overflowX: 'auto', margin: 0, fontFamily: 'monospace', fontSize: '0.82rem' }}><code>{critEvidence.code}</code></pre>, theme: { text: '#4338ca', bg: '#eef2ff', border: '#c7d2fe', activeBg: '#e0e7ff' } },
-                                                            { id: 'text', icon: <FileText size={13} />, label: 'Learner Notes', val: isTextTrulyEmpty ? null : critEvidence.text, render: () => <div className="quill-read-only-content" dangerouslySetInnerHTML={{ __html: cleanRichText(critEvidence.text) }} />, theme: { text: '#1d4ed8', bg: '#eff6ff', border: '#bfdbfe', activeBg: '#dbeafe' } }
+                                                            { id: 'upload', icon: <UploadCloud size={13} />, label: 'File Artifact', val: critEvidence.uploadUrl, render: () => <FilePreview url={critEvidence.uploadUrl} /> },
+                                                            { id: 'url', icon: <LinkIcon size={13} />, label: 'Web Link', val: critEvidence.url, render: () => <UrlPreview url={critEvidence.url} /> },
+                                                            { id: 'code', icon: <Code size={13} />, label: 'Source Code', val: critEvidence.code, render: () => <pre style={{ background: '#1e293b', color: '#f8fafc', padding: '0.5rem', borderRadius: '4px', overflowX: 'auto', margin: 0, fontFamily: 'monospace', fontSize: '0.82rem' }}><code>{critEvidence.code}</code></pre> },
+                                                            { id: 'text', icon: <FileText size={13} />, label: 'Learner Notes', val: isTextTrulyEmpty ? null : critEvidence.text, render: () => <div className="quill-read-only-content" dangerouslySetInnerHTML={{ __html: cleanRichText(critEvidence.text) }} /> }
                                                         ];
 
                                                         const activeEvidenceTabs = allTabs.filter(t => !!t.val);
@@ -1017,35 +1061,13 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
                                                                     )}
                                                                 </div>
 
-                                                                {activeEvidenceTabs.length > 1 && (
-                                                                    <div className="no-print" style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '12px' }}>
-                                                                        {activeEvidenceTabs.map(tab => {
-                                                                            const isActive = activeSubTab === tab.id;
-                                                                            return (
-                                                                                <button
-                                                                                    key={tab.id}
-                                                                                    type="button"
-                                                                                    onClick={() => setActiveTabs({ ...activeTabs, [subTabKey]: tab.id })}
-                                                                                    style={{
-                                                                                        display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem',
-                                                                                        background: isActive ? tab.theme.activeBg : tab.theme.bg,
-                                                                                        padding: '6px 14px', borderRadius: '20px', color: tab.theme.text,
-                                                                                        border: `1px solid ${isActive ? tab.theme.text : tab.theme.border}`,
-                                                                                        cursor: 'pointer', fontWeight: isActive ? 'bold' : 'normal',
-                                                                                        boxShadow: isActive ? `0 2px 4px ${tab.theme.border}` : 'none',
-                                                                                        transition: 'all 0.2s ease',
-                                                                                        opacity: isActive ? 1 : 0.7,
-                                                                                        whiteSpace: 'nowrap'
-                                                                                    }}
-                                                                                    onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
-                                                                                    onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.opacity = '0.7'; }}
-                                                                                >
-                                                                                    {tab.icon} {tab.label}
-                                                                                </button>
-                                                                            );
-                                                                        })}
-                                                                    </div>
-                                                                )}
+                                                                <div className="no-print" style={{ display: 'flex', borderBottom: '1px solid #cbd5e1', gap: '4px', marginBottom: '10px', overflowX: 'auto', paddingBottom: '2px' }}>
+                                                                    {activeEvidenceTabs.map(tab => (
+                                                                        <button key={tab.id} type="button" onClick={() => setActiveTabs({ ...activeTabs, [subTabKey]: tab.id })} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '6px 12px', fontSize: '0.75rem', border: 'none', borderBottom: activeSubTab === tab.id ? (isDraft ? '2px solid #b45309' : '2px solid #6d28d9') : '2px solid transparent', background: activeSubTab === tab.id ? 'white' : 'transparent', color: activeSubTab === tab.id ? (isDraft ? '#b45309' : '#6d28d9') : '#64748b', fontWeight: activeSubTab === tab.id ? 'bold' : 'normal', cursor: 'pointer', whiteSpace: 'nowrap', borderRadius: '4px 4px 0 0' }}>
+                                                                            {tab.icon} {tab.label}
+                                                                        </button>
+                                                                    ))}
+                                                                </div>
 
                                                                 <div style={{ position: 'relative' }}>
                                                                     <div style={{ maxHeight: isTabExpanded ? 'none' : '150px', overflow: 'hidden', transition: 'max-height 0.2s ease-out', border: '1px solid #cbd5e1', borderRadius: '4px', padding: '10px', background: 'white' }}>
@@ -1217,6 +1239,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
                                 </div>
 
                                 <div className="sr-q-body">
+                                    {renderNetworkIDEToggleUI(block)}
                                     {renderBlockImage(block)}
                                     {block.workActivities?.map((wa: any, actIdx: number) => {
                                         const taskKey = `wa_${wa.id}_task`;

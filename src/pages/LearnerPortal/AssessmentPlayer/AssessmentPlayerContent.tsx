@@ -344,6 +344,21 @@ export const AssessmentPlayerContent: React.FC<AssessmentPlayerContentProps> = (
     const answersRef = useRef(answers);
     useEffect(() => { answersRef.current = answers; }, [answers]);
 
+    // 🚀 FIXED: System Memory Optimization Check for Live IDE
+    const isIDEEnabledByFaculty = useCallback((blockId: string) => {
+        if (!submission) return false;
+
+        // 1. Check the new live direct-network toggle map first!
+        if (submission.ideUnlocks?.[blockId] === true) return true;
+
+        // 2. Fallback to checking the static grading state
+        const fBreakdown = submission.grading?.facilitatorBreakdown?.[blockId] || {};
+        const aBreakdown = submission.grading?.assessorBreakdown?.[blockId] || {};
+        const mBreakdown = submission.moderation?.breakdown?.[blockId] || {};
+
+        return !!(fBreakdown.ideEnabled || aBreakdown.ideEnabled || mBreakdown.ideEnabled);
+    }, [submission]);
+
     const codeBlockStorageSignature = useMemo(() => {
         if (!assessment?.blocks) return '';
         return assessment.blocks
@@ -694,7 +709,7 @@ export const AssessmentPlayerContent: React.FC<AssessmentPlayerContentProps> = (
                                                     return (
                                                         <div className="ap-evidence-container">
                                                             {mathTabs.length > 1 && (
-                                                                <div className="no-print" style={{ paddingTop: 8, paddingLeft: 8, paddingRight: 8, display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                                                                <div className="no-print" style={{ paddingTop: 8, paddingLeft: 8, paddingRight: 8, display: 'flex', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', overflowX: 'auto', padding: '10px' }}>
                                                                     {mathTabs.map(t => {
                                                                         const isActive = activeTabId === t.id;
                                                                         const isDone = ((t.id === 'equation' && itemAns.equation) || (t.id === 'graph' && itemAns.graphState?.points?.length > 0) || (t.id === 'draw' && itemAns.drawingUrl));
@@ -711,7 +726,8 @@ export const AssessmentPlayerContent: React.FC<AssessmentPlayerContentProps> = (
                                                                                     cursor: 'pointer', fontWeight: isActive ? 'bold' : 'normal',
                                                                                     boxShadow: isActive ? `0 2px 4px ${t.theme.border}` : 'none',
                                                                                     transition: 'all 0.2s ease',
-                                                                                    opacity: isActive ? 1 : 0.7
+                                                                                    opacity: isActive ? 1 : 0.7,
+                                                                                    whiteSpace: 'nowrap'
                                                                                 }}
                                                                                 onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
                                                                                 onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.opacity = '0.7'; }}
@@ -725,7 +741,7 @@ export const AssessmentPlayerContent: React.FC<AssessmentPlayerContentProps> = (
                                                             <div className="ap-tab-panel">
                                                                 {activeTabId === 'equation' && (
                                                                     <div onCopyCapture={preventCopyPasteAndDrop} onCutCapture={preventCopyPasteAndDrop} onPasteCapture={preventCopyPasteAndDrop} onDropCapture={preventCopyPasteAndDrop} onKeyDownCapture={preventCopyPasteAndDrop}>
-                                                                        <div style={{ background: '#fdf2f8', border: '1px solid #fbcfe8', padding: '8px 12px', borderRadius: '6px 6px 0 0', borderBottom: 'none', color: '#be185d', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 'bold' }}>
+                                                                        <div style={{ background: '#fdf2f8', border: '1px solid #fbcfe8', padding: '8px 12px', borderRadius: mathTabs.length > 1 ? '6px 6px 0 0' : '6px 6px 0 0', borderBottom: 'none', color: '#be185d', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 'bold' }}>
                                                                             <Sigma size={14} /> Mathematical Workspace (Click inside to open Virtual Keyboard)
                                                                         </div>
                                                                         <MathpadEditor
@@ -762,7 +778,6 @@ export const AssessmentPlayerContent: React.FC<AssessmentPlayerContentProps> = (
                                                 {block.type === 'task' && (() => {
                                                     const itemAns = learnerAns || {};
 
-                                                    // 🚀 UPGRADED: Colored Pill Themes for Task Blocks
                                                     const taskTabs = [
                                                         { id: 'text', icon: <FileText size={13} />, label: 'Rich Text', allowed: block.allowText !== false, val: itemAns.text, theme: { text: '#1d4ed8', bg: '#eff6ff', border: '#bfdbfe', activeBg: '#dbeafe' } },
                                                         { id: 'audio', icon: <Mic size={13} />, label: 'Audio', allowed: block.allowAudio === true, val: itemAns.audioUrl, theme: { text: '#7e22ce', bg: '#faf5ff', border: '#e9d5ff', activeBg: '#f3e8ff' } },
@@ -783,7 +798,7 @@ export const AssessmentPlayerContent: React.FC<AssessmentPlayerContentProps> = (
                                                             {isSectionVerified && !isGloballyLocked && !isAwaitingSignoff && <div className="ap-checklist__lock-notice" style={{ background: '#f0fdf4', borderColor: '#bbf7d0', color: '#166534' }}><Lock size={14} color="#166534" />Evidence Locked: A facilitator has officially verified this section. You can no longer alter these files.</div>}
 
                                                             {taskTabs.length > 1 && (
-                                                                <div className="no-print" style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                                                                <div className="no-print" style={{ paddingLeft: 8, paddingTop: 8, paddingRight: 8, display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '12px' }}>
                                                                     {taskTabs.map(t => {
                                                                         const isActive = activeTabId === t.id;
                                                                         return (
@@ -819,12 +834,20 @@ export const AssessmentPlayerContent: React.FC<AssessmentPlayerContentProps> = (
 
                                                                 {activeTabId === 'code' && (
                                                                     <div style={{ height: '600px', marginTop: '10px' }}>
-                                                                        <CodeSandboxPlayer
-                                                                            block={{ id: `${block.id}_task`, title: `Live IDE Evidence`, template: 'vanilla' }}
-                                                                            learnerAns={mappedCodeData}
-                                                                            readOnly={isUploadLocked || !canEditTask}
-                                                                            onChange={async (val) => await saveCodeSnapshot(block.id, val.snapshot, val.dependencies, val.immediate)}
-                                                                        />
+                                                                        {!isIDEEnabledByFaculty(block.id) ? (
+                                                                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: '300px', background: '#f8fafc', border: '1px dashed #cbd5e1', borderRadius: '6px' }}>
+                                                                                <Lock size={32} color="#94a3b8" style={{ marginBottom: '10px' }} />
+                                                                                <span style={{ fontWeight: 'bold', color: '#334155', fontSize: '1.1rem' }}>Live IDE Suspended</span>
+                                                                                <span style={{ fontSize: '0.85rem', color: '#64748b', maxWidth: '400px', textAlign: 'center', marginTop: '5px' }}>To conserve system memory, heavy IDE containers are suspended by default. Your Facilitator or Mentor will unlock this workspace during your observation if required.</span>
+                                                                            </div>
+                                                                        ) : (
+                                                                            <CodeSandboxPlayer
+                                                                                block={{ id: `${block.id}_task`, title: `Live IDE Evidence`, template: 'vanilla' }}
+                                                                                learnerAns={mappedCodeData}
+                                                                                readOnly={isUploadLocked || !canEditTask}
+                                                                                onChange={async (val) => await saveCodeSnapshot(block.id, val.snapshot, val.dependencies, val.immediate)}
+                                                                            />
+                                                                        )}
                                                                     </div>
                                                                 )}
                                                             </div>
@@ -842,7 +865,6 @@ export const AssessmentPlayerContent: React.FC<AssessmentPlayerContentProps> = (
                                                             const nestedKey = `evidence_${i}`;
                                                             const itemAns = learnerAns?.[nestedKey] || {};
 
-                                                            // 🚀 UPGRADED: Colored Pill Themes for Checklist Evidence Tabs
                                                             const evidenceTabs = [
                                                                 { id: 'text', icon: <FileText size={13} />, label: 'Rich Text', allowed: block.allowText !== false, val: itemAns.text, theme: { text: '#1d4ed8', bg: '#eff6ff', border: '#bfdbfe', activeBg: '#dbeafe' } },
                                                                 { id: 'url', icon: <LinkIcon size={13} />, label: 'Link', allowed: block.allowUrl !== false, val: itemAns.url, theme: { text: '#0f766e', bg: '#f0fdfa', border: '#ccfbf1', activeBg: '#99f6e4' } },
@@ -864,7 +886,7 @@ export const AssessmentPlayerContent: React.FC<AssessmentPlayerContentProps> = (
                                                                     {block.requireEvidencePerCriterion !== false && (
                                                                         <div className="ap-evidence-container" style={{ marginTop: '10px', marginBottom: '15px' }}>
                                                                             {evidenceTabs.length > 1 && (
-                                                                                <div className="no-print" style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                                                                                <div className="no-print" style={{ paddingLeft: 8, paddingTop: 8, paddingRight: 8, display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '12px' }}>
                                                                                     {evidenceTabs.map(t => {
                                                                                         const isActive = activeTabId === t.id;
                                                                                         return (
@@ -920,17 +942,25 @@ export const AssessmentPlayerContent: React.FC<AssessmentPlayerContentProps> = (
 
                                                                                 {activeTabId === 'code' && (
                                                                                     <div style={{ height: '600px', marginTop: '10px' }}>
-                                                                                        <CodeSandboxPlayer
-                                                                                            block={{ id: `${block.id}_${nestedKey}`, title: `Evidence: ${crit}`, template: 'vanilla' }}
-                                                                                            learnerAns={mappedCodeData}
-                                                                                            readOnly={isUploadLocked || !canEditTask}
-                                                                                            onChange={async (val) => {
-                                                                                                const updatedAns = { ...answers[block.id] };
-                                                                                                const prevNested = updatedAns[nestedKey] || {};
-                                                                                                updatedAns[nestedKey] = { ...prevNested, codeData: val };
-                                                                                                handleAnswerChange(block.id, updatedAns);
-                                                                                            }}
-                                                                                        />
+                                                                                        {!isIDEEnabledByFaculty(block.id) ? (
+                                                                                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: '300px', background: '#f8fafc', border: '1px dashed #cbd5e1', borderRadius: '6px' }}>
+                                                                                                <Lock size={32} color="#94a3b8" style={{ marginBottom: '10px' }} />
+                                                                                                <span style={{ fontWeight: 'bold', color: '#334155', fontSize: '1.1rem' }}>Live IDE Suspended</span>
+                                                                                                <span style={{ fontSize: '0.85rem', color: '#64748b', maxWidth: '400px', textAlign: 'center', marginTop: '5px' }}>To conserve system memory, heavy IDE containers are suspended by default. Your Facilitator or Mentor will unlock this workspace during your observation if required.</span>
+                                                                                            </div>
+                                                                                        ) : (
+                                                                                            <CodeSandboxPlayer
+                                                                                                block={{ id: `${block.id}_${nestedKey}`, title: `Evidence: ${crit}`, template: 'vanilla' }}
+                                                                                                learnerAns={mappedCodeData}
+                                                                                                readOnly={isUploadLocked || !canEditTask}
+                                                                                                onChange={async (val) => {
+                                                                                                    const updatedAns = { ...answers[block.id] };
+                                                                                                    const prevNested = updatedAns[nestedKey] || {};
+                                                                                                    updatedAns[nestedKey] = { ...prevNested, codeData: val };
+                                                                                                    handleAnswerChange(block.id, updatedAns);
+                                                                                                }}
+                                                                                            />
+                                                                                        )}
                                                                                     </div>
                                                                                 )}
                                                                             </div>
@@ -1064,17 +1094,25 @@ export const AssessmentPlayerContent: React.FC<AssessmentPlayerContentProps> = (
 
                                                                                         {activeTabId === 'code' && (
                                                                                             <div style={{ height: '600px', marginTop: '10px' }}>
-                                                                                                <CodeSandboxPlayer
-                                                                                                    block={{ id: `${block.id}_${nestedKey}`, title: `Evidence: ${se.code}`, template: 'vanilla' }}
-                                                                                                    learnerAns={mappedCodeData}
-                                                                                                    readOnly={isUploadLocked || !canEditWorkplace}
-                                                                                                    onChange={async (val) => {
-                                                                                                        const updatedAns = { ...answers[block.id] };
-                                                                                                        const prevNested = updatedAns[nestedKey] || {};
-                                                                                                        updatedAns[nestedKey] = { ...prevNested, codeData: val };
-                                                                                                        handleAnswerChange(block.id, updatedAns);
-                                                                                                    }}
-                                                                                                />
+                                                                                                {!isIDEEnabledByFaculty(block.id) ? (
+                                                                                                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: '300px', background: '#f8fafc', border: '1px dashed #cbd5e1', borderRadius: '6px' }}>
+                                                                                                        <Lock size={32} color="#94a3b8" style={{ marginBottom: '10px' }} />
+                                                                                                        <span style={{ fontWeight: 'bold', color: '#334155', fontSize: '1.1rem' }}>Live IDE Suspended</span>
+                                                                                                        <span style={{ fontSize: '0.85rem', color: '#64748b', maxWidth: '400px', textAlign: 'center', marginTop: '5px' }}>To conserve system memory, heavy IDE containers are suspended by default. Your Facilitator or Mentor will unlock this workspace during your observation if required.</span>
+                                                                                                    </div>
+                                                                                                ) : (
+                                                                                                    <CodeSandboxPlayer
+                                                                                                        block={{ id: `${block.id}_${nestedKey}`, title: `Evidence: ${se.code}`, template: 'vanilla' }}
+                                                                                                        learnerAns={mappedCodeData}
+                                                                                                        readOnly={isUploadLocked || !canEditWorkplace}
+                                                                                                        onChange={async (val) => {
+                                                                                                            const updatedAns = { ...answers[block.id] };
+                                                                                                            const prevNested = updatedAns[nestedKey] || {};
+                                                                                                            updatedAns[nestedKey] = { ...prevNested, codeData: val };
+                                                                                                            handleAnswerChange(block.id, updatedAns);
+                                                                                                        }}
+                                                                                                    />
+                                                                                                )}
                                                                                             </div>
                                                                                         )}
                                                                                     </div>
@@ -1094,24 +1132,35 @@ export const AssessmentPlayerContent: React.FC<AssessmentPlayerContentProps> = (
                                                 )}
 
                                                 {/* LIVE IDE SANDBOX (Standalone Block) */}
-                                                {block.type === 'code_sandbox' && (
-                                                    isFetchingSnapshots ? (
-                                                        <div className="ap-spinner-container" style={{ padding: '2rem', textAlign: 'center', color: '#64748b' }}>
-                                                            <Loader2 size={24} className="ap-spin" style={{ margin: '0 auto 10px auto' }} />
-                                                            <p>Loading code environment...</p>
-                                                        </div>
-                                                    ) : (
-                                                        <CodeSandboxPlayer
-                                                            block={block}
-                                                            learnerAns={{
-                                                                ...(learnerAns || {}),
-                                                                snapshot: resolvedSnapshots[block.id] || codeSnapshots[block.id] || learnerAns?.snapshot
-                                                            }}
-                                                            readOnly={isUploadLocked || !canEditCode}
-                                                            onChange={async (val) => await saveCodeSnapshot(block.id, val.snapshot, val.dependencies, val.immediate)}
-                                                        />
-                                                    )
-                                                )}
+                                                {block.type === 'code_sandbox' && (() => {
+                                                    const ideUnlocked = isIDEEnabledByFaculty(block.id);
+                                                    return (
+                                                        <>
+                                                            {!ideUnlocked ? (
+                                                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '400px', background: '#f8fafc', border: '1px dashed #cbd5e1', borderRadius: '6px' }}>
+                                                                    <Lock size={32} color="#94a3b8" style={{ marginBottom: '10px' }} />
+                                                                    <span style={{ fontWeight: 'bold', color: '#334155', fontSize: '1.1rem' }}>Live IDE Suspended</span>
+                                                                    <span style={{ fontSize: '0.85rem', color: '#64748b', maxWidth: '400px', textAlign: 'center', marginTop: '5px' }}>To conserve browser memory, IDE containers are paused. Your Facilitator will unlock this workspace during your practical observation if required.</span>
+                                                                </div>
+                                                            ) : isFetchingSnapshots ? (
+                                                                <div className="ap-spinner-container" style={{ padding: '2rem', textAlign: 'center', color: '#64748b' }}>
+                                                                    <Loader2 size={24} className="ap-spin" style={{ margin: '0 auto 10px auto' }} />
+                                                                    <p>Loading code environment...</p>
+                                                                </div>
+                                                            ) : (
+                                                                <CodeSandboxPlayer
+                                                                    block={block}
+                                                                    learnerAns={{
+                                                                        ...(learnerAns || {}),
+                                                                        snapshot: resolvedSnapshots[block.id] || codeSnapshots[block.id] || learnerAns?.snapshot
+                                                                    }}
+                                                                    readOnly={isUploadLocked || !canEditCode}
+                                                                    onChange={async (val) => await saveCodeSnapshot(block.id, val.snapshot, val.dependencies, val.immediate)}
+                                                                />
+                                                            )}
+                                                        </>
+                                                    );
+                                                })()}
 
                                                 {/* Per-question feedback */}
                                                 {isFacDone && facFeedback && <div className="ap-qfeedback ap-qfeedback--fac"><span className="ap-qfeedback__label"><Info size={12} /> {savedFacRole === 'mentor' ? 'Mentor Observation' : 'Facilitator Coaching'}</span><p className="ap-qfeedback__text">{facFeedback}</p></div>}
