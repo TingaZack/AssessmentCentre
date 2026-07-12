@@ -1,21 +1,278 @@
 // src/pages/CohortDetailsPage/views/BootcampCohortView.tsx
 
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import {
     Users, Calendar, ChevronLeft, Mail, Phone, DownloadCloud,
     FolderOpen, UserCheck, Clock, CheckCircle2, AlertCircle, XCircle,
-    UploadCloud, Search, X, Info, BarChart2, Target, Activity, UserMinus, Edit2, Loader2, Video, Layers, History, ChevronDown, ChevronUp, Bug, CheckCircle, MapPin, Filter, FilterX, ChevronRight, Globe
+    UploadCloud, Search, X, Info, BarChart2, Target, Activity, UserMinus, Edit2, Loader2, Video, Layers, History, ChevronDown, ChevronUp, Bug, CheckCircle, MapPin, Filter, FilterX, ChevronRight, Globe,
+    Timer, CheckSquare, Sparkles, Link as LinkIcon, Plus, Trash2, Edit3, PenTool, RefreshCcw, BookOpen
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { collection, query, where, onSnapshot, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, updateDoc, getDocs, writeBatch, increment, getDoc } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
+import ReactQuill from 'react-quill-new';
+import 'react-quill-new/dist/quill.snow.css';
+
 import { db } from '../../../lib/firebase';
 import { useStore } from '../../../store/useStore';
 import { Sidebar } from '../../../components/dashboard/Sidebar/Sidebar';
 import { useToast } from '../../../components/common/Toast/Toast';
+import { StatusModal, type StatusType } from '../../../components/common/StatusModal/StatusModal';
+import { WorkplacePlacementModal } from '../../../components/admin/WorkplacePlacementModal/WorkplacePlacementModal';
+import { NotificationBell } from '../../../components/common/NotificationBell/NotificationBell';
+import { CurriculumTraceabilityCard } from '../../../components/admin/facilitator/CurriculumTraceabilityCard';
 import type { DashboardLearner } from '../../../types';
 import { ZoomAttendanceDropZone } from '../attendance/ZoomAttendanceDropZone';
+
+// ─── UTILS & SUB-COMPONENTS ─────────────────────────────────────────────────
+
+const quillModules = {
+    toolbar: [
+        [{ 'header': [1, 2, 3, 4, false] }],
+        ['bold', 'italic', 'underline', 'strike'],
+        [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+        [{ 'table': true }],
+        ['blockquote', 'code-block'],
+        [{ 'color': [] }, { 'background': [] }],
+        [{ 'font': [] }],
+        ['clean']
+    ],
+    table: true
+};
+
+const formatQCTODate = (d?: string) => {
+    if (!d) return '';
+    const dt = new Date(d);
+    if (isNaN(dt.getTime())) return '';
+    return `${dt.getFullYear()}${String(dt.getMonth() + 1).padStart(2, '0')}${String(dt.getDate()).padStart(2, '0')}`;
+};
+
+const getDOBFromID = (id: string) => {
+    const clean = String(id || '').replace(/\s/g, '');
+    if (clean.length !== 13) return '';
+    try {
+        let y = parseInt(clean.substring(0, 2), 10);
+        const m = clean.substring(2, 4), d2 = clean.substring(4, 6);
+        y += y <= new Date().getFullYear() % 100 ? 2000 : 1900;
+        return `${y}${m}${d2}`;
+    } catch { return ''; }
+};
+
+const createTextCell = (val: any) => ({ t: 's', v: String(val ?? ''), z: '@' });
+
+const ModuleChip: React.FC<{ label: string; count: number; variant: 'k' | 'p' | 'w' }> = ({ label, count, variant }) => (
+    <span className={`cdp-chip cdp-chip--${variant}`}>{label}: {count}</span>
+);
+
+// ─── AI LESSON PLAN MODAL ───────────────────────────────────────────────────
+
+const AILessonPlanModal: React.FC<any> = ({ isOpen, onClose, onSave, onShowStatus, selectedTopics, curriculumItems, activeProgramme, cohort, user, existingReport }) => {
+    const [isGenerating, setIsGenerating] = useState(true);
+    const [isEnhancing, setIsEnhancing] = useState(false);
+    const [planHtml, setPlanHtml] = useState('');
+    const [evidenceItems, setEvidenceItems] = useState<{ url: string, description: string }[]>([{ url: '', description: '' }]);
+
+    const [sessionDate, setSessionDate] = useState<string>(new Date().toISOString().split('T')[0]);
+
+    const quillRef = useRef<ReactQuill>(null);
+    const hasGeneratedRef = useRef(false);
+
+    const [authorSignature, setAuthorSignature] = useState<string | null>(null);
+    const authorId = existingReport ? existingReport.facilitatorId : user?.uid;
+    const displayName = existingReport ? (existingReport.facilitatorName || 'Instructor') : (user?.fullName || 'Instructor');
+
+    useEffect(() => {
+        if (!isOpen || !authorId) return;
+
+        if (existingReport?.facilitatorSignatureUrl) {
+            setAuthorSignature(existingReport.facilitatorSignatureUrl);
+            return;
+        }
+
+        const fetchSignature = async () => {
+            try {
+                const userSnap = await getDoc(doc(db, 'users', authorId));
+                if (userSnap.exists()) {
+                    setAuthorSignature(userSnap.data().signatureUrl || null);
+                }
+            } catch (error) {
+                console.error("Failed to fetch author signature:", error);
+            }
+        };
+
+        fetchSignature();
+    }, [isOpen, authorId, existingReport]);
+
+    useEffect(() => {
+        if (!isOpen) { hasGeneratedRef.current = false; return; }
+        if (existingReport) {
+            setPlanHtml(existingReport.reportHtml || '');
+            setEvidenceItems(existingReport.evidenceLinks?.length ? existingReport.evidenceLinks : [{ url: '', description: '' }]);
+            setSessionDate(existingReport.sessionDate || existingReport.dateLogged?.split('T')[0] || new Date().toISOString().split('T')[0]);
+            setIsGenerating(false);
+            hasGeneratedRef.current = true;
+        } else {
+            setSessionDate(new Date().toISOString().split('T')[0]);
+            if (!hasGeneratedRef.current) {
+                hasGeneratedRef.current = true;
+                const generateFromAI = async () => {
+                    setIsGenerating(true);
+                    const selectedDefs = Object.keys(selectedTopics).map(id => curriculumItems.find((i: any) => i.id === id)).filter(Boolean);
+                    const moduleNames = Array.from(new Set(selectedDefs.map(d => d.moduleName))).join(', ');
+                    const topicList = selectedDefs.map(d => `<li style="color: #000000;">${d.code ? `${d.code}: ` : ''}${d.title}</li>`).join('');
+
+                    try {
+                        const functions = getFunctions();
+                        const draftSessionReport = httpsCallable(functions, 'draftSessionReport');
+                        const response = await draftSessionReport({
+                            topics: selectedDefs, moduleNames, programmeName: activeProgramme?.name || cohort?.name,
+                            nqfLevel: activeProgramme?.nqfLevel || 'N/A', saqaId: activeProgramme?.saqaId || 'N/A',
+                            qctoId: activeProgramme?.qctoId || activeProgramme?.curriculumCode || 'N/A', credits: activeProgramme?.credits || 'N/A',
+                            facilitatorName: user?.fullName, preferences: user?.preferences ? `Teaching style: ${user.preferences.teachingStyle}` : null
+                        });
+
+                        const data = response.data as any;
+                        if (data.success && data.html) {
+                            let finalHtml = data.html;
+                            if (user?.signatureUrl) finalHtml = finalHtml.replace(`<strong>Delivered By:</strong> ${user?.fullName}</p>`, `<strong>Delivered By:</strong> ${user?.fullName}</p><img src="${user.signatureUrl}" crossOrigin="anonymous" style="max-height: 50px; display: block; margin: 10px 0;" alt="Digital Signature" />`);
+                            setPlanHtml(finalHtml);
+                            onShowStatus('success', 'AI Generation Complete', 'OpenAI has drafted your lesson plan.');
+                        } else throw new Error("Invalid HTML returned from AI");
+                    } catch (error: any) {
+                        onShowStatus('warning', 'AI Unavailable', "OpenAI service busy. Loaded standard template instead.");
+                        setPlanHtml(`<h3>1. Programme Information</h3><p><strong>Programme:</strong> ${activeProgramme?.name || cohort?.name}</p><p><strong>SAQA ID:</strong> ${activeProgramme?.saqaId || 'N/A'}</p><ul>${topicList}</ul><hr/><p><strong>Delivered By:</strong> ${user?.fullName}</p>${user?.signatureUrl ? `<img src="${user.signatureUrl}" crossOrigin="anonymous" style="max-height: 50px;"/>` : ''}`);
+                    } finally {
+                        setIsGenerating(false);
+                    }
+                };
+                generateFromAI();
+            }
+        }
+    }, [isOpen, existingReport, selectedTopics, curriculumItems, activeProgramme, cohort, user, onShowStatus]);
+
+    const handleEnhanceText = async () => {
+        const editor = quillRef.current?.getEditor();
+        if (!editor) return;
+        const range = editor.getSelection();
+        if (!range || range.length === 0) return onShowStatus('info', 'No Text Selected', 'Highlight specific text to enhance.');
+
+        setIsEnhancing(true);
+        try {
+            const functions = getFunctions();
+            const enhanceTextFn = httpsCallable(functions, 'enhanceText');
+            const response = await enhanceTextFn({ text: editor.getText(range.index, range.length) });
+            const data = response.data as any;
+            if (data.success && data.text) {
+                editor.deleteText(range.index, range.length);
+                editor.insertText(range.index, data.text);
+                setPlanHtml(editor.root.innerHTML);
+            }
+        } catch (error) {
+            onShowStatus('error', 'Enhancement Failed', 'The AI service is currently busy.');
+        } finally {
+            setIsEnhancing(false);
+        }
+    };
+
+    if (!isOpen) return null;
+
+    return createPortal(
+        <div className="lfm-overlay" style={{ zIndex: 99999 }}>
+            <div className="lfm-modal" style={{ maxWidth: '1000px', height: '90vh' }}>
+                <div className="lfm-header" style={{ background: 'var(--mlab-blue)' }}>
+                    <h2 className="lfm-header__title" style={{ color: 'white' }}>
+                        {existingReport ? <Edit3 size={18} color="var(--mlab-green)" /> : <Sparkles size={18} color="var(--mlab-green)" />}
+                        {existingReport ? 'Edit Session Report' : 'Smart Session Report'}
+                    </h2>
+                    <button className="lfm-close-btn" onClick={onClose}><X size={20} style={{ color: 'white' }} /></button>
+                </div>
+
+                <div className="lfm-body" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', background: '#f8fafc', padding: 0 }}>
+                    {isGenerating ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '450px', color: 'var(--mlab-blue)' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '80px', height: '80px', background: 'rgba(148, 199, 61, 0.1)', borderRadius: '50%', marginBottom: '1.5rem' }}>
+                                <Sparkles size={40} color="var(--mlab-green)" />
+                            </div>
+                            <h3 style={{ fontFamily: 'var(--font-heading)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '1rem', color: 'var(--mlab-midnight)' }}>Crafting Lesson Plan...</h3>
+                        </div>
+                    ) : (
+                        <div style={{ display: 'flex', height: '100%', animation: 'fadeIn 0.4s ease-out' }}>
+                            <div style={{ flex: 2, padding: '1.5rem', borderRight: '1px solid var(--mlab-border)', display: 'flex', flexDirection: 'column' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, flexWrap: 'wrap' }}>
+                                        <div style={{ background: '#e0f2fe', border: '1px solid #bae6fd', borderLeft: '4px solid #0ea5e9', padding: '8px 12px', borderRadius: '4px', fontSize: '0.8rem', color: '#0369a1' }}>
+                                            {!existingReport ? <strong>Automated QCTO Compliance:</strong> : <strong>Edit Mode:</strong>} Review your content below.
+                                        </div>
+
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'white', border: '1px solid #cbd5e1', padding: '6px 12px', borderRadius: '6px', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+                                            <Calendar size={14} color="#0284c7" />
+                                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--mlab-midnight)', textTransform: 'uppercase', letterSpacing: '0.025em' }}>Session Date:</span>
+                                            <input
+                                                type="date"
+                                                value={sessionDate}
+                                                max={new Date().toISOString().split('T')[0]}
+                                                onChange={e => setSessionDate(e.target.value)}
+                                                style={{ border: 'none', outline: 'none', fontSize: '0.8rem', background: 'transparent', color: 'var(--mlab-blue)', fontWeight: 600, cursor: 'pointer' }}
+                                            />
+                                        </div>
+                                    </div>
+                                    <button onClick={handleEnhanceText} disabled={isEnhancing} className="lfm-btn" style={{ background: '#fdf4ff', color: '#c026d3', border: '1px solid #f0abfc', borderRadius: '4px', padding: '6px 12px', fontSize: '0.75rem', cursor: isEnhancing ? 'not-allowed' : 'pointer' }}>
+                                        {isEnhancing ? <Loader2 size={14} className="lfm-spin" /> : <Sparkles size={14} />} Enhance Highlighted Text
+                                    </button>
+                                </div>
+                                <div style={{ background: 'white', color: '#000000', border: '1px solid var(--mlab-border)', borderRadius: '8px', flex: 1, display: 'flex', flexDirection: 'column' }}>
+                                    <ReactQuill ref={quillRef} theme="snow" value={planHtml} onChange={setPlanHtml} modules={quillModules} style={{ height: '350px', display: 'flex', flexDirection: 'column' }} />
+                                </div>
+                            </div>
+
+                            <div style={{ flex: 1, padding: '1.5rem', background: 'white', overflowY: 'auto', borderLeft: '1px solid var(--mlab-border)' }}>
+                                <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', padding: '1rem', borderRadius: '6px', marginBottom: '1.5rem', borderLeft: '4px solid var(--mlab-green)' }}>
+                                    <h4 style={{ fontFamily: 'var(--font-heading)', fontSize: '0.85rem', color: '#166534', textTransform: 'uppercase', margin: '0 0 10px 0', display: 'flex', alignItems: 'center', gap: '6px' }}><PenTool size={16} /> Digital Authentication</h4>
+
+                                    {authorSignature ? (
+                                        <div style={{ background: 'white', padding: '12px', borderRadius: '4px', border: '1px dashed #bbf7d0', textAlign: 'center' }}>
+                                            <img src={authorSignature} alt="Signature" crossOrigin="anonymous" style={{ maxHeight: '60px', maxWidth: '100%', objectFit: 'contain', mixBlendMode: 'multiply' }} />
+                                            <div style={{ fontSize: '0.65rem', color: '#166534', marginTop: '6px', fontWeight: 'bold' }}>VERIFIED: {displayName?.toUpperCase()}</div>
+                                        </div>
+                                    ) : (
+                                        <div style={{ background: 'white', padding: '12px', borderRadius: '4px', border: '1px dashed #fca5a5', textAlign: 'center' }}>
+                                            <div style={{ fontSize: '0.8rem', color: '#b91c1c', fontWeight: 600 }}>No signature found for {displayName}</div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <h3 style={{ fontFamily: 'var(--font-heading)', fontSize: '1rem', color: 'var(--mlab-blue)', textTransform: 'uppercase', margin: '0 0 1rem' }}><LinkIcon size={16} style={{ display: 'inline', marginRight: '6px' }} /> Session Evidence</h3>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                    {evidenceItems.map((item, idx) => (
+                                        <div key={idx} style={{ background: '#f8fafc', border: '1px solid var(--mlab-border)', padding: '10px', borderRadius: '6px' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                                <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--mlab-grey)' }}>Item {idx + 1}</span>
+                                                {evidenceItems.length > 1 && <button onClick={() => setEvidenceItems(p => p.filter((_, i) => i !== idx))} style={{ background: 'none', border: 'none', color: 'var(--mlab-red)', cursor: 'pointer' }}><Trash2 size={14} /></button>}
+                                            </div>
+                                            <input type="url" className="lfm-input" placeholder="https://..." value={item.url} onChange={e => { const n = [...evidenceItems]; n[idx].url = e.target.value; setEvidenceItems(n); }} style={{ marginBottom: '8px', fontSize: '0.8rem', padding: '6px' }} />
+                                            <input type="text" className="lfm-input" placeholder="Description (e.g. Code Repository)" value={item.description} onChange={e => { const n = [...evidenceItems]; n[idx].description = e.target.value; setEvidenceItems(n); }} style={{ fontSize: '0.8rem', padding: '6px' }} />
+                                        </div>
+                                    ))}
+                                    <button onClick={() => setEvidenceItems(p => [...p, { url: '', description: '' }])} className="lfm-btn lfm-btn--ghost" style={{ justifyContent: 'center', padding: '8px', fontSize: '0.8rem' }}><Plus size={14} /> Add Another Link</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                <div className="lfm-footer" style={{ background: 'var(--mlab-bg)' }}>
+                    <button className="lfm-btn lfm-btn--ghost" onClick={onClose} disabled={isGenerating || isEnhancing}>Cancel</button>
+                    <button className="lfm-btn lfm-btn--primary" onClick={() => onSave(planHtml, evidenceItems.filter(e => e.url), !!existingReport, existingReport?.id, sessionDate)} disabled={isGenerating || isEnhancing}>
+                        <CheckCircle size={16} /> {existingReport ? 'Update Session Report' : 'Save Log & Publish Topics'}
+                    </button>
+                </div>
+            </div>
+        </div>,
+        document.body
+    );
+};
 
 export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
     const navigate = useNavigate();
@@ -41,6 +298,21 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
     const [enrolledLearners, setEnrolledLearners] = useState<DashboardLearner[]>([]);
     const [cohortAnalytics, setCohortAnalytics] = useState<any>(null);
     const [ledgerDates, setLedgerDates] = useState<string[]>([]);
+
+    // 🚀 ASSESSMENT OPERATIONS STATE
+    const [submissions, setSubmissions] = useState<any[]>([]);
+    const [isGrantingTime, setIsGrantingTime] = useState(false);
+    const [isAssessmentsExpanded, setIsAssessmentsExpanded] = useState<boolean>(false);
+    const [assessmentFilter, setAssessmentFilter] = useState<'all' | 'writing' | 'pending'>('all');
+    const [expandedAssessments, setExpandedAssessments] = useState<Set<string>>(new Set());
+
+    const toggleAssessmentAccordion = (id: string) => {
+        setExpandedAssessments(prev => {
+            const next = new Set(prev);
+            next.has(id) ? next.delete(id) : next.add(id);
+            return next;
+        });
+    };
 
     // 🚀 PAGINATION STATE
     const [currentPage, setCurrentPage] = useState(1);
@@ -115,7 +387,7 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
     };
 
     useEffect(() => {
-        if (!cohort || !cohort.id) return [];
+        // if (!cohort || !cohort.id) return [];
 
         const cohortEnrollments = enrollments.filter(e => e.cohortId === cohort.id);
         const uniqueMap = new Map<string, DashboardLearner>();
@@ -161,6 +433,18 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
 
         return () => unsubscribeRecords();
     }, [cohort]);
+
+    // 🚀 FETCH SUBMISSIONS
+    useEffect(() => {
+        if (!cohort?.id) return;
+        const fetchSubmissions = async () => {
+            try {
+                const snap = await getDocs(query(collection(db, 'learner_submissions'), where('cohortId', '==', cohort.id)));
+                setSubmissions(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+            } catch (e) { console.error('Error fetching submissions:', e); }
+        };
+        fetchSubmissions();
+    }, [cohort.id]);
 
     useEffect(() => {
         if (enrolledLearners.length === 0) return;
@@ -373,6 +657,79 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
         setLedgerDates(ledgerDates.filter(d => d !== dateToRemove));
     };
 
+    // 🚀 UPGRADED DATA MODEL
+    const assessmentStatsMap = useMemo(() => {
+        const map = new Map<string, {
+            assessmentId: string,
+            title: string,
+            writing: any[],
+            pending: any[],
+            graded: any[],
+            learnerNamesWriting: string[]
+        }>();
+
+        submissions.forEach(s => {
+            if (!['in_progress', 'submitted', 'graded', 'moderated'].includes(s.status)) return;
+
+            if (!map.has(s.assessmentId)) {
+                map.set(s.assessmentId, {
+                    assessmentId: s.assessmentId,
+                    title: s.title || 'Unknown Assessment',
+                    writing: [], pending: [], graded: [], learnerNamesWriting: []
+                });
+            }
+
+            const entry = map.get(s.assessmentId)!;
+
+            if (s.status === 'in_progress') {
+                entry.writing.push(s);
+                const matchedLearner = enrolledLearners.find(l => l.learnerId === s.learnerId || l.id === s.learnerId || l.enrollmentId === s.enrollmentId);
+                if (matchedLearner) entry.learnerNamesWriting.push(matchedLearner.fullName);
+            } else if (s.status === 'submitted') {
+                entry.pending.push(s);
+            } else if (s.status === 'graded' || s.status === 'moderated') {
+                entry.graded.push(s);
+            }
+        });
+
+        // Only return assessments that have active writing or pending marking
+        return Array.from(map.values()).filter(e => e.writing.length > 0 || e.pending.length > 0);
+    }, [submissions, enrolledLearners]);
+
+    // 🚀 Derived Sub-lists for Filtering
+    const filteredAssessments = useMemo(() => {
+        if (assessmentFilter === 'writing') return assessmentStatsMap.filter(a => a.writing.length > 0);
+        if (assessmentFilter === 'pending') return assessmentStatsMap.filter(a => a.pending.length > 0);
+        return assessmentStatsMap;
+    }, [assessmentStatsMap, assessmentFilter]);
+
+    const totalWriting = assessmentStatsMap.reduce((acc, curr) => acc + curr.writing.length, 0);
+    const totalPending = assessmentStatsMap.reduce((acc, curr) => acc + curr.pending.length, 0);
+
+    const grantExtraTimeToExam = async (subsToUpdate: any[], minutes: number, examTitle: string) => {
+        if (subsToUpdate.length === 0) return;
+        if (!window.confirm(`Add ${minutes} minutes to the clock for ${subsToUpdate.length} learner(s) taking ${examTitle}?`)) return;
+
+        setIsGrantingTime(true);
+        try {
+            const batch = writeBatch(db);
+            subsToUpdate.forEach(sub => {
+                batch.update(doc(db, 'learner_submissions', sub.id), {
+                    extraTimeGranted: increment(minutes),
+                    lastStaffEditAt: new Date().toISOString()
+                });
+            });
+            await batch.commit();
+            toast.success(`Successfully granted +${minutes} minutes to ${examTitle}!`);
+
+            // Re-fetch using logic if needed or just let real-time handle it depending on setup.
+        } catch (error) {
+            toast.error("Failed to grant extra time.");
+        } finally {
+            setIsGrantingTime(false);
+        }
+    };
+
     const handleExport = () => {
         if (filteredLearners.length === 0 || !cohortAnalytics) {
             toast.error('No matching records to export.');
@@ -463,6 +820,15 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
 
     return (
         <div className="cdp-layout">
+
+            {/* Global Keyframes for the Live Dot Ping Animation */}
+            <style>{`
+                @keyframes live-dot-ping {
+                    0% { transform: scale(0.8); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+                    50% { transform: scale(1.2); box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
+                    100% { transform: scale(0.8); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+                }
+            `}</style>
 
             {editingLog && createPortal(
                 <div className="wm-overlay animate-fade-in" onClick={() => setEditingLog(null)} style={{ zIndex: 99999 }}>
@@ -703,6 +1069,162 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
                         )}
                     </div>
 
+                    {/* 🚀 MASTER ASSESSMENTS ACCORDION */}
+                    {assessmentStatsMap.length > 0 && (
+                        <div style={{ marginBottom: '2rem', background: 'white', borderRadius: '8px', border: '1px solid #cbd5e1', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', transition: 'all 0.3s ease' }}>
+
+                            {/* MASTER HEADER */}
+                            <div
+                                onClick={() => setIsAssessmentsExpanded(!isAssessmentsExpanded)}
+                                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1.25rem 1.5rem', cursor: 'pointer', borderBottom: isAssessmentsExpanded ? '1px solid #cbd5e1' : 'none' }}
+                            >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
+                                    <div style={{ background: '#0f766e', color: 'white', padding: '12px', borderRadius: '8px' }}>
+                                        <BookOpen size={24} />
+                                    </div>
+                                    <div>
+                                        <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Assessment Operations Center</h2>
+                                        <div style={{ display: 'flex', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
+                                            <span style={{ fontSize: '0.75rem', fontWeight: 700, background: '#e0f2fe', color: '#0369a1', padding: '4px 10px', borderRadius: '12px', border: '1px solid #bae6fd' }}>{assessmentStatsMap.length} Active Assessments</span>
+
+                                            {totalWriting > 0 ? (
+                                                <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', fontWeight: 800, background: '#fee2e2', color: '#b91c1c', padding: '4px 10px', borderRadius: '12px', border: '1px solid #fca5a5', boxShadow: '0 0 8px rgba(239, 68, 68, 0.4)' }}>
+                                                    <span style={{ width: '8px', height: '8px', background: '#ef4444', borderRadius: '50%', animation: 'live-dot-ping 1.5s infinite' }} />
+                                                    {totalWriting} Learner(s) Writing
+                                                </span>
+                                            ) : (
+                                                <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', fontWeight: 700, background: '#e0f2fe', color: '#0369a1', padding: '4px 10px', borderRadius: '12px', border: '1px solid #bae6fd' }}>
+                                                    {totalWriting} Learner(s) Writing
+                                                </span>
+                                            )}
+
+                                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', fontWeight: 700, background: '#ffedd5', color: '#c2410c', padding: '4px 10px', borderRadius: '12px', border: '1px solid #fed7aa' }}>
+                                                <Clock size={10} /> {totalPending} Awaiting Marking
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div style={{ color: '#64748b' }}>
+                                    {isAssessmentsExpanded ? <ChevronUp size={24} /> : <ChevronDown size={24} />}
+                                </div>
+                            </div>
+
+                            {/* EXPANDED CONTENT */}
+                            {isAssessmentsExpanded && (
+                                <div className="animate-slide-down" style={{ padding: '1.5rem', background: '#f8fafc', borderRadius: '0 0 8px 8px' }}>
+
+                                    {/* Filters */}
+                                    <div style={{ display: 'flex', gap: '10px', marginBottom: '1.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                                        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginRight: '10px' }}><Filter size={14} style={{ display: 'inline', verticalAlign: 'text-bottom' }} /> Filter Views:</span>
+                                        <button onClick={() => setAssessmentFilter('all')} style={{ background: assessmentFilter === 'all' ? '#0f766e' : 'white', color: assessmentFilter === 'all' ? 'white' : '#64748b', border: `1px solid ${assessmentFilter === 'all' ? '#0f766e' : '#cbd5e1'}`, padding: '6px 16px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.2s' }}>All Operations</button>
+                                        <button onClick={() => setAssessmentFilter('writing')} style={{ background: assessmentFilter === 'writing' ? '#0f766e' : 'white', color: assessmentFilter === 'writing' ? 'white' : '#64748b', border: `1px solid ${assessmentFilter === 'writing' ? '#0f766e' : '#cbd5e1'}`, padding: '6px 16px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.2s' }}>Live Sessions Only</button>
+                                        <button onClick={() => setAssessmentFilter('pending')} style={{ background: assessmentFilter === 'pending' ? '#0f766e' : 'white', color: assessmentFilter === 'pending' ? 'white' : '#64748b', border: `1px solid ${assessmentFilter === 'pending' ? '#0f766e' : '#cbd5e1'}`, padding: '6px 16px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.2s' }}>Awaiting Marking Only</button>
+                                    </div>
+
+                                    {/* Flat List */}
+                                    {filteredAssessments.length === 0 ? (
+                                        <div style={{ padding: '2rem', textAlign: 'center', color: '#94a3b8', background: 'white', borderRadius: '8px', border: '1px dashed #cbd5e1' }}>
+                                            No assessments match this filter.
+                                        </div>
+                                    ) : (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                            {filteredAssessments.map(exam => {
+                                                const isExpanded = expandedAssessments.has(exam.assessmentId);
+                                                const isLive = exam.writing.length > 0;
+                                                const hasPending = exam.pending.length > 0;
+
+                                                return (
+                                                    <div key={exam.assessmentId} className="animate-fade-in" style={{
+                                                        background: '#ffffff',
+                                                        border: isLive ? '1px solid #fca5a5' : hasPending ? '1px solid #fed7aa' : '1px solid #cbd5e1',
+                                                        borderRadius: '8px',
+                                                        overflow: 'hidden',
+                                                        boxShadow: isLive ? '0 4px 12px rgba(239, 68, 68, 0.15)' : '0 1px 2px rgba(0,0,0,0.02)',
+                                                        transition: 'all 0.3s ease'
+                                                    }}>
+                                                        <div onClick={() => toggleAssessmentAccordion(exam.assessmentId)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1.25rem', cursor: 'pointer', borderBottom: isExpanded ? '1px solid #e2e8f0' : 'none', background: isExpanded ? '#f8fafc' : '#ffffff' }}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
+                                                                <div style={{ background: '#e0f2fe', padding: '8px', borderRadius: '50%', color: '#0284c7' }}>
+                                                                    <BookOpen size={16} />
+                                                                </div>
+                                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                                                    <h3 style={{ margin: 0, color: '#0f172a', fontSize: '0.95rem', fontWeight: 700 }}>{exam.title}</h3>
+                                                                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                                                        {isLive && (
+                                                                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.7rem', fontWeight: 800, background: '#e0f2fe', color: '#0369a1', padding: '2px 8px', borderRadius: '12px', textTransform: 'uppercase', border: '1px solid #bae6fd' }}>
+                                                                                <span style={{ width: '6px', height: '6px', background: '#ef4444', borderRadius: '50%', animation: 'live-dot-ping 1.5s infinite' }} />
+                                                                                {exam.writing.length} Writing
+                                                                            </span>
+                                                                        )}
+                                                                        {hasPending && (
+                                                                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.7rem', fontWeight: 700, background: '#ffedd5', color: '#c2410c', padding: '2px 8px', borderRadius: '12px', textTransform: 'uppercase', border: '1px solid #fed7aa' }}>
+                                                                                <Clock size={10} /> {exam.pending.length} Awaiting Marking
+                                                                            </span>
+                                                                        )}
+                                                                        {exam.graded.length > 0 && (
+                                                                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.7rem', fontWeight: 700, background: '#dcfce7', color: '#15803d', padding: '2px 8px', borderRadius: '12px', textTransform: 'uppercase', border: '1px solid #bbf7d0' }}>
+                                                                                <CheckCircle2 size={10} /> {exam.graded.length} Graded
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                            <div style={{ color: '#94a3b8', paddingLeft: '1rem' }}>
+                                                                {isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                                                            </div>
+                                                        </div>
+
+                                                        {isExpanded && (
+                                                            <div style={{ padding: '1.25rem', background: '#ffffff', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                                                {isLive && (
+                                                                    <div style={{ border: '1px solid #fca5a5', borderLeft: '4px solid #ef4444', background: '#fef2f2', borderRadius: '6px', padding: '1rem', position: 'relative', overflow: 'hidden' }}>
+                                                                        <div style={{ position: 'absolute', top: '-20px', right: '-20px', width: '150px', height: '150px', background: 'radial-gradient(circle, rgba(239,68,68,0.15) 0%, transparent 70%)', borderRadius: '50%', animation: 'live-dot-ping 2s infinite' }} />
+                                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem', position: 'relative', zIndex: 1 }}>
+                                                                            <div>
+                                                                                <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', fontWeight: 800, color: '#b91c1c', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                                                                    <span style={{ width: '8px', height: '8px', background: '#ef4444', borderRadius: '50%', animation: 'live-dot-ping 1.5s infinite' }} />
+                                                                                    Currently Live ({exam.writing.length})
+                                                                                </span>
+                                                                                <p style={{ margin: '6px 0 0 0', color: '#7f1d1d', fontSize: '0.85rem', lineHeight: '1.5', fontWeight: 600 }}>
+                                                                                    {exam.learnerNamesWriting.join(', ')}
+                                                                                </p>
+                                                                            </div>
+                                                                            <div style={{ display: 'flex', gap: '8px' }}>
+                                                                                <button className="cdp-btn" style={{ background: 'white', color: '#ef4444', border: '1px solid #fca5a5' }} onClick={() => grantExtraTimeToExam(exam.writing, 15, exam.title)} disabled={isGrantingTime}>
+                                                                                    {isGrantingTime ? <Loader2 size={14} className="cdp-spinner" /> : <Timer size={14} />} +15 Mins
+                                                                                </button>
+                                                                                <button className="cdp-btn" style={{ background: '#ef4444', color: 'white', border: '1px solid #ef4444' }} onClick={() => grantExtraTimeToExam(exam.writing, 30, exam.title)} disabled={isGrantingTime}>
+                                                                                    {isGrantingTime ? <Loader2 size={14} className="cdp-spinner" /> : <Timer size={14} />} +30 Mins
+                                                                                </button>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                                {hasPending && (
+                                                                    <div style={{ border: '1px solid #fed7aa', borderLeft: '4px solid #ea580c', background: '#fff7ed', borderRadius: '6px', padding: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+                                                                        <div>
+                                                                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#9a3412', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Action Required</span>
+                                                                            <p style={{ margin: '4px 0 0 0', color: '#431407', fontSize: '0.85rem' }}>
+                                                                                <strong>{exam.pending.length}</strong> submissions have been handed in and require your attention.
+                                                                            </p>
+                                                                        </div>
+                                                                        <button className="cdp-btn" style={{ background: '#ea580c', color: 'white', border: 'none' }} onClick={() => navigate(isAdmin ? '/admin?tab=submissions' : `/${user?.role}?tab=submissions`)}>
+                                                                            <PenTool size={14} /> Go to Grading Queue
+                                                                        </button>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     <div className="lfm-tabs" style={{ marginBottom: '1.5rem' }}>
                         <button className={`lfm-tab ${activeTab === 'learners' ? 'active' : ''}`} onClick={() => setActiveTab('learners')}>
                             <Users size={16} /> Applicant Roster
@@ -920,13 +1442,11 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
                                                                     <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Phone size={12} color="var(--mlab-grey)" /> {learner.phone || learner.mobile || 'No Contact Number'}</span>
                                                                 </div>
                                                             </td>
-
                                                             <td>
                                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', color: 'var(--mlab-grey)' }}>
                                                                     <MapPin size={12} /> {locationStr}
                                                                 </div>
                                                             </td>
-
                                                             <td>
                                                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                                                                     {isDropped ? (
@@ -940,7 +1460,6 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
                                                                     )}
                                                                 </div>
                                                             </td>
-
                                                             <td>
                                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                                                     {pct === 0 ? (
@@ -960,7 +1479,6 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
                                                                     </span>
                                                                 </div>
                                                             </td>
-
                                                             <td>
                                                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                                                                     <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--mlab-midnight)' }}>
@@ -971,7 +1489,6 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
                                                                     </span>
                                                                 </div>
                                                             </td>
-
                                                             <td style={{ textAlign: 'right' }}>
                                                                 <div className="cdp-actions" style={{ justifyContent: 'flex-end', display: 'flex' }}>
                                                                     <button
@@ -1184,22 +1701,22 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
                                                         </td>
                                                         <td>
                                                             <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', color: 'var(--mlab-grey)' }}>
-                                                                <Clock size={14} /> {log.expectedDuration} mins
+                                                                <Clock size={14} /> {log.expectedDuration || 0} mins
                                                             </span>
                                                         </td>
                                                         <td style={{ color: 'var(--mlab-midnight)' }}>{log.totalEnrolled || 0} Learners</td>
                                                         <td>
-                                                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '4px 8px', background: '#dcfce7', color: '#166534', fontSize: '0.8rem', fontWeight: 600 }}>
+                                                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '4px 8px', background: '#dcfce7', color: '#166534', fontSize: '0.8rem', fontWeight: 600, borderRadius: '4px' }}>
                                                                 <CheckCircle2 size={12} /> {log.totalPresent || 0}
                                                             </span>
                                                         </td>
                                                         <td>
-                                                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '4px 8px', background: '#fef3c7', color: '#b45309', fontSize: '0.8rem', fontWeight: 600 }}>
+                                                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '4px 8px', background: '#fef3c7', color: '#b45309', fontSize: '0.8rem', fontWeight: 600, borderRadius: '4px' }}>
                                                                 <AlertCircle size={12} /> {log.totalPartial || 0}
                                                             </span>
                                                         </td>
                                                         <td>
-                                                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '4px 8px', background: '#fee2e2', color: '#991b1b', fontSize: '0.8rem', fontWeight: 600 }}>
+                                                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '4px 8px', background: '#fee2e2', color: '#991b1b', fontSize: '0.8rem', fontWeight: 600, borderRadius: '4px' }}>
                                                                 <XCircle size={12} /> {log.totalAbsent || 0}
                                                             </span>
                                                         </td>
