@@ -60,7 +60,14 @@ export interface StaffMember {
   id: string;
   fullName: string;
   email: string;
-  role: "admin" | "facilitator" | "assessor" | "moderator" | "mentor";
+  role:
+    | "admin"
+    | "facilitator"
+    | "assessor"
+    | "moderator"
+    | "mentor"
+    | "assistant_facilitator"
+    | "support_facilitator";
   phone?: string;
   authUid: string;
   assessorRegNumber?: string;
@@ -2397,6 +2404,9 @@ export const useStore = create<StoreState>()(
             "assessor",
             "moderator",
             "mentor",
+            "assistant_facilitator",
+            "support_facilitator",
+            "assessor",
           ]),
         );
         const snapshot = await getDocs(q);

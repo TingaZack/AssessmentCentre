@@ -6,7 +6,7 @@ import {
     LayoutDashboard, Users, BookOpen, UserCheck,
     Settings, LogOut, Layers, ShieldCheck,
     GraduationCap, ClipboardList, CheckSquare, User, UserCircle, Building2,
-    Award, Key, Calendar, Globe, CalendarCheck
+    Award, Key, Calendar, Globe, CalendarCheck, MessageSquare
 } from 'lucide-react';
 import type { UserRole } from '../../../types/auth.types';
 import { useStore } from '../../../store/useStore';
@@ -24,19 +24,29 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({ role, currentNav, setCurrentNav, onLogout }) => {
     const navigate = useNavigate();
     const location = useLocation();
-
-    // Hook into the URL search parameters to sync routing
     const [searchParams] = useSearchParams();
 
     const { settings } = useStore();
     const user = useStore((state) => state.user);
+
     const activeRole = role || user?.role;
 
-    // ─── DEFINE MENUS BASED ON ROLE ──────────────────────────────────────
+    const isAssistant = ['assistant_facilitator', 'support_facilitator', 'supportFacilitator'].includes(activeRole || '');
+
     const getMenuItems = () => {
+        // Intercept Assistant variants before the main switch
+        if (isAssistant) {
+            return [
+                { id: 'dashboard', label: 'Cohort Overview', icon: LayoutDashboard, path: '/facilitator' },
+                { id: 'attendance', label: 'Attendance Hub', icon: Users, path: '/facilitator/attendance' },
+                { id: 'assessments', label: 'Portfolio Tracking', icon: ClipboardList, path: '/facilitator/assessments' },
+                { id: 'coaching', label: 'Support Sessions', icon: MessageSquare, path: '/facilitator' },
+                { id: 'profile', label: 'My Profile', icon: UserCircle, path: '/facilitator/profile' },
+            ];
+        }
+
         switch (activeRole) {
             case 'admin':
-                // All Admin paths must stay on "/admin" and rely entirely on the ID parameter.
                 const adminMenu = [
                     { id: 'dashboard', label: 'Overview', icon: LayoutDashboard, path: '/admin' },
                     { id: 'directory', label: 'Master Directory', icon: Users, path: '/admin' },
@@ -48,23 +58,19 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, currentNav, setCurrentNa
                     { id: 'staff', label: 'Staff Management', icon: UserCheck, path: '/admin' },
                     { id: 'workplaces', label: 'Workplaces', icon: Building2, path: '/admin' },
                     { id: 'cohorts', label: 'Cohorts (Classes)', icon: Layers, path: '/admin' },
+                    { id: 'coaching', label: 'Coaching Schedule', icon: MessageSquare, path: '/admin' },
                     { id: 'studio', label: 'Certificate Studio', icon: Award, path: '/admin' },
                     { id: 'profile', label: 'My Profile', icon: UserCircle, path: '/admin' },
                 ];
-
                 if ((user as any)?.isSuperAdmin === true) {
-                    adminMenu.splice(adminMenu.length - 1, 0, {
-                        id: 'access',
-                        label: 'Access Control',
-                        icon: Key,
-                        path: '/admin'
-                    });
+                    adminMenu.splice(adminMenu.length - 1, 0, { id: 'access', label: 'Access Control', icon: Key, path: '/admin' });
                 }
                 return adminMenu;
             case 'assessor':
                 return [
                     { id: 'dashboard', label: 'Marking Queue', icon: CheckSquare, path: '/marking' },
                     { id: 'cohorts', label: 'My Cohorts', icon: Layers, path: '/marking' },
+                    { id: 'coaching', label: 'Coaching Schedule', icon: MessageSquare, path: '/marking' },
                     { id: 'profile', label: 'My Profile', icon: User, path: '/marking' },
                 ];
             case 'moderator':
@@ -78,6 +84,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, currentNav, setCurrentNa
                     { id: 'dashboard', label: 'Overview', icon: LayoutDashboard, path: '/facilitator' },
                     { id: 'attendance', label: 'Attendance', icon: Users, path: '/facilitator/attendance' },
                     { id: 'assessments', label: 'Assessments', icon: ClipboardList, path: '/facilitator/assessments' },
+                    { id: 'coaching', label: 'Coaching Schedule', icon: MessageSquare, path: '/facilitator' },
                     { id: 'studio', label: 'Certificate Studio', icon: Award, path: '/admin/studio' },
                     { id: 'profile', label: 'My Profile', icon: UserCircle, path: '/facilitator/profile' },
                 ];
@@ -96,62 +103,42 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, currentNav, setCurrentNa
     const menuItems = getMenuItems();
 
     const handleNavigation = (item: any) => {
-        // Update local state if provided
         if (setCurrentNav) setCurrentNav(item.id);
 
         if (activeRole === 'admin' && item.path === '/admin') {
-            // Create a fresh URLSearchParams to guarantee we strip out deep-link filters (view, cohort, employer, etc)
             const newParams = new URLSearchParams();
-
-            if (item.id !== 'dashboard') {
-                newParams.set('tab', item.id);
-            }
-
-            // 🚀 FIXED: Generate absolute destination string so we break out of nested sub-pages
+            if (item.id !== 'dashboard') newParams.set('tab', item.id);
             const queryString = newParams.toString();
-            const destination = queryString ? `/admin?${queryString}` : '/admin';
-
-            navigate(destination, { replace: true });
+            navigate(queryString ? `/admin?${queryString}` : '/admin', { replace: true });
         } else {
-            // Fallback for non-admin dashboards
             const newParams = new URLSearchParams();
-            if (item.id !== 'dashboard') {
-                newParams.set('tab', item.id);
-            }
-
-            // 🚀 FIXED: Ensure absolute navigation for facilitators/assessors as well
+            if (item.id !== 'dashboard') newParams.set('tab', item.id);
             const queryString = newParams.toString();
-            const destination = queryString ? `${item.path}?${queryString}` : item.path;
-
-            navigate(destination, { state: { activeTab: item.id }, replace: true });
+            navigate(queryString ? `${item.path}?${queryString}` : item.path, { state: { activeTab: item.id }, replace: true });
         }
     };
 
     return (
         <aside className="sidebar">
-            {/* BRANDING HEADER WITH NOTIFICATION BELL */}
             <div className="sidebar-header">
                 <div className="sidebar-brand-stack">
                     <img height={45} src={(settings as any)?.logoUrl || mLabLogo} alt="Institution Logo" />
                     {activeRole !== 'learner' && (
-                        <div className="sidebar-role-tag">{activeRole?.toUpperCase()}</div>
+                        <div className="sidebar-role-tag">
+                            {/* 🚀 Explicitly badge Assistants */}
+                            {isAssistant ? 'ASSISTANT FACILITATOR' : activeRole?.replace('_', ' ').toUpperCase()}
+                        </div>
                     )}
                 </div>
             </div>
 
-            {/* NAVIGATION MENU */}
             <nav className="sidebar-nav">
                 {menuItems.map((item) => {
                     const Icon = item.icon;
-                    // Check if active based on the state variable OR the URL parameter
                     const isActive = currentNav === item.id || (!currentNav && searchParams.get('tab') === item.id) || (!currentNav && !searchParams.get('tab') && item.id === 'dashboard');
 
                     return (
-                        <button
-                            key={item.id}
-                            className={`nav-item ${isActive ? 'active' : ''}`}
-                            onClick={() => handleNavigation(item)}
-                        >
+                        <button key={item.id} className={`nav-item ${isActive ? 'active' : ''}`} onClick={() => handleNavigation(item)}>
                             <Icon size={20} />
                             <span>{item.label}</span>
                         </button>
@@ -159,15 +146,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, currentNav, setCurrentNa
                 })}
             </nav>
 
-            {/* FOOTER ACTIONS */}
             <div className="sidebar-footer">
-                <button
-                    className={`nav-item ${currentNav === 'settings' || location.pathname === '/settings' ? 'active' : ''}`}
-                    onClick={() => {
-                        if (setCurrentNav) setCurrentNav('settings');
-                        navigate('/settings');
-                    }}
-                >
+                <button className={`nav-item ${currentNav === 'settings' || location.pathname === '/settings' ? 'active' : ''}`} onClick={() => { if (setCurrentNav) setCurrentNav('settings'); navigate('/settings'); }}>
                     <Settings size={20} />
                     <span>Settings</span>
                 </button>
@@ -179,185 +159,3 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, currentNav, setCurrentNa
         </aside>
     );
 };
-
-
-// // src/components/dashboard/Sidebar/Sidebar.tsx
-
-// import React from 'react';
-// import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
-// import {
-//     LayoutDashboard, Users, BookOpen, UserCheck,
-//     Settings, LogOut, Layers, ShieldCheck,
-//     GraduationCap, ClipboardList, CheckSquare, User, UserCircle, Building2,
-//     Award, Key, Calendar, Globe
-// } from 'lucide-react';
-// import type { UserRole } from '../../../types/auth.types';
-// import { useStore } from '../../../store/useStore';
-// import './Sidebar.css';
-
-// import mLabLogo from '../../../assets/logo/mlab_logo_white.png';
-
-// interface SidebarProps {
-//     role?: UserRole;
-//     currentNav?: string;
-//     setCurrentNav?: (nav: any) => void;
-//     onLogout: () => void;
-// }
-
-// export const Sidebar: React.FC<SidebarProps> = ({ role, currentNav, setCurrentNav, onLogout }) => {
-//     const navigate = useNavigate();
-//     const location = useLocation();
-
-//     // Hook into the URL search parameters to sync routing
-//     const [searchParams] = useSearchParams();
-
-//     const { settings } = useStore();
-//     const user = useStore((state) => state.user);
-//     const activeRole = role || user?.role;
-
-//     // ─── DEFINE MENUS BASED ON ROLE ──────────────────────────────────────
-//     const getMenuItems = () => {
-//         switch (activeRole) {
-//             case 'admin':
-//                 // All Admin paths must stay on "/admin" and rely entirely on the ID parameter.
-//                 const adminMenu = [
-//                     { id: 'dashboard', label: 'Overview', icon: LayoutDashboard, path: '/admin' },
-//                     { id: 'directory', label: 'Master Directory', icon: Users, path: '/admin' },
-//                     { id: 'learners', label: 'Course Enrollments', icon: GraduationCap, path: '/admin' },
-//                     { id: 'attendance', label: 'Attendance Hub', icon: Calendar, path: '/admin' },
-//                     { id: 'ecosystem', label: 'Ecosystem & Events', icon: Globe, path: '/admin' },
-//                     { id: 'qualifications', label: 'Qualifications', icon: BookOpen, path: '/admin' },
-//                     { id: 'assessments', label: 'Assessments', icon: ClipboardList, path: '/admin' },
-//                     { id: 'staff', label: 'Staff Management', icon: UserCheck, path: '/admin' },
-//                     { id: 'workplaces', label: 'Workplaces', icon: Building2, path: '/admin' },
-//                     { id: 'cohorts', label: 'Cohorts (Classes)', icon: Layers, path: '/admin' },
-//                     { id: 'studio', label: 'Certificate Studio', icon: Award, path: '/admin' },
-//                     { id: 'profile', label: 'My Profile', icon: UserCircle, path: '/admin' },
-//                 ];
-
-//                 if ((user as any)?.isSuperAdmin === true) {
-//                     adminMenu.splice(adminMenu.length - 1, 0, {
-//                         id: 'access',
-//                         label: 'Access Control',
-//                         icon: Key,
-//                         path: '/admin'
-//                     });
-//                 }
-//                 return adminMenu;
-//             case 'assessor':
-//                 return [
-//                     { id: 'dashboard', label: 'Marking Queue', icon: CheckSquare, path: '/marking' },
-//                     { id: 'cohorts', label: 'My Cohorts', icon: Layers, path: '/marking' },
-//                     { id: 'profile', label: 'My Profile', icon: User, path: '/marking' },
-//                 ];
-//             case 'moderator':
-//                 return [
-//                     { id: 'dashboard', label: 'QA Queue', icon: ShieldCheck, path: '/moderation' },
-//                     { id: 'cohorts', label: 'Cohorts', icon: Layers, path: '/moderation' },
-//                     { id: 'profile', label: 'My Profile', icon: User, path: '/moderation' },
-//                 ];
-//             case 'facilitator':
-//                 return [
-//                     { id: 'dashboard', label: 'Overview', icon: LayoutDashboard, path: '/facilitator' },
-//                     { id: 'attendance', label: 'Attendance', icon: Users, path: '/facilitator/attendance' },
-//                     { id: 'assessments', label: 'Assessments', icon: ClipboardList, path: '/facilitator/assessments' },
-//                     { id: 'studio', label: 'Certificate Studio', icon: Award, path: '/admin/studio' },
-//                     { id: 'profile', label: 'My Profile', icon: UserCircle, path: '/facilitator/profile' },
-//                 ];
-//             case 'learner':
-//                 return [
-//                     { id: 'dashboard', label: 'My Classes', icon: LayoutDashboard, path: '/portal' },
-//                     { id: 'profile', label: 'My Profile', icon: User, path: '/portal' },
-//                     { id: 'certificates', label: 'My Certificates', icon: Award, path: '/portal' },
-//                 ];
-//             default:
-//                 return [];
-//         }
-//     };
-
-//     const menuItems = getMenuItems();
-
-//     const handleNavigation = (item: any) => {
-//         // Update local state if provided
-//         if (setCurrentNav) setCurrentNav(item.id);
-
-//         if (activeRole === 'admin' && item.path === '/admin') {
-//             // Create a fresh URLSearchParams to guarantee we strip out deep-link filters (view, cohort, employer, etc)
-//             const newParams = new URLSearchParams();
-
-//             if (item.id !== 'dashboard') {
-//                 newParams.set('tab', item.id);
-//             }
-
-//             // 🚀 FIXED: Generate absolute destination string so we break out of nested sub-pages
-//             const queryString = newParams.toString();
-//             const destination = queryString ? `/admin?${queryString}` : '/admin';
-
-//             navigate(destination, { replace: true });
-//         } else {
-//             // Fallback for non-admin dashboards
-//             const newParams = new URLSearchParams();
-//             if (item.id !== 'dashboard') {
-//                 newParams.set('tab', item.id);
-//             }
-
-//             // 🚀 FIXED: Ensure absolute navigation for facilitators/assessors as well
-//             const queryString = newParams.toString();
-//             const destination = queryString ? `${item.path}?${queryString}` : item.path;
-
-//             navigate(destination, { state: { activeTab: item.id }, replace: true });
-//         }
-//     };
-
-//     return (
-//         <aside className="sidebar">
-//             {/* BRANDING HEADER WITH NOTIFICATION BELL */}
-//             <div className="sidebar-header">
-//                 <div className="sidebar-brand-stack">
-//                     <img height={45} src={(settings as any)?.logoUrl || mLabLogo} alt="Institution Logo" />
-//                     {activeRole !== 'learner' && (
-//                         <div className="sidebar-role-tag">{activeRole?.toUpperCase()}</div>
-//                     )}
-//                 </div>
-//             </div>
-
-//             {/* NAVIGATION MENU */}
-//             <nav className="sidebar-nav">
-//                 {menuItems.map((item) => {
-//                     const Icon = item.icon;
-//                     // Check if active based on the state variable OR the URL parameter
-//                     const isActive = currentNav === item.id || (!currentNav && searchParams.get('tab') === item.id) || (!currentNav && !searchParams.get('tab') && item.id === 'dashboard');
-
-//                     return (
-//                         <button
-//                             key={item.id}
-//                             className={`nav-item ${isActive ? 'active' : ''}`}
-//                             onClick={() => handleNavigation(item)}
-//                         >
-//                             <Icon size={20} />
-//                             <span>{item.label}</span>
-//                         </button>
-//                     );
-//                 })}
-//             </nav>
-
-//             {/* FOOTER ACTIONS */}
-//             <div className="sidebar-footer">
-//                 <button
-//                     className={`nav-item ${currentNav === 'settings' || location.pathname === '/settings' ? 'active' : ''}`}
-//                     onClick={() => {
-//                         if (setCurrentNav) setCurrentNav('settings');
-//                         navigate('/settings');
-//                     }}
-//                 >
-//                     <Settings size={20} />
-//                     <span>Settings</span>
-//                 </button>
-//                 <button className="nav-item" style={{ color: '#ef4444' }} onClick={onLogout}>
-//                     <LogOut size={20} />
-//                     <span>Logout</span>
-//                 </button>
-//             </div>
-//         </aside>
-//     );
-// };

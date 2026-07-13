@@ -24,3 +24,4 @@ dist-ssr
 *.sw?
 .vercel
 .env
+server/functions/service-account1.json

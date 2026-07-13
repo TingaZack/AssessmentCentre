@@ -531,7 +531,7 @@ const StateHarvester: React.FC<{ readOnly: boolean, onChange: (answer: { snapsho
 let globalNpmMutex: Promise<void> = Promise.resolve();
 
 export const CodeSandboxPlayer: React.FC<CodeSandboxPlayerProps> = ({ block, learnerAns, onChange, readOnly = false }) => {
-    console.log('[MLAB][render] CodeSandboxPlayer render. blockId:', block?.id, 'learnerAns present:', !!learnerAns, 'has onChange prop:', !!onChange, 'readOnly:', readOnly);
+    // console.log('[MLAB][render] CodeSandboxPlayer render. blockId:', block?.id, 'learnerAns present:', !!learnerAns, 'has onChange prop:', !!onChange, 'readOnly:', readOnly);
     const toast = useToast();
     const [isMaximized, setIsMaximized] = useState(false);
     const [pendingZipFile, setPendingZipFile] = useState<Blob | null>(null);
@@ -676,7 +676,7 @@ export const CodeSandboxPlayer: React.FC<CodeSandboxPlayerProps> = ({ block, lea
             console.warn('[MLAB][handleFilesChange] snapshot failed to parse, ignoring update');
             return;
         }
-        console.log('[MLAB][handleFilesChange] StateHarvester pushed new files, count:', Object.keys(files).length);
+        // console.log('[MLAB][handleFilesChange] StateHarvester pushed new files, count:', Object.keys(files).length);
         latestFrontendFilesRef.current = files;
         scheduleSave();
     }, [scheduleSave, readOnly]);
@@ -690,8 +690,16 @@ export const CodeSandboxPlayer: React.FC<CodeSandboxPlayerProps> = ({ block, lea
     }, []);
 
     useEffect(() => {
-        const handleBeforeUnload = () => { console.log('[MLAB][beforeunload] firing flushSave(true)'); flushSaveRef.current(true); };
-        const handleVisibilityChange = () => { if (document.visibilityState === 'hidden') { console.log('[MLAB][visibilitychange->hidden] firing flushSave(true)'); flushSaveRef.current(true); } };
+        const handleBeforeUnload = () => {
+            // console.log('[MLAB][beforeunload] firing flushSave(true)'); 
+            flushSaveRef.current(true);
+        };
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'hidden') {
+                // console.log('[MLAB][visibilitychange->hidden] firing flushSave(true)');
+                flushSaveRef.current(true);
+            }
+        };
 
         window.addEventListener('beforeunload', handleBeforeUnload);
         document.addEventListener('visibilitychange', handleVisibilityChange);

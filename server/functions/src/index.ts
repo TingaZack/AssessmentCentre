@@ -9402,20 +9402,24 @@ export const getCodeSnapshot = onCall(
 );
 
 // ============================================================================
-// OFFICIAL COACHING & REMEDIATION SCHEDULER (GOOGLE MEET API)
+// OFFICIAL COACHING & SUPPORT SCHEDULER (GOOGLE MEET API)
 // ============================================================================
-
+import * as path from "path";
 export const scheduleCoachingSession = onCall(
-  { secrets: [mailgunSecret], region: "us-central1" },
+  {
+    secrets: [mailgunSecret],
+    region: "us-central1",
+    cors: true,
+    invoker: "public",
+  },
   async (request) => {
     logger.info("BACKEND: scheduleCoachingSession triggered.");
     const auth = request.auth;
 
-    // 1. SECURITY GATES
-    if (!auth || auth.token.role === "learner") {
+    if (!auth) {
       throw new HttpsError(
-        "permission-denied",
-        "Only faculty can schedule formal coaching sessions.",
+        "unauthenticated",
+        "You must be logged in to schedule a session.",
       );
     }
 
@@ -9423,46 +9427,43 @@ export const scheduleCoachingSession = onCall(
       learnerId,
       learnerEmail,
       learnerName,
+      staffId,
+      staffEmail,
+      staffName,
       dateTime,
-      topic,
-      assessmentId,
+      topic, // User's typed description
+      sessionCategory, // The Dropdown Value (e.g., "Wellness & Support")
+      assessmentId, // Optional
     } = request.data;
-    const assessorId = auth.uid;
-    const assessorEmail = auth.token.email || "noreply@mlab.co.za";
 
-    // Fallback to fetching the Assessor's real name if the token doesn't have it
-    let assessorName = auth.token.name;
-    const db = admin.firestore();
-
-    if (!assessorName) {
-      const assessorDoc = await db.collection("users").doc(assessorId).get();
-      assessorName = assessorDoc.exists
-        ? assessorDoc.data()?.fullName
-        : "Your Assessor";
-    }
-
-    if (!learnerId || !learnerEmail || !dateTime) {
+    if (!learnerId || !staffId || !dateTime || !sessionCategory) {
       throw new HttpsError(
         "invalid-argument",
         "Missing required scheduling parameters.",
       );
     }
 
+    const isLearnerInitiated = auth.token.role === "learner";
+    const initiatorName = isLearnerInitiated ? learnerName : staffName;
+    const recipientEmail = isLearnerInitiated ? staffEmail : learnerEmail;
+    const recipientName = isLearnerInitiated ? staffName : learnerName;
+
     try {
-      // 2. AUTHENTICATE WITH GOOGLE CALENDAR API (Via Service Account)
+      // 1. AUTHENTICATE WITH GOOGLE CALENDAR API
       const googleAuth = new google.auth.GoogleAuth({
-        keyFile: "./service-account.json",
+        // keyFile: "./service-account.json",
+        keyFile: path.resolve(__dirname, "../service-account1.json"),
         scopes: ["https://www.googleapis.com/auth/calendar.events"],
       });
       const calendar = google.calendar({ version: "v3", auth: googleAuth });
 
-      // 3. BUILD THE CALENDAR EVENT (1 Hour Duration)
+      // 2. BUILD THE CALENDAR EVENT
       const startTime = new Date(dateTime);
-      const endTime = new Date(startTime.getTime() + 60 * 60000);
+      const endTime = new Date(startTime.getTime() + 60 * 60000); // 1 Hour
 
       const event = {
-        summary: `mLab Coaching: ${topic}`,
-        description: `Remediation and support session for ${learnerName}. Please join using the Google Meet link attached.`,
+        summary: `mLab Support [${sessionCategory}]: ${learnerName} & ${staffName}`,
+        description: `This session was requested by ${initiatorName}.\n\nCategory: ${sessionCategory}\nTopic: ${topic}\n\nPlease join using the Google Meet link attached.`,
         start: {
           dateTime: startTime.toISOString(),
           timeZone: "Africa/Johannesburg",
@@ -9471,8 +9472,7 @@ export const scheduleCoachingSession = onCall(
           dateTime: endTime.toISOString(),
           timeZone: "Africa/Johannesburg",
         },
-        // Invite both the Learner and the Assessor
-        attendees: [{ email: learnerEmail }, { email: assessorEmail }],
+        attendees: [{ email: learnerEmail }, { email: staffEmail }],
         conferenceData: {
           createRequest: {
             requestId: `meet-${Date.now()}-${learnerId}`,
@@ -9481,77 +9481,65 @@ export const scheduleCoachingSession = onCall(
         },
       };
 
-      // 4. PUSH TO GOOGLE TO GENERATE THE MEET LINK
-      logger.info("Communicating with Google Calendar API...");
+      // 3. PUSH TO GOOGLE
       const calendarResponse = await calendar.events.insert({
-        calendarId: "primary",
-        conferenceDataVersion: 1, // Forces Google to generate the Meet Link
-        sendUpdates: "all", // Triggers Google's native ICS calendar invite email
+        calendarId: staffEmail,
+        conferenceDataVersion: 1,
+        sendUpdates: "all",
         requestBody: event,
       });
 
       const meetLink = calendarResponse.data.hangoutLink || "";
-      if (!meetLink) {
-        logger.warn("Google API succeeded but failed to return a hangoutLink.");
-      }
 
-      // 5. SEND THE BRANDED MLAB EMAIL (Reusing your awesome existing setup!)
+      // 4. SEND DYNAMIC MLAB EMAIL
       const emailParams = {
-        title: "Coaching Session Booked",
-        subtitle: "Remediation & Learner Support",
-        recipientName: learnerName,
+        title: "Support Session Booked",
+        subtitle: sessionCategory,
+        recipientName: recipientName,
         bodyHtml: `
-          <p><strong>${assessorName}</strong> has scheduled a formal coaching session with you regarding: <em>${topic}</em>.</p>
+          <p><strong>${initiatorName}</strong> has scheduled a 1-on-1 session with you regarding: <em>${topic}</em>.</p>
           
           <div style="background-color: #f8fafc; padding: 15px; border-radius: 6px; border: 1px solid #dde4e8; border-left: 4px solid #0ea5e9; margin: 20px 0;">
               <p style="margin: 0; color: #073f4e; font-size: 13px;"><strong>Date & Time:</strong><br/>
               ${startTime.toLocaleString("en-ZA", { timeZone: "Africa/Johannesburg", dateStyle: "full", timeStyle: "short" })} (SAST)</p>
           </div>
           
-          <p>You should also receive a standard calendar invite shortly. Please ensure you are on time, and click the button below to join the virtual room when the meeting starts.</p>
+          <p>A calendar invite with the meeting link has also been sent to your inbox. Please be on time.</p>
         `,
         ctaText: "Join Google Meet",
-        ctaLink: meetLink || APP_URL, // Fallback to app url if meet generation fails
+        ctaLink: meetLink || APP_URL,
         showStepIndicator: false,
       };
 
-      logger.info("Sending branded Mailgun notification...");
       await sendMailgunEmail({
-        to: learnerEmail,
-        subject: `📅 Coaching Session Scheduled: ${topic}`,
+        to: recipientEmail,
+        subject: `📅 ${sessionCategory} Scheduled: ${initiatorName}`,
         text: buildMlabEmailPlainText(emailParams),
         html: buildMlabEmailHtml(emailParams),
       });
 
-      // 6. SAVE TO FIRESTORE (The Audit Trail)
+      // 5. SAVE TO FIRESTORE
+      const db = admin.firestore();
       const sessionRef = db.collection("coaching_sessions").doc();
       await sessionRef.set({
-        assessorId,
-        assessorName,
+        assessorId: staffId,
+        assessorName: staffName,
         learnerId,
         learnerName,
         assessmentId: assessmentId || null,
+        sessionCategory,
         topic,
         dateTime: startTime.toISOString(),
         meetLink,
-        status: "pending_notes", // This forces them to come back and write notes later!
+        status: isLearnerInitiated ? "requested" : "pending_notes",
+        initiatedBy: auth.uid,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 
-      logger.info(`Successfully scheduled coaching session ${sessionRef.id}`);
-
-      // 7. RETURN LINK TO FRONTEND
-      return {
-        success: true,
-        meetLink,
-        sessionId: sessionRef.id,
-      };
-    } catch (error: any) {
-      logger.error("Failed to schedule coaching session:", error);
-      throw new HttpsError(
-        "internal",
-        error.message || "Failed to schedule the meeting.",
-      );
+      return { success: true, meetLink, sessionId: sessionRef.id };
+    } catch (error) {
+      logger.error("Failed to schedule session:", error);
+      throw new HttpsError("internal", "Failed to schedule the meeting.");
     }
   },
 );
