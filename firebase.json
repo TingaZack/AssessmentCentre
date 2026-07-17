@@ -14,7 +14,7 @@
     ],
     "headers": [
       {
-        "source": "**",
+        "source": "/ide/**", 
         "headers": [
           {
             "key": "Cross-Origin-Embedder-Policy",

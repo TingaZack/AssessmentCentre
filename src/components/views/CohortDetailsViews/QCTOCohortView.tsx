@@ -983,12 +983,12 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
                                         <table className="mlab-table">
                                             <thead>
                                                 <tr>
-                                                    <th style={{ color: 'var(--mlab-midnight)' }}>Session Date</th>
-                                                    <th style={{ color: 'var(--mlab-midnight)' }}>Expected Duration</th>
-                                                    <th style={{ color: 'var(--mlab-midnight)' }}>Total Captured</th>
-                                                    <th style={{ color: 'var(--mlab-midnight)' }}>Present (80%+)</th>
-                                                    <th style={{ color: 'var(--mlab-midnight)' }}>Short Hours</th>
-                                                    <th style={{ color: 'var(--mlab-midnight)' }}>Absent</th>
+                                                    <th>Session Date</th>
+                                                    <th>Expected Duration</th>
+                                                    <th>Total Captured</th>
+                                                    <th>Present (80%+)</th>
+                                                    <th>Short Hours</th>
+                                                    <th>Absent</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -2132,12 +2132,12 @@ export const QCTOCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
                                         <table className="mlab-table">
                                             <thead>
                                                 <tr>
-                                                    <th style={{ color: 'var(--mlab-midnight)' }}>Session Date</th>
-                                                    <th style={{ color: 'var(--mlab-midnight)' }}>Expected Duration</th>
-                                                    <th style={{ color: 'var(--mlab-midnight)' }}>Total Captured</th>
-                                                    <th style={{ color: 'var(--mlab-midnight)' }}>Present (80%+)</th>
-                                                    <th style={{ color: 'var(--mlab-midnight)' }}>Short Hours</th>
-                                                    <th style={{ color: 'var(--mlab-midnight)' }}>Absent</th>
+                                                    <th>Session Date</th>
+                                                    <th>Expected Duration</th>
+                                                    <th>Total Captured</th>
+                                                    <th>Present (80%+)</th>
+                                                    <th>Short Hours</th>
+                                                    <th>Absent</th>
                                                 </tr>
                                             </thead>
                                             <tbody>

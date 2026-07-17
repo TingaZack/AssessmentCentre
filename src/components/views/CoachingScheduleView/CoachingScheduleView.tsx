@@ -12,6 +12,7 @@ import {
 import { useToast } from '../../common/Toast/Toast';
 import { createPortal } from 'react-dom';
 import moment from 'moment';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 
 // --- Interfaces ---
 interface CoachingSession {
@@ -129,9 +130,11 @@ export const CoachingScheduleView: React.FC = () => {
         let q;
         const sessionsRef = collection(db, 'coaching_sessions');
 
-        // Admins see all sessions, Facilitators/Assessors see only their own
+        // Admins see all, Learners see their own, Staff see their assigned sessions
         if (user.role === 'admin' || user.isSuperAdmin) {
             q = query(sessionsRef);
+        } else if (user.role === 'learner') {
+            q = query(sessionsRef, where('learnerId', '==', user.uid));
         } else {
             q = query(sessionsRef, where('assessorId', '==', user.uid));
         }
@@ -161,6 +164,25 @@ export const CoachingScheduleView: React.FC = () => {
             toast.success("Session cancelled.");
         } catch (err: any) {
             toast.error("Failed to cancel session.");
+        }
+    };
+
+    const testGoogleAuth = async () => {
+        const functions = getFunctions();
+        const verifyCreds = httpsCallable(functions, 'verifyCalendarCredentials');
+
+        toast.info("Testing Google Calendar File...");
+        try {
+            const result: any = await verifyCreds();
+            if (result.data.success) {
+                toast.success(result.data.message);
+                alert(result.data.message); // Pops up a big alert so you can read the whole message
+            } else {
+                toast.error(result.data.message);
+                alert(result.data.message);
+            }
+        } catch (error: any) {
+            alert("Error reaching backend: " + error.message);
         }
     };
 
@@ -281,6 +303,13 @@ export const CoachingScheduleView: React.FC = () => {
                             All
                         </button>
                     </div>
+
+                    <button
+                        onClick={testGoogleAuth}
+                        style={{ background: '#3b82f6', color: 'white', padding: '8px 16px', borderRadius: '6px', border: 'none', cursor: 'pointer' }}
+                    >
+                        Test Google Calendar File
+                    </button>
 
                     <div style={{ height: '36px', border: '1px solid var(--mlab-border)', borderRadius: '6px', background: 'white', display: 'flex', alignItems: 'center', flex: '1', minWidth: '220px', maxWidth: '350px', overflow: 'hidden' }}>
                         <Search size={16} color="var(--mlab-grey)" style={{ marginLeft: '12px', flexShrink: 0 }} />

@@ -132,7 +132,7 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
     };
 
     const handleAddPerson = () => {
-        if (isEventEnded) return;
+        // EXCEPTION: Allowed to edit persons even if event ended
         if (newPersonName.trim() && !responsiblePersons.includes(newPersonName.trim())) {
             setResponsiblePersons([...responsiblePersons, newPersonName.trim()]);
             setNewPersonName("");
@@ -140,7 +140,7 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
     };
 
     const handleRemovePerson = (personToRemove: string) => {
-        if (isEventEnded) return;
+        // EXCEPTION: Allowed to edit persons even if event ended
         setResponsiblePersons(prev => prev.filter(p => p !== personToRemove));
     };
 
@@ -173,7 +173,6 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (isEventEnded) return; // Hard gate protection
         setErrorMessage(null);
 
         if (!eventName.trim() || !location.trim() || !streetAddress.trim()) {
@@ -217,8 +216,6 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
             return;
         }
 
-        setIsSaving(true);
-
         const eventPayload: Partial<EcosystemEvent> = {
             eventName,
             location,
@@ -255,6 +252,42 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
                 }))
         };
 
+        // ─── DEEP COMPARISON NO-OP CHECK ───
+        if (event) {
+            const originalPayload: Partial<EcosystemEvent> = {
+                eventName: event.eventName || "",
+                location: event.location || "",
+                date: new Date(event.date ? event.date.split("T")[0] : todayStr).toISOString(),
+                endDate: new Date((event as any).endDate ? (event as any).endDate.split("T")[0] : (event.date ? event.date.split("T")[0] : todayStr)).toISOString(),
+                maxCapacity: event.maxCapacity || 50,
+                eventType: (event as any).eventType || "",
+                linkedTargets: event.linkedTargets || [],
+                responsiblePersons: (event as any).responsiblePersons || [],
+                locationDetails: {
+                    lat: (event as any).locationDetails?.lat || 0,
+                    lng: (event as any).locationDetails?.lng || 0,
+                    streetAddress: (event as any).locationDetails?.streetAddress || "",
+                    city: (event as any).locationDetails?.city || "",
+                    provinceCode: (event as any).locationDetails?.provinceCode || "",
+                    postalCode: (event as any).locationDetails?.postalCode || ""
+                } as any,
+                settings: {
+                    requireIdPassport: event.settings?.requireIdPassport || "optional",
+                    wifiSsid: (event.settings as any)?.wifiSsid || "",
+                    wifiPassword: (event.settings as any)?.wifiPassword || "",
+                    allowedProgrammes: []
+                } as any,
+                guestFormBlueprint: event.guestFormBlueprint || []
+            };
+
+            // If the stringified forms are exactly identical, close immediately without writing to DB
+            if (JSON.stringify(eventPayload) === JSON.stringify(originalPayload)) {
+                onClose();
+                return;
+            }
+        }
+
+        setIsSaving(true);
         try {
             await onSave(eventPayload);
         } catch (err: any) {
@@ -283,8 +316,8 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
                         {/* HIGH VISIBILITY IMMUTABILITY BANNER */}
                         {isEventEnded && (
                             <div className="lfm-error-banner" style={{ background: '#fffbeb', border: '2px solid #f59e0b', borderLeft: '5px solid #f59e0b', color: '#b45309', marginBottom: '1rem' }}>
-                                <Lock size={16} style={{ color: '#f59e0b' }} />
-                                <span><strong>DATA INTEGRITY ENGAGED:</strong> This ecosystem event has concluded. Records are cryptographically frozen in accordance with strict institutional auditing standards to avoid altering demographic metrics.</span>
+                                <Lock size={16} style={{ color: '#f59e0b', flexShrink: 0 }} />
+                                <span><strong>DATA INTEGRITY ENGAGED:</strong> This ecosystem event has concluded. Records are cryptographically frozen to avoid altering demographic metrics. <strong>Note: Facilitator assignments can still be edited.</strong></span>
                             </div>
                         )}
 
@@ -313,14 +346,13 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
                                             />
                                         </div>
 
-                                        {/* PERSONS RESPONSIBLE BUILDER */}
+                                        {/* PERSONS RESPONSIBLE BUILDER - UNLOCKED */}
                                         <div className="lfm-fg lfm-fg--full">
                                             <label style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                 <Users size={12} /> Persons Responsible (Facilitators / Managers) *
                                             </label>
                                             <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
                                                 <input
-                                                    disabled={isEventEnded}
                                                     type="text"
                                                     className="mlab-input"
                                                     placeholder="e.g. John Doe, Sarah Smith"
@@ -334,7 +366,7 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
                                                     }}
                                                     style={{ flex: 1 }}
                                                 />
-                                                <button disabled={isEventEnded || !newPersonName.trim()} type="button" className="mlab-btn mlab-btn--outline-blue mlab-btn--sm" onClick={handleAddPerson}>
+                                                <button disabled={!newPersonName.trim()} type="button" className="mlab-btn mlab-btn--outline-blue mlab-btn--sm" onClick={handleAddPerson}>
                                                     <Plus size={14} /> Add
                                                 </button>
                                             </div>
@@ -343,11 +375,9 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
                                                     {responsiblePersons.map(person => (
                                                         <span key={person} style={{ background: 'var(--mlab-light-blue)', border: '1px solid var(--mlab-blue)', color: 'var(--mlab-blue)', fontSize: '0.75rem', padding: '4px 8px', borderRadius: '4px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                             {person}
-                                                            {!isEventEnded && (
-                                                                <button type="button" onClick={() => handleRemovePerson(person)} style={{ background: 'none', border: 'none', color: 'var(--mlab-red)', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' }}>
-                                                                    <X size={12} />
-                                                                </button>
-                                                            )}
+                                                            <button type="button" onClick={() => handleRemovePerson(person)} style={{ background: 'none', border: 'none', color: 'var(--mlab-red)', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' }}>
+                                                                <X size={12} />
+                                                            </button>
                                                         </span>
                                                     ))}
                                                 </div>
@@ -732,13 +762,11 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
 
                     <div className="lfm-footer">
                         <button type="button" className="lfm-btn lfm-btn--ghost" onClick={onClose} disabled={isSaving}>
-                            {isEventEnded ? "Dismiss" : "Cancel"}
+                            Cancel
                         </button>
-                        {!isEventEnded && (
-                            <button type="submit" className="lfm-btn lfm-btn--primary" disabled={isSaving}>
-                                {isSaving ? <><Loader2 size={13} className="lfm-spin" /> Saving…</> : <><Save size={13} /> Save Event</>}
-                            </button>
-                        )}
+                        <button type="submit" className="lfm-btn lfm-btn--primary" disabled={isSaving}>
+                            {isSaving ? <><Loader2 size={13} className="lfm-spin" /> Saving…</> : <><Save size={13} /> Save Event</>}
+                        </button>
                     </div>
                 </form>
             </div>

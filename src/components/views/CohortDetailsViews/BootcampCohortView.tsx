@@ -208,7 +208,7 @@ const AILessonPlanModal: React.FC<any> = ({ isOpen, onClose, onSave, onShowStatu
 
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'white', border: '1px solid #cbd5e1', padding: '6px 12px', borderRadius: '6px', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
                                             <Calendar size={14} color="#0284c7" />
-                                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--mlab-midnight)', textTransform: 'uppercase', letterSpacing: '0.025em' }}>Session Date:</span>
+                                            <span style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.025em' }}>Session Date:</span>
                                             <input
                                                 type="date"
                                                 value={sessionDate}

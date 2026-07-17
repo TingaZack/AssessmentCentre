@@ -32,7 +32,7 @@ import {
 import { ethers } from "ethers";
 import { defineSecret } from "firebase-functions/params";
 
-import { google } from "googleapis";
+// import { google } from "googleapis";
 
 const cors = require("cors")({ origin: true });
 
@@ -9405,9 +9405,11 @@ export const getCodeSnapshot = onCall(
 // OFFICIAL COACHING & SUPPORT SCHEDULER (GOOGLE MEET API)
 // ============================================================================
 import * as path from "path";
+import { google } from "googleapis";
+
 export const scheduleCoachingSession = onCall(
   {
-    secrets: [mailgunSecret],
+    secrets: [mailgunSecret], // Only Mailgun needed here now
     region: "us-central1",
     cors: true,
     invoker: "public",
@@ -9416,12 +9418,8 @@ export const scheduleCoachingSession = onCall(
     logger.info("BACKEND: scheduleCoachingSession triggered.");
     const auth = request.auth;
 
-    if (!auth) {
-      throw new HttpsError(
-        "unauthenticated",
-        "You must be logged in to schedule a session.",
-      );
-    }
+    if (!auth)
+      throw new HttpsError("unauthenticated", "You must be logged in.");
 
     const {
       learnerId,
@@ -9431,17 +9429,10 @@ export const scheduleCoachingSession = onCall(
       staffEmail,
       staffName,
       dateTime,
-      topic, // User's typed description
-      sessionCategory, // The Dropdown Value (e.g., "Wellness & Support")
-      assessmentId, // Optional
+      topic,
+      sessionCategory,
+      assessmentId,
     } = request.data;
-
-    if (!learnerId || !staffId || !dateTime || !sessionCategory) {
-      throw new HttpsError(
-        "invalid-argument",
-        "Missing required scheduling parameters.",
-      );
-    }
 
     const isLearnerInitiated = auth.token.role === "learner";
     const initiatorName = isLearnerInitiated ? learnerName : staffName;
@@ -9449,18 +9440,22 @@ export const scheduleCoachingSession = onCall(
     const recipientName = isLearnerInitiated ? staffName : learnerName;
 
     try {
-      // 1. AUTHENTICATE WITH GOOGLE CALENDAR API
-      const googleAuth = new google.auth.GoogleAuth({
-        // keyFile: "./service-account.json",
-        keyFile: path.resolve(__dirname, "../service-account1.json"),
-        scopes: ["https://www.googleapis.com/auth/calendar.events"],
-      });
-      const calendar = google.calendar({ version: "v3", auth: googleAuth });
-
-      // 2. BUILD THE CALENDAR EVENT
       const startTime = new Date(dateTime);
-      const endTime = new Date(startTime.getTime() + 60 * 60000); // 1 Hour
+      const endTime = new Date(startTime.getTime() + 60 * 60000);
 
+      // 1. IMPERSONATE THE CENTRAL MLAB ACCOUNT USING THE PHYSICAL FILE
+      const ORGANIZER_EMAIL = "codetribe@mlab.co.za"; // The official account
+      const keyFilePath = path.resolve(__dirname, "../service-account1.json");
+
+      const jwtClient = new google.auth.JWT({
+        keyFile: keyFilePath,
+        scopes: ["https://www.googleapis.com/auth/calendar"],
+        subject: ORGANIZER_EMAIL,
+      });
+
+      const calendar = google.calendar({ version: "v3", auth: jwtClient });
+
+      // 2. BUILD THE EVENT
       const event = {
         summary: `mLab Support [${sessionCategory}]: ${learnerName} & ${staffName}`,
         description: `This session was requested by ${initiatorName}.\n\nCategory: ${sessionCategory}\nTopic: ${topic}\n\nPlease join using the Google Meet link attached.`,
@@ -9472,7 +9467,10 @@ export const scheduleCoachingSession = onCall(
           dateTime: endTime.toISOString(),
           timeZone: "Africa/Johannesburg",
         },
+
+        // Add BOTH users as attendees so they both get invited
         attendees: [{ email: learnerEmail }, { email: staffEmail }],
+
         conferenceData: {
           createRequest: {
             requestId: `meet-${Date.now()}-${learnerId}`,
@@ -9481,33 +9479,31 @@ export const scheduleCoachingSession = onCall(
         },
       };
 
-      // 3. PUSH TO GOOGLE
+      // 3. CREATE EVENT ON CODETRIBE'S CALENDAR
       const calendarResponse = await calendar.events.insert({
-        calendarId: staffEmail,
+        calendarId: "primary", // This is now codetribe@mlab.co.za's calendar
         conferenceDataVersion: 1,
-        sendUpdates: "all",
+        sendUpdates: "all", // Tells Google to email the `.ics` invites to the attendees
         requestBody: event,
       });
 
       const meetLink = calendarResponse.data.hangoutLink || "";
 
-      // 4. SEND DYNAMIC MLAB EMAIL
+      // 4. SEND DYNAMIC MLAB EMAIL VIA MAILGUN
       const emailParams = {
         title: "Support Session Booked",
         subtitle: sessionCategory,
         recipientName: recipientName,
         bodyHtml: `
           <p><strong>${initiatorName}</strong> has scheduled a 1-on-1 session with you regarding: <em>${topic}</em>.</p>
-          
           <div style="background-color: #f8fafc; padding: 15px; border-radius: 6px; border: 1px solid #dde4e8; border-left: 4px solid #0ea5e9; margin: 20px 0;">
               <p style="margin: 0; color: #073f4e; font-size: 13px;"><strong>Date & Time:</strong><br/>
               ${startTime.toLocaleString("en-ZA", { timeZone: "Africa/Johannesburg", dateStyle: "full", timeStyle: "short" })} (SAST)</p>
           </div>
-          
-          <p>A calendar invite with the meeting link has also been sent to your inbox. Please be on time.</p>
+          <p>An official calendar invite with the meeting link has been sent to your inbox from <strong>Codetribe</strong>. Please accept the invite to add it to your calendar.</p>
         `,
         ctaText: "Join Google Meet",
-        ctaLink: meetLink || APP_URL,
+        ctaLink: meetLink,
         showStepIndicator: false,
       };
 
@@ -9521,6 +9517,7 @@ export const scheduleCoachingSession = onCall(
       // 5. SAVE TO FIRESTORE
       const db = admin.firestore();
       const sessionRef = db.collection("coaching_sessions").doc();
+
       await sessionRef.set({
         assessorId: staffId,
         assessorName: staffName,
@@ -9540,6 +9537,539 @@ export const scheduleCoachingSession = onCall(
     } catch (error) {
       logger.error("Failed to schedule session:", error);
       throw new HttpsError("internal", "Failed to schedule the meeting.");
+    }
+  },
+);
+
+// // ─── DEFINE AI SECRETS ───
+// const openRouterSecret = defineSecret("OPENROUTER_API_KEY");
+// const hfTokenSecret = defineSecret("HF_TOKEN");
+
+// // ─── REUSABLE MULTI-PROVIDER AI UTILITY ───
+// const generateCompletion = async (
+//   messages: any[],
+//   temperature = 0.4,
+//   maxTokens = 3000,
+// ) => {
+//   const openRouterKey = openRouterSecret.value();
+//   const hfToken = hfTokenSecret.value();
+
+//   const OPENROUTER_FALLBACKS = [
+//     "google/gemini-2.5-flash",
+//     "qwen/qwen-plus",
+//     "meta-llama/llama-3-70b-instruct",
+//     "google/gemini-1.5-flash:free",
+//     "meta-llama/llama-3-8b-instruct:free",
+//   ];
+
+//   const HUGGINGFACE_FALLBACKS = [
+//     "meta-llama/Llama-3.1-8B-Instruct",
+//     "mistralai/Mistral-7B-Instruct-v0.3",
+//   ];
+
+//   try {
+//     logger.info("Attempting AI Generation via OpenRouter...");
+//     const response = await fetch(
+//       "https://openrouter.ai/api/v1/chat/completions",
+//       {
+//         method: "POST",
+//         headers: {
+//           Authorization: `Bearer ${openRouterKey}`,
+//           "Content-Type": "application/json",
+//           "HTTP-Referer": "https://mlabassessmentcenter.web.app",
+//           "X-Title": "mLab Ecosystem",
+//         },
+//         body: JSON.stringify({
+//           models: OPENROUTER_FALLBACKS,
+//           messages: messages,
+//           temperature: temperature,
+//           max_tokens: maxTokens,
+//           route: "fallback",
+//         }),
+//       },
+//     );
+
+//     if (response.ok) {
+//       const data = await response.json();
+//       return {
+//         text: data.choices[0].message.content,
+//         modelUsed: `OpenRouter (${data.model})`,
+//       };
+//     }
+//     throw new Error(`OpenRouter HTTP ${response.status}`);
+//   } catch (openRouterError: any) {
+//     logger.warn(
+//       "OpenRouter completely failed. Redirecting to Hugging Face...",
+//       openRouterError.message,
+//     );
+
+//     for (const model of HUGGINGFACE_FALLBACKS) {
+//       try {
+//         const hfResponse = await fetch(
+//           "https://router.huggingface.co/v1/chat/completions",
+//           {
+//             method: "POST",
+//             headers: {
+//               Authorization: `Bearer ${hfToken}`,
+//               "Content-Type": "application/json",
+//             },
+//             body: JSON.stringify({
+//               model,
+//               messages,
+//               temperature,
+//               max_tokens: maxTokens,
+//             }),
+//           },
+//         );
+
+//         if (hfResponse.ok) {
+//           const hfData = await hfResponse.json();
+//           return {
+//             text: hfData.choices[0].message.content,
+//             modelUsed: `HuggingFace (${model})`,
+//           };
+//         }
+//       } catch (hfError) {
+//         logger.error(`HF Model ${model} failed`, hfError);
+//       }
+//     }
+//     throw new Error(
+//       "Critical Failure: Both OpenRouter and Hugging Face failed.",
+//     );
+//   }
+// };
+
+// export const generateEventReport = onCall(
+//   {
+//     secrets: [openRouterSecret, hfTokenSecret],
+//     timeoutSeconds: 300,
+//     memory: "512MiB",
+//   },
+//   async (request) => {
+//     logger.info("BACKEND: generateEventReport triggered.");
+//     const auth = request.auth;
+
+//     if (!auth || !["admin", "facilitator"].includes(auth.token.role)) {
+//       throw new HttpsError(
+//         "permission-denied",
+//         "Only authorized staff can generate reports.",
+//       );
+//     }
+
+//     const {
+//       eventId,
+//       eventDetails,
+//       metrics,
+//       humanContext,
+//       includeCharts,
+//       photoUrls,
+//       templateUrl,
+//     } = request.data;
+
+//     let systemPrompt = `You are an elite Monitoring & Evaluation (M&E) Officer at mLab Southern Africa.
+//     Your task is to write a highly professional, structured post-event report based on the provided metrics and facilitator notes.
+//     Maintain a formal, objective, and analytical tone suitable for SETA/QCTO and corporate stakeholders.`;
+
+//     if (includeCharts) {
+//       systemPrompt += `\nIMPORTANT: Include a demographic breakdown section. Output the data for this breakdown STRICTLY as a valid JSON array wrapped in <chart-data> tags. Example: <chart-data>[{"name": "Youth", "value": 15}]</chart-data>. Do not use markdown tables for demographics.`;
+//     } else {
+//       systemPrompt += `\nPresent all demographic and attendance data in clean, easy-to-read Markdown tables.`;
+//     }
+
+//     // 🚀 NEW: Explicitly command the AI to use HTML/CSS if a template is provided
+//     if (templateUrl) {
+//       systemPrompt += `\n\nCRITICAL STYLING COMMAND: The user has provided a reference template image. You MUST act as a frontend developer and mimic the exact visual structure, layout, and brand colors seen in the template.
+//       Do NOT use basic markdown headers. You MUST use inline HTML and CSS (e.g., <div style="background-color: #073f4e; color: white; padding: 10px; border-radius: 5px;">, <h2 style="color: #94c73d;">) to perfectly replicate the aesthetic of the provided template.`;
+//     }
+
+//     let userPromptText = `
+//     EVENT DETAILS:
+//     - Name: ${eventDetails.eventName}
+//     - Location: ${eventDetails.location}
+//     - Date: ${eventDetails.date}
+
+//     HARD METRICS:
+//     - Total Attendance: ${metrics.totalAttendance} / ${metrics.maxCapacity}
+//     - Youth (18-35): ${metrics.youthCount}
+//     - Female Participants: ${metrics.femaleCount}
+
+//     FACILITATOR NOTES (Human Context):
+//     - Objectives & Highlights: ${humanContext.highlights || "None provided."}
+//     - Challenges: ${humanContext.challenges || "None provided."}
+//     `;
+
+//     if (photoUrls && photoUrls.length > 0) {
+//       userPromptText += `\n\nEVENT MEDIA / PHOTOS TO INCLUDE:\n`;
+//       photoUrls.forEach((url: string, index: number) => {
+//         userPromptText += `- Photo ${index + 1}: ${url}\n`;
+//       });
+//       userPromptText += `\nCRITICAL: You must embed these images directly into the report body using standard HTML: <img src="url" style="width:100%; border-radius:8px;" />`;
+//     }
+
+//     // 🚀 NEW: Format the payload for Vision-capable models (OpenRouter format)
+//     let userContent: any = userPromptText;
+
+//     if (templateUrl) {
+//       // If a template exists, convert the user content into a multimodal array
+//       userContent = [
+//         {
+//           type: "text",
+//           text:
+//             userPromptText +
+//             "\n\nAnalyze the attached template image and apply its exact visual styling (colors, fonts, borders) to this report using inline HTML/CSS.",
+//         },
+//         { type: "image_url", image_url: { url: templateUrl } },
+//       ];
+//     }
+
+//     try {
+//       const aiResult = await generateCompletion([
+//         { role: "system", content: systemPrompt },
+//         { role: "user", content: userContent }, // Passes the multimodal payload
+//       ]);
+
+//       // 🚀 SAVE REPORT HISTORY TO FIRESTORE
+//       const db = admin.firestore();
+//       const reportRef = db.collection("event_reports").doc();
+
+//       await reportRef.set({
+//         eventId: eventId || "unknown_event",
+//         eventName: eventDetails.eventName,
+//         generatedBy: auth.uid,
+//         generatedAt: new Date().toISOString(),
+//         markdown: aiResult.text,
+//         modelUsed: aiResult.modelUsed,
+//         photoUrls: photoUrls || [],
+//         templateUrl: templateUrl || null,
+//         status: "final",
+//       });
+
+//       return {
+//         success: true,
+//         markdown: aiResult.text,
+//         modelUsed: aiResult.modelUsed,
+//         reportId: reportRef.id,
+//       };
+//     } catch (error: any) {
+//       logger.error("Report Generation Error:", error);
+//       throw new HttpsError(
+//         "internal",
+//         "Failed to generate AI report: " + error.message,
+//       );
+//     }
+//   },
+// );
+
+export const exportReportToPDF = onCall(
+  { timeoutSeconds: 300, memory: "1GiB", region: "us-central1" },
+  async (request) => {
+    const auth = request.auth;
+    if (!auth) throw new HttpsError("unauthenticated", "Must be logged in.");
+
+    const { htmlContent, reportName } = request.data;
+
+    if (!htmlContent) {
+      throw new HttpsError("invalid-argument", "HTML content is required.");
+    }
+
+    try {
+      logger.info(`[PDF Engine] Spawning Puppeteer for ${reportName}...`);
+
+      const browser = await puppeteer.launch({
+        args: chromium.args,
+        defaultViewport: chromium.defaultViewport,
+        executablePath: await chromium.executablePath(),
+        headless: chromium.headless,
+      });
+
+      const page = await browser.newPage();
+
+      // Wait until network is idle so all Firebase images have time to fully load!
+      await page.setContent(htmlContent, {
+        waitUntil: ["load", "networkidle0"],
+      });
+
+      const pdfBuffer = await page.pdf({
+        format: "A4",
+        printBackground: true,
+        margin: { top: "15mm", right: "15mm", bottom: "15mm", left: "15mm" },
+      });
+
+      await browser.close();
+
+      // Save to Firebase Storage
+      const bucket = admin.storage().bucket();
+      const safeName = (reportName || "Report").replace(/[^a-zA-Z0-9]/g, "_");
+      const filePath = `ai_reports/pdfs/${safeName}_${Date.now()}.pdf`;
+      const file = bucket.file(filePath);
+
+      await file.save(pdfBuffer, {
+        metadata: { contentType: "application/pdf" },
+      });
+
+      // Generate a Download URL valid for 2 hours
+      const [downloadUrl] = await file.getSignedUrl({
+        action: "read",
+        expires: Date.now() + 1000 * 60 * 60 * 2,
+      });
+
+      return { success: true, url: downloadUrl };
+    } catch (error: any) {
+      logger.error("PDF Generation Error:", error);
+      throw new HttpsError(
+        "internal",
+        "Failed to render PDF: " + error.message,
+      );
+    }
+  },
+);
+
+// import { onCall, HttpsError } from "firebase-functions/v2/https";
+// import { defineSecret } from "firebase-functions/params";
+// import { logger } from "firebase-functions";
+// import * as admin from "firebase-admin";
+// import { getApps } from "firebase-admin/app";
+
+// // Initialize Firebase Admin (ensure this is done)
+// if (getApps().length === 0) {
+//   admin.initializeApp();
+// }
+
+// ─── DEFINE AI SECRETS ───
+const openRouterSecret = defineSecret("OPENROUTER_API_KEY");
+const hfTokenSecret = defineSecret("HF_TOKEN");
+
+// ─── REUSABLE MULTI-PROVIDER AI UTILITY ───
+export const generateCompletion = async (
+  messages: any[],
+  temperature = 0.4,
+  maxTokens = 3000,
+) => {
+  const openRouterKey = openRouterSecret.value();
+  const hfToken = hfTokenSecret.value();
+
+  // Models that natively support Text + Vision (Images) on OpenRouter
+  const OPENROUTER_FALLBACKS = [
+    "google/gemini-2.0-flash-exp:free",
+    "meta-llama/llama-3.2-90b-vision-instruct:free",
+    "qwen/qwen-2.5-72b-instruct",
+    "google/gemini-1.5-flash:free",
+  ];
+
+  const HUGGINGFACE_FALLBACKS = [
+    "meta-llama/Llama-3.1-8B-Instruct",
+    "mistralai/Mistral-7B-Instruct-v0.3",
+  ];
+
+  try {
+    logger.info("Attempting AI Generation via OpenRouter...");
+    const response = await fetch(
+      "https://openrouter.ai/api/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${openRouterKey}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://mlabassessmentcenter.web.app",
+          "X-Title": "mLab Ecosystem",
+        },
+        body: JSON.stringify({
+          models: OPENROUTER_FALLBACKS,
+          messages: messages,
+          temperature: temperature,
+          max_tokens: maxTokens,
+          route: "fallback",
+        }),
+      },
+    );
+
+    if (response.ok) {
+      const data = await response.json();
+      return {
+        text: data.choices[0].message.content,
+        modelUsed: `OpenRouter (${data.model})`,
+      };
+    }
+
+    const errorText = await response.text();
+    logger.warn(`OpenRouter returned HTTP ${response.status}: ${errorText}`);
+    throw new Error(`OpenRouter HTTP ${response.status}`);
+  } catch (openRouterError: any) {
+    logger.warn(
+      "OpenRouter completely failed. Redirecting to Hugging Face...",
+      openRouterError.message,
+    );
+
+    // 🚀 CRITICAL FIX: Flatten vision arrays to pure text so Hugging Face doesn't crash
+    const hfMessages = messages.map((msg) => {
+      if (Array.isArray(msg.content)) {
+        const textContent = msg.content
+          .filter((c: any) => c.type === "text")
+          .map((c: any) => c.text)
+          .join("\n\n");
+        return { role: msg.role, content: textContent };
+      }
+      return msg;
+    });
+
+    for (const model of HUGGINGFACE_FALLBACKS) {
+      try {
+        const hfResponse = await fetch(
+          "https://router.huggingface.co/v1/chat/completions",
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${hfToken}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model,
+              messages: hfMessages, // Pass the safe, text-only messages
+              temperature,
+              max_tokens: maxTokens,
+            }),
+          },
+        );
+
+        if (hfResponse.ok) {
+          const hfData = await hfResponse.json();
+          return {
+            text: hfData.choices[0].message.content,
+            modelUsed: `HuggingFace (${model})`,
+          };
+        }
+      } catch (hfError) {
+        logger.error(`HF Model ${model} failed`, hfError);
+      }
+    }
+
+    throw new Error(
+      "Critical Failure: Both OpenRouter and Hugging Face providers failed to generate a response.",
+    );
+  }
+};
+
+export const generateEventReport = onCall(
+  {
+    secrets: [openRouterSecret, hfTokenSecret],
+    timeoutSeconds: 300,
+    memory: "512MiB",
+  },
+  async (request) => {
+    logger.info("BACKEND: generateEventReport triggered.");
+    const auth = request.auth;
+
+    if (!auth || !["admin", "facilitator"].includes(auth.token.role)) {
+      throw new HttpsError(
+        "permission-denied",
+        "Only authorized staff can generate reports.",
+      );
+    }
+
+    const {
+      eventId,
+      eventDetails,
+      metrics,
+      humanContext,
+      includeCharts,
+      photoUrls,
+      templateUrl,
+    } = request.data;
+
+    let systemPrompt = `You are an elite Monitoring & Evaluation (M&E) Officer at mLab Southern Africa.
+    Your task is to write a highly professional, structured post-event report based on the provided metrics and facilitator notes.
+    Maintain a formal, objective, and analytical tone suitable for SETA/QCTO and corporate stakeholders.
+    
+    CRITICAL MARKDOWN FORMATTING INSTRUCTIONS:
+    - Use Markdown exclusively.
+    - Use H1 (#) for the Main Report Title.
+    - Use H2 (##) for Major Sections (e.g., Executive Summary, Event Highlights, Challenges, Conclusion).
+    - Use H3 (###) for sub-sections.
+    - Use bullet points (-) for lists.
+    - Use bold text (**) for emphasis on key metrics or terms.
+    - Ensure there is a blank line between paragraphs and after headers for clean rendering.`;
+
+    if (includeCharts) {
+      systemPrompt += `\nIMPORTANT: Include a demographic breakdown section. Output the data for this breakdown STRICTLY as a valid JSON array wrapped in <chart-data> tags. Example: <chart-data>[{"name": "Youth", "value": 15}]</chart-data>. Do not use markdown tables for demographics.`;
+    } else {
+      systemPrompt += `\nPresent all demographic and attendance data in clean, easy-to-read Markdown tables.`;
+    }
+
+    let userPromptText = `
+    EVENT DETAILS:
+    - Name: ${eventDetails.eventName}
+    - Location: ${eventDetails.location}
+    - Date: ${eventDetails.date}
+
+    HARD METRICS:
+    - Total Attendance: ${metrics.totalAttendance} / ${metrics.maxCapacity}
+    - Youth (18-35): ${metrics.youthCount}
+    - Female Participants: ${metrics.femaleCount}
+    - Male Participants: ${metrics.maleCount}
+
+    FACILITATOR NOTES (Human Context):
+    - Objectives & Highlights: ${humanContext.highlights || "None provided."}
+    - Challenges: ${humanContext.challenges || "None provided."}
+    `;
+
+    if (photoUrls && photoUrls.length > 0) {
+      userPromptText += `\n\nEVENT MEDIA / PHOTOS TO INCLUDE:\n`;
+      photoUrls.forEach((url: string, index: number) => {
+        userPromptText += `- Photo ${index + 1}: ${url}\n`;
+      });
+      userPromptText += `\nCRITICAL: You must embed these images directly into the report body (e.g., in the Highlights or Media section) using standard Markdown image syntax: ![Event Photo Description](url).`;
+    }
+
+    // 🚀 CRITICAL FIX: Build a single, unified User Content payload
+    let userContent: any = userPromptText;
+
+    if (templateUrl) {
+      userContent = [
+        { type: "text", text: userPromptText },
+        {
+          type: "text",
+          text: "CRITICAL: Please analyze the attached reference template image. Mimic its structural layout, section ordering, and formatting style exactly for the new report.",
+        },
+        { type: "image_url", image_url: { url: templateUrl } },
+      ];
+    }
+
+    const messages = [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userContent },
+    ];
+
+    try {
+      const aiResult = await generateCompletion(messages, 0.4, 4000);
+
+      // 🚀 SAVE REPORT HISTORY TO FIRESTORE
+      const db = admin.firestore();
+      const reportRef = db.collection("event_reports").doc();
+
+      await reportRef.set({
+        eventId: eventId || "unknown_event",
+        eventName: eventDetails.eventName,
+        generatedBy: auth.uid,
+        generatedAt: new Date().toISOString(),
+        markdown: aiResult.text,
+        modelUsed: aiResult.modelUsed,
+        photoUrls: photoUrls || [],
+        templateUrl: templateUrl || null,
+        status: "final",
+      });
+
+      return {
+        success: true,
+        markdown: aiResult.text,
+        modelUsed: aiResult.modelUsed,
+        reportId: reportRef.id,
+      };
+    } catch (error: any) {
+      logger.error("Report Generation Error:", error);
+      throw new HttpsError(
+        "internal",
+        "Failed to generate AI report: " + error.message,
+      );
     }
   },
 );
