@@ -1,7 +1,7 @@
 // src/components/views/ViewPortfolio/ViewPortfolio.tsx
 
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
-import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { useParams, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import {
     User, Calendar, FileText, CheckCircle, AlertTriangle, AlertCircle, Clock,
     BookOpen, Briefcase, FileBadge, Eye, Edit3,
@@ -483,7 +483,7 @@ const ExportModal: React.FC<{
 };
 
 // ==========================================================================
-// 🚀 MAIN APPLICATION DASHBOARD VIEW
+// MAIN APPLICATION DASHBOARD VIEW
 // ==========================================================================
 export const ViewPortfolio: React.FC = () => {
     const { id: routeId } = useParams();
@@ -502,8 +502,22 @@ export const ViewPortfolio: React.FC = () => {
 
     const [submissions, setSubmissions] = useState<LearnerSubmission[]>([]);
     const [loadingSubmissions, setLoadingSubmissions] = useState(true);
-    const [activeTab, setActiveTab] = useState<TabId>('overview');
+
+    const [searchParams, setSearchParams] = useSearchParams();
+    const urlTab = searchParams.get('tab') as TabId | null;
+    const validTabs: TabId[] = ['overview', 'knowledge', 'practical', 'workplace', 'other', 'compliance'];
+    const activeTab: TabId = urlTab && validTabs.includes(urlTab) ? urlTab : 'overview';
+
+    const setActiveTab = (tab: TabId) => {
+        setSearchParams((prev) => {
+            prev.set('tab', tab);
+            prev.delete('expanded');
+            return prev;
+        }, { replace: true });
+    };
+
     const [searchTerm, setSearchTerm] = useState('');
+
     const [statusFilter, setStatusFilter] = useState<string>('all');
     const [sortBy, setSortBy] = useState<'module' | 'date' | 'status' | 'title'>('module');
     const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
@@ -532,14 +546,28 @@ export const ViewPortfolio: React.FC = () => {
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 15;
 
-    const [expandedModules, setExpandedModules] = useState<Set<string>>(new Set());
+    const urlExpanded = searchParams.get('expanded');
+    const expandedModules = useMemo(() => new Set(urlExpanded ? urlExpanded.split(',') : []), [urlExpanded]);
 
     const toggleModuleAccordion = (moduleCode: string) => {
-        setExpandedModules(prev => {
-            const next = new Set(prev);
-            next.has(moduleCode) ? next.delete(moduleCode) : next.add(moduleCode);
-            return next;
-        });
+        setSearchParams((prev) => {
+            const current = new Set(prev.get('expanded') ? prev.get('expanded')!.split(',') : []);
+
+            // Toggle the module code in the URL
+            if (current.has(moduleCode)) {
+                current.delete(moduleCode);
+            } else {
+                current.add(moduleCode);
+            }
+
+            // Update URL or remove the param if empty
+            if (current.size > 0) {
+                prev.set('expanded', Array.from(current).join(','));
+            } else {
+                prev.delete('expanded');
+            }
+            return prev;
+        }, { replace: true }); // Keeps the back-button history clean!
     };
 
     // ─── 2. EFFECTS (DATA FETCHING) ───
