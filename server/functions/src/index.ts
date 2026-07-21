@@ -902,7 +902,7 @@ export const sendAdHocCertificate = onCall(
       title: `Your Certificate: ${awardTitle}`,
       subtitle: courseName,
       recipientName: recipientName,
-      bodyHtml: `<p>We are pleased to share your <strong>${awardTitle}</strong> for completing the <strong>${courseName}</strong>.</p>`,
+      bodyHtml: `<p>We are pleased to share your certificate of <strong>${awardTitle}</strong> for <strong>${courseName}</strong>.</p>`,
       ctaText: "Download Certificate (PDF)",
       ctaLink: pdfUrl,
       showStepIndicator: false,
@@ -916,9 +916,9 @@ export const sendAdHocCertificate = onCall(
         html: buildMlabEmailHtml(emailParams),
       });
       return { success: true, message: "Email sent successfully" };
-    } catch (error) {
+    } catch (error: any) {
       console.error("Email Error:", error);
-      throw new HttpsError("internal", "Failed to send email.");
+      throw new HttpsError("internal", error);
     }
   },
 );

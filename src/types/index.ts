@@ -278,6 +278,10 @@ export interface DashboardLearner
   updatedBy?: string;
   isBootcamp?: boolean;
 
+  dropoutDate?: string;
+  dropoutEvidenceUrl?: string | null;
+  dropoutReason?: string;
+
   campusId?: string;
   certificates?: CertificateRecord[];
   trainingEndDate?: string;

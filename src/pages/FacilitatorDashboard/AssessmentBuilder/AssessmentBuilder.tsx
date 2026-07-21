@@ -3,7 +3,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import {
-    collection, doc, setDoc, writeBatch, query, where, getDocs, onSnapshot
+    collection, doc, setDoc, writeBatch, query, where, getDocs, onSnapshot,
+    limit
 } from "firebase/firestore";
 import {
     getStorage, ref as fbStorageRef, uploadBytesResumable, getDownloadURL,
@@ -316,6 +317,7 @@ export const AssessmentBuilder: React.FC = () => {
 
     const [assessmentStatus, setAssessmentStatus] = useState<AssessmentStatusType>("draft");
     const [sendNotification, setSendNotification] = useState(true);
+    const [hasSubmissions, setHasSubmissions] = useState(false);
 
     const statusRef = useRef<AssessmentStatusType>("draft");
     useEffect(() => { statusRef.current = assessmentStatus; }, [assessmentStatus]);
@@ -366,6 +368,7 @@ export const AssessmentBuilder: React.FC = () => {
     const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
     const isDeployed = (assessmentStatus === "active" || assessmentStatus === "completed" || assessmentStatus === "scheduled" || assessmentStatus === "upcoming") && assessmentId !== undefined;
+    const isLockedStructure = isDeployed || hasSubmissions;
     const isInitialLoad = useRef(true);
 
     const handleBackNavigation = () => {
@@ -388,6 +391,20 @@ export const AssessmentBuilder: React.FC = () => {
 
         navigate('/facilitator/assessments/builder', { state: { cloneData } });
     };
+
+    useEffect(() => {
+        if (!assessmentId) return;
+        const checkSubmissions = async () => {
+            try {
+                const q = query(collection(db, "learner_submissions"), where("assessmentId", "==", assessmentId), limit(1));
+                const snap = await getDocs(q);
+                setHasSubmissions(!snap.empty);
+            } catch (e) {
+                console.error("Failed to check for submissions", e);
+            }
+        };
+        checkSubmissions();
+    }, [assessmentId]);
 
     useEffect(() => {
         if (cohorts.length === 0) fetchCohorts();
@@ -1612,6 +1629,7 @@ export const AssessmentBuilder: React.FC = () => {
                                 onStartEdit={startEdit} onEditChange={(p) => setEditDraft((d) => ({ ...d, ...p }))} onCommitEdit={commitEdit} onCancelEdit={cancelEdit} onConfirmDelete={confirmDelete} onExecuteDelete={executeDelete} onCancelDelete={cancelDelete}
                                 onStartAdd={() => { setAddingTopic(true); setEditingTopicId(null); }} onNewTopicChange={(p) => setNewTopic((d) => ({ ...d, ...p }))} onCommitAdd={commitAdd} onCancelAdd={cancelAdd}
                                 onAddBlock={(bt, tid) => { addBlock(bt, tid); setActivePanel("outline"); }}
+                                isLockedStructure={isLockedStructure}
                             />
                         )}
 
@@ -1694,9 +1712,19 @@ export const AssessmentBuilder: React.FC = () => {
 
                     <div className="ab-canvas-inner">
                         {isDeployed && (
+                            // <div className="ab-deployed-banner">
+                            //     <AlertTriangle size={20} />
+                            //     <div><strong>Strict Mode — Assessment Deployed.</strong> Structural changes are locked to protect learner data. You may edit text only.</div>
+                            // </div>
                             <div className="ab-deployed-banner">
                                 <AlertTriangle size={20} />
-                                <div><strong>Strict Mode — Assessment Deployed.</strong> Structural changes are locked to protect learner data. You may edit text only.</div>
+                                <div>
+                                    <strong>Strict Mode — Structure Locked.</strong>
+                                    {isDeployed
+                                        ? " Assessment is currently deployed."
+                                        : " Assessment has existing learner submissions."}
+                                    {" Structural changes (adding/deleting questions) are permanently locked to protect learner data. You may edit text only."}
+                                </div>
                             </div>
                         )}
 
@@ -1729,7 +1757,8 @@ export const AssessmentBuilder: React.FC = () => {
                         )}
 
                         {blocks.length === 0 ? (
-                            <EmptyCanvas onAdd={addBlock} />
+                            // <EmptyCanvas onAdd={addBlock} />
+                            !isLockedStructure ? <EmptyCanvas onAdd={addBlock} /> : <div className="ab-empty-canvas"><p style={{ color: '#64748b', fontSize: '0.9rem' }}>This assessment is locked and has no blocks.</p></div>
                         ) : (
                             <div className="ab-blocks-list">
                                 {blocks.map((b, idx) => (
@@ -1737,6 +1766,7 @@ export const AssessmentBuilder: React.FC = () => {
                                         onTemplateChange={handleTemplateChange}
                                         key={b.id} block={b} index={idx} total={blocks.length} topics={topics} focused={focusedBlock === b.id} isDeployed={isDeployed}
                                         onFocus={() => setFocusedBlock(b.id)} onUpdate={updateBlock} onUpdateOption={updateOption} onRemove={removeBlock} onMove={moveBlock}
+                                        isLockedStructure={isLockedStructure}
                                     />
                                 ))}
                             </div>
@@ -1886,6 +1916,7 @@ interface TopicsPanelProps {
     newTopic: Partial<Topic>;
     deleteConfirmId: string | null;
     isDeployed: boolean;
+    isLockedStructure: boolean;
     onStartEdit: (t: Topic) => void;
     onEditChange: (p: Partial<Topic>) => void;
     onCommitEdit: () => void;
@@ -1974,6 +2005,7 @@ interface BlockCardProps {
     focused: boolean;
     isDeployed: boolean;
     topics: Topic[];
+    isLockedStructure: boolean;
     onFocus: () => void;
     onUpdate: (id: string, field: keyof AssessmentBlock, val: any) => void;
     onUpdateOption: (bid: string, idx: number, val: string) => void;
@@ -1983,7 +2015,7 @@ interface BlockCardProps {
 }
 
 const BlockCard: React.FC<BlockCardProps> = ({
-    block, index, total, focused, topics, isDeployed, onFocus, onUpdate, onUpdateOption, onRemove, onMove,
+    block, index, total, focused, topics, isDeployed, isLockedStructure, onFocus, onUpdate, onUpdateOption, onRemove, onMove,
     onTemplateChange
 }) => {
     const meta = BLOCK_META[block.type];
@@ -2176,9 +2208,9 @@ const BlockCard: React.FC<BlockCardProps> = ({
                 <div className="ab-block-left">
                     <span className="ab-block-type-badge" style={{ color: meta.color, background: `${meta.color}18`, borderColor: `${meta.color}35` }}>{meta.icon}{meta.label}</span>
                     {topic && <span className="ab-block-topic-tag">{topic.code}</span>}
-                    {isDeployed && <span className="ab-locked-icon" title="Structure Locked"><Lock size={11} /></span>}
+                    {isLockedStructure && <span className="ab-locked-icon" title="Structure Locked"><Lock size={11} /></span>}
                 </div>
-                {!isDeployed && (
+                {!isLockedStructure && (
                     <div className="ab-block-actions">
                         <Tooltip content="Move up" placement="top"><button className="ab-ctrl-btn" onClick={(e) => { e.stopPropagation(); onMove(block.id, "up"); }} disabled={index === 0}>↑</button></Tooltip>
                         <Tooltip content="Move down" placement="top"><button className="ab-ctrl-btn" onClick={(e) => { e.stopPropagation(); onMove(block.id, "down"); }} disabled={index === total - 1}>↓</button></Tooltip>
@@ -2667,7 +2699,7 @@ const BlockCard: React.FC<BlockCardProps> = ({
                                 <div className="ab-criterion-header">
                                     <span className="ab-criterion-num">{i + 1}</span>
                                     <input type="text" className="ab-input ab-input--bold" value={criterion} disabled={isDeployed} onChange={(e) => updateCriterion(i, e.target.value)} placeholder="e.g. Open files and folders" />
-                                    {!isDeployed && <button className="ab-btn-transform-danger" onClick={() => removeCriterion(i)}><X size={15} /></button>}
+                                    {!isLockedStructure && <button className="ab-btn-transform-danger" onClick={() => removeCriterion(i)}><X size={15} /></button>}
                                 </div>
                                 <div className="ab-criterion-preview-stack">
                                     {block.requireEvidencePerCriterion !== false && (
@@ -2688,7 +2720,7 @@ const BlockCard: React.FC<BlockCardProps> = ({
                                 </div>
                             </div>
                         ))}
-                        {!isDeployed && <button className="ab-btn-text" onClick={addCriterion}><Plus size={13} /> Add Criterion</button>}
+                        {!isLockedStructure && <button className="ab-btn-text" onClick={addCriterion}><Plus size={13} /> Add Criterion</button>}
 
                         <div className="ab-signoff-preview">
                             <span className="ab-signoff-title">Global Assessor / Mentor Sign-off Preview</span>
@@ -2745,7 +2777,7 @@ const BlockCard: React.FC<BlockCardProps> = ({
                                     <div className="ab-wa-inputs">
                                         <input type="text" className="ab-input ab-w-80" value={wa.code} onChange={(e) => updateWA(wi, "code", e.target.value)} disabled={isDeployed} placeholder="WA0101" />
                                         <input type="text" className="ab-input ab-flex-1" value={wa.description} onChange={(e) => updateWA(wi, "description", e.target.value)} disabled={isDeployed} placeholder="Activity description…" />
-                                        {!isDeployed && <button className="ab-btn-icon-danger" onClick={() => removeWA(wi)}><X size={15} /></button>}
+                                        {!isLockedStructure && <button className="ab-btn-icon-danger" onClick={() => removeWA(wi)}><X size={15} /></button>}
                                     </div>
                                     <div className="ab-se-list">
                                         <span className="ab-se-title">Required Supporting Evidence (SE)</span>
@@ -2753,14 +2785,14 @@ const BlockCard: React.FC<BlockCardProps> = ({
                                             <div key={se.id} className="ab-se-row">
                                                 <input type="text" className="ab-input sm ab-w-70" value={se.code} onChange={(e) => updateSE(wi, si, "code", e.target.value)} disabled={isDeployed} placeholder="SE0101" />
                                                 <input type="text" className="ab-input sm ab-flex-1" value={se.description} onChange={(e) => updateSE(wi, si, "description", e.target.value)} disabled={isDeployed} placeholder="Describe expected evidence…" />
-                                                {!isDeployed && <button className="ab-btn-icon-danger ab-btn-icon-sm" onClick={() => removeSE(wi, si)}><Trash2 size={11} /></button>}
+                                                {!isLockedStructure && <button className="ab-btn-icon-danger ab-btn-icon-sm" onClick={() => removeSE(wi, si)}><Trash2 size={11} /></button>}
                                             </div>
                                         ))}
-                                        {!isDeployed && <button className="ab-btn-text ab-btn-text--sm ab-btn-text--rose" onClick={() => addSE(wi)}><Plus size={11} /> Add Evidence</button>}
+                                        {!isLockedStructure && <button className="ab-btn-text ab-btn-text--sm ab-btn-text--rose" onClick={() => addSE(wi)}><Plus size={11} /> Add Evidence</button>}
                                     </div>
                                 </div>
                             ))}
-                            {!isDeployed && <button className="ab-btn-text ab-btn-text--rose" onClick={addWA}><Plus size={13} /> Add Workplace Activity</button>}
+                            {!isLockedStructure && <button className="ab-btn-text ab-btn-text--rose" onClick={addWA}><Plus size={13} /> Add Workplace Activity</button>}
                         </div>
                         <div className="ab-qcto-toggles">
                             <label className={`ab-qcto-toggle-row ${isDeployed ? "ab-disabled" : ""}`}>

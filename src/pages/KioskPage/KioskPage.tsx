@@ -218,6 +218,9 @@ function ActiveKioskView({ session }: { session: KioskSession }) {
     const [timer, setTimer] = useState(15);
     const [liveScans, setLiveScans] = useState<any[]>([]);
 
+    // 🚀 NEW: Track dropped learners securely
+    const [droppedIds, setDroppedIds] = useState<Set<string>>(new Set());
+
     const [isSessionClosed, setIsSessionClosed] = useState(false);
     const [verifyingStatus, setVerifyingStatus] = useState(true);
 
@@ -279,7 +282,56 @@ function ActiveKioskView({ session }: { session: KioskSession }) {
         return () => { if (unsubscribe) unsubscribe(); };
     }, [session]);
 
-    // 2. 🕒 QR GENERATOR: Only refreshes if status is verified as OPEN
+    // 2. 🚀 DROPOUT LISTENER: Instantly fetch and monitor dropouts
+    useEffect(() => {
+        if (verifyingStatus || isSessionClosed) return;
+
+        // Monitor Enrollments
+        const unsubEnrollments = onSnapshot(
+            query(collection(db, 'enrollments'), where('cohortId', '==', session.cohortId)),
+            snap => {
+                setDroppedIds(prev => {
+                    const next = new Set(prev);
+                    snap.docs.forEach(doc => {
+                        const data = doc.data();
+                        if (data.status === 'dropped' && data.learnerId) {
+                            next.add(data.learnerId);
+                        } else if (data.learnerId) {
+                            next.delete(data.learnerId);
+                        }
+                    });
+                    return next;
+                });
+            }
+        );
+
+        // Monitor Base Learners (Fallback Safety)
+        const unsubLearners = onSnapshot(
+            query(collection(db, 'learners'), where('cohortId', '==', session.cohortId)),
+            snap => {
+                setDroppedIds(prev => {
+                    const next = new Set(prev);
+                    snap.docs.forEach(doc => {
+                        const data = doc.data();
+                        if (data.status === 'dropped') {
+                            next.add(doc.id);
+                            if (data.idNumber) next.add(data.idNumber); // Catch ID Numbers too
+                        } else {
+                            next.delete(doc.id);
+                        }
+                    });
+                    return next;
+                });
+            }
+        );
+
+        return () => {
+            unsubEnrollments();
+            unsubLearners();
+        };
+    }, [session.cohortId, verifyingStatus, isSessionClosed]);
+
+    // 3. 🕒 QR GENERATOR: Only refreshes if status is verified as OPEN
     useEffect(() => {
         if (verifyingStatus || isSessionClosed) return;
 
@@ -302,7 +354,7 @@ function ActiveKioskView({ session }: { session: KioskSession }) {
         return () => clearInterval(iv);
     }, [session, isSessionClosed, verifyingStatus]);
 
-    // 3. 👥 LIVE BOARD: Stream incoming scans
+    // 4. 👥 LIVE BOARD: Stream incoming scans
     useEffect(() => {
         if (verifyingStatus || isSessionClosed) return;
 
@@ -328,6 +380,8 @@ function ActiveKioskView({ session }: { session: KioskSession }) {
         });
     }, [session, verifyingStatus, isSessionClosed]);
 
+    // 🚀 FILTER SCANS: Ensure dropped learners never appear on the board
+    const activeScans = liveScans.filter(s => !droppedIds.has(s.learnerId));
 
     // ─── RENDER A: INITIAL STATUS VERIFICATION (The "Stall") ───
     if (verifyingStatus) {
@@ -411,17 +465,22 @@ function ActiveKioskView({ session }: { session: KioskSession }) {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, paddingBottom: 14, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="1.8" strokeLinecap="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" /></svg>
                         <span style={{ fontFamily: 'system-ui', fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.45)', letterSpacing: '0.16em', textTransform: 'uppercase', flex: 1 }}>Live Timesheet Board</span>
-                        <span style={{ fontFamily: 'system-ui', fontSize: 12, fontWeight: 700, color: GREEN, background: 'rgba(148,199,61,0.14)', border: '1px solid rgba(148,199,61,0.25)', borderRadius: 10, padding: '2px 10px' }}>{liveScans.length} Check-ins</span>
+
+                        {/* 🚀 Updated counter to use activeScans */}
+                        <span style={{ fontFamily: 'system-ui', fontSize: 12, fontWeight: 700, color: GREEN, background: 'rgba(148,199,61,0.14)', border: '1px solid rgba(148,199,61,0.25)', borderRadius: 10, padding: '2px 10px' }}>
+                            {activeScans.length} Check-ins
+                        </span>
                     </div>
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 10, overflowY: 'auto', flex: 1, paddingRight: 4 }}>
-                        {liveScans.length === 0 ? (
+                        {/* 🚀 Updated list to use activeScans */}
+                        {activeScans.length === 0 ? (
                             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, opacity: .3, gap: 10 }}>
                                 <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.4" strokeLinecap="round"><rect x="2" y="3" width="20" height="14" rx="3" /><path d="M8 21h8M12 17v4" /></svg>
                                 <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)', textAlign: 'center', fontWeight: 300 }}>Awaiting first scan…</p>
                             </div>
                         ) : (
-                            liveScans.map((s: any, idx: number) => (
+                            activeScans.map((s: any, idx: number) => (
                                 <div key={s.id} style={{ display: 'flex', flexDirection: 'column', gap: 8, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: '12px 14px', animation: 'slideInRight .3s ease both', animationDelay: `${idx * 0.04}s` }}>
                                     <div style={{ fontSize: 14, fontWeight: 600, color: '#fff', letterSpacing: '0.02em' }}>
                                         {(() => {

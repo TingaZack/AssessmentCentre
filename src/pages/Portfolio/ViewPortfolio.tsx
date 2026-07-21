@@ -532,7 +532,6 @@ export const ViewPortfolio: React.FC = () => {
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 15;
 
-    // 🚀 NEW STATE: Module Accordions
     const [expandedModules, setExpandedModules] = useState<Set<string>>(new Set());
 
     const toggleModuleAccordion = (moduleCode: string) => {
@@ -617,20 +616,49 @@ export const ViewPortfolio: React.FC = () => {
                 let subs: LearnerSubmission[] = [];
 
                 try {
-                    let subSnap;
+                    // 🚀 FIX: Query BOTH authUid and learnerId to prevent missing submissions!
+                    let mergedDocs = new Map();
+
                     if (user?.role === 'learner') {
-                        subSnap = await getDocs(query(subRef, where('authUid', '==', user.uid)));
+                        const snap = await getDocs(query(subRef, where('authUid', '==', user.uid)));
+                        snap.docs.forEach(d => mergedDocs.set(d.id, d));
                     } else {
-                        subSnap = await getDocs(query(subRef, where('learnerId', '==', targetHumanId)));
+                        const [authSnap, idSnap] = await Promise.all([
+                            getDocs(query(subRef, where('authUid', '==', targetAuthUid))),
+                            getDocs(query(subRef, where('learnerId', '==', targetHumanId)))
+                        ]);
+                        authSnap.docs.forEach(d => mergedDocs.set(d.id, d));
+                        idSnap.docs.forEach(d => mergedDocs.set(d.id, d));
                     }
 
                     if (activeCohortId) {
-                        subs = subSnap.docs
+                        subs = Array.from(mergedDocs.values())
                             .map(d => ({ id: d.id, ...d.data() } as LearnerSubmission))
                             .filter(s => s.cohortId === activeCohortId || !s.cohortId);
                     } else {
-                        subs = subSnap.docs.map(d => ({ id: d.id, ...d.data() } as LearnerSubmission));
+                        subs = Array.from(mergedDocs.values())
+                            .map(d => ({ id: d.id, ...d.data() } as LearnerSubmission));
                     }
+
+                    // 🚀 FIX: Deduplicate Ghost Submissions
+                    // If a blank 'not_started' duplicate was created, prioritize the real one.
+                    const deduplicatedMap = new Map<string, LearnerSubmission>();
+                    subs.forEach(sub => {
+                        const existing = deduplicatedMap.get(sub.assessmentId);
+                        if (!existing) {
+                            deduplicatedMap.set(sub.assessmentId, sub);
+                        } else {
+                            const statusWeights: Record<string, number> = { 'not_started': 0, 'in_progress': 1, 'returned': 2, 'submitted': 3, 'facilitator_reviewed': 4, 'graded': 5, 'moderated': 6 };
+                            const currWeight = statusWeights[sub.status] || 0;
+                            const existWeight = statusWeights[existing.status] || 0;
+                            if (currWeight > existWeight) {
+                                deduplicatedMap.set(sub.assessmentId, sub);
+                            }
+                        }
+                    });
+
+                    subs = Array.from(deduplicatedMap.values());
+
                 } catch (queryErr) {
                     console.error("Submission query error:", queryErr);
                 }
@@ -1263,7 +1291,7 @@ export const ViewPortfolio: React.FC = () => {
 
                             if (isNYC && user?.role !== 'learner' && !hasPendingAppeal) {
                                 return (
-                                    <button className="mlab-btn mlab-btn--warning mlab-btn--sm" onClick={() => setRemediationTarget(sub)}>
+                                    <button className="mlab-btn mlab-btn--warning mlab-btn--sm" disabled={isDropped} onClick={() => setRemediationTarget(sub)}>
                                         <AlertCircle size={14} style={{ marginRight: '4px' }} /> Remediate
                                     </button>
                                 );
@@ -1419,6 +1447,8 @@ export const ViewPortfolio: React.FC = () => {
         );
     }
 
+    const isDropped = enrollment.status === 'dropped';
+
     return (
         <div className="admin-layout">
             <ToastContainer toasts={toast.toasts} onClose={toast.closeToast} />
@@ -1511,8 +1541,12 @@ export const ViewPortfolio: React.FC = () => {
                         <p>{matchingProgramme?.name || "Qualification Portfolio"} • {enrollment.idNumber}</p>
                     </div>
                     <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                        {/* 🚀 UPDATED: Top-level generic schedule button clears context */}
-                        <button onClick={() => { setScheduleContext(null); setShowScheduleModal(true); }} className="mlab-btn mlab-btn--primary">
+                        <button onClick={() => {
+                            setScheduleContext(null);
+                            setShowScheduleModal(true);
+                        }}
+                            disabled={isDropped}
+                            className="mlab-btn mlab-btn--primary">
                             <Calendar size={16} /> Schedule Session
                         </button>
                         <button onClick={() => setShowExportModal(true)} className="mlab-btn mlab-btn--ghost">
