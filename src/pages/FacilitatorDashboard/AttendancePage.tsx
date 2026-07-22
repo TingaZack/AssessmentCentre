@@ -384,40 +384,65 @@ export const AttendancePage: React.FC = () => {
         getAttendance();
     }, [cohortId, registerDate, rawUrlDate]);
 
-    // 🚀 DYNAMIC STATS COMPONENT COUNTER
+    // 🚀 DYNAMIC STATS COMPONENT COUNTER (BOOTCAMP OPTIMIZED)
     const summaryStats = useMemo(() => {
         let present = 0;
         let partial = 0;
         let absent = 0;
-        let totalCohortHours = 0;
+        let ghosts = 0;
+        let bounced = 0;
 
-        let maleCount = 0;
-        let femaleCount = 0;
+        let attendingMaleCount = 0;
+        let attendingFemaleCount = 0;
+
+        let totalWatchMins = 0;
+        let expectedDuration = 120; // Default fallback
 
         attendanceList.forEach(l => {
+            if (l.expectedDuration) expectedDuration = l.expectedDuration;
+
+            const actualMins = l.actualDuration || 0;
+            const isAttended = l.status === 'Present' || l.status === 'Partial';
+
+            // 1. Categorize Attendance vs Ghost vs Bounce
             if (l.status === 'Present') present++;
             else if (l.status === 'Partial') partial++;
-            else absent++;
+            else {
+                absent++;
+                if (actualMins > 0) bounced++; // Logged in, but stayed < 20%
+                else ghosts++; // Never clicked the link
+            }
 
-            if (l.actualDuration) totalCohortHours += (l.actualDuration / 60);
+            // 2. Track Data ONLY for those who actually pitched up
+            if (isAttended) {
+                totalWatchMins += actualMins;
 
-            const rawGender = String(l.demographics?.genderCode || (l.demographics as any)?.gender || l.gender || '').trim().toLowerCase();
-            const isMale = rawGender === 'm' || (rawGender.includes('male') && rawGender !== 'female');
-            const isFemale = rawGender === 'f' || rawGender.includes('female');
+                const rawGender = String(l.demographics?.genderCode || (l.demographics as any)?.gender || l.gender || '').trim().toLowerCase();
+                const isMale = rawGender === 'm' || (rawGender.includes('male') && rawGender !== 'female');
+                const isFemale = rawGender === 'f' || rawGender.includes('female');
 
-            if (isMale) maleCount++;
-            if (isFemale) femaleCount++;
+                if (isMale) attendingMaleCount++;
+                if (isFemale) attendingFemaleCount++;
+            }
         });
 
         const totalEnrolled = attendanceList.length;
-        const averageEngagement = totalEnrolled > 0
-            ? Math.round((attendanceList.reduce((acc, curr) => acc + (curr.compliancePct || 0), 0) / totalEnrolled))
-            : 0;
+        const totalAttendees = present + partial;
 
-        const femalePct = totalEnrolled > 0 ? Math.round((femaleCount / totalEnrolled) * 100) : 0;
-        const malePct = totalEnrolled > 0 ? Math.round((maleCount / totalEnrolled) * 100) : 0;
+        // Gender Parity for actual attendees
+        const femalePct = totalAttendees > 0 ? Math.round((attendingFemaleCount / totalAttendees) * 100) : 0;
+        const malePct = totalAttendees > 0 ? Math.round((attendingMaleCount / totalAttendees) * 100) : 0;
 
-        return { present, partial, absent, totalEnrolled, averageEngagement, femaleCount, maleCount, femalePct, malePct };
+        // Adherence (Average Watch Time)
+        const avgMins = totalAttendees > 0 ? Math.round(totalWatchMins / totalAttendees) : 0;
+        const adherencePct = expectedDuration > 0 ? Math.min(100, Math.round((avgMins / expectedDuration) * 100)) : 0;
+
+        return {
+            present, partial, absent, ghosts, bounced,
+            totalEnrolled, totalAttendees,
+            attendingFemaleCount, attendingMaleCount, femalePct, malePct,
+            avgMins, adherencePct, expectedDuration
+        };
     }, [attendanceList]);
 
     // 🚀 DYNAMIC LOCATION EXTRACTOR
@@ -563,6 +588,7 @@ export const AttendancePage: React.FC = () => {
                 cohortName={cohortData?.name || 'Cohort'}
                 learners={attendanceList}
                 attendanceMode={attendanceMode}
+                initialMonth={registerDate ? registerDate.slice(0, 7) : new Date().toISOString().slice(0, 7)}
             />
 
             {/* ─── NEW STYLES & SVG GRADIENTS FOR RING CARDS ─── */}
@@ -679,56 +705,75 @@ export const AttendancePage: React.FC = () => {
                     {/* ─── NEW BEAUTIFUL CARDS ─── */}
                     <div className="mc-cards-wrapper">
 
-                        {/* 1. PRESENT CARD (GREEN) */}
+                        {/* 1. TURNOUT CARD (GREEN) */}
                         <AttendanceRingCard
-                            title="Active Attendance"
-                            typeLabel="Cohort Health"
-                            mainValue={summaryStats.present}
+                            title="Session Turnout"
+                            typeLabel="Cohort Reach"
+                            mainValue={summaryStats.totalAttendees}
                             totalValue={`${summaryStats.totalEnrolled} Enrolled`}
-                            pct={summaryStats.totalEnrolled > 0 ? Math.round((summaryStats.present / summaryStats.totalEnrolled) * 100) : 0}
+                            pct={summaryStats.totalEnrolled > 0 ? Math.round((summaryStats.totalAttendees / summaryStats.totalEnrolled) * 100) : 0}
                             theme="w"
                             icon={<Users size={18} />}
-                            bar1Label="Present"
+                            bar1Label="Present (80%+)"
                             bar1Val={`${summaryStats.present} full`}
-                            bar1Pct={summaryStats.totalEnrolled > 0 ? Math.round((summaryStats.present / summaryStats.totalEnrolled) * 100) : 0}
-                            bar2Label="Partial"
-                            bar2Val={`${summaryStats.partial} partial`}
-                            bar2Pct={summaryStats.totalEnrolled > 0 ? Math.round((summaryStats.partial / summaryStats.totalEnrolled) * 100) : 0}
-                            statusText="Tracked"
+                            bar1Pct={summaryStats.totalAttendees > 0 ? Math.round((summaryStats.present / summaryStats.totalAttendees) * 100) : 0}
+                            bar2Label="Partial (21-79%)"
+                            bar2Val={`${summaryStats.partial} short`}
+                            bar2Pct={summaryStats.totalAttendees > 0 ? Math.round((summaryStats.partial / summaryStats.totalAttendees) * 100) : 0}
+                            statusText="Total Pitched"
                         />
 
-                        {/* 2. DEMOGRAPHICS/ENGAGEMENT CARD (BLUE) */}
+                        {/* 2. DEMOGRAPHICS CARD (BLUE) */}
                         <AttendanceRingCard
-                            title={attendanceMode === 'bootcamp' ? 'Avg Engagement' : 'Demographics'}
-                            typeLabel={attendanceMode === 'bootcamp' ? 'Session Quality' : 'Class Makeup'}
-                            mainValue={attendanceMode === 'bootcamp' ? `${summaryStats.averageEngagement}%` : summaryStats.femaleCount}
-                            totalValue={attendanceMode === 'bootcamp' ? 'Target: 80%' : `${summaryStats.totalEnrolled} Enrolled`}
-                            pct={attendanceMode === 'bootcamp' ? summaryStats.averageEngagement : summaryStats.femalePct}
+                            title="Gender Parity"
+                            typeLabel="Attendee Makeup"
+                            mainValue={`${summaryStats.femalePct}%`}
+                            totalValue="Women in Class"
+                            pct={summaryStats.femalePct}
                             theme="p"
-                            icon={attendanceMode === 'bootcamp' ? <Activity size={18} /> : <Target size={18} />}
+                            icon={<Target size={18} />}
                             bar1Label="Females"
-                            bar1Val={`${summaryStats.femaleCount} (${summaryStats.femalePct}%)`}
+                            bar1Val={`${summaryStats.attendingFemaleCount} attended`}
                             bar1Pct={summaryStats.femalePct}
                             bar2Label="Males"
-                            bar2Val={`${summaryStats.maleCount} (${summaryStats.malePct}%)`}
+                            bar2Val={`${summaryStats.attendingMaleCount} attended`}
                             bar2Pct={summaryStats.malePct}
-                            statusText="Active Metrics"
+                            statusText="Active Ratio"
                         />
-                        {/* 3. ABSENT CARD (RED) */}
+
+                        {/* 3. SESSION ADHERENCE (AMBER) */}
                         <AttendanceRingCard
-                            title="Absent / Unlogged"
-                            typeLabel="At Risk"
+                            title="Session Adherence"
+                            typeLabel="Quality & Focus"
+                            mainValue={`${summaryStats.adherencePct}%`}
+                            totalValue="Avg Watch Time"
+                            pct={summaryStats.adherencePct}
+                            theme="k"
+                            icon={<Activity size={18} />}
+                            bar1Label="Avg Minutes"
+                            bar1Val={`${summaryStats.avgMins} mins avg`}
+                            bar1Pct={summaryStats.adherencePct}
+                            bar2Label="Expected Time"
+                            bar2Val={`${summaryStats.expectedDuration} mins`}
+                            bar2Pct={100}
+                            statusText="Engagement"
+                        />
+
+                        {/* 4. ABSENTEEISM CARD (RED) */}
+                        <AttendanceRingCard
+                            title="Absenteeism & Risk"
+                            typeLabel="Missed Class"
                             mainValue={summaryStats.absent}
                             totalValue={`${summaryStats.totalEnrolled} Enrolled`}
                             pct={summaryStats.totalEnrolled > 0 ? Math.round((summaryStats.absent / summaryStats.totalEnrolled) * 100) : 0}
                             theme="r"
                             icon={<UserMinus size={18} />}
-                            bar1Label="Absent"
-                            bar1Val={`${summaryStats.absent} missed`}
-                            bar1Pct={summaryStats.totalEnrolled > 0 ? Math.round((summaryStats.absent / summaryStats.totalEnrolled) * 100) : 0}
-                            bar2Label="Present"
-                            bar2Val={`${summaryStats.present} logged`}
-                            bar2Pct={summaryStats.totalEnrolled > 0 ? Math.round((summaryStats.present / summaryStats.totalEnrolled) * 100) : 0}
+                            bar1Label="Bounced (<20%)"
+                            bar1Val={`${summaryStats.bounced} dropped early`}
+                            bar1Pct={summaryStats.absent > 0 ? Math.round((summaryStats.bounced / summaryStats.absent) * 100) : 0}
+                            bar2Label="Ghosts (0 mins)"
+                            bar2Val={`${summaryStats.ghosts} no-shows`}
+                            bar2Pct={summaryStats.absent > 0 ? Math.round((summaryStats.ghosts / summaryStats.absent) * 100) : 0}
                             statusText="Needs Attention"
                         />
                     </div>
@@ -795,7 +840,7 @@ export const AttendancePage: React.FC = () => {
                                     <select
                                         value={locationFilter}
                                         onChange={(e) => updateUrlParams({ location: e.target.value })}
-                                        style={{ padding: '6px 12px', fontSize: '0.85rem', border: '1px solid #cbd5e1', borderRadius: '6px', outline: 'none' }}
+                                        style={{ padding: '6px 12px', fontSize: '0.85rem', border: '1px solid #cbd5e1', background: 'transparent', color: 'grey', borderRadius: 0, outline: 'none' }}
                                     >
                                         <option value="all">All Locations</option>
                                         {uniqueLocations.map(loc => (
@@ -810,7 +855,7 @@ export const AttendancePage: React.FC = () => {
                                 <>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                         <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '4px' }}><Activity size={12} /> Compliance:</label>
-                                        <select value={complianceFilter} onChange={(e) => updateUrlParams({ compliance: e.target.value })} style={{ padding: '6px 12px', fontSize: '0.85rem', border: '1px solid #cbd5e1', borderRadius: '6px', outline: 'none' }}>
+                                        <select value={complianceFilter} onChange={(e) => updateUrlParams({ compliance: e.target.value })} style={{ borderRadius: 0, padding: '6px 12px', background: 'transparent', fontSize: '0.85rem', color: 'grey', border: '1px solid #cbd5e1', outline: 'none' }}>
                                             <option value="all">All Performance Bands</option>
                                             <option value="high">High Compliance (80%+)</option>
                                             <option value="mid">Moderate Risk (50% - 79%)</option>
@@ -821,7 +866,7 @@ export const AttendancePage: React.FC = () => {
 
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                         <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '4px' }}><ShieldCheck size={12} /> Record Integrity:</label>
-                                        <select value={overrideFilter} onChange={(e) => updateUrlParams({ override: e.target.value })} style={{ padding: '6px 12px', fontSize: '0.85rem', border: '1px solid #cbd5e1', borderRadius: '6px', outline: 'none' }}>
+                                        <select value={overrideFilter} onChange={(e) => updateUrlParams({ override: e.target.value })} style={{ padding: '6px 12px', borderRadius: 0, fontSize: '0.85rem', border: '1px solid #cbd5e1', background: 'transparent', color: 'grey', outline: 'none' }}>
                                             <option value="all">All Records</option>
                                             <option value="system">System Calculated (Zoom)</option>
                                             <option value="overridden">Manually Overridden</option>
@@ -875,7 +920,8 @@ export const AttendancePage: React.FC = () => {
                                                     <td>
                                                         <div className="cdp-learner-cell">
                                                             <div className="cdp-learner-avatar" style={{ background: learner.isPresent ? 'var(--mlab-light-blue)' : '#fee2e2', color: learner.isPresent ? 'var(--mlab-blue)' : '#991b1b' }}>
-                                                                {learner.fullName.charAt(0)}
+                                                                {/* {learner.fullName.charAt(0)} */}
+                                                                {(learner.fullName || '?').charAt(0)}
                                                             </div>
                                                             <div className="cdp-learner-cell__info">
                                                                 <span className="cdp-learner-cell__name">{learner.fullName}</span>

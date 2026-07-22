@@ -33,6 +33,7 @@ import '../../../components/views/CohortsView/CohortsView.css';
 
 import mLabLogo from '../../../assets/logo/mlab_logo.png';
 import defaultSignature from '../../../assets/Signatue_Zack_.png';
+import Loader from '../../../components/common/Loader/Loader';
 
 // ── Helper: FormSection ──────────────────────────────────────────────────────
 const FormSection = ({ title, icon: Icon, children }: any) => (
@@ -914,8 +915,9 @@ export const CertificateStudio: React.FC = () => {
                 {view === 'folders' && (
                     isLoadingData ? (
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: '1rem' }}>
-                            <div className="cdp-spinner" style={{ color: 'var(--mlab-blue)' }}><Loader2 size={32} /></div>
-                            <span className="cdp-loading-state__label">Loading Workspace...</span>
+                            {/* <div className="cdp-spinner" style={{ color: 'var(--mlab-blue)' }}><Loader2 size={32} /></div>
+                            <span className="cdp-loading-state__label">Loading Workspace...</span> */}
+                            <Loader message='Loading Workspace...' />
                         </div>
                     ) : (
                         <div className="mlab-cohort-grid">

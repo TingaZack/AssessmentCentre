@@ -93,6 +93,8 @@ export const LearnerDropoutModal: React.FC<Props> = ({ learner, onClose, onConfi
                         <div className="wm-form-group" style={{ flex: 2 }}>
                             <label className="wm-form-label">Primary Reason *</label>
                             <select className="wm-form-input" value={reason} onChange={e => setReason(e.target.value)}>
+                                {/* Added Not Started option here */}
+                                <option value="Not Started">Not Started (Never Attended)</option>
                                 <option value="Employment/New Job">Employment / New Job</option>
                                 <option value="Medical/Health">Medical / Health Reasons</option>
                                 <option value="Financial Constraints">Financial Constraints</option>
