@@ -317,6 +317,8 @@ export interface ProgrammeTemplate {
   createdBy: string;
   updatedAt: string;
   updatedBy: string;
+
+  complianceSchema?: ComplianceSchema;
 }
 
 export type ModuleCategory = "knowledge" | "practical" | "workExperience";
@@ -498,6 +500,9 @@ export interface PlacementContract {
   employerRating?: number;
   isAbsorbedPostPlacement: boolean;
 
+  complianceSchema?: any; // Or ComplianceSchema if you imported it
+  evidenceMap?: any; // Or Record<string, UploadedEvidence>
+
   createdAt: string;
   updatedAt: string;
   createdBy: string;
@@ -534,4 +539,41 @@ export interface CodeSandboxBlock {
   instructions?: string; // e.g., "Build a calculator app with React"
   marks: number;
   config: CodeSandboxConfig;
+}
+
+// The types of evidence the system can request
+export type EvidenceType = "document" | "site_visit" | "report" | "pop";
+
+// A single compliance requirement inside a tranche
+export interface EvidenceRequirement {
+  id: string; // e.g., 'req_1'
+  label: string; // e.g., 'WBLPA Agreement'
+  type: EvidenceType; // Instructs the UI what kind of button to render
+  required: boolean; // Does this block the ZIP generation?
+
+  // The magic link back to the Master Compliance Score
+  systemTag?:
+    | "wblpaAgreementUrl"
+    | "employmentContractUrl"
+    | "slaUrl"
+    | "smeAgreementUrl"
+    | "dueDiligenceUrl"
+    | "idDocumentUrl"
+    | "qualificationUrl";
+}
+
+// A specific milestone/tranche inside the programme
+export interface TrancheMilestone {
+  trancheId: string; // e.g., 'tranche_1'
+  title: string; // e.g., 'First Disbursement'
+  percentage: number; // e.g., 14 (for financial dashboards)
+  dueAtMonth: number; // Timeline anchor (e.g., 0 for start, 1 for month one, 3 for quarter end)
+  requirements: EvidenceRequirement[];
+}
+
+// The Master Blueprint attached to a Programme
+export interface ComplianceSchema {
+  schemaId: string; // e.g., 'mict_seta_default'
+  schemaName: string; // e.g., 'MICT SETA 6-Tranche 2026'
+  tranches: TrancheMilestone[];
 }

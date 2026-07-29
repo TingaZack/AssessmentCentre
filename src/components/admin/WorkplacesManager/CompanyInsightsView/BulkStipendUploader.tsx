@@ -214,7 +214,7 @@ export const BulkStipendUploader: React.FC<BulkStipendUploaderProps> = ({ placem
                 <button
                     type="button"
                     onClick={() => setShowExplainer(true)}
-                    style={{ background: "none", border: "none", cursor: "pointer", color: "#64748b", display: "flex", alignItems: "center", padding: "4px" }}
+                    style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", padding: "4px" }}
                     title="How does Bulk Upload work?"
                 >
                     <Info size={16} />
@@ -225,7 +225,7 @@ export const BulkStipendUploader: React.FC<BulkStipendUploaderProps> = ({ placem
                     type="button"
                     onClick={handleDownloadTemplate}
                     style={{
-                        background: "none", border: "none", color: "var(--mlab-blue)", fontSize: "0.7rem", cursor: "pointer", display: "flex",
+                        background: "none", border: "none", fontSize: "0.7rem", cursor: "pointer", display: "flex",
                         alignItems: "center", justifyContent: "center", gap: "4px", textDecoration: "underline", marginLeft: "4px"
                     }}
                 >

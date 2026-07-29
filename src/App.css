@@ -94,3 +94,37 @@ select {
   padding: 0.4rem 0.8rem;
   font-size: 0.8rem;
 }
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/* 🚀 GLOBAL FOCUS & SELECTION OVERRIDE                                       */
+/* ────────────────────────────────────────────────────────────────────────── */
+
+/* 1. Remove blue focus outlines on mouse click across all buttons & inputs */
+button:focus,
+a:focus,
+input:focus,
+select:focus,
+textarea:focus,
+[role="button"]:focus {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* 2. Target Chrome/Safari focus ring specifically */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* 3. Prevent text highlight / unwanted selection when clicking buttons */
+button,
+.lfm-btn,
+.wm-btn,
+[role="button"] {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}

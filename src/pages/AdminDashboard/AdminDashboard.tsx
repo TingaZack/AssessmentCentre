@@ -5,7 +5,7 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
 import { auth, db } from '../../lib/firebase';
 import { doc, writeBatch, updateDoc, collection } from 'firebase/firestore';
-import { Menu, X, ShieldAlert, ArrowLeft } from 'lucide-react';
+import { Menu, X, ShieldAlert, ArrowLeft, Loader2 } from 'lucide-react';
 import { useStore, type StaffMember } from '../../store/useStore';
 import type { DashboardLearner, ProgrammeTemplate, Cohort, Employer } from '../../types';
 
@@ -41,10 +41,10 @@ import { NotificationBell } from '../../components/common/NotificationBell/Notif
 import { AttendanceHistoryList } from '../FacilitatorDashboard/AttendanceRegister/AttendanceHistoryList';
 import { EcosystemDashboard } from '../../components/admin/EcosystemDashboard/EcosystemDashboard';
 import { WorkplaceHub } from '../../components/views/WorkplaceHub/WorkplaceHub';
-import { CompanyInsightsView } from '../../components/admin/WorkplacesManager/CompanyInsightsView/CompanyInsightsView';
 import { CoachingScheduleView } from '../../components/views/CoachingScheduleView/CoachingScheduleView';
 
 import './AdminDashboard.css';
+import { CompanyInsightsView } from '../../components/admin/WorkplacesManager/CompanyInsightsView/CompanyInsightsView';
 
 type NavTabs = 'directory' | 'learners' | 'staff' | 'qualifications' | 'cohorts' |
     'workplaces' | 'studio' | 'dashboard' | 'profile' | 'access' |
@@ -60,51 +60,59 @@ const AdminDashboard: React.FC = () => {
     const [searchParams, setSearchParams] = useSearchParams();
     const currentNav = (searchParams.get('tab') as NavTabs) || 'dashboard';
 
+    // 🚀 NEW: Read the employer ID securely from the URL
+    const employerIdParam = searchParams.get('employerId');
+
     const [isPending, startTransition] = useTransition();
 
     const setCurrentNav = (tab: NavTabs) => {
-        // Wrap the state change in a transition to unblock the main thread
         startTransition(() => {
-            const params = new URLSearchParams(searchParams);
-            if (tab === 'dashboard') {
-                params.delete('tab');
-            } else {
-                params.set('tab', tab);
-            }
-            params.delete('view');
+            setSearchParams(prev => {
+                const params = new URLSearchParams(prev);
+                if (tab === 'dashboard') {
+                    params.delete('tab');
+                } else {
+                    params.set('tab', tab);
+                }
+                params.delete('view');
+                if (tab !== 'company-profile') {
+                    params.delete('employerId'); // Clean up URL if leaving insights
+                }
+                return params;
+            }, { replace: true });
+
             if (tab !== 'staff') setViewingStaffProfile(null);
-            setSearchParams(params, { replace: true });
+            if (tab !== 'company-profile') setSelectedCompanyForInsights(null);
         });
     };
-
-    // const setCurrentNav = (tab: NavTabs) => {
-    //     const params = new URLSearchParams(searchParams);
-    //     if (tab === 'dashboard') {
-    //         params.delete('tab');
-    //     } else {
-    //         params.set('tab', tab);
-    //     }
-    //     params.delete('view');
-    //     if (tab !== 'staff') setViewingStaffProfile(null);
-    //     setSearchParams(params, { replace: true });
-    // };
 
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [selectedCompanyForInsights, setSelectedCompanyForInsights] = useState<Employer | null>(null);
     const [viewingStaffProfile, setViewingStaffProfile] = useState<StaffMember | null>(null);
 
+    // 🚀 MASTER FALLBACK RESOLUTION: Find the company if the page was refreshed
+    const activeCompanyForInsights = selectedCompanyForInsights || store.employers.find((e: Employer) => e.id === employerIdParam);
+
     useEffect(() => {
         setIsMobileMenuOpen(false);
     }, [currentNav]);
 
+    // 🚀 UPDATED EVENT LISTENER: Safely pushes the employer ID into the URL query parameters
     useEffect(() => {
         const handleOpenInsights = (e: any) => {
             setSelectedCompanyForInsights(e.detail);
-            setCurrentNav('company-profile');
+            startTransition(() => {
+                setSearchParams(prev => {
+                    const params = new URLSearchParams(prev);
+                    params.set('tab', 'company-profile');
+                    params.set('employerId', e.detail.id);
+                    return params;
+                }, { replace: true });
+            });
         };
         window.addEventListener('openCompanyInsights', handleOpenInsights);
         return () => window.removeEventListener('openCompanyInsights', handleOpenInsights);
-    }, []);
+    }, [setSearchParams]);
 
     // ----- Modal States -----
     const [showAddLearnerModal, setShowAddLearnerModal] = useState(false);
@@ -135,7 +143,6 @@ const AdminDashboard: React.FC = () => {
         const isSuper = currentUser?.isSuperAdmin === true;
         const privs = currentUser?.privileges || {};
 
-        // Helper function to check Zustand memory cache before fetching
         const load = (dataArray: any[], fetcher: Function) => {
             if (!dataArray || dataArray.length === 0) fetcher();
         };
@@ -151,7 +158,7 @@ const AdminDashboard: React.FC = () => {
         }
 
         if (currentNav === 'learners' && (isSuper || privs.learners)) {
-            load(store.learners, store.fetchLearners); // Fixed: Removed the forced 'true' reload parameter
+            load(store.learners, store.fetchLearners);
             load(store.stagingLearners, store.fetchStagingLearners);
             load(store.cohorts, store.fetchCohorts);
         }
@@ -165,7 +172,8 @@ const AdminDashboard: React.FC = () => {
             load(store.employers, store.fetchEmployers);
         }
 
-        if (currentNav === 'workplaces' && (isSuper || privs.workplaces)) {
+        // 🚀 Ensures employers are fetched if a URL directly references the company profile tab
+        if ((currentNav === 'workplaces' || currentNav === 'company-profile') && (isSuper || privs.workplaces)) {
             load(store.employers, store.fetchEmployers);
         }
 
@@ -186,7 +194,6 @@ const AdminDashboard: React.FC = () => {
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [currentNav, user]);
-
 
     const handleLogout = async () => {
         try {
@@ -291,20 +298,12 @@ const AdminDashboard: React.FC = () => {
 
     const checkAccess = (tab: NavTabs) => {
         const currentUser = user as any;
-
-        // 1. Super Admins bypass everything
         if (currentUser?.isSuperAdmin) return true;
-
-        // 2. Base tabs everyone can see
         if (tab === 'dashboard' || tab === 'profile') return true;
-
-        // 3. Strictly SuperAdmin exclusive
         if (tab === 'access') return false;
 
-        // 4. Granular Admin Privileges Enforcement
         if (currentUser?.role === 'admin') {
             const privs = currentUser?.privileges || {};
-
             const accessMap: Record<string, boolean> = {
                 'directory': !!privs.directory,
                 'learners': !!privs.learners,
@@ -320,11 +319,8 @@ const AdminDashboard: React.FC = () => {
                 'settings': !!privs.settings,
                 'coaching': !!privs.cohorts
             };
-
             return accessMap[tab] === true;
         }
-
-        // 5. Fallback for facilitators using this view structure
         return true;
     };
 
@@ -334,7 +330,6 @@ const AdminDashboard: React.FC = () => {
         <div className="admin-layout">
             <ToastContainer toasts={toast.toasts} onClose={toast.closeToast} />
 
-            {/* MOBILE HEADER */}
             <div className="admin-mobile-header">
                 <div className="admin-mobile-header-left">
                     <button className="admin-hamburger-btn" onClick={() => setIsMobileMenuOpen(true)}>
@@ -347,12 +342,10 @@ const AdminDashboard: React.FC = () => {
                 </div>
             </div>
 
-            {/* MOBILE OVERLAY */}
             {isMobileMenuOpen && (
                 <div className="admin-sidebar-overlay" onClick={() => setIsMobileMenuOpen(false)} />
             )}
 
-            {/* SIDEBAR WRAPPER */}
             <div className={`admin-sidebar-wrapper ${isMobileMenuOpen ? 'open' : ''}`}>
                 <button className="admin-close-btn" onClick={() => setIsMobileMenuOpen(false)}>
                     <X size={24} />
@@ -361,8 +354,6 @@ const AdminDashboard: React.FC = () => {
             </div>
 
             <main className="main-wrapper" style={{ padding: 16, paddingBottom: '5%' }}>
-
-                {/* DESKTOP HEADER */}
                 <header className="dashboard-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', position: 'relative' }}>
                     <div className="header-title">
                         <h1>
@@ -402,16 +393,12 @@ const AdminDashboard: React.FC = () => {
                             {currentNav === 'coaching' && 'Manage upcoming Google Meet sessions and record your coaching notes.'}
                         </p>
                     </div>
-
                     <div style={{ marginTop: '5px' }}>
                         <NotificationBell />
                     </div>
                 </header>
 
-                {/* <div className="admin-content"> */}
                 <div className="admin-content" style={{ opacity: isPending ? 0.5 : 1, transition: 'opacity 0.2s ease' }}>
-
-                    {/* Block unprivileged access */}
                     {!hasAccess ? (
                         <div style={{ textAlign: 'center', padding: '4rem', color: '#ef4444', border: '1px solid #fecaca', background: '#fef2f2', borderRadius: '8px' }}>
                             <ShieldAlert size={48} style={{ margin: '0 auto 1rem' }} />
@@ -420,7 +407,6 @@ const AdminDashboard: React.FC = () => {
                         </div>
                     ) : (
                         <>
-                            {/* ALL AUTHORIZED VIEWS INJECTED HERE */}
                             {currentNav === 'coaching' && <CoachingScheduleView />}
                             {currentNav === 'ecosystem' && <EcosystemDashboard />}
                             {currentNav === 'attendance' && <AttendanceHistoryList />}
@@ -466,63 +452,40 @@ const AdminDashboard: React.FC = () => {
                                 viewingStaffProfile ? (
                                     <div className="animate-fade-in" style={{ position: 'relative' }}>
                                         <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                            <button
-                                                onClick={() => setViewingStaffProfile(null)}
-                                                className="wm-btn wm-btn--ghost"
-                                                style={{ background: 'white', color: 'var(--mlab-blue)', fontWeight: 600, border: '1px solid #cbd5e1' }}
-                                            >
+                                            <button onClick={() => setViewingStaffProfile(null)} className="wm-btn wm-btn--ghost" style={{ background: 'white', color: 'var(--mlab-blue)', fontWeight: 600, border: '1px solid #cbd5e1' }}>
                                                 <ArrowLeft size={16} /> Back to Staff Registry
                                             </button>
                                         </div>
-
-                                        <AssessorProfileView
-                                            profile={viewingStaffProfile}
-                                            user={viewingStaffProfile}
-                                            onUpdate={handleUpdateAdminProfile}
-                                            hideSignaturePrompt={true}
-                                        />
+                                        <AssessorProfileView profile={viewingStaffProfile} user={viewingStaffProfile} onUpdate={handleUpdateAdminProfile} hideSignaturePrompt={true} />
                                     </div>
                                 ) : (
-                                    <StaffView
-                                        staff={store.staff}
-                                        onAdd={() => { setEditingStaff(null); setShowStaffModal(true); }}
-                                        onEdit={(s) => { setEditingStaff(s); setShowStaffModal(true); }}
-                                        onDelete={(s) => setStaffToDelete(s)}
-                                        onView={(s) => setViewingStaffProfile(s)}
-                                    />
+                                    <StaffView staff={store.staff} onAdd={() => { setEditingStaff(null); setShowStaffModal(true); }} onEdit={(s) => { setEditingStaff(s); setShowStaffModal(true); }} onDelete={(s) => setStaffToDelete(s)} onView={(s) => setViewingStaffProfile(s)} />
                                 )
                             )}
 
                             {currentNav === 'workplaces' && <WorkplaceHub />}
 
-                            {currentNav === 'company-profile' && selectedCompanyForInsights && (
-                                <CompanyInsightsView
-                                    company={selectedCompanyForInsights}
-                                    onBack={() => {
-                                        setSelectedCompanyForInsights(null);
-                                        setCurrentNav('workplaces');
-                                    }}
-                                />
+                            {/* 🚀 THE FIX: Handles URL reloads smoothly and shows a loader if the store is still syncing */}
+                            {currentNav === 'company-profile' && (
+                                activeCompanyForInsights ? (
+                                    <CompanyInsightsView
+                                        company={activeCompanyForInsights}
+                                        onBack={() => setCurrentNav('workplaces')}
+                                    />
+                                ) : (
+                                    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh', flexDirection: 'column', gap: '1rem' }}>
+                                        <Loader2 className="wm-spin" size={40} color="var(--mlab-blue)" />
+                                        <span style={{ color: 'var(--mlab-midnight)', fontWeight: 600, fontSize: '1.2rem' }}>Reconnecting to Employer Record...</span>
+                                    </div>
+                                )
                             )}
 
                             {currentNav === 'cohorts' && (
-                                <CohortsView
-                                    cohorts={store.cohorts}
-                                    staff={store.staff}
-                                    onAdd={() => { setSelectedCohort(null); setShowCohortModal(true); }}
-                                    onEdit={(c) => { setSelectedCohort(c); setShowCohortModal(true); }}
-                                    onArchive={(c) => setCohortToDelete(c)}
-                                />
+                                <CohortsView cohorts={store.cohorts} staff={store.staff} onAdd={() => { setSelectedCohort(null); setShowCohortModal(true); }} onEdit={(c) => { setSelectedCohort(c); setShowCohortModal(true); }} onArchive={(c) => setCohortToDelete(c)} />
                             )}
 
                             {currentNav === 'qualifications' && (
-                                <QualificationsView
-                                    programmes={store.programmes}
-                                    onAdd={() => { setSelectedProg(null); setShowProgModal(true); }}
-                                    onUpload={() => { }}
-                                    onEdit={(p) => { setSelectedProg(p); setShowProgModal(true); }}
-                                    onArchive={(p) => setProgToArchive(p)}
-                                />
+                                <QualificationsView programmes={store.programmes} onAdd={() => { setSelectedProg(null); setShowProgModal(true); }} onUpload={() => { }} onEdit={(p) => { setSelectedProg(p); setShowProgModal(true); }} onArchive={(p) => setProgToArchive(p)} />
                             )}
 
                             {currentNav === 'profile' && (
@@ -537,277 +500,49 @@ const AdminDashboard: React.FC = () => {
                 </div>
             </main>
 
-            {/* MODALS */}
+            {/* MODALS RENDERED BELOW */}
             {showAddLearnerModal && (
-                <LearnerFormModal
-                    learner={selectedLearner || undefined}
-                    title={selectedLearner ? 'Edit Enrollment' : 'Add New Enrollment'}
-                    programmes={store.programmes}
-                    cohorts={store.cohorts}
-                    onClose={() => { setShowAddLearnerModal(false); setSelectedLearner(null); }}
-                    onSave={async (l) => {
-                        try {
-                            if (selectedLearner) {
-                                await store.updateLearner(selectedLearner.id, l);
-                                toast.success("Learner updated successfully.");
-                            } else {
-                                await store.addLearner(l as any);
-                                toast.success("Learner added successfully.");
-                            }
-                            setShowAddLearnerModal(false);
-                        } catch (err: any) {
-                            toast.error(`Failed to save learner: ${err.message}`);
-                        }
-                    }}
-                />
+                <LearnerFormModal learner={selectedLearner || undefined} title={selectedLearner ? 'Edit Enrollment' : 'Add New Enrollment'} programmes={store.programmes} cohorts={store.cohorts} onClose={() => { setShowAddLearnerModal(false); setSelectedLearner(null); }} onSave={async (l) => { try { if (selectedLearner) { await store.updateLearner(selectedLearner.id, l); toast.success("Learner updated successfully."); } else { await store.addLearner(l as any); toast.success("Learner added successfully."); } setShowAddLearnerModal(false); } catch (err: any) { toast.error(`Failed to save learner: ${err.message}`); } }} />
             )}
 
             {showImportLearnerModal && (
-                <LearnerImportModal
-                    cohortId=""
-                    onClose={() => setShowImportLearnerModal(false)}
-                    onSuccess={() => {
-                        setShowImportLearnerModal(false);
-                        store.fetchStagingLearners();
-                        store.fetchLearners(true);
-                        toast.success("Import successful. Records added to Staging Area.");
-                    }}
-                />
+                <LearnerImportModal cohortId="" onClose={() => setShowImportLearnerModal(false)} onSuccess={() => { setShowImportLearnerModal(false); store.fetchStagingLearners(); store.fetchLearners(true); toast.success("Import successful. Records added to Staging Area."); }} />
             )}
 
             {learnerToProcess && (
-                <DeleteConfirmModal
-                    itemName={learnerToProcess.learner.fullName}
-                    actionType={learnerToProcess.action === 'archive' ? 'Archive' : 'Discard'}
-                    onConfirm={executeLearnerAction}
-                    onCancel={() => setLearnerToProcess(null)}
-                />
+                <DeleteConfirmModal itemName={learnerToProcess.learner.fullName} actionType={learnerToProcess.action === 'archive' ? 'Archive' : 'Discard'} onConfirm={executeLearnerAction} onCancel={() => setLearnerToProcess(null)} />
             )}
 
             {showNoEmailAlert && (
-                <StatusModal
-                    type="warning"
-                    title="Missing Email Address"
-                    message="This learner does not have an email address on file. Please edit their profile to add an email before sending an invite."
-                    confirmText="Okay"
-                    onClose={() => setShowNoEmailAlert(false)}
-                />
+                <StatusModal type="warning" title="Missing Email Address" message="This learner does not have an email address on file. Please edit their profile to add an email before sending an invite." confirmText="Okay" onClose={() => setShowNoEmailAlert(false)} />
             )}
 
             {learnerToInvite && (
-                <StatusModal
-                    type="info"
-                    title={`${learnerToInvite.authStatus === 'active' ? 'Resend' : 'Send'} Platform Invite`}
-                    message={`Are you sure you want to send a platform login invitation to ${learnerToInvite.email}?`}
-                    confirmText={isInviting ? "Sending..." : "Send Invite"}
-                    onClose={async () => {
-                        setIsInviting(true);
-                        try {
-                            await store.inviteLearner(learnerToInvite);
-                            toast.success(`Invite successfully sent to ${learnerToInvite.email}`);
-                            setLearnerToInvite(null);
-                        } catch (err: any) {
-                            toast.error(err.message || "Failed to send invite.");
-                        } finally {
-                            setIsInviting(false);
-                        }
-                    }}
-                    onCancel={() => {
-                        if (!isInviting) setLearnerToInvite(null);
-                    }}
-                />
+                <StatusModal type="info" title={`${learnerToInvite.authStatus === 'active' ? 'Resend' : 'Send'} Platform Invite`} message={`Are you sure you want to send a platform login invitation to ${learnerToInvite.email}?`} confirmText={isInviting ? "Sending..." : "Send Invite"} onClose={async () => { setIsInviting(true); try { await store.inviteLearner(learnerToInvite); toast.success(`Invite successfully sent to ${learnerToInvite.email}`); setLearnerToInvite(null); } catch (err: any) { toast.error(err.message || "Failed to send invite."); } finally { setIsInviting(false); } }} onCancel={() => { if (!isInviting) setLearnerToInvite(null); }} />
             )}
 
             {showStaffModal && (
-                <StaffFormModal
-                    staff={editingStaff || undefined}
-                    onClose={() => { setShowStaffModal(false); setEditingStaff(null); }}
-                    onSave={async (s) => {
-                        try {
-                            if (editingStaff) {
-                                if (store.updateStaff) {
-                                    await store.updateStaff(editingStaff.id, s);
-                                } else {
-                                    await updateDoc(doc(db, 'users', editingStaff.id), s as any);
-                                    await store.fetchStaff();
-                                }
-                                toast.success("Staff member updated.");
-                            } else {
-                                await store.addStaff(s);
-                                toast.success("New staff member created.");
-                            }
-                            setShowStaffModal(false);
-                            setEditingStaff(null);
-                        } catch (err: any) {
-                            toast.error(`Failed to save staff: ${err.message}`);
-                        }
-                    }}
-                />
+                <StaffFormModal staff={editingStaff || undefined} onClose={() => { setShowStaffModal(false); setEditingStaff(null); }} onSave={async (s) => { try { if (editingStaff) { if (store.updateStaff) { await store.updateStaff(editingStaff.id, s); } else { await updateDoc(doc(db, 'users', editingStaff.id), s as any); await store.fetchStaff(); } toast.success("Staff member updated."); } else { await store.addStaff(s); toast.success("New staff member created."); } setShowStaffModal(false); setEditingStaff(null); } catch (err: any) { toast.error(`Failed to save staff: ${err.message}`); } }} />
             )}
 
             {staffToDelete && (
-                <StatusModal
-                    type="error"
-                    title="Confirm Deletion"
-                    message={`Are you sure you want to permanently delete <strong>${staffToDelete.fullName}</strong>?`}
-                    confirmText="Delete Permanently"
-                    onClose={async () => {
-                        try {
-                            await store.deleteStaff(staffToDelete.id);
-                            toast.success(`${staffToDelete.fullName} deleted permanently.`);
-                        } catch (err: any) {
-                            toast.error(`Delete failed: ${err.message}`);
-                        } finally {
-                            setStaffToDelete(null);
-                        }
-                    }}
-                    onCancel={() => setStaffToDelete(null)}
-                />
+                <StatusModal type="error" title="Confirm Deletion" message={`Are you sure you want to permanently delete <strong>${staffToDelete.fullName}</strong>?`} confirmText="Delete Permanently" onClose={async () => { try { await store.deleteStaff(staffToDelete.id); toast.success(`${staffToDelete.fullName} deleted permanently.`); } catch (err: any) { toast.error(`Delete failed: ${err.message}`); } finally { setStaffToDelete(null); } }} onCancel={() => setStaffToDelete(null)} />
             )}
 
             {showCohortModal && (
-                <CohortFormModal
-                    cohort={selectedCohort || undefined}
-                    onClose={() => { setShowCohortModal(false); setSelectedCohort(null); }}
-                    onSave={async (c, reasons) => {
-                        try {
-                            const batch = writeBatch(db);
-                            const timestamp = new Date().toISOString();
-
-                            const cohortId = selectedCohort?.id || doc(collection(db, 'cohorts')).id;
-                            const cohortRef = doc(db, 'cohorts', cohortId);
-
-                            const cleanLearnerIds = (c.learnerIds || [])
-                                .filter((id: string) => id && !id.startsWith("Unassigned_"))
-                                .map((id: string) => {
-                                    const match = store.learners.find(l => l.id === id || l.idNumber === id);
-                                    return match ? (match.idNumber || match.id) : id;
-                                });
-
-                            const uniqueCleanIds = Array.from(new Set(cleanLearnerIds));
-
-                            const cohortData = {
-                                ...c,
-                                learnerIds: uniqueCleanIds,
-                                id: cohortId,
-                                updatedAt: timestamp
-                            };
-
-                            if (selectedCohort) {
-                                batch.update(cohortRef, cohortData);
-                            } else {
-                                batch.set(cohortRef, { ...cohortData, createdAt: timestamp });
-                            }
-
-                            uniqueCleanIds.forEach((lId) => {
-                                const enrollmentId = `${cohortId}_${lId as string}`;
-                                const enrollRef = doc(db, 'enrollments', enrollmentId);
-
-                                batch.set(enrollRef, {
-                                    id: enrollmentId,
-                                    cohortId: cohortId,
-                                    learnerId: lId,
-                                    programmeId: c.programmeId || '',
-                                    campusId: c.campusId || '',
-                                    status: 'active',
-                                    enrolledAt: timestamp,
-                                    updatedAt: timestamp
-                                }, { merge: true });
-
-                                batch.set(doc(db, 'learners', lId as string), { cohortId: cohortId, updatedAt: timestamp }, { merge: true });
-                            });
-
-                            if (selectedCohort) {
-                                const removedIds = (selectedCohort.learnerIds || []).filter((oldId: string) => !uniqueCleanIds.includes(oldId));
-
-                                removedIds.forEach((rId: string) => {
-                                    const lMatch = store.learners.find(l => l.id === rId || l.idNumber === rId);
-                                    const finalRid = lMatch ? (lMatch.idNumber || lMatch.id) : rId;
-
-                                    batch.set(doc(db, 'enrollments', `${cohortId}_${finalRid}`), {
-                                        status: 'dropped',
-                                        updatedAt: timestamp
-                                    }, { merge: true });
-
-                                    batch.set(doc(db, 'learners', finalRid), {
-                                        cohortId: "",
-                                        updatedAt: timestamp
-                                    }, { merge: true });
-                                });
-                            }
-
-                            await batch.commit();
-
-                            await store.fetchCohorts(true);
-                            await store.fetchLearners(true);
-
-                            toast.success("Class Roster Saved Successfully!");
-                            setShowCohortModal(false);
-                        } catch (err: any) {
-                            console.error("Database Save Failed:", err);
-                            toast.error(`Error: ${err.message}`);
-                        }
-                    }}
-                />
+                <CohortFormModal cohort={selectedCohort || undefined} onClose={() => { setShowCohortModal(false); setSelectedCohort(null); }} onSave={async (c, reasons) => { try { const batch = writeBatch(db); const timestamp = new Date().toISOString(); const cohortId = selectedCohort?.id || doc(collection(db, 'cohorts')).id; const cohortRef = doc(db, 'cohorts', cohortId); const cleanLearnerIds = (c.learnerIds || []).filter((id: string) => id && !id.startsWith("Unassigned_")).map((id: string) => { const match = store.learners.find(l => l.id === id || l.idNumber === id); return match ? (match.idNumber || match.id) : id; }); const uniqueCleanIds = Array.from(new Set(cleanLearnerIds)); const cohortData = { ...c, learnerIds: uniqueCleanIds, id: cohortId, updatedAt: timestamp }; if (selectedCohort) { batch.update(cohortRef, cohortData); } else { batch.set(cohortRef, { ...cohortData, createdAt: timestamp }); } uniqueCleanIds.forEach((lId) => { const enrollmentId = `${cohortId}_${lId as string}`; const enrollRef = doc(db, 'enrollments', enrollmentId); batch.set(enrollRef, { id: enrollmentId, cohortId: cohortId, learnerId: lId, programmeId: c.programmeId || '', campusId: c.campusId || '', status: 'active', enrolledAt: timestamp, updatedAt: timestamp }, { merge: true }); batch.set(doc(db, 'learners', lId as string), { cohortId: cohortId, updatedAt: timestamp }, { merge: true }); }); if (selectedCohort) { const removedIds = (selectedCohort.learnerIds || []).filter((oldId: string) => !uniqueCleanIds.includes(oldId)); removedIds.forEach((rId: string) => { const lMatch = store.learners.find(l => l.id === rId || l.idNumber === rId); const finalRid = lMatch ? (lMatch.idNumber || lMatch.id) : rId; batch.set(doc(db, 'enrollments', `${cohortId}_${finalRid}`), { status: 'dropped', updatedAt: timestamp }, { merge: true }); batch.set(doc(db, 'learners', finalRid), { cohortId: "", updatedAt: timestamp }, { merge: true }); }); } await batch.commit(); await store.fetchCohorts(true); await store.fetchLearners(true); toast.success("Class Roster Saved Successfully!"); setShowCohortModal(false); } catch (err: any) { console.error("Database Save Failed:", err); toast.error(`Error: ${err.message}`); } }} />
             )}
 
             {cohortToDelete && (
-                <DeleteConfirmModal
-                    itemName={cohortToDelete.name}
-                    actionType="Delete"
-                    onConfirm={async () => {
-                        try {
-                            await store.deleteCohort(cohortToDelete.id);
-                            toast.success(`${cohortToDelete.name} deleted.`);
-                        } catch (err: any) {
-                            toast.error(`Failed to delete cohort: ${err.message}`);
-                        } finally {
-                            setCohortToDelete(null);
-                        }
-                    }}
-                    onCancel={() => setCohortToDelete(null)}
-                />
+                <DeleteConfirmModal itemName={cohortToDelete.name} actionType="Delete" onConfirm={async () => { try { await store.deleteCohort(cohortToDelete.id); toast.success(`${cohortToDelete.name} deleted.`); } catch (err: any) { toast.error(`Failed to delete cohort: ${err.message}`); } finally { setCohortToDelete(null); } }} onCancel={() => setCohortToDelete(null)} />
             )}
 
             {showProgModal && (
-                <ProgrammeFormModal
-                    programme={selectedProg}
-                    existingProgrammes={store.programmes}
-                    title={selectedProg ? 'Edit Template' : 'Create Template'}
-                    onClose={() => { setShowProgModal(false); setSelectedProg(null); }}
-                    onSave={async (p) => {
-                        try {
-                            if (selectedProg) {
-                                await store.updateProgramme(selectedProg.id, p);
-                                toast.success("Template updated.");
-                            } else {
-                                await store.addProgramme(p as any);
-                                toast.success("New template created.");
-                            }
-                            setShowProgModal(false);
-                        } catch (err: any) {
-                            toast.error(`Failed to save template: ${err.message}`);
-                        }
-                    }}
-                />
+                <ProgrammeFormModal programme={selectedProg} existingProgrammes={store.programmes} title={selectedProg ? 'Edit Template' : 'Create Template'} onClose={() => { setShowProgModal(false); setSelectedProg(null); }} onSave={async (p) => { try { if (selectedProg) { await store.updateProgramme(selectedProg.id, p); toast.success("Template updated."); } else { await store.addProgramme(p as any); toast.success("New template created."); } setShowProgModal(false); } catch (err: any) { toast.error(`Failed to save template: ${err.message}`); } }} />
             )}
 
             {progToArchive && (
-                <DeleteConfirmModal
-                    itemName={progToArchive.name}
-                    actionType="Archive"
-                    onConfirm={async () => {
-                        try {
-                            await store.archiveProgramme(progToArchive.id);
-                            toast.success(`${progToArchive.name} archived.`);
-                        } catch (err: any) {
-                            toast.error(`Archive failed: ${err.message}`);
-                        } finally {
-                            setProgToArchive(null);
-                        }
-                    }}
-                    onCancel={() => setProgToArchive(null)}
-                />
+                <DeleteConfirmModal itemName={progToArchive.name} actionType="Archive" onConfirm={async () => { try { await store.archiveProgramme(progToArchive.id); toast.success(`${progToArchive.name} archived.`); } catch (err: any) { toast.error(`Archive failed: ${err.message}`); } finally { setProgToArchive(null); } }} onCancel={() => setProgToArchive(null)} />
             )}
         </div>
     );

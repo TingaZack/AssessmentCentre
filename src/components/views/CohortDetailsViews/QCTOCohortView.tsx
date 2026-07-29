@@ -630,47 +630,61 @@ export const QCTOCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
         getStaffName(cohort.moderatorId).then(setModName);
     }, [cohort]);
 
-    const handleConfirmDrop = async (data: { date: string, reason: string, notes: string, evidenceUrl: string, resignationUrl: string }) => {
-        if (!learnerToDrop) return;
-        try {
-            const batch = writeBatch(db);
 
-            const routingId = learnerToDrop.enrollmentId || learnerToDrop.id;
-            const enrollRef = doc(db, 'enrollments', routingId);
+const handleConfirmDrop = async (data: { date: string, reason: string, notes: string, evidenceUrl: string, resignationUrl: string }) => {
+    if (!learnerToDrop) return;
+    try {
+        const batch = writeBatch(db);
 
-            batch.update(enrollRef, {
-                status: 'dropped',
-                exitDate: data.date,
-                exitReasonCategory: data.reason,
-                exitNotes: data.notes,
-                exitEvidenceUrl: data.evidenceUrl,
-                resignationLetterUrl: data.resignationUrl,
-                updatedAt: new Date().toISOString()
-            });
+        // 1. Update the Enrollment record (Uses the composite ID)
+        const routingId = learnerToDrop.enrollmentId || learnerToDrop.id;
+        const enrollRef = doc(db, 'enrollments', routingId);
 
-            const humanId = learnerToDrop.learnerId || learnerToDrop.id;
-            const learnerRef = doc(db, 'learners', humanId);
+        batch.update(enrollRef, {
+            status: 'dropped',
+            exitDate: data.date,
+            exitReasonCategory: data.reason,
+            exitNotes: data.notes,
+            exitEvidenceUrl: data.evidenceUrl,
+            resignationLetterUrl: data.resignationUrl,
+            updatedAt: new Date().toISOString()
+        });
+
+        // 2. Find the ACTUAL Learner record safely via Query
+        const learnersRef = collection(db, 'learners');
+        const q = query(learnersRef, where("idNumber", "==", learnerToDrop.idNumber));
+        const snapshot = await getDocs(q);
+
+        if (!snapshot.empty) {
+            // Found the real learner document!
+            const actualLearnerDoc = snapshot.docs[0];
+            const learnerRef = doc(db, 'learners', actualLearnerDoc.id);
 
             batch.update(learnerRef, {
                 status: 'dropped',
                 updatedAt: new Date().toISOString()
             });
-
-            await batch.commit();
-
-            toast.success(`${learnerToDrop.fullName} has been officially withdrawn.`);
-
-            if (useStore.getState().fetchLearners) {
-                useStore.getState().fetchLearners(true);
-            }
-
-            setLearnerToDrop(null); 
-        } catch (err: any) {
-            console.error("🔥 Error in handleConfirmDrop:", err);
-            toast.error(err.message || 'Failed to complete withdrawal process.');
-            throw err;
+        } else {
+            console.warn(`Could not find base learner document for ID: ${learnerToDrop.idNumber}. Continuing with enrollment update.`);
         }
-    };
+
+        // 3. Commit both updates together
+        await batch.commit();
+
+        toast.success(`${learnerToDrop.fullName} has been officially withdrawn.`);
+
+        // 4. Refresh State
+        if (useStore.getState().fetchLearners) {
+            useStore.getState().fetchLearners(true);
+        }
+
+        setLearnerToDrop(null); 
+    } catch (err: any) {
+        console.error("Error in handleConfirmDrop:", err);
+        toast.error(err.message || 'Failed to complete withdrawal process.');
+        throw err;
+    }
+};
 
     const droppedCount = enrolledLearners.filter(l => l.status === 'dropped').length;
     const placedCount = enrolledLearners.filter(l => l.employerId && employers.find(e => e.id === l.employerId)).length;
@@ -1282,7 +1296,16 @@ export const QCTOCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
                                                                     {isAdmin && !isDropped && <button className={`lfm-btn ${isPlaced ? 'lfm-btn--ghost' : 'lfm-btn--primary'}`} style={{ padding: '6px 10px', fontSize: '0.7rem' }} onClick={() => setLearnerToPlace(learner)}><Briefcase size={12} /> {isPlaced ? 'Reassign' : 'Place'}</button>}
                                                                     <button className="lfm-btn lfm-btn--ghost" style={{ padding: '6px 10px', fontSize: '0.7rem' }} onClick={() => navigate(`/portfolio/${routingId}`, { state: { cohortId: cohort.id } })}><FolderOpen size={12} /> Portfolio</button>
 
-                                                                    {!isDropped && (
+                                                                    {isDropped ? (
+                                                                        <button 
+                                                                            onClick={() => setLearnerToDrop(learner)} 
+                                                                            title="View Withdrawal Details" 
+                                                                            className="lfm-btn lfm-btn--ghost" 
+                                                                            style={{ padding: '6px 10px', fontSize: '0.7rem', color: 'var(--mlab-grey)', borderColor: 'var(--mlab-border)' }}
+                                                                        >
+                                                                            <FileText size={12} /> View Exit
+                                                                        </button>
+                                                                    ) : (
                                                                         <button
                                                                             onClick={() => setLearnerToDrop(learner)}
                                                                             title="Process Withdrawal / Dropout"
@@ -1296,6 +1319,20 @@ export const QCTOCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
                                                                             <UserMinus size={12} /> Withdraw
                                                                         </button>
                                                                     )}
+                                                                    {/* {!isDropped && (
+                                                                        <button
+                                                                            onClick={() => setLearnerToDrop(learner)}
+                                                                            title="Process Withdrawal / Dropout"
+                                                                            className="lfm-btn"
+                                                                            style={{
+                                                                                background: 'var(--mlab-white)', color: 'var(--mlab-red)', border: '2px solid var(--mlab-red)', padding: '6px 10px', fontSize: '0.7rem'
+                                                                            }}
+                                                                            onMouseOver={e => e.currentTarget.style.background = '#fef2f2'}
+                                                                            onMouseOut={e => e.currentTarget.style.background = 'var(--mlab-white)'}
+                                                                        >
+                                                                            <UserMinus size={12} /> Withdraw
+                                                                        </button>
+                                                                    )} */}
                                                                 </div>
                                                             </td>
                                                         </tr>

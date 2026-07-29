@@ -1487,20 +1487,20 @@ export const useStore = create<StoreState>()(
         if (list.length === 0) {
           console.log("   (Staging queue is completely empty)");
         } else {
-          list.forEach((stagedRow, idx) => {
-            console.log(`   [Row ${idx + 1}] Document ID: ${stagedRow.id}`);
-            console.log(
-              `     - fullName: "${stagedRow.fullName || "🛑 MISSING"}"`,
-            );
-            console.log(
-              `     - idNumber: "${stagedRow.idNumber || "🛑 MISSING"}"`,
-            );
-            console.log(`     - email:    "${stagedRow.email || "None"}"`);
-            console.log(
-              `     - cohortId: "${stagedRow.cohortId || "None (Dormant Stack)"}"`,
-            );
-            console.log("     - full payload attributes:", stagedRow);
-          });
+          // list.forEach((stagedRow, idx) => {
+          //   console.log(`   [Row ${idx + 1}] Document ID: ${stagedRow.id}`);
+          //   console.log(
+          //     `     - fullName: "${stagedRow.fullName || "🛑 MISSING"}"`,
+          //   );
+          //   console.log(
+          //     `     - idNumber: "${stagedRow.idNumber || "🛑 MISSING"}"`,
+          //   );
+          //   console.log(`     - email:    "${stagedRow.email || "None"}"`);
+          //   console.log(
+          //     `     - cohortId: "${stagedRow.cohortId || "None (Dormant Stack)"}"`,
+          //   );
+          //   console.log("     - full payload attributes:", stagedRow);
+          // });
         }
 
         set((state) => {
