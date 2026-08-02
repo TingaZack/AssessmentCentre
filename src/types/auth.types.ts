@@ -5,7 +5,8 @@ export type UserRole =
   | "assessor"
   | "moderator"
   | "mentor"
-  | "assistant_facilitator";
+  | "assistant_facilitator"
+  | "assistant_admin";
 
 export interface UserProfile {
   uid: string;

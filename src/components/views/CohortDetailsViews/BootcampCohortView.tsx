@@ -7,7 +7,9 @@ import {
     Users, Calendar, ChevronLeft, Mail, Phone, DownloadCloud,
     FolderOpen, UserCheck, Clock, CheckCircle2, AlertCircle, XCircle,
     Search, X, Info, BarChart2, UserMinus, Edit2, Loader2, Video, Layers, History, ChevronDown, ChevronUp, MapPin, Filter, ChevronRight, Globe,
-    Timer, PenTool, BookOpen, Award, ShieldCheck, User, Maximize, Minimize
+    Timer, PenTool, BookOpen, Award, ShieldCheck, User, Maximize, Minimize,
+    FileText,
+    Briefcase
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { collection, query, where, onSnapshot, doc, updateDoc, writeBatch, increment, getDoc } from 'firebase/firestore';
@@ -23,6 +25,7 @@ import { ModuleProgressCard } from '../../../components/common/ModuleProgressCar
 import { LearnerDropoutModal } from './LearnerDropoutModal';
 import moment from 'moment';
 import Loader from '../../common/Loader/Loader';
+import { WorkplacePlacementModal } from '../../admin/WorkplacePlacementModal/WorkplacePlacementModal';
 
 // ─── UTILS & SUB-COMPONENTS ─────────────────────────────────────────────────
 
@@ -260,9 +263,176 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
 
     const [learnerToDrop, setLearnerToDrop] = useState<DashboardLearner | null>(null);
 
+    const [learnerToPlace, setLearnerToPlace] = useState<DashboardLearner | null>(null);
+
     const [calendarMonth, setCalendarMonth] = useState(moment());
     const handlePrevMonth = () => setCalendarMonth(prev => prev.clone().subtract(1, 'month'));
     const handleNextMonth = () => setCalendarMonth(prev => prev.clone().add(1, 'month'));
+
+    const storeCohorts = (useStore(s => (s as any).cohorts) || []) as any[];
+    const activeCohorts = storeCohorts.filter(c => !c.isArchived);
+
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    const [promotingLearners, setPromotingLearners] = useState<any[] | null>(null);
+    const [promoteCohortId, setPromoteCohortId] = useState('');
+    const [isPromoting, setIsPromoting] = useState(false);
+
+    const [autoSendInvite, setAutoSendInvite] = useState(true);
+
+    // const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
+    //     if (e.target.checked) {
+    //         setSelectedIds(new Set(paginatedLearners.filter((l: any) => l.status !== 'dropped').map((l: any) => l.id)));
+    //     } else {
+    //         setSelectedIds(new Set());
+    //     }
+    // };
+    const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
+        setSelectedIds(prev => {
+            const next = new Set(prev);
+            // Get valid learners from the CURRENT page only
+            const validPageLearners = paginatedLearners.filter((l: any) => l.status !== 'dropped');
+
+            if (e.target.checked) {
+                // Add current page learners to existing selections
+                validPageLearners.forEach((l: any) => next.add(l.id));
+            } else {
+                // Remove current page learners from existing selections
+                validPageLearners.forEach((l: any) => next.delete(l.id));
+            }
+            return next;
+        });
+    };
+
+    const handleSelectOne = (id: string) => {
+        const next = new Set(selectedIds);
+        next.has(id) ? next.delete(id) : next.add(id);
+        setSelectedIds(next);
+    };
+
+    // const handleConfirmPromote = async () => {
+    //     if (!promotingLearners || promotingLearners.length === 0 || !promoteCohortId) return;
+    //     setIsPromoting(true);
+    //     try {
+    //         const batch = writeBatch(db);
+    //         const timestamp = new Date().toISOString();
+
+    //         promotingLearners.forEach(learner => {
+    //             const learnerRef = doc(db, "learners", learner.learnerId || learner.id);
+    //             const enrollmentId = `${promoteCohortId}_${learner.learnerId || learner.id}`;
+    //             const enrollmentRef = doc(db, "enrollments", enrollmentId);
+
+    //             // 1. Update the learner profile to active (removes bootcamp flag)
+    //             batch.update(learnerRef, {
+    //                 isBootcamp: false,
+    //                 cohortId: promoteCohortId,
+    //                 enrollmentId: enrollmentId,
+    //                 authStatus: "pending",
+    //                 status: "active",
+    //                 updatedAt: timestamp
+    //             });
+
+    //             // 2. Create their official enrollment record
+    //             batch.set(enrollmentRef, {
+    //                 id: enrollmentId,
+    //                 learnerId: learner.learnerId || learner.id,
+    //                 cohortId: promoteCohortId,
+    //                 status: "active",
+    //                 enrolledAt: timestamp,
+    //                 updatedAt: timestamp,
+    //                 assignedBy: user?.uid || "admin"
+    //             }, { merge: true });
+
+    //             // 3. Mark the bootcamp enrollment as transferred
+    //             if (learner.enrollmentId && learner.enrollmentId !== enrollmentId) {
+    //                 batch.update(doc(db, "enrollments", learner.enrollmentId), {
+    //                     status: "transferred",
+    //                     transferredTo: promoteCohortId,
+    //                     updatedAt: timestamp
+    //                 });
+    //             }
+    //         });
+
+    //         await batch.commit();
+    //         if (fetchLearners) fetchLearners(true);
+    //         setPromotingLearners(null);
+    //         setPromoteCohortId('');
+    //         setSelectedIds(new Set());
+    //         toast.success(`Successfully promoted ${promotingLearners.length} learner(s) to active enrollment!`);
+    //     } catch (error) {
+    //         console.error("Promotion failed", error);
+    //         toast.error("Failed to promote learners.");
+    //     } finally {
+    //         setIsPromoting(false);
+    //     }
+    // };
+
+    const handleConfirmPromote = async () => {
+        if (!promotingLearners || promotingLearners.length === 0 || !promoteCohortId) return;
+        setIsPromoting(true);
+        try {
+            const batch = writeBatch(db);
+            const timestamp = new Date().toISOString();
+
+            promotingLearners.forEach(learner => {
+                // 🚀 FIX: Safely extract the pure learner ID, in case learner.id became an enrollment string
+                const trueLearnerId = learner.learnerId || (learner.id?.includes('_') ? learner.id.substring(learner.id.indexOf('_') + 1) : learner.id);
+
+                const learnerRef = doc(db, "learners", trueLearnerId);
+                const newEnrollmentId = `${promoteCohortId}_${trueLearnerId}`;
+                const enrollmentRef = doc(db, "enrollments", newEnrollmentId);
+
+                // 1. Update the learner profile to active (removes bootcamp flag)
+                // 🚀 FIX: Use set with merge: true to prevent strict "No document to update" crashes
+                batch.set(learnerRef, {
+                    isBootcamp: false,
+                    cohortId: promoteCohortId,
+                    enrollmentId: newEnrollmentId,
+                    authStatus: autoSendInvite ? "invite_pending" : "pending",
+                    status: "active",
+                    updatedAt: timestamp,
+                    ...(autoSendInvite ? { inviteRequestedAt: timestamp } : {})
+                }, { merge: true });
+
+                // 2. Create their official enrollment record
+                batch.set(enrollmentRef, {
+                    id: newEnrollmentId,
+                    learnerId: trueLearnerId,
+                    cohortId: promoteCohortId,
+                    status: "active",
+                    enrolledAt: timestamp,
+                    updatedAt: timestamp,
+                    assignedBy: user?.uid || "admin"
+                }, { merge: true });
+
+                // 3. Mark the bootcamp enrollment as transferred
+                const oldEnrollmentId = learner.enrollmentId || (learner.id?.includes('_') ? learner.id : null);
+                if (oldEnrollmentId && oldEnrollmentId !== newEnrollmentId) {
+                    batch.set(doc(db, "enrollments", oldEnrollmentId), {
+                        status: "transferred",
+                        transferredTo: promoteCohortId,
+                        updatedAt: timestamp
+                    }, { merge: true });
+                }
+            });
+
+            await batch.commit();
+            if (fetchLearners) fetchLearners(true);
+            setPromotingLearners(null);
+            setPromoteCohortId('');
+            setSelectedIds(new Set());
+
+            toast.success(
+                autoSendInvite
+                    ? `Promoted ${promotingLearners.length} learner(s) and triggered welcome emails!`
+                    : `Promoted ${promotingLearners.length} learner(s) to active enrollment!`
+            );
+        } catch (error) {
+            console.error("Promotion failed", error);
+            toast.error("Failed to promote learners.");
+        } finally {
+            setIsPromoting(false);
+        }
+    };
 
     const calendarGrid = useMemo(() => {
         const startDay = calendarMonth.clone().startOf('month').startOf('week');
@@ -307,6 +477,7 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
                 uniqueMap.set(profile.idNumber || profile.id, {
                     ...profile,
                     ...enrollment,
+                    id: profile.id,
                     demographics: { ...profile.demographics, ...(enrollment.demographics || {}) },
                     enrollmentId: enrollment.id,
                     learnerId: profile.id,
@@ -592,7 +763,7 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
 
     }, [enrolledLearners, attendanceRecords, attendanceLogs, attendanceBands]);
 
-    // 🚀 DYNAMIC PROVINCES & CITIES EXTRACTION
+    //  1. DYNAMIC PROVINCES & CITIES EXTRACTION
     const dynamicLocations = useMemo(() => {
         const provinces = new Set<string>();
         const cities = new Set<string>();
@@ -626,41 +797,7 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
         };
     }, [enrolledLearners]);
 
-    const locationStats = useMemo(() => {
-        const stats = new Map<string, { lat: number, lng: number, count: number, name: string, latLngs: [number, number][] }>();
-
-        enrolledLearners.forEach(l => {
-            const demos = l.demographics || (l as any);
-            const provStr = String(demos.provinceCode || demos.province || '').trim();
-            const provInfo = getProvInfo(provStr) || { name: 'Unknown', lat: -28.4793, lng: 24.6727 };
-            const town = String(demos.learnerHomeAddress2 || demos.city || '').trim();
-
-            let lat = typeof demos.lat === 'number' ? demos.lat : parseFloat(demos.lat);
-            let lng = typeof demos.lng === 'number' ? demos.lng : parseFloat(demos.lng);
-            if (isNaN(lat)) lat = null;
-            if (isNaN(lng)) lng = null;
-
-            const groupName = town || `Unknown Area (${provInfo.name})`;
-
-            if (!stats.has(groupName)) {
-                stats.set(groupName, { lat: provInfo.lat, lng: provInfo.lng, count: 0, name: groupName, latLngs: [] });
-            }
-            const entry = stats.get(groupName)!;
-            entry.count++;
-            if (lat !== null && lng !== null) entry.latLngs.push([lat, lng]);
-        });
-
-        return Array.from(stats.values()).map(stat => {
-            if (stat.latLngs.length > 0) {
-                const avgLat = stat.latLngs.reduce((sum, l) => sum + l[0], 0) / stat.latLngs.length;
-                const avgLng = stat.latLngs.reduce((sum, l) => sum + l[1], 0) / stat.latLngs.length;
-                return { ...stat, lat: avgLat, lng: avgLng };
-            }
-            return stat;
-        });
-    }, [enrolledLearners]);
-
-    // 🚀 TARGET COORDINATES LOOKUP (FOR BOTH PROVINCES AND CITIES)
+    //  2. TARGET COORDINATES LOOKUP
     const targetCoordsLookup = useMemo(() => {
         const lookup = new Map<string, [number, number]>();
         const provData = new Map<string, { latLngs: [number, number][] }>();
@@ -720,6 +857,7 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
         return targetCoordsLookup.get(selectedMapLocation) || null;
     }, [selectedMapLocation, targetCoordsLookup]);
 
+    //  3. FILTERED LEARNERS (Must be declared BEFORE locationStats so it can be passed down!)
     const filteredLearners = useMemo(() => {
         if (!cohortAnalytics) return [];
 
@@ -738,7 +876,6 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
                 (statusFilter === 'active' && learner.status !== 'dropped') ||
                 (statusFilter === 'dropped' && learner.status === 'dropped');
 
-            // 🚀 ROBUST LOCATION MATCHING (Complements other filters)
             const matchesLocation = locationFilter === 'all' || (() => {
                 const demos = learner.demographics || (learner as any);
                 const provStr = String(demos.provinceCode || demos.province || '').trim();
@@ -755,7 +892,6 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
                 if (provName && provName.toLowerCase() === filterLower) return true;
                 if (town && town.toLowerCase() === filterLower) return true;
 
-                // Fallback: check if the combined string contains it
                 const fullLocStr = locationString.toLowerCase();
                 if (fullLocStr.includes(filterLower)) return true;
 
@@ -795,8 +931,50 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
         });
     }, [enrolledLearners, urlSearchTerm, statusFilter, attendanceFilter, activationFilter, locationFilter, customMinPct, customMaxPct, cohortAnalytics]);
 
+    //  4. LOCATION STATS (Now safely uses filteredLearners)
+    const locationStats = useMemo(() => {
+        const stats = new Map<string, { lat: number, lng: number, count: number, name: string, latLngs: [number, number][] }>();
+
+        filteredLearners.forEach(l => {
+            const demos = l.demographics || (l as any);
+            const provStr = String(demos.provinceCode || demos.province || '').trim();
+            const provInfo = getProvInfo(provStr) || { name: 'Unknown', lat: -28.4793, lng: 24.6727 };
+            const town = String(demos.learnerHomeAddress2 || demos.city || '').trim();
+
+            let lat = typeof demos.lat === 'number' ? demos.lat : parseFloat(demos.lat);
+            let lng = typeof demos.lng === 'number' ? demos.lng : parseFloat(demos.lng);
+            if (isNaN(lat)) lat = null;
+            if (isNaN(lng)) lng = null;
+
+            const groupName = town || `Unknown Area (${provInfo.name})`;
+
+            if (!stats.has(groupName)) {
+                stats.set(groupName, { lat: provInfo.lat, lng: provInfo.lng, count: 0, name: groupName, latLngs: [] });
+            }
+            const entry = stats.get(groupName)!;
+            entry.count++;
+            if (lat !== null && lng !== null) entry.latLngs.push([lat, lng]);
+        });
+
+        return Array.from(stats.values()).map(stat => {
+            if (stat.latLngs.length > 0) {
+                const avgLat = stat.latLngs.reduce((sum, l) => sum + l[0], 0) / stat.latLngs.length;
+                const avgLng = stat.latLngs.reduce((sum, l) => sum + l[1], 0) / stat.latLngs.length;
+                return { ...stat, lat: avgLat, lng: avgLng };
+            }
+            return stat;
+        });
+    }, [filteredLearners]);
+
+    //  5. PAGINATION (Also depends on filteredLearners)
     const totalPages = Math.ceil(filteredLearners.length / ITEMS_PER_PAGE);
     const paginatedLearners = filteredLearners.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+
+
+
+
+
+
 
     const filteredAttendanceLogs = useMemo(() => {
         if (ledgerDates.length === 0) return attendanceLogs;
@@ -1126,6 +1304,16 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
                 />
             )}
 
+            {learnerToPlace && createPortal(
+                <WorkplacePlacementModal
+                    learner={learnerToPlace}
+                    // @ts-ignore
+                    cohort={cohort}
+                    onClose={() => setLearnerToPlace(null)}
+                />,
+                document.body
+            )}
+
             {editingLog && createPortal(
                 <div className="wm-overlay animate-fade-in" onClick={() => setEditingLog(null)} style={{ zIndex: 99999 }}>
                     <div className="wm-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '500px', borderRadius: 0, border: '2px solid var(--mlab-border)' }}>
@@ -1218,19 +1406,78 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
                             <div className="mc-cards-wrapper animate-slide-down">
                                 <ModuleProgressCard
                                     type="Global Retention"
-                                    data={{ total: cohortAnalytics.totalCount || 1, logged: cohortAnalytics.systemActiveCount || 0 }}
+                                    data={{
+                                        total: cohortAnalytics.totalCount || 1,
+                                        logged: cohortAnalytics.systemActiveCount || 0,
+                                        subValue: `${cohortAnalytics.globalRetention}% Retained`,
+                                        segments: [
+                                            { label: 'Active', value: cohortAnalytics.systemActiveCount, color: '#10b981' },
+                                            { label: 'Withdrawn', value: cohortAnalytics.droppedCount, color: '#ef4444' }
+                                        ]
+                                    }}
                                 />
                                 <ModuleProgressCard
                                     type="Pipeline Activation"
-                                    data={{ total: cohortAnalytics.totalCount || 1, logged: cohortAnalytics.totalActivatedLearners || 0 }}
+                                    data={{
+                                        total: cohortAnalytics.totalCount || 1,
+                                        logged: cohortAnalytics.totalActivatedLearners || 0,
+                                        subValue: `${cohortAnalytics.activationRate}% Activated`,
+                                        segments: [
+                                            { label: 'Started', value: cohortAnalytics.totalActivatedLearners, color: '#0ea5e9' },
+                                            { label: 'Not Started', value: (cohortAnalytics.totalCount || 0) - (cohortAnalytics.totalActivatedLearners || 0), color: '#94a3b8' }
+                                        ]
+                                    }}
                                 />
+
+                                <ModuleProgressCard
+                                    type="Gender Diversity"
+                                    data={{
+                                        total: cohortAnalytics.totalActivatedLearners || 1,
+                                        logged: cohortAnalytics.activeFemaleCount || 0,
+                                        subValue: `${cohortAnalytics.activeFemalePct}% Female (Active)`,
+                                        segments: [
+                                            { label: 'Female', value: cohortAnalytics.activeFemaleCount, color: '#ec4899' },
+                                            { label: 'Male', value: cohortAnalytics.activeMaleCount, color: '#3b82f6' }
+                                        ]
+                                    }}
+                                />
+
+                                <ModuleProgressCard
+                                    type="Performance Risk"
+                                    data={{
+                                        total: cohortAnalytics.totalActivatedLearners || 1,
+                                        logged: cohortAnalytics.highPerformers || 0,
+                                        subValue: `${cohortAnalytics.atRisk + cohortAnalytics.ghosting} At Risk`,
+                                        segments: [
+                                            { label: 'High (>80%)', value: cohortAnalytics.highPerformers, color: '#10b981' },
+                                            { label: 'At-Risk (<50%)', value: cohortAnalytics.atRisk, color: '#f59e0b' },
+                                            { label: 'Ghosting', value: cohortAnalytics.ghosting, color: '#ef4444' }
+                                        ]
+                                    }}
+                                />
+
                                 <ModuleProgressCard
                                     type="Active Attendance"
-                                    data={{ total: 100, logged: cohortAnalytics.avgAttendance || 0 }}
+                                    data={{
+                                        total: 100,
+                                        logged: cohortAnalytics.avgAttendance || 0,
+                                        subValue: `${cohortAnalytics.avgAttendance}% Average`,
+                                        segments: [
+                                            { label: 'Attended', value: cohortAnalytics.avgAttendance || 0, color: '#8b5cf6' },
+                                            { label: 'Missed', value: 100 - (cohortAnalytics.avgAttendance || 0), color: '#e2e8f0' }
+                                        ]
+                                    }}
                                 />
                                 <ModuleProgressCard
                                     type="Total Training Time"
-                                    data={{ total: cohortAnalytics.totalCohortHours > 0 ? cohortAnalytics.totalCohortHours : 1, logged: cohortAnalytics.totalCohortHours || 0 }}
+                                    data={{
+                                        total: cohortAnalytics.totalCohortHours > 0 ? cohortAnalytics.totalCohortHours : 1,
+                                        logged: cohortAnalytics.totalCohortHours || 0,
+                                        subValue: `${cohortAnalytics.avgHoursPerLearner} hrs / learner`,
+                                        segments: [
+                                            { label: 'Total Hours', value: cohortAnalytics.totalCohortHours || 0, color: '#f59e0b' }
+                                        ]
+                                    }}
                                 />
                             </div>
 
@@ -1644,11 +1891,43 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
                                 </div>
                             </div>
 
+                            {/* BULK ACTION BAR */}
+                            {selectedIds.size > 0 && (
+                                <div style={{ padding: '10px 1.5rem', background: '#e0f2fe', borderBottom: '1px solid #bae6fd', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                    <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                        {selectedIds.size} Applicant(s) Selected
+                                    </span>
+                                    <button
+                                        className="lfm-btn lfm-btn--primary"
+                                        style={{ background: 'var(--mlab-green)', borderColor: 'var(--mlab-green-dark)', padding: '6px 12px', fontSize: '0.75rem' }}
+                                        onClick={() => {
+                                            // const selected = paginatedLearners.filter((l: any) => selectedIds.has(l.id));
+                                            // setPromotingLearners(selected);
+                                            const selected = filteredLearners.filter((l: any) => selectedIds.has(l.id));
+                                            setPromotingLearners(selected);
+                                        }}
+                                    >
+                                        <UserCheck size={14} /> Promote to Active Enrollment
+                                    </button>
+                                </div>
+                            )}
+
                             <div className="lfm-body" style={{ padding: 0 }}>
                                 <div className="mlab-table-wrap">
                                     <table className="mlab-table" style={{ margin: 0 }}>
                                         <thead style={{ background: 'var(--mlab-light-blue)' }}>
                                             <tr>
+                                                <th style={{ width: '40px', textAlign: 'center', borderBottom: '1px solid var(--mlab-border)', borderTop: 'none', borderRadius: 0 }}>
+                                                    <input
+                                                        type="checkbox"
+                                                        onChange={handleSelectAll}
+                                                        checked={
+                                                            paginatedLearners.length > 0 &&
+                                                            paginatedLearners.filter((l: any) => l.status !== 'dropped').length > 0 &&
+                                                            paginatedLearners.filter((l: any) => l.status !== 'dropped').every((l: any) => selectedIds.has(l.id))
+                                                        }
+                                                    />
+                                                </th>
                                                 <th style={{ color: 'var(--mlab-grey)', borderBottom: '1px solid var(--mlab-border)', borderTop: 'none', borderRadius: 0 }}>Learner</th>
                                                 <th style={{ color: 'var(--mlab-grey)', borderBottom: '1px solid var(--mlab-border)', borderTop: 'none', borderRadius: 0 }}>Contact</th>
                                                 <th style={{ color: 'var(--mlab-grey)', borderBottom: '1px solid var(--mlab-border)', borderTop: 'none', borderRadius: 0 }}>Location</th>
@@ -1677,6 +1956,8 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
                                                     const attended = stats ? stats.attended : 0;
                                                     const total = stats ? stats.total : attendanceLogs.length;
 
+                                                    const isPlaced = !!learner.employerId;
+
                                                     const isActivated = totalMinutes > 0;
                                                     const band = attendanceBands.find(b => pct >= b.min && pct <= b.max) || attendanceBands[0];
 
@@ -1684,6 +1965,9 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
 
                                                     return (
                                                         <tr key={learner.idNumber || learner.id || index} className={`animate-fade-in ${isDropped ? 'mlab-tr--dropped' : ''}`} style={{ transition: 'all 0.3s ease', background: isDropped ? 'var(--mlab-bg)' : 'transparent', opacity: isDropped ? 0.6 : 1 }}>
+                                                            <td style={{ textAlign: 'center' }}>
+                                                                <input type="checkbox" checked={selectedIds.has(learner.id)} onChange={() => handleSelectOne(learner.id)} disabled={isDropped} />
+                                                            </td>
                                                             <td>
                                                                 <div className="cdp-learner-cell">
                                                                     <div className="cdp-learner-avatar" style={{ borderRadius: 0, background: 'var(--mlab-light-blue)', color: 'var(--mlab-blue)', border: '1px solid var(--mlab-border)' }}>{learner.fullName.charAt(0)}</div>
@@ -1747,6 +2031,48 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
                                                                 </div>
                                                             </td>
                                                             <td style={{ textAlign: 'right' }}>
+                                                                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                                                                    {/* INDIVIDUAL PROMOTE BUTTON */}
+                                                                    {isAdmin && !isDropped && (
+                                                                        <button
+                                                                            className="lfm-btn"
+                                                                            style={{ background: '#dcfce7', color: '#166534', border: '1px solid #bbf7d0', padding: '6px 10px', fontSize: '0.7rem' }}
+                                                                            onClick={() => setPromotingLearners([learner])}
+                                                                            title="Promote to Active Class"
+                                                                        >
+                                                                            <UserCheck size={12} /> Promote
+                                                                        </button>
+                                                                    )}
+                                                                    {isAdmin && !isDropped && <button className={`lfm-btn ${isPlaced ? 'lfm-btn--ghost' : 'lfm-btn--primary'}`} style={{ padding: '6px 10px', fontSize: '0.7rem' }} onClick={() => setLearnerToPlace(learner)}><Briefcase size={12} /> {isPlaced ? 'Reassign' : 'Place'}</button>}
+                                                                    <button className="lfm-btn lfm-btn--ghost" style={{ padding: '6px 10px', fontSize: '0.7rem' }} onClick={() => navigate(`/portfolio/${routingId}`, { state: { cohortId: cohort.id } })}><FolderOpen size={12} /> Portfolio</button>
+
+                                                                    {isDropped ? (
+                                                                        <button
+                                                                            onClick={() => setLearnerToDrop(learner)}
+                                                                            title="View Withdrawal Details"
+                                                                            className="lfm-btn lfm-btn--ghost"
+                                                                            style={{ padding: '6px 10px', fontSize: '0.7rem', color: 'var(--mlab-grey)', borderColor: 'var(--mlab-border)' }}
+                                                                        >
+                                                                            <FileText size={12} /> View Exit
+                                                                        </button>
+                                                                    ) : (
+                                                                        <button
+                                                                            onClick={() => setLearnerToDrop(learner)}
+                                                                            title="Process Withdrawal / Dropout"
+                                                                            className="lfm-btn"
+                                                                            style={{
+                                                                                background: 'var(--mlab-white)', color: 'var(--mlab-red)', border: '2px solid var(--mlab-red)', padding: '6px 10px', fontSize: '0.7rem'
+                                                                            }}
+                                                                            onMouseOver={e => e.currentTarget.style.background = '#fef2f2'}
+                                                                            onMouseOut={e => e.currentTarget.style.background = 'var(--mlab-white)'}
+                                                                        >
+                                                                            <UserMinus size={12} /> Withdraw
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                            </td>
+
+                                                            {/* <td style={{ textAlign: 'right' }}>
                                                                 <div className="cdp-actions" style={{ justifyContent: 'flex-end', display: 'flex', gap: '8px' }}>
                                                                     <button
                                                                         className="lfm-btn lfm-btn--ghost"
@@ -1772,7 +2098,7 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
                                                                         </button>
                                                                     )}
                                                                 </div>
-                                                            </td>
+                                                            </td> */}
                                                         </tr>
                                                     );
                                                 })
@@ -2121,6 +2447,76 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
                                 </div>
                             </div>
                         </div>
+                    )}
+
+                    {/* PROMOTION MODAL */}
+                    {promotingLearners && promotingLearners.length > 0 && createPortal(
+                        <div className="wm-overlay animate-fade-in" onClick={() => setPromotingLearners(null)} style={{ zIndex: 999999 }}>
+                            <div className="wm-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '500px', borderRadius: '0', border: '2px solid var(--mlab-blue)' }}>
+                                <div className="wm-modal__header" style={{ borderBottom: '1px solid var(--mlab-border)', paddingBottom: '1rem', background: '#f8fafc' }}>
+                                    <div className="wm-modal__header-icon" style={{ background: '#dcfce7', color: '#16a34a', borderRadius: '0' }}><UserCheck size={20} /></div>
+                                    <div>
+                                        <h2 className="wm-modal__title" style={{ color: "var(--mlab-blue)" }}>Promote {promotingLearners.length} Applicant{promotingLearners.length > 1 ? 's' : ''}</h2>
+                                        <p className="wm-modal__subtitle" style={{ color: "var(--mlab-grey)" }}>Transfer bootcamp learners into an official active class.</p>
+                                    </div>
+                                    <button className="wm-modal__close" onClick={() => setPromotingLearners(null)} disabled={isPromoting}><X size={18} /></button>
+                                </div>
+                                <div className="wm-modal__body" style={{ display: 'flex', flexDirection: 'column', gap: '16px', padding: '1.5rem' }}>
+
+                                    <div style={{ background: '#e0f2fe', padding: '12px', borderRadius: '0', border: '1px solid #bae6fd', fontSize: '0.85rem', color: '#0369a1', fontWeight: 500 }}>
+                                        These learners will be officially enrolled into the Active pipeline. <strong>Their historical data and attendance will remain permanently visible in this Bootcamp roster for your records.</strong> In the main system, they will be marked as <strong>Pending Setup</strong> so you can send them email invitations to log in.
+                                    </div>
+
+                                    <div className="mlab-form-group">
+                                        <label style={{ fontWeight: 700, color: 'var(--mlab-midnight)', fontSize: '0.85rem', marginBottom: '8px', display: 'block', textTransform: 'uppercase' }}>
+                                            Assign to Class / Cohort <span style={{ color: 'var(--mlab-red)' }}>*</span>
+                                        </label>
+                                        <select
+                                            className="mlab-input lfm-select"
+                                            value={promoteCohortId}
+                                            onChange={e => setPromoteCohortId(e.target.value)}
+                                            style={{ width: '100%', padding: '10px', borderRadius: '0', border: '1px solid var(--mlab-border)', outline: 'none' }}
+                                            disabled={isPromoting}
+                                        >
+                                            <option value="">-- Select Destination Cohort --</option>
+                                            {activeCohorts.map(c => (
+                                                <option key={c.id} value={c.id}>{c.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    {/* AUTO-INVITE TOGGLE */}
+                                    <label style={{
+                                        display: 'flex', alignItems: 'center', gap: '12px', cursor: isPromoting ? 'not-allowed' : 'pointer',
+                                        background: autoSendInvite ? '#f0fdf4' : '#f8fafc', padding: '12px 16px',
+                                        border: `1px solid ${autoSendInvite ? '#bbf7d0' : '#cbd5e1'}`, borderRadius: '0', marginTop: '4px',
+                                        transition: 'all 0.2s ease'
+                                    }}>
+                                        <input
+                                            type="checkbox"
+                                            checked={autoSendInvite}
+                                            onChange={(e) => setAutoSendInvite(e.target.checked)}
+                                            style={{ width: '18px', height: '18px', accentColor: 'var(--mlab-green)', cursor: 'pointer' }}
+                                            disabled={isPromoting}
+                                        />
+                                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                            <span style={{ fontSize: '0.85rem', fontWeight: 700, color: autoSendInvite ? '#166534' : 'var(--mlab-midnight)' }}>
+                                                Automatically send registration emails
+                                            </span>
+                                            <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                                                Learners will immediately receive an invitation link to set their password.
+                                            </span>
+                                        </div>
+                                    </label>
+                                </div>
+                                <div className="wm-modal__footer" style={{ borderTop: '1px solid var(--mlab-border)', padding: '1rem 1.5rem', background: 'var(--mlab-bg)' }}>
+                                    <button className="wm-btn wm-btn--ghost" style={{ borderRadius: '0' }} onClick={() => setPromotingLearners(null)} disabled={isPromoting}>Cancel</button>
+                                    <button className="wm-btn wm-btn--primary" style={{ background: 'var(--mlab-green)', borderColor: 'var(--mlab-green-dark)', borderRadius: '0' }} onClick={handleConfirmPromote} disabled={isPromoting || !promoteCohortId}>
+                                        {isPromoting ? <><Loader2 className="spin" size={16} /> Promoting...</> : <><UserCheck size={16} /> Confirm Promotion</>}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>,
+                        document.body
                     )}
                 </div>
             </main>

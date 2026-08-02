@@ -46,7 +46,7 @@ import { ModeratorDashboard } from './pages/FacilitatorDashboard/ModeratorDashbo
 // Mentor (Workplace)
 import { MentorProfileSetup } from './pages/mentor/MentorProfileSetup/MentorProfileSetup';
 import { MentorDashboard } from './pages/mentor/MentorDashboard/MentorDashboard';
-// 🚀 IMPORT THE MENTOR MAGIC LINK APPROVAL VIEW
+// IMPORT THE MENTOR MAGIC LINK APPROVAL VIEW
 import { MentorApprovalView } from './components/views/MentorApprovalView/MentorApprovalView';
 
 // Learner & Public
@@ -111,15 +111,18 @@ const RootRedirect = () => {
 
     switch (user.role) {
       case 'facilitator':
-      case 'assistant_facilitator': // 🚀 FIX: Apply standard facilitator compliance rules
+      case 'assistant_facilitator':
         return hasStaffProvince && hasDoc('id') && hasDoc('cv') && hasPermitIfForeign;
       case 'assessor':
         return hasStaffProvince && hasDoc('id') && hasDoc('assessor_cert') && hasDoc('reg_letter') && hasPermitIfForeign;
       case 'moderator':
         return hasStaffProvince && hasDoc('id') && hasDoc('moderator_cert') && hasDoc('reg_letter') && hasPermitIfForeign;
       case 'admin':
-        if ((user as any).isSuperAdmin) return true;
-        return hasStaffProvince && hasDoc('id') && hasDoc('appointment') && hasPermitIfForeign;
+      case 'assistant_admin': // 🚀 Handle Assistance Admin Role
+        if ((user as any).isSuperAdmin) return true; // Super admins skip compliance checks
+        // 🚀 Strictly enforce signature upload for access
+        const hasSignature = hasDoc('signature') || !!(user as any).signatureUrl;
+        return hasStaffProvince && hasDoc('id') && hasDoc('appointment') && hasPermitIfForeign && hasSignature;
       case 'mentor':
         return hasStaffProvince;
       default:
@@ -132,17 +135,18 @@ const RootRedirect = () => {
     return <Navigate to="/setup-profile" replace />;
   }
 
-  // 🚀 FIX: Include assistant_facilitator in the staff list
-  const staffRoles = ['facilitator', 'assistant_facilitator', 'assessor', 'moderator', 'mentor', 'admin'];
+  // 🚀 Include assistant_admin in the tracked staff roles
+  const staffRoles = ['facilitator', 'assistant_facilitator', 'assessor', 'moderator', 'mentor', 'admin', 'assistant_admin'];
   if (staffRoles.includes(user.role) && !isStaffCompliant()) {
-    return <Navigate to={`/setup-${user.role === 'assistant_facilitator' ? 'facilitator' : user.role}`} replace />;
+    return <Navigate to={`/setup-${user.role === 'assistant_facilitator' ? 'facilitator' : user.role === 'assistant_admin' ? 'admin' : user.role}`} replace />;
   }
 
   // 4. FINAL TRAFFIC CONTROL (Fully Compliant Users)
   switch (user.role) {
-    case 'admin': return <Navigate to="/admin" replace />;
+    case 'admin':
+    case 'assistant_admin': return <Navigate to="/admin" replace />;
     case 'facilitator':
-    case 'assistant_facilitator': return <Navigate to="/facilitator" replace />; // 🚀 FIX: Forward to facilitator dashboard
+    case 'assistant_facilitator': return <Navigate to="/facilitator" replace />;
     case 'assessor': return <Navigate to="/marking" replace />;
     case 'moderator': return <Navigate to="/moderation" replace />;
     case 'mentor': return <Navigate to="/mentor" replace />;
@@ -229,7 +233,8 @@ function App() {
 
             {/* ================= ONBOARDING GATES ================= */}
             <Route path="/setup-admin" element={
-              <RoleProtectedRoute allowedRoles={['admin']}>
+              // 🚀 Allow Assistance Admins into Setup
+              <RoleProtectedRoute allowedRoles={['admin', 'assistant_admin']}>
                 <AdminProfileSetup />
               </RoleProtectedRoute>
             } />
@@ -249,7 +254,6 @@ function App() {
               </RoleProtectedRoute>
             } />
             <Route path="/setup-facilitator" element={
-              // 🚀 FIX: Allow assistants into the setup
               <RoleProtectedRoute allowedRoles={['facilitator', 'assistant_facilitator']}>
                 <FacilitatorProfileSetup />
               </RoleProtectedRoute>
@@ -264,48 +268,48 @@ function App() {
 
             {/* ADMIN CONSOLE */}
             <Route path="/admin" element={
-              <RoleProtectedRoute allowedRoles={['admin']}>
+              // 🚀 Allow Assistance Admins to view the dashboard container
+              <RoleProtectedRoute allowedRoles={['admin', 'assistant_admin']}>
                 <AdminDashboard />
               </RoleProtectedRoute>
             } />
             <Route path="/admin/access" element={
-              <RoleProtectedRoute allowedRoles={['admin']} requireSuperAdmin={true}>
+              <RoleProtectedRoute allowedRoles={['admin', 'assistant_admin']} requireSuperAdmin={true}>
                 <AccessManager />
               </RoleProtectedRoute>
             } />
             <Route path="/admin/ecosystem/event/:eventId" element={
-              <RoleProtectedRoute allowedRoles={['admin']}>
+              <RoleProtectedRoute allowedRoles={['admin', 'assistant_admin']}>
                 <EventDetailsPage />
               </RoleProtectedRoute>
             } />
             <Route path="/admin/studio" element={
-              <RoleProtectedRoute allowedRoles={['admin', 'facilitator']}>
+              <RoleProtectedRoute allowedRoles={['admin', 'assistant_admin', 'facilitator']}>
                 <CertificateStudio />
               </RoleProtectedRoute>
             } />
             <Route path="/admin/wil" element={
-              <RoleProtectedRoute allowedRoles={['admin']}>
+              <RoleProtectedRoute allowedRoles={['admin', 'assistant_admin']}>
                 <WorkplaceHub />
               </RoleProtectedRoute>
             } />
             <Route path="/admin/workplaces" element={
-              <RoleProtectedRoute allowedRoles={['admin']}>
+              <RoleProtectedRoute allowedRoles={['admin', 'assistant_admin']}>
                 <WorkplacesManager />
               </RoleProtectedRoute>
             } />
             <Route path="/settings" element={
-              <RoleProtectedRoute allowedRoles={['admin']}>
+              <RoleProtectedRoute allowedRoles={['admin', 'assistant_admin']}>
                 <SettingsPage />
               </RoleProtectedRoute>
             } />
             <Route path="/admin/learners/:learnerId" element={
-              <RoleProtectedRoute allowedRoles={['admin']}>
+              <RoleProtectedRoute allowedRoles={['admin', 'assistant_admin']}>
                 <LearnerProfileView />
               </RoleProtectedRoute>
             } />
             <Route path="/admin/invigilate/:assessmentId" element={
-              // 🚀 FIX: Let them invigilate exams too
-              <RoleProtectedRoute allowedRoles={['admin', 'facilitator', 'assistant_facilitator']}>
+              <RoleProtectedRoute allowedRoles={['admin', 'assistant_admin', 'facilitator', 'assistant_facilitator']}>
                 <InvigilatorDashboard />
               </RoleProtectedRoute>
             } />
@@ -324,7 +328,6 @@ function App() {
 
             {/* FACILITATOR SUITE */}
             <Route path="/facilitator" element={
-              // 🚀 FIX: Let assistants into the dashboard wrapper!
               <RoleProtectedRoute allowedRoles={['facilitator', 'assistant_facilitator']}>
                 <FacilitatorLayout />
               </RoleProtectedRoute>
@@ -341,22 +344,22 @@ function App() {
 
             {/* SHARED VIEWS */}
             <Route path="/admin/assessment/preview/:assessmentId" element={
-              <RoleProtectedRoute allowedRoles={['admin', 'facilitator', 'assistant_facilitator', 'assessor', 'moderator', 'mentor']}>
+              <RoleProtectedRoute allowedRoles={['admin', 'assistant_admin', 'facilitator', 'assistant_facilitator', 'assessor', 'moderator', 'mentor']}>
                 <AssessmentPreview />
               </RoleProtectedRoute>
             } />
             <Route path="/cohorts/:cohortId" element={
-              <RoleProtectedRoute allowedRoles={['admin', 'facilitator', 'assistant_facilitator', 'assessor', 'moderator', 'mentor']}>
+              <RoleProtectedRoute allowedRoles={['admin', 'assistant_admin', 'facilitator', 'assistant_facilitator', 'assessor', 'moderator', 'mentor']}>
                 <CohortDetailsPage />
               </RoleProtectedRoute>
             } />
             <Route path="/portfolio/:id" element={
-              <RoleProtectedRoute allowedRoles={['admin', 'assessor', 'moderator', 'facilitator', 'assistant_facilitator', 'learner', 'mentor']}>
+              <RoleProtectedRoute allowedRoles={['admin', 'assistant_admin', 'assessor', 'moderator', 'facilitator', 'assistant_facilitator', 'learner', 'mentor']}>
                 <ViewPortfolio />
               </RoleProtectedRoute>
             } />
             <Route path="/portfolio/submission/:submissionId" element={
-              <RoleProtectedRoute allowedRoles={['admin', 'facilitator', 'assistant_facilitator', 'assessor', 'moderator', 'mentor']}>
+              <RoleProtectedRoute allowedRoles={['admin', 'assistant_admin', 'facilitator', 'assistant_facilitator', 'assessor', 'moderator', 'mentor']}>
                 <SubmissionReview />
               </RoleProtectedRoute>
             } />

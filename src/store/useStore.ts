@@ -2194,32 +2194,44 @@ export const useStore = create<StoreState>()(
           "createLearnerAccount",
         );
 
+        // 🚀 STRICT ARCHITECTURE ENFORCEMENT: The Document Key is ALWAYS the ID Number.
+        // If it's a merged enrollment string (e.g. "cohort123_9007090326089"), we pop off the ID number at the end.
+        const targetDocumentKey =
+          learner.idNumber ||
+          (learner.id?.includes("_")
+            ? learner.id.split("_").pop()
+            : learner.id);
+
+        if (!targetDocumentKey) {
+          throw new Error(
+            "Critical Error: Missing Learner ID Number for database mapping.",
+          );
+        }
+
         const result = await createAccountFn({
-          email: learner.email,
+          email: learner.email || learner.demographics?.learnerEmailAddress,
           fullName: learner.fullName,
           role: "learner",
+          learnerId: targetDocumentKey, // Send the strict ID Number to backend
+          idNumber: targetDocumentKey,
         });
 
         const data = result.data as any;
 
         if (data.success) {
-          const learnerRef = doc(
-            db,
-            "learners",
-            learner.learnerId || learner.id,
-          );
+          // 🚀 FIX: Strictly target the learner's ID Number as the document key
+          const learnerRef = doc(db, "learners", targetDocumentKey);
 
-          // FIX: Update both authStatus and the actual authUid returned from Firebase
           await updateDoc(learnerRef, {
-            authStatus: "active",
+            authStatus: "pending",
             authUid: data.uid || learner.authUid,
-            invitedAt: now(),
+            invitedAt: new Date().toISOString(),
           });
 
           set((state) => {
             const idx = state.learners.findIndex((l) => l.id === learner.id);
             if (idx !== -1) {
-              state.learners[idx].authStatus = "active";
+              state.learners[idx].authStatus = "pending";
               if (data.uid) state.learners[idx].authUid = data.uid;
             }
             state.learnersLoading = false;
@@ -2232,8 +2244,14 @@ export const useStore = create<StoreState>()(
         set((state) => {
           state.learnersLoading = false;
         });
-        if (error.message.includes("already exists")) {
-          throw new Error("This user is already registered.");
+
+        if (
+          error.message.includes("already exists") ||
+          error.message.includes("email-already-in-use")
+        ) {
+          throw new Error(
+            "This user is already registered with that email address.",
+          );
         } else {
           throw new Error(`Failed to invite: ${error.message}`);
         }

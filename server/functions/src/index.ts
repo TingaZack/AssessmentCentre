@@ -510,25 +510,65 @@ export const createStaffAccount = onCall(
   },
 );
 
-export const createLearnerAccount = onRequest(
-  { secrets: [mailgunSecret] },
-  (req, res) => {
-    return cors(req, res, async () => {
+// ============================================================================
+// AUTOMATED LEARNER PROMOTION & EMAIL REGISTRATION TRIGGER
+// ============================================================================
+
+// ============================================================================
+// AUTOMATED LEARNER PROMOTION & EMAIL REGISTRATION TRIGGER
+// ============================================================================
+
+export const onLearnerInviteTriggered = onDocumentUpdated(
+  { document: "learners/{learnerId}", secrets: [mailgunSecret] },
+  async (event) => {
+    const learnerId = event.params.learnerId;
+
+    // 🚀 LOUD LOG 1: Prove the function is awake!
+    logger.info(`🔥 Trigger Awakened! Learner document updated: ${learnerId}`);
+
+    const beforeData = event.data?.before.data();
+    const afterData = event.data?.after.data();
+
+    if (!beforeData || !afterData) {
+      logger.warn(`⚠️ [${learnerId}] Missing before/after data. Exiting.`);
+      return;
+    }
+
+    // 🚀 LOUD LOG 2: Show us the exact status change it sees
+    logger.info(
+      `📊 [${learnerId}] Status Check -> Before: [${beforeData.authStatus}] | After: [${afterData.authStatus}]`,
+    );
+
+    // Only trigger if the frontend flipped the status to "invite_pending"
+    if (
+      beforeData.authStatus !== "invite_pending" &&
+      afterData.authStatus === "invite_pending"
+    ) {
+      logger.info(
+        `✅ [${learnerId}] Condition met! Proceeding with email automation...`,
+      );
+
+      const rawEmail =
+        afterData.email || afterData.demographics?.learnerEmailAddress;
+      const email = rawEmail ? String(rawEmail).toLowerCase().trim() : null;
+
+      const fullName = afterData.fullName || "Learner";
+
+      if (!email) {
+        logger.error(
+          `[onLearnerInvite] Missing email for learner ${learnerId}. Cannot send invite.`,
+        );
+        await event.data?.after.ref.update({
+          authStatus: "failed",
+          authError: "No email address found on applicant profile.",
+        });
+        return;
+      }
+
+      let uid: string;
+
       try {
-        if (req.method !== "POST")
-          return res.status(405).send("Method Not Allowed");
-
-        const { email, fullName, role } = req.body.data || req.body;
-
-        if (!email || !fullName)
-          return res.status(400).send({
-            data: { success: false, message: "Missing email or name" },
-          });
-
-        let uid: string;
-        let isNewUser = false;
-
-        // Create or Fetch the Auth User
+        // 1. Create or Fetch the Firebase Auth User
         try {
           const existingUser = await admin.auth().getUserByEmail(email);
           uid = existingUser.uid;
@@ -540,55 +580,186 @@ export const createLearnerAccount = onRequest(
               displayName: fullName,
             });
             uid = newUser.uid;
-            isNewUser = true;
           } else throw error;
         }
 
-        // Set Custom User Claims
-        await admin
-          .auth()
-          .setCustomUserClaims(uid, { role: role || "learner" });
+        // 2. Set Custom User Claims
+        await admin.auth().setCustomUserClaims(uid, { role: "learner" });
 
         // 3. Create or Update the Global 'users' Document
         const userRef = admin.firestore().collection("users").doc(uid);
-        const userDoc = await userRef.get();
-        if (!userDoc.exists)
-          await userRef.set({
+        await userRef.set(
+          {
             email,
             fullName,
-            role: role || "learner",
-            createdAt: new Date().toISOString(),
-          });
+            role: "learner",
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true },
+        );
 
-        // Link Auth UID to the existing 'learners' collection document
-        const snapshot = await admin
-          .firestore()
-          .collection("learners")
-          .where("email", "==", email)
-          .get();
-
-        if (!snapshot.empty)
-          await snapshot.docs[0].ref.update({
-            authUid: uid,
-            status: "active",
-            lastSynced: new Date().toISOString(),
-          });
-
-        // Generate Secure Reset Link & Extract oobCode
+        // 4. Generate Secure Reset Link
         const defaultFirebaseLink = await admin
           .auth()
           .generatePasswordResetLink(email);
         const urlObj = new URL(defaultFirebaseLink);
         const oobCode = urlObj.searchParams.get("oobCode");
-
-        // Construct the clean mLab React Link
         const customReactLink = `${APP_URL}/reset-password?oobCode=${oobCode}`;
 
+        // 5. Construct Email
         const emailParams = {
           title: "Welcome to mLab",
           subtitle: "Action Required: Activate your learner portal",
           recipientName: fullName,
           bodyHtml: `
+            <p>Welcome to the <strong>mLab Assessment Platform</strong>! You have been officially registered as a <strong>Learner</strong> and promoted to an active class.</p>
+            <p>This platform is where you will access your learning materials, submit your Portfolios of Evidence (PoE), and track your academic progress.</p>
+            <p>Before you can log in to see your enrolled modules, you need to set up your account credentials. Please follow these instructions:</p>
+            <ol style="margin-top: 15px; margin-bottom: 25px; padding-left: 20px; color: #475569; line-height: 1.6;">
+                <li style="margin-bottom: 8px;">Click the <strong>Create My Password</strong> button below.</li>
+                <li style="margin-bottom: 8px;">Type in a secure password and save it.</li>
+                <li style="margin-bottom: 8px;">Return to the login screen and sign in using your email address and your newly created password.</li>
+            </ol>
+            <div style="background-color: #f8fafc; padding: 15px; border-radius: 6px; border: 1px solid #dde4e8; border-left: 4px solid #0ea5e9; margin: 20px 0;">
+                <p style="margin: 0; color: #475569; font-size: 13px;"><strong>Bookmark Your Learner Portal:</strong><br/> 
+                Always use this official link to log in to your account moving forward:<br/>
+                <a href="${APP_URL}/login" style="color: #0ea5e9; font-weight: bold; text-decoration: none;">${APP_URL}/login</a></p>
+            </div>
+          `,
+          ctaText: "Create My Password",
+          ctaLink: customReactLink,
+          showStepIndicator: true,
+        };
+
+        // 6. Send the Mailgun Email
+        await sendMailgunEmail({
+          to: email,
+          subject: "Welcome to mLab - Activate Your Account",
+          text: buildMlabEmailPlainText(emailParams),
+          html: buildMlabEmailHtml(emailParams),
+        });
+
+        // 7. RETURN FEEDBACK TO THE FRONTEND
+        await event.data?.after.ref.update({
+          authUid: uid,
+          authStatus: "pending",
+          invitedAt: admin.firestore.FieldValue.serverTimestamp(),
+          lastSynced: admin.firestore.FieldValue.serverTimestamp(),
+          authError: admin.firestore.FieldValue.delete(),
+          lastSystemMessage: `✅ Successfully created Auth account and dispatched welcome email to ${email} at ${new Date().toISOString()}`,
+        });
+
+        logger.info(`[onLearnerInvite] 🏁 SUCCESS! Email sent to ${email}`);
+      } catch (error: any) {
+        logger.error(
+          `[onLearnerInvite] ❌ Critical Error processing ${email}:`,
+          error,
+        );
+
+        await event.data?.after.ref.update({
+          authStatus: "failed",
+          authError: error.message || "Failed during automated registration.",
+          lastSystemMessage: `❌ Failed to send invite: ${error.message}`,
+        });
+      }
+    } else {
+      logger.info(
+        `⏭️ [${learnerId}] Skipped: Status did not change from something else TO 'invite_pending'.`,
+      );
+    }
+  },
+);
+
+export const createLearnerAccount = onCall(
+  { secrets: [mailgunSecret] },
+  async (request) => {
+    // 🚀 Extract learnerId and idNumber so we can target the exact document
+    const { email, fullName, role, learnerId, idNumber } = request.data;
+
+    logger.info(`[createLearnerAccount] Initiated for ${email}`);
+
+    if (!email || !fullName) {
+      throw new HttpsError("invalid-argument", "Missing email or full name.");
+    }
+
+    const cleanEmail = email.toLowerCase().trim();
+    let uid: string;
+    let isNewUser = false;
+
+    try {
+      // 1. Create or Fetch the Auth User
+      try {
+        const existingUser = await admin.auth().getUserByEmail(cleanEmail);
+        uid = existingUser.uid;
+      } catch (error: any) {
+        if (error.code === "auth/user-not-found") {
+          const newUser = await admin.auth().createUser({
+            email: cleanEmail,
+            emailVerified: false,
+            displayName: fullName,
+          });
+          uid = newUser.uid;
+          isNewUser = true;
+        } else throw error;
+      }
+
+      // 2. Set Custom User Claims
+      await admin.auth().setCustomUserClaims(uid, { role: role || "learner" });
+
+      // 3. Create or Update the Global 'users' Document
+      const userRef = admin.firestore().collection("users").doc(uid);
+      await userRef.set(
+        {
+          email: cleanEmail,
+          fullName,
+          role: role || "learner",
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
+
+      // 4. Link Auth UID to the EXACT 'learners' collection document
+      let targetDocId = learnerId || idNumber;
+      if (targetDocId) {
+        await admin.firestore().collection("learners").doc(targetDocId).update({
+          authUid: uid,
+          status: "active",
+          authStatus: "pending",
+          lastSynced: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      } else {
+        // Fallback if no ID was passed: search by email
+        const snapshot = await admin
+          .firestore()
+          .collection("learners")
+          .where("email", "==", cleanEmail)
+          .get();
+
+        if (!snapshot.empty) {
+          await snapshot.docs[0].ref.update({
+            authUid: uid,
+            status: "active",
+            authStatus: "pending",
+            lastSynced: admin.firestore.FieldValue.serverTimestamp(),
+          });
+        }
+      }
+
+      // 5. Generate Secure Reset Link & Extract oobCode
+      const defaultFirebaseLink = await admin
+        .auth()
+        .generatePasswordResetLink(cleanEmail);
+      const urlObj = new URL(defaultFirebaseLink);
+      const oobCode = urlObj.searchParams.get("oobCode");
+
+      // Construct the clean mLab React Link
+      const customReactLink = `${APP_URL}/reset-password?oobCode=${oobCode}`;
+
+      const emailParams = {
+        title: "Welcome to mLab",
+        subtitle: "Action Required: Activate your learner portal",
+        recipientName: fullName,
+        bodyHtml: `
             <p>Welcome to the <strong>mLab Assessment Platform</strong>! You have been officially registered as a <strong>Learner</strong>.</p>
             
             <p>This platform is where you will access your learning materials, submit your Portfolios of Evidence (PoE), and track your academic progress.</p>
@@ -607,30 +778,151 @@ export const createLearnerAccount = onRequest(
                 <a href="${APP_URL}/login" style="color: #0ea5e9; font-weight: bold; text-decoration: none;">${APP_URL}/login</a></p>
             </div>
           `,
-          ctaText: "Create My Password",
-          ctaLink: customReactLink,
-          showStepIndicator: true,
-        };
+        ctaText: "Create My Password",
+        ctaLink: customReactLink,
+        showStepIndicator: true,
+      };
 
-        await sendMailgunEmail({
-          to: email,
-          subject: "Welcome to mLab - Activate Your Account",
-          text: buildMlabEmailPlainText(emailParams),
-          html: buildMlabEmailHtml(emailParams),
-        });
+      // 6. Dispatch Email
+      await sendMailgunEmail({
+        to: cleanEmail,
+        subject: "Welcome to mLab - Activate Your Account",
+        text: buildMlabEmailPlainText(emailParams),
+        html: buildMlabEmailHtml(emailParams),
+      });
 
-        return res.status(200).send({
-          data: { success: true, uid: uid, wasNewlyCreated: isNewUser },
-        });
-      } catch (error: any) {
-        console.error("Critical Error:", error);
-        return res
-          .status(500)
-          .send({ data: { success: false, message: error.message } });
-      }
-    });
+      return { success: true, uid: uid, wasNewlyCreated: isNewUser };
+    } catch (error: any) {
+      logger.error("[createLearnerAccount] Critical Error:", error);
+      throw new HttpsError(
+        "internal",
+        error.message || "Failed to provision learner account.",
+      );
+    }
   },
 );
+
+// export const createLearnerAccount = onRequest(
+//   { secrets: [mailgunSecret] },
+//   (req, res) => {
+//     return cors(req, res, async () => {
+//       try {
+//         if (req.method !== "POST")
+//           return res.status(405).send("Method Not Allowed");
+
+//         const { email, fullName, role } = req.body.data || req.body;
+
+//         if (!email || !fullName)
+//           return res.status(400).send({
+//             data: { success: false, message: "Missing email or name" },
+//           });
+
+//         let uid: string;
+//         let isNewUser = false;
+
+//         // Create or Fetch the Auth User
+//         try {
+//           const existingUser = await admin.auth().getUserByEmail(email);
+//           uid = existingUser.uid;
+//         } catch (error: any) {
+//           if (error.code === "auth/user-not-found") {
+//             const newUser = await admin.auth().createUser({
+//               email,
+//               emailVerified: false,
+//               displayName: fullName,
+//             });
+//             uid = newUser.uid;
+//             isNewUser = true;
+//           } else throw error;
+//         }
+
+//         // Set Custom User Claims
+//         await admin
+//           .auth()
+//           .setCustomUserClaims(uid, { role: role || "learner" });
+
+//         // 3. Create or Update the Global 'users' Document
+//         const userRef = admin.firestore().collection("users").doc(uid);
+//         const userDoc = await userRef.get();
+//         if (!userDoc.exists)
+//           await userRef.set({
+//             email,
+//             fullName,
+//             role: role || "learner",
+//             createdAt: new Date().toISOString(),
+//           });
+
+//         // Link Auth UID to the existing 'learners' collection document
+//         const snapshot = await admin
+//           .firestore()
+//           .collection("learners")
+//           .where("email", "==", email)
+//           .get();
+
+//         if (!snapshot.empty)
+//           await snapshot.docs[0].ref.update({
+//             authUid: uid,
+//             status: "active",
+//             lastSynced: new Date().toISOString(),
+//           });
+
+//         // Generate Secure Reset Link & Extract oobCode
+//         const defaultFirebaseLink = await admin
+//           .auth()
+//           .generatePasswordResetLink(email);
+//         const urlObj = new URL(defaultFirebaseLink);
+//         const oobCode = urlObj.searchParams.get("oobCode");
+
+//         // Construct the clean mLab React Link
+//         const customReactLink = `${APP_URL}/reset-password?oobCode=${oobCode}`;
+
+//         const emailParams = {
+//           title: "Welcome to mLab",
+//           subtitle: "Action Required: Activate your learner portal",
+//           recipientName: fullName,
+//           bodyHtml: `
+//             <p>Welcome to the <strong>mLab Assessment Platform</strong>! You have been officially registered as a <strong>Learner</strong>.</p>
+
+//             <p>This platform is where you will access your learning materials, submit your Portfolios of Evidence (PoE), and track your academic progress.</p>
+
+//             <p>Before you can log in to see your enrolled modules, you need to set up your account credentials. Please follow these instructions:</p>
+
+//             <ol style="margin-top: 15px; margin-bottom: 25px; padding-left: 20px; color: #475569; line-height: 1.6;">
+//                 <li style="margin-bottom: 8px;">Click the <strong>Create My Password</strong> button below.</li>
+//                 <li style="margin-bottom: 8px;">Type in a secure password and save it.</li>
+//                 <li style="margin-bottom: 8px;">Return to the login screen and sign in using your email address and your newly created password.</li>
+//             </ol>
+
+//             <div style="background-color: #f8fafc; padding: 15px; border-radius: 6px; border: 1px solid #dde4e8; border-left: 4px solid #0ea5e9; margin: 20px 0;">
+//                 <p style="margin: 0; color: #475569; font-size: 13px;"><strong>Bookmark Your Learner Portal:</strong><br/>
+//                 Always use this official link to log in to your account moving forward:<br/>
+//                 <a href="${APP_URL}/login" style="color: #0ea5e9; font-weight: bold; text-decoration: none;">${APP_URL}/login</a></p>
+//             </div>
+//           `,
+//           ctaText: "Create My Password",
+//           ctaLink: customReactLink,
+//           showStepIndicator: true,
+//         };
+
+//         await sendMailgunEmail({
+//           to: email,
+//           subject: "Welcome to mLab - Activate Your Account",
+//           text: buildMlabEmailPlainText(emailParams),
+//           html: buildMlabEmailHtml(emailParams),
+//         });
+
+//         return res.status(200).send({
+//           data: { success: true, uid: uid, wasNewlyCreated: isNewUser },
+//         });
+//       } catch (error: any) {
+//         console.error("Critical Error:", error);
+//         return res
+//           .status(500)
+//           .send({ data: { success: false, message: error.message } });
+//       }
+//     });
+//   },
+// );
 
 export const deleteStaffAccount = onCall(async (request) => {
   const { uid } = request.data;

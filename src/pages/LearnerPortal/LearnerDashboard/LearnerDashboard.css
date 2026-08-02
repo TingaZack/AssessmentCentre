@@ -610,7 +610,6 @@
   background: var(--mlab-white);
   border: 2px dashed var(--mlab-border);
   border-top: 3px solid var(--mlab-green);
-  border-radius: 8px;
   box-shadow: 0 1px 3px rgba(7, 63, 78, 0.1);
 }
 
@@ -801,7 +800,6 @@
 .ld-search-input {
   padding: 0.625rem 2.5rem;
   border: 1px solid var(--mlab-border);
-  border-radius: 6px;
   font-family: var(--font-body);
   font-size: 0.875rem;
   color: var(--mlab-blue);
@@ -840,6 +838,12 @@
   color: var(--mlab-red);
 }
 
+button:focus {
+  outline: none;
+  box-shadow: none;
+  border-radius: 0px;
+}
+
 /* Filter Toggle Button */
 .ld-filter-toggle {
   display: flex;
@@ -848,7 +852,6 @@
   padding: 0.625rem 1rem;
   background: var(--mlab-white);
   border: 1px solid var(--mlab-border);
-  border-radius: 6px;
   font-family: var(--font-heading);
   font-size: 0.75rem;
   font-weight: 700;

@@ -301,9 +301,13 @@ export const AdminProfileView: React.FC<ProfileProps> = ({ profile, user, onUpda
                                         </label>
                                     )}
                                 </div>
-                                <div>
+                                {/* <div>
                                     <h4 className="lpv-display-name">{displayData?.fullName || 'Administrator'}</h4>
                                     <p className="lpv-display-sub">{isSuper ? 'Super Administrator' : (displayData?.jobTitle || 'Institutional Compiler')}</p>
+                                </div> */}
+                                <div>
+                                    <h4 className="lpv-display-name">{displayData?.fullName || (liveProfile?.role === 'assistant_admin' ? 'Assistance Admin' : 'Administrator')}</h4>
+                                    <p className="lpv-display-sub">{isSuper ? 'Super Administrator' : (displayData?.jobTitle || (liveProfile?.role === 'assistant_admin' ? 'Assistance Admin' : 'Institutional Compiler'))}</p>
                                 </div>
                             </div>
 
@@ -377,13 +381,24 @@ export const AdminProfileView: React.FC<ProfileProps> = ({ profile, user, onUpda
                     {/* RIGHT COLUMN: Sidebar Cards */}
                     <aside style={{ flex: '1 1 30%', minWidth: '300px', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
 
-                        <div className="wm-card" style={{ padding: '1.5rem', borderTopColor: isSuper ? '#ef4444' : '#0f172a', background: isSuper ? '#ef4444' : '#0f172a', color: 'white' }}>
+                        {/* <div className="wm-card" style={{ padding: '1.5rem', borderTopColor: isSuper ? '#ef4444' : '#0f172a', background: isSuper ? '#ef4444' : '#0f172a', color: 'white' }}>
                             <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.1em', opacity: 0.8, display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
                                 <Briefcase size={13} /> {isSuper ? 'Clearance' : 'Official Title'}
                             </div>
                             <p style={{ margin: '0 0 10px', fontSize: '1.25rem', fontFamily: 'var(--font-heading)' }}>{isSuper ? 'Super Admin' : (liveProfile?.jobTitle || 'Administrator')}</p>
                             <span style={{ background: 'rgba(255,255,255,0.15)', padding: '4px 8px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600 }}>
                                 System Role: {liveProfile?.role?.toUpperCase() || 'ADMIN'}
+                            </span>
+                        </div> */}
+                        <div className="wm-card" style={{ padding: '1.5rem', borderTopColor: isSuper ? '#ef4444' : '#0f172a', background: isSuper ? '#ef4444' : '#0f172a', color: 'white' }}>
+                            <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.1em', opacity: 0.8, display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+                                <Briefcase size={13} /> {isSuper ? 'Clearance' : 'Official Title'}
+                            </div>
+                            <p style={{ margin: '0 0 10px', fontSize: '1.25rem', fontFamily: 'var(--font-heading)' }}>
+                                {isSuper ? 'Super Admin' : (liveProfile?.jobTitle || (liveProfile?.role === 'assistant_admin' ? 'Assistance Admin' : 'Administrator'))}
+                            </p>
+                            <span style={{ background: 'rgba(255,255,255,0.15)', padding: '4px 8px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600 }}>
+                                System Role: {liveProfile?.role === 'assistant_admin' ? 'ASSISTANCE ADMIN' : (liveProfile?.role?.toUpperCase() || 'ADMIN')}
                             </span>
                         </div>
 

@@ -22,7 +22,7 @@ interface Props {
 
 const ROLE_META: { key: 'facilitator' | 'supportFacilitator' | 'assessor' | 'moderator'; label: string }[] = [
     { key: 'facilitator', label: 'Primary Facilitator' },
-    { key: 'supportFacilitator', label: 'Assistant Facilitator' }, // 🚀 HARMONIZATION FIX: Unified Label
+    { key: 'supportFacilitator', label: 'Assistant Facilitator' },
     { key: 'assessor', label: 'Assessor' },
     { key: 'moderator', label: 'Moderator' },
 ];

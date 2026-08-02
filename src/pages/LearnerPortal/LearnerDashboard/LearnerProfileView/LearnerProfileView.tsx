@@ -396,7 +396,7 @@ export const LearnerProfileView: React.FC<ProfileProps> = ({ profile, user, onUp
                     </>
                 )}
 
-                {/* 🚀 NEW: Document History Log Renderer */}
+                {/* Document History Log Renderer */}
                 {liveProfile?.documentHistory && liveProfile.documentHistory.length > 0 && !isEditing && (
                     <div style={{ marginTop: '1.5rem', borderTop: '1px solid #e2e8f0', paddingTop: '1rem' }}>
                         <h4 style={{ fontSize: '0.8rem', color: '#64748b', textTransform: 'uppercase', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -438,7 +438,6 @@ export const LearnerProfileView: React.FC<ProfileProps> = ({ profile, user, onUp
                 document.body
             )}
 
-            {/* 🚀 NEW: Overwrite Confirmation Modal */}
             {confirmDocOverwrite && createPortal(
                 <StatusModal
                     type="warning"
@@ -491,15 +490,35 @@ export const LearnerProfileView: React.FC<ProfileProps> = ({ profile, user, onUp
                         <div className="lpv-profile-header">
                             <div className="lpv-avatar-wrapper">
                                 <div className="lpv-avatar">
-                                    {photoPreview ? <img src={photoPreview} crossOrigin="anonymous" style={{ objectFit: 'cover', width: '100%', height: '100%' }} alt="Profile" /> : <User size={30} color="#94a3b8" />}
+                                    {photoPreview ? (
+                                        <img
+                                            src={photoPreview}
+                                            crossOrigin="anonymous"
+                                            alt="Profile"
+                                            style={{
+                                                objectFit: "cover",
+                                                width: "100%",
+                                                height: "100%"
+                                            }}
+                                        />
+                                    ) : (
+                                        <User size={30} color="#94a3b8" />
+                                    )}
                                 </div>
+
                                 {isEditing && (
                                     <label className="lpv-avatar-upload">
-                                        <Camera size={14} />
-                                        <input type="file" accept="image/*" onChange={handlePhotoSelect} hidden />
+                                        <Camera size={16} />
+                                        <input
+                                            type="file"
+                                            accept="image/*"
+                                            onChange={handlePhotoSelect}
+                                            hidden
+                                        />
                                     </label>
                                 )}
                             </div>
+
                             <div>
                                 <h4 className="lpv-display-name">{displayData.fullName || liveProfile.fullName}</h4>
                                 <p className="lpv-display-sub">{getLabel(d.genderCode, QCTO_GENDER)} • {getLabel(d.equityCode, QCTO_EQUITY)}</p>

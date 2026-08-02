@@ -39,6 +39,7 @@ export const AccessManager: React.FC = () => {
     const [editingAdminId, setEditingAdminId] = useState<string | null>(null);
     const [fullName, setFullName] = useState('');
     const [email, setEmail] = useState('');
+    const [adminType, setAdminType] = useState<'admin' | 'assistant_admin'>('admin'); // 🚀 NEW STATE
     const [isSuperAdmin, setIsSuperAdmin] = useState(false);
 
     const [privileges, setPrivileges] = useState({
@@ -54,7 +55,7 @@ export const AccessManager: React.FC = () => {
 
         setFetching(true);
         try {
-            const q = query(collection(db, 'users'), where('role', '==', 'admin'));
+            const q = query(collection(db, 'users'), where('role', 'in', ['admin', 'assistant_admin']));
             const snapshot = await getDocs(q);
             const adminList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
@@ -89,6 +90,7 @@ export const AccessManager: React.FC = () => {
         setEditingAdminId(null);
         setFullName('');
         setEmail('');
+        setAdminType('admin');
         setIsSuperAdmin(false);
         setPrivileges({
             directory: false, learners: false, staff: false, attendance: false,
@@ -102,6 +104,7 @@ export const AccessManager: React.FC = () => {
         setEditingAdminId(admin.id);
         setFullName(admin.fullName || '');
         setEmail(admin.email || '');
+        setAdminType(admin.role || 'admin');
         setIsSuperAdmin(admin.isSuperAdmin || false);
         setPrivileges({
             directory: admin.privileges?.directory || false,
@@ -133,11 +136,16 @@ export const AccessManager: React.FC = () => {
         }
 
         try {
+            // Enforce Super Admin logic (Assistants cannot be Super Admins)
+            const payloadIsSuper = adminType === 'admin' ? isSuperAdmin : false;
+            const payloadPrivs = payloadIsSuper ? null : privileges;
+
             if (editingAdminId) {
                 const updatedData = {
                     fullName,
-                    isSuperAdmin,
-                    privileges: isSuperAdmin ? null : privileges
+                    role: adminType,
+                    isSuperAdmin: payloadIsSuper,
+                    privileges: payloadPrivs
                 };
                 await updateDoc(doc(db, 'users', editingAdminId), updatedData);
                 toast.success(`Privileges successfully updated for ${fullName}.`);
@@ -245,10 +253,22 @@ export const AccessManager: React.FC = () => {
                                         </span>
                                     ) : (
                                         <span className="mlab-role-badge mlab-role-badge--moderator">
-                                            <span className="mlab-role-badge__dot" /> Standard
+                                            <span className="mlab-role-badge__dot" /> {admin.role === 'assistant_admin' ? 'Assistance Admin' : 'Standard'}
                                         </span>
                                     )}
                                 </td>
+
+                                {/* <td>
+                                    {admin.isSuperAdmin ? (
+                                        <span className="mlab-role-badge mlab-role-badge--assessor" style={{ borderColor: 'var(--mlab-red)', background: 'var(--mlab-red-light)', color: 'var(--mlab-red)' }}>
+                                            <Shield size={12} /> Super Admin
+                                        </span>
+                                    ) : (
+                                        <span className="mlab-role-badge mlab-role-badge--moderator">
+                                            <span className="mlab-role-badge__dot" /> Standard
+                                        </span>
+                                    )}
+                                </td> */}
                                 <td style={{ color: 'var(--mlab-grey)', fontSize: '0.85rem', lineHeight: '1.4', maxWidth: '300px' }}>
                                     {formatPrivileges(admin)}
                                 </td>
@@ -311,21 +331,39 @@ export const AccessManager: React.FC = () => {
                                     </div>
                                 </div>
 
+                                {/* 🚀 NEW: Administrative Role Level Dropdown */}
                                 <div>
-                                    <div className="lfm-section-hdr"><Shield size={13} /> Security Level</div>
-                                    <div className="lfm-flags-panel" style={{ marginTop: 0, borderColor: isSuperAdmin ? 'var(--mlab-red)' : 'var(--mlab-border)', borderLeftColor: isSuperAdmin ? 'var(--mlab-red)' : 'var(--mlab-blue)', background: isSuperAdmin ? 'var(--mlab-red-light)' : 'var(--mlab-light-blue)' }}>
-                                        <label className="lfm-checkbox-row">
-                                            <input type="checkbox" checked={isSuperAdmin} onChange={(e) => setIsSuperAdmin(e.target.checked)} />
-                                            <span style={{ fontWeight: 'bold', color: isSuperAdmin ? 'var(--mlab-red)' : 'var(--mlab-blue)' }}>Grant Super Admin Access</span>
-                                        </label>
-                                        <p style={{ margin: '0 0 0 25px', fontSize: '0.8rem', color: 'var(--mlab-grey)' }}>
-                                            Gives this user absolute control over the platform, overriding all granular privileges below.
-                                        </p>
+                                    <div className="lfm-section-hdr" style={{ marginTop: '1.5rem' }}><Shield size={13} /> Administrative Role</div>
+                                    <div className="lfm-grid" style={{ marginBottom: '1rem' }}>
+                                        <div className="lfm-fg lfm-fg--full">
+                                            <label>Account Role Level</label>
+                                            <select className="lfm-input" value={adminType} onChange={(e) => setAdminType(e.target.value as any)}>
+                                                <option value="admin">Primary Administrator</option>
+                                                <option value="assistant_admin">Assistance Admin</option>
+                                            </select>
+                                        </div>
                                     </div>
                                 </div>
 
-                                <div style={{ opacity: isSuperAdmin ? 0.4 : 1, pointerEvents: isSuperAdmin ? 'none' : 'auto', transition: '0.3s' }}>
-                                    <div className="lfm-section-hdr"><Layers size={13} /> Granular Privileges</div>
+                                {/* 🚀 CONDITIONALLY HIDDEN: Only show Super Admin toggle if role is Primary Admin */}
+                                {adminType === 'admin' && (
+                                    <div>
+                                        <div className="lfm-section-hdr"><Shield size={13} /> Security Level</div>
+                                        <div className="lfm-flags-panel" style={{ marginTop: 0, borderColor: isSuperAdmin ? 'var(--mlab-red)' : 'var(--mlab-border)', borderLeftColor: isSuperAdmin ? 'var(--mlab-red)' : 'var(--mlab-blue)', background: isSuperAdmin ? 'var(--mlab-red-light)' : 'var(--mlab-light-blue)' }}>
+                                            <label className="lfm-checkbox-row">
+                                                <input type="checkbox" checked={isSuperAdmin} onChange={(e) => setIsSuperAdmin(e.target.checked)} />
+                                                <span style={{ fontWeight: 'bold', color: isSuperAdmin ? 'var(--mlab-red)' : 'var(--mlab-blue)' }}>Grant Super Admin Access</span>
+                                            </label>
+                                            <p style={{ margin: '0 0 0 25px', fontSize: '0.8rem', color: 'var(--mlab-grey)' }}>
+                                                Gives this user absolute control over the platform, overriding all granular privileges below.
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* 🚀 UPDATED OPACITY LOGIC: Checks if user is Super Admin AND Primary Admin */}
+                                <div style={{ opacity: isSuperAdmin && adminType === 'admin' ? 0.4 : 1, pointerEvents: isSuperAdmin && adminType === 'admin' ? 'none' : 'auto', transition: '0.3s' }}>
+                                    <div className="lfm-section-hdr" style={{ marginTop: '1.5rem' }}><Layers size={13} /> Granular Privileges</div>
                                     <div className="lfm-flags-panel" style={{ marginTop: 0, gap: '1rem', display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
                                         {PRIVILEGE_OPTIONS.map(priv => (
                                             <label key={priv.key} className="lfm-checkbox-row" style={{ alignItems: 'flex-start', padding: '0.5rem 0' }}>
