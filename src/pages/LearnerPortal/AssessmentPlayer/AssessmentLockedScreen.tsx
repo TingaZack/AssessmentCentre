@@ -7,7 +7,6 @@ import {
 } from 'lucide-react';
 import moment from 'moment';
 
-// ─── HELPERS ────────────────────────────────────────────────────────────────
 const formatCountdown = (ms: number) => {
     const days = Math.floor(ms / (1000 * 60 * 60 * 24));
     const hours = Math.floor((ms % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
@@ -20,7 +19,6 @@ const formatCountdown = (ms: number) => {
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 };
 
-// ─── PROPS ──────────────────────────────────────────────────────────────────
 interface AssessmentLockedScreenProps {
     type: 'scheduled' | 'missed' | 'upcoming' | 'admin' | 'unavailable';
     assessment?: any;
@@ -33,7 +31,6 @@ interface AssessmentLockedScreenProps {
     navigate?: (path: string) => void;
 }
 
-// ─── COMPONENT ─────────────────────────────────────────────────────────────
 export const AssessmentLockedScreen: React.FC<AssessmentLockedScreenProps> = ({
     type,
     assessment,
@@ -45,7 +42,6 @@ export const AssessmentLockedScreen: React.FC<AssessmentLockedScreenProps> = ({
     onBack,
     navigate,
 }) => {
-    // ── Admin Intercept ─────────────────────────────────────────────────────
     if (type === 'admin') {
         return (
             <div className="ap-fullscreen" style={{ position: 'absolute', left: 0, right: 0, bottom: 0, top: 0 }}>
@@ -62,7 +58,6 @@ export const AssessmentLockedScreen: React.FC<AssessmentLockedScreenProps> = ({
         );
     }
 
-    // ── Unavailable ─────────────────────────────────────────────────────────
     if (type === 'unavailable') {
         return (
             <div className="ap-fullscreen" style={{ position: 'absolute', right: 0, left: 0, bottom: 0, top: 0 }}>
@@ -80,7 +75,6 @@ export const AssessmentLockedScreen: React.FC<AssessmentLockedScreenProps> = ({
         );
     }
 
-    // ── Upcoming ────────────────────────────────────────────────────────────
     if (type === 'upcoming') {
         return (
             <div className="ap-fullscreen" style={{ position: 'absolute', right: 0, left: 0, bottom: 0, top: 0, backgroundColor: '#f8fafc' }}>
@@ -100,7 +94,6 @@ export const AssessmentLockedScreen: React.FC<AssessmentLockedScreenProps> = ({
         );
     }
 
-    // ── Missed ──────────────────────────────────────────────────────────────
     if (type === 'missed') {
         return (
             <div className="lfm-overlay">
@@ -108,13 +101,13 @@ export const AssessmentLockedScreen: React.FC<AssessmentLockedScreenProps> = ({
                     <div className="lfm-header" style={{ borderBottom: '3px solid var(--mlab-red)', background: 'var(--mlab-red)' }}>
                         <h2 className="lfm-header__title">
                             <ShieldAlert size={20} color="var(--mlab-white)" />
-                            Assessment Missed
+                            Assessment Locked / Terminated
                         </h2>
                     </div>
                     <div className="lfm-body">
                         <div className="lfm-error-banner">
                             <AlertTriangle size={20} />
-                            <span>The scheduled time window for this assessment has closed. Because you did not begin the assessment within the allowed timeframe, it has been automatically locked.</span>
+                            <span>This assessment is currently unavailable. This occurs if the scheduled start window elapsed without commencing, or if a critical invigilation breach (such as clicking "Stop sharing", revoking camera/mic access, or exiting invigilation) terminated your session.</span>
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'center', marginTop: '1.5rem' }}>
                             <button className="lfm-btn lfm-btn--primary" onClick={onBack} style={{ background: 'var(--mlab-red)' }}>
@@ -127,8 +120,6 @@ export const AssessmentLockedScreen: React.FC<AssessmentLockedScreenProps> = ({
         );
     }
 
-    // ── Scheduled (default) ─────────────────────────────────────────────────
-    // Safely compute remaining time
     const now = getSecureNow?.() || Date.now();
     const scheduledTime = assessment?.scheduledDate ? moment(assessment.scheduledDate).valueOf() : 0;
     const remaining = (timeToStart !== null && timeToStart !== undefined && timeToStart > 0)
@@ -165,7 +156,7 @@ export const AssessmentLockedScreen: React.FC<AssessmentLockedScreenProps> = ({
                 }}>
                     <h2 className="lfm-header__title" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                         <ShieldCheck size={24} color="var(--mlab-green)" />
-                        Assessment Locked & Scheduled
+                        Assessment Locked &amp; Scheduled
                     </h2>
                 </div>
 
@@ -197,7 +188,7 @@ export const AssessmentLockedScreen: React.FC<AssessmentLockedScreenProps> = ({
                                         About this Assessment
                                     </h4>
                                     <p style={{ fontSize: '0.9rem', color: '#475569', lineHeight: 1.6, margin: 0 }}>
-                                        This assessment is strictly scheduled and currently secured. To ensure academic integrity and a synchronized start for all learners, access is restricted until the official commencement time.
+                                        This assessment is strictly scheduled and currently secured. Access is restricted until the official commencement time.
                                     </p>
                                 </section>
 
@@ -207,14 +198,14 @@ export const AssessmentLockedScreen: React.FC<AssessmentLockedScreenProps> = ({
                                         <div>
                                             <strong style={{ display: 'block', fontSize: '0.85rem', color: '#166534', marginBottom: '4px' }}>Learner Flexibility</strong>
                                             <p style={{ fontSize: '0.85rem', color: '#166534', lineHeight: 1.5, margin: 0 }}>
-                                                You are <strong>not required</strong> to keep this tab open. You may close this window and return to the Learner Portal exactly at the start time. If you choose to stay, this page will automatically unlock once the countdown reaches zero.
+                                                You are <strong>not required</strong> to keep this tab open. You may return at the start time. This page unlocks automatically once the countdown reaches zero.
                                             </p>
                                         </div>
                                     </div>
                                 </section>
 
                                 <p style={{ fontSize: '0.75rem', color: 'var(--mlab-grey)', fontStyle: 'italic', borderTop: '1px solid #eee', paddingTop: '1rem' }}>
-                                    <strong>Note:</strong> Standard invigilation and proctoring rules will apply immediately upon the assessment unlocking. Ensure your camera and microphone are ready <b style={{ color: 'red' }}>IF APPLICABLE</b>.
+                                    <strong>Note:</strong> Invigilation rules apply immediately upon unlocking. You will be required to grant Webcam, Microphone, and Entire Screen Sharing. Stopping screen sharing or switching tabs will immediately terminate your assessment.
                                 </p>
                             </div>
                         </div>

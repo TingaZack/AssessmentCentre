@@ -1,239 +1,307 @@
+@import url("https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&display=swap");
+
+:root {
+  --mlab-blue: #073f4e;
+  --mlab-blue-dark: #052e3a;
+  --mlab-green: #94c73d;
+  --mlab-green-dark: #7aaa2e;
+  --mlab-green-bg: #f0f7e1;
+  --mlab-grey: #6b6b6b;
+  --mlab-grey-lt: #9b9b9b;
+  --mlab-white: #ffffff;
+  --mlab-bg: #f0f4f6;
+  --mlab-border: #dde4e8;
+  --mlab-light-blue: #e8f0f3;
+  --mlab-red: #ef4444;
+  --font-heading: "Oswald", "Trebuchet MS", sans-serif;
+  --font-body: "Trebuchet MS", "Lucida Grande", Arial, sans-serif;
+}
+
 .pw-container {
+  position: relative;
   width: 100%;
-  height: 100%;
-  background: var(--mlab-bg, #f0f4f6);
+  min-height: 100vh;
+  background: var(--mlab-bg);
+  font-family: var(--font-body);
 }
 
 .pw-content {
   width: 100%;
   height: 100%;
-  position: relative;
 }
 
-/* ─── GATE UI ─── */
-.pw-gate {
-  position: absolute;
-  inset: 0;
-  background: #0f172a;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
+/* ── GATE SETUP OVERLAY ───────────────────────────────────────────────── */
+.pw-gate-overlay {
+  z-index: 2000;
 }
 
 .pw-gate-card {
-  background: white;
-  width: 100%;
-  max-width: 500px;
-  border-radius: 12px;
-  padding: 2rem;
-  box-shadow:
-    0 20px 25px -5px rgba(0, 0, 0, 0.1),
-    0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  max-width: 650px;
+  border: 2px solid var(--mlab-blue) !important;
+  background: var(--mlab-white) !important;
+  border-radius: 0 !important;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2);
 }
 
-.pw-gate-card h2 {
-  color: #0f172a;
-  margin: 1rem 0 0.5rem;
-  font-family: "Oswald", sans-serif;
-  text-transform: uppercase;
+.pw-gate-body {
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
 }
 
-.pw-gate-card p {
-  color: #64748b;
+.pw-gate-intro p {
+  font-family: var(--font-body);
   font-size: 0.9rem;
-  margin-bottom: 2rem;
+  color: var(--mlab-blue);
+  margin: 0;
   line-height: 1.5;
 }
 
-.pw-gate-icon {
-  width: 64px;
-  height: 64px;
-  background: #e0f2fe;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
+/* ── SETUP STEPS ───────────────────────────────────────────────────────── */
 .pw-steps {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 0.75rem;
 }
 
 .pw-step {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 1rem;
-  padding: 1rem;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  transition: all 0.2s;
+  padding: 0.85rem 1.1rem;
+  background: var(--mlab-bg);
+  border: 1px solid var(--mlab-border);
+  border-left: 4px solid var(--mlab-blue);
+  border-radius: 0 !important;
+  transition: all 0.2s ease;
 }
 
 .pw-step--done {
-  background: #f0fdf4;
-  border-color: #bbf7d0;
+  background: var(--mlab-green-bg) !important;
+  border-color: var(--mlab-border) !important;
+  border-left: 4px solid var(--mlab-green) !important;
 }
 
-.pw-step--done .pw-step-icon {
-  color: #22c55e;
+/* RED ERROR STATE FOR INVALID SCREEN SELECTIONS */
+.pw-step--error {
+  background: #fef2f2 !important;
+  border-color: #fecdd3 !important;
+  border-left: 4px solid var(--mlab-red) !important;
+}
+
+.pw-step--error .pw-step-icon {
+  color: var(--mlab-red) !important;
+}
+
+.pw-step--error .pw-step-text strong {
+  color: #991b1b !important;
+}
+
+.pw-step--error .pw-step-text span {
+  color: #b91c1c !important;
 }
 
 .pw-step--disabled {
-  opacity: 0.5;
+  opacity: 0.55;
   pointer-events: none;
+}
+
+.pw-step-icon {
+  color: var(--mlab-blue);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.pw-step--done .pw-step-icon {
+  color: var(--mlab-green-dark);
 }
 
 .pw-step-text {
   flex: 1;
   display: flex;
   flex-direction: column;
+  gap: 0.15rem;
 }
 
 .pw-step-text strong {
-  color: #1e293b;
-  font-size: 0.9rem;
+  font-family: var(--font-heading);
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--mlab-blue);
 }
 
 .pw-step-text span {
-  color: #64748b;
-  font-size: 0.8rem;
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  color: var(--mlab-grey);
 }
 
+/* ── STEP ACTION BUTTONS ───────────────────────────────────────────────── */
+.pw-step .pw-btn-small,
 .pw-btn-small {
-  background: #0284c7;
-  color: white;
-  border: none;
-  padding: 6px 12px;
-  border-radius: 6px;
-  font-weight: bold;
-  font-size: 0.8rem;
+  font-family: var(--font-heading) !important;
+  font-size: 0.72rem !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.1em !important;
+  text-transform: uppercase !important;
+  padding: 0.55rem 1.1rem !important;
+  background: var(--mlab-blue) !important;
+  color: var(--mlab-white) !important;
+  border: none !important;
+  border-radius: 0 !important;
   cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s ease;
+  box-shadow: none !important;
 }
 
+.pw-step .pw-btn-small:hover,
 .pw-btn-small:hover {
-  background: #0369a1;
+  background: var(--mlab-blue-dark) !important;
 }
 
+/* DANGER / RETRY RED BUTTON */
+.pw-btn-danger {
+  background: var(--mlab-red) !important;
+  color: var(--mlab-white) !important;
+  border-radius: 0 !important;
+  width: 100%;
+  justify-content: center;
+  padding: 0.75rem 1.25rem !important;
+  font-size: 0.78rem !important;
+  font-family: var(--font-heading) !important;
+  text-transform: uppercase !important;
+  border: none !important;
+}
+
+.pw-btn-danger:hover {
+  background: #dc2626 !important;
+}
+
+/* ── VIDEO FEED ────────────────────────────────────────────────────────── */
 .pw-setup-video {
   width: 100%;
-  border-radius: 8px;
-  margin-top: 1.5rem;
-  background: #000;
-  aspect-ratio: 16/9;
+  max-height: 220px;
   object-fit: cover;
+  border: 2px solid var(--mlab-blue) !important;
+  border-radius: 0 !important;
+  background: #000;
+  margin-top: 0.5rem;
 }
 
-/* ─── LIVE PICTURE-IN-PICTURE (PIP) ─── */
+/* ── DRAGGABLE PIP WINDOW ──────────────────────────────────────────────── */
 .pw-pip {
   position: fixed;
-  bottom: 20px;
-  right: 20px;
-  width: 200px;
-  background: black;
-  border-radius: 8px;
-  overflow: hidden;
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
-  z-index: 9999;
-  border: 2px solid #334155;
-  pointer-events: none; /* So it doesn't block clicks underneath */
+  z-index: 1500;
+  width: 230px;
+  background: var(--mlab-blue);
+  border: 2px solid var(--mlab-blue);
+  border-radius: 0 !important;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+  user-select: none;
 }
 
 .pw-pip-header {
-  background: rgba(0, 0, 0, 0.7);
-  color: white;
-  font-size: 0.65rem;
-  font-weight: bold;
+  padding: 0.4rem 0.75rem;
+  background: var(--mlab-blue);
+  color: var(--mlab-white);
+  font-family: var(--font-heading);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  padding: 4px 8px;
+  cursor: move;
   display: flex;
   align-items: center;
-  gap: 6px;
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 2;
+  justify-content: space-between;
+  border-bottom: 2px solid var(--mlab-green);
+}
+
+.pw-pip-title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.pw-pip-drag-hint {
+  font-size: 0.6rem;
+  color: rgba(255, 255, 255, 0.5);
 }
 
 .pw-pip-video {
   width: 100%;
-  height: 100%;
+  height: 140px;
   object-fit: cover;
-  transform: scaleX(-1); /* Mirror the image so it feels natural to the user */
   display: block;
+  background: #000;
 }
 
-/* ─── VIOLATION OVERLAY ─── */
+.pw-pulse {
+  animation: pw-pulse-anim 1.5s ease infinite;
+  color: var(--mlab-green);
+}
+
+@keyframes pw-pulse-anim {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(0.92);
+  }
+}
+
+/* ── VIOLATION OVERLAY ─────────────────────────────────────────────────── */
 .pw-violation-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(15, 23, 42, 0.95);
-  z-index: 100000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  backdrop-filter: blur(8px);
+  z-index: 3000;
 }
 
 .pw-violation-card {
-  background: #fef2f2;
-  border: 2px solid #fca5a5;
-  border-top: 8px solid #ef4444;
-  border-radius: 12px;
-  padding: 2.5rem;
-  max-width: 500px;
-  text-align: center;
-  box-shadow: 0 25px 50px -12px rgba(239, 68, 68, 0.25);
+  max-width: 550px;
+  border: 2px solid var(--mlab-red) !important;
+  border-radius: 0 !important;
 }
 
-.pw-violation-title {
-  color: #b91c1c;
-  font-family: "Oswald", sans-serif;
+.pw-violation-header {
+  background: var(--mlab-red) !important;
+  border-bottom: 3px solid var(--mlab-white) !important;
+}
+
+.pw-violation-body {
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.pw-violation-stats {
+  font-family: var(--font-heading);
+  font-size: 0.85rem;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  margin: 1rem 0 0.5rem;
+  color: var(--mlab-blue);
+  background: var(--mlab-light-blue);
+  border: 1px solid var(--mlab-border);
+  padding: 0.75rem 1rem;
 }
 
-.pw-violation-reason {
-  color: #991b1b;
-  font-size: 1.1rem;
-  font-weight: bold;
-  margin-bottom: 1.5rem;
-}
-
-.pw-violation-log {
-  background: #fee2e2;
-  padding: 0.75rem;
-  border-radius: 6px;
-  color: #7f1d1d;
-  font-size: 0.9rem;
-  margin-bottom: 1rem;
+.pw-violation-stats strong {
+  color: var(--mlab-red);
+  font-size: 1rem;
 }
 
 .pw-violation-sub {
-  color: #7f1d1d;
-  font-size: 0.85rem;
-  margin-bottom: 2rem;
-}
-
-.pw-btn-danger {
-  background: #ef4444;
-  color: white;
-  border: none;
-  padding: 12px 24px;
-  border-radius: 6px;
-  font-weight: bold;
-  font-family: "Oswald", sans-serif;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  cursor: pointer;
-  width: 100%;
-  transition: background 0.2s;
-}
-
-.pw-btn-danger:hover {
-  background: #dc2626;
+  font-family: var(--font-body);
+  font-size: 0.82rem;
+  color: var(--mlab-grey);
+  margin: 0;
+  line-height: 1.4;
 }

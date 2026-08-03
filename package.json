@@ -20,6 +20,7 @@
     "@webcontainer/api": "^1.6.4",
     "@zakq/axisjs": "^0.1.14",
     "ethers": "^6.16.0",
+    "face-api.js": "^0.22.2",
     "firebase": "^12.9.0",
     "form-data": "^4.0.5",
     "googleapis": "^173.0.0",

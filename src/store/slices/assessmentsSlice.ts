@@ -43,6 +43,24 @@ export interface AssessmentsSlice {
   deleteAssessment: (id: string) => Promise<void>;
 }
 
+// Helper to scrub all undefined values recursively across nested objects and arrays
+const sanitizeForFirestore = (obj: any): any => {
+  if (obj === undefined) return null;
+  if (obj === null) return null;
+  if (Array.isArray(obj)) return obj.map(sanitizeForFirestore);
+  if (typeof obj === "object" && !(obj instanceof Date)) {
+    const cleaned: any = {};
+    for (const key in obj) {
+      if (Object.prototype.hasOwnProperty.call(obj, key)) {
+        cleaned[key] =
+          obj[key] === undefined ? null : sanitizeForFirestore(obj[key]);
+      }
+    }
+    return cleaned;
+  }
+  return obj;
+};
+
 // We use `any` for the overall store state type so it plugs easily into your main useStore
 export const createAssessmentsSlice: StateCreator<
   any,
@@ -146,7 +164,9 @@ export const createAssessmentsSlice: StateCreator<
     }
 
     const newRef = doc(collection(db, "assessments"));
-    const newAssessment = {
+    const activeUid = userUid || null;
+
+    const rawAssessment = {
       ...original,
       title: `${original.title || "Untitled"} (Copy)`,
       status: "draft",
@@ -157,20 +177,23 @@ export const createAssessmentsSlice: StateCreator<
       collaboratorIds: [],
       autoCloseTaskId: null,
       requiresInvigilation: original.requiresInvigilation ?? false,
-      createdBy: userUid,
-      facilitatorId: userUid,
+      createdBy: activeUid || original.createdBy || null,
+      facilitatorId: activeUid || original.facilitatorId || null,
       createdAt: new Date().toISOString(),
       lastUpdated: new Date().toISOString(),
     };
 
     // Strip the old ID before pushing to DB to prevent internal conflicts
-    delete (newAssessment as any).id;
+    delete (rawAssessment as any).id;
 
-    await setDoc(newRef, newAssessment);
+    // Clean all undefined values recursively across the entire document payload
+    const cleanedAssessment = sanitizeForFirestore(rawAssessment);
+
+    await setDoc(newRef, cleanedAssessment);
     console.log(`[Store] Duplication successful. New ID: ${newRef.id}`);
 
     // Optimistically update the UI instantly
-    const finalizedCopy = { ...newAssessment, id: newRef.id } as Assessment;
+    const finalizedCopy = { ...cleanedAssessment, id: newRef.id } as Assessment;
     set({ assessments: [finalizedCopy, ...assessments] });
 
     return newRef.id;
