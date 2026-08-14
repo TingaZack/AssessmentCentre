@@ -27,6 +27,7 @@ import {
 import {
   buildMlabEmailHtml,
   buildMlabEmailPlainText,
+  EmailTemplateParams,
 } from "./utils/emailBuilder";
 
 import { ethers } from "ethers";
@@ -155,6 +156,67 @@ export const sendMailgunEmail = async ({
       `Mailgun API Error: ${error.response?.data?.message || error.message}`,
     );
   }
+};
+
+// ============================================================================
+// 🚀 UTILITY 1: STRICT EMAIL SYNTAX VALIDATOR
+// ============================================================================
+const isValidEmailFormat = (email: string): boolean => {
+  if (!email || typeof email !== "string") return false;
+  // Validates standard email syntax: text@domain.extension
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email.trim());
+};
+
+// ============================================================================
+// 🚀 UTILITY 2: MEANINGFUL ERROR MESSAGE PARSER
+// ============================================================================
+const parseMailgunError = (error: any): string => {
+  if (!error) return "An unknown mailer error occurred.";
+
+  const message = error.message || String(error);
+  const status = error.status || error.statusCode || error.response?.status;
+  const details = error.response?.data?.message || error.details;
+
+  // 1. Invalid Syntax / Bad Request (400)
+  if (
+    status === 400 ||
+    message.includes("400") ||
+    message.includes("is not a valid email")
+  ) {
+    return `Invalid recipient email address format or domain rejected (${details || "Mailgun Bad Request"}).`;
+  }
+
+  // 2. Authentication / Domain Setup Issue (401/403)
+  if (
+    status === 401 ||
+    status === 403 ||
+    message.includes("401") ||
+    message.includes("403")
+  ) {
+    return "Mailgun API authentication failed. Please verify API Key and Domain settings.";
+  }
+
+  // 3. Payment / Sending Limit Exceeded (402)
+  if (status === 402 || message.includes("402")) {
+    return "Mailgun account limit or billing threshold reached.";
+  }
+
+  // 4. Rate Limited (429)
+  if (status === 429) {
+    return "Rate limit exceeded. Too many emails sent at once.";
+  }
+
+  // 5. Network / DNS Failures
+  if (
+    message.includes("ENOTFOUND") ||
+    message.includes("ETIMEDOUT") ||
+    message.includes("ECONNREFUSED")
+  ) {
+    return "Network connection to Mailgun servers timed out.";
+  }
+
+  return details || message || "Failed to deliver email through provider.";
 };
 
 // export const sendMailgunEmail = async ({
@@ -10773,11 +10835,40 @@ const openRouterSecret = defineSecret("OPENROUTER_API_KEY");
 const hfTokenSecret = defineSecret("HF_TOKEN");
 
 // ─── REUSABLE MULTI-PROVIDER AI UTILITY ───
+
+interface GenerateCompletionOptions {
+  messages: any[];
+  temperature?: number;
+  maxTokens?: number;
+}
+
+// ─── REUSABLE MULTI-PROVIDER AI UTILITY ───
 export const generateCompletion = async (
-  messages: any[],
-  temperature = 0.4,
-  maxTokens = 3000,
+  messagesOrOptions: any[] | GenerateCompletionOptions,
+  temperatureParam = 0.4,
+  maxTokensParam = 3000,
 ) => {
+  // 🚀 DUAL SIGNATURE RESOLVER: Automatically handles both Object & Positional calls
+  let messages: any[];
+  let temperature = temperatureParam;
+  let maxTokens = maxTokensParam;
+
+  if (
+    !Array.isArray(messagesOrOptions) &&
+    typeof messagesOrOptions === "object" &&
+    messagesOrOptions !== null
+  ) {
+    messages = messagesOrOptions.messages || [];
+    if (messagesOrOptions.temperature !== undefined) {
+      temperature = messagesOrOptions.temperature;
+    }
+    if (messagesOrOptions.maxTokens !== undefined) {
+      maxTokens = messagesOrOptions.maxTokens;
+    }
+  } else {
+    messages = (messagesOrOptions as any[]) || [];
+  }
+
   const openRouterKey = openRouterSecret.value();
   const hfToken = hfTokenSecret.value();
 
@@ -10882,6 +10973,194 @@ export const generateCompletion = async (
   }
 };
 
+// ============================================================================
+// STATS-SA & MUNICIPAL GEO AI RESOLUTION ENGINE
+// ============================================================================
+
+interface LocationPayload {
+  statsSaAreaCode?: string;
+  streetAddress?: string;
+  city?: string;
+  province?: string;
+  postalCode?: string;
+}
+
+export const resolveLearnerMunicipalityAI = onCall(
+  {
+    cors: true,
+    secrets: ["OPENROUTER_API_KEY", "HF_TOKEN"],
+  },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError(
+        "unauthenticated",
+        "Authentication required to perform AI location resolution.",
+      );
+    }
+
+    const { statsSaAreaCode, streetAddress, city, province, postalCode } =
+      request.data as LocationPayload;
+
+    if (!statsSaAreaCode && !city && !streetAddress && !province) {
+      throw new HttpsError(
+        "invalid-argument",
+        "Insufficient location data provided.",
+      );
+    }
+
+    const systemPrompt = `You are an expert South African Geographic & Economic Development AI Engine specializing in Municipal Demarcation Board (MDB) boundaries, Stats-SA census sub-places, public transport corridors, and industrial economic hubs.
+
+Your task is to analyze raw learner location data and map it directly to the EXACT official Local Municipality or Metropolitan Municipality.
+
+CRITICAL COMPLIANCE RULES:
+1. Output MUST be valid, raw JSON only. Do NOT include markdown blocks (\`\`\`json), backticks, or conversational text.
+2. NEVER return vague generic regions like "Gauteng Municipal Region", "Gauteng Region", "Western Cape Area", or "Unspecified". 
+3. Every location MUST resolve to its exact official MDB Local or Metropolitan Municipality (e.g., "City of Ekurhuleni", "City of Johannesburg Metropolitan Municipality", "City of Tshwane Metropolitan Municipality", "Emfuleni Local Municipality", "Mogale City Local Municipality", "Sol Plaatje Local Municipality", "eThekwini Metropolitan Municipality", "City of Cape Town", "Polokwane Local Municipality", "Mbombela Local Municipality").
+4. If a Stats-SA Area Code is provided (e.g. "2011-797031001 - Katlehong"), decode its Main Place and Local Municipality precisely.
+5. Coordinates MUST be valid numbers inside South Africa (Latitude between -35.0 and -22.0, Longitude between 16.0 and 33.5). Latitude MUST be negative.
+
+STRICT JSON OUTPUT STRUCTURE:
+{
+  "localMunicipality": "Exact Official MDB Local or Metro Municipality Name (e.g., City of Ekurhuleni, City of Johannesburg, Emfuleni Local Municipality, Sol Plaatje Local Municipality)",
+  "districtOrMetro": "Official District Municipality or Metro Name (e.g., Ekurhuleni Metro, Sedibeng District Municipality, Frances Baard District Municipality)",
+  "province": "Official Province Name (e.g., Gauteng, Western Cape, KwaZulu-Natal, Free State, Limpopo)",
+  "municipalityCode": "Official MDB Code (e.g., EKU, JHB, TSH, GT423, GT481, NC091, ETH, CPT)",
+  "mainPlace": "Township / Suburb / Sub-place Name (e.g., Katlehong, Soweto, Tembisa, Sebokeng, Kimberley, Centurion)",
+  "coords": [latitude_number, longitude_number],
+  "economicHubs": ["List 3-4 nearest major industrial zones, commercial hubs, or employment centers"],
+  "transitTrails": ["List main public transit corridors (Metrorail, Gautrain, BRT/Rea Vaya, key taxi corridors) connecting this area to work hubs"],
+  "placementInsight": "A 1-2 sentence executive summary highlighting key industries and employment suitability for funders and LED officers."
+}`;
+
+    const userPrompt = `Please resolve the following South African learner address details:
+- Stats-SA Area Code: ${statsSaAreaCode || "N/A"}
+- Street Address: ${streetAddress || "N/A"}
+- City / Suburb / Town: ${city || "N/A"}
+- Province: ${province || "N/A"}
+- Postal Code: ${postalCode || "N/A"}`;
+
+    try {
+      // 🚀 FIXED: Positional arguments (messages, temperature, maxTokens)
+      const aiResponse = await generateCompletion(
+        [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        0.1, // temperature
+        1000, // maxTokens
+      );
+
+      const cleanJsonText = aiResponse.text
+        .replace(/```json/gi, "")
+        .replace(/```/g, "")
+        .trim();
+
+      const parsedData = JSON.parse(cleanJsonText);
+
+      return {
+        success: true,
+        data: parsedData,
+        modelUsed: aiResponse.modelUsed,
+      };
+    } catch (error: any) {
+      console.error("AI Municipal Resolution Error:", error);
+      throw new HttpsError(
+        "internal",
+        `Failed to resolve location via AI: ${error.message}`,
+      );
+    }
+  },
+);
+
+// export const resolveLearnerMunicipalityAI = onCall(
+//   {
+//     secrets: [openRouterSecret, hfTokenSecret],
+//     region: "us-central1",
+//     cors: true,
+//   },
+//   async (request) => {
+//     // 1. Ensure user is authenticated
+//     if (!request.auth) {
+//       throw new HttpsError(
+//         "unauthenticated",
+//         "Authentication required to perform AI location resolution."
+//       );
+//     }
+
+//     const { statsSaAreaCode, streetAddress, city, province, postalCode } =
+//       request.data || {};
+
+//     if (!statsSaAreaCode && !city && !streetAddress) {
+//       throw new HttpsError(
+//         "invalid-argument",
+//         "Insufficient location data provided."
+//       );
+//     }
+
+//     // 2. Build Context Prompts
+//     const systemPrompt = `You are an expert South African Geographic & Economic Development AI Engine specializing in Stats-SA census area codes, MDB municipal boundaries, public transport trails, and industrial economic hubs.
+
+// Your task is to analyze raw learner address data and return a STRICT JSON object containing exact South African municipal and placement metadata.
+
+// STRICT REQUIREMENTS:
+// - Output MUST be valid, raw JSON only. Do not include markdown code blocks, backticks (\`\`\`json), or conversational commentary.
+// - Coordinates MUST be inside South Africa (Latitude between -35.0 and -22.0, Longitude between 16.0 and 33.5). Latitudes MUST be negative.
+// - If Stats-SA Area Code is provided (e.g. "2011-797031001 - Katlehong"), decode its Main Place and Municipality accurately.
+
+// JSON OUTPUT STRUCTURE:
+// {
+//   "localMunicipality": "Official Local or Metropolitan Municipality Name (e.g. City of Ekurhuleni, City of Cape Town, Sol Plaatje)",
+//   "districtOrMetro": "District Municipality or Metro Name (e.g. Ekurhuleni Metro, Frances Baard District)",
+//   "province": "Official Province Name",
+//   "municipalityCode": "Official MDB Code if known (e.g. EKU, JHB, GT423, WC011, ETH)",
+//   "mainPlace": "Township / Suburb / Sub-place Name (e.g. Katlehong, Boksburg, Soweto, Kimberley)",
+//   "coords": [latitude_number, longitude_number],
+//   "economicHubs": ["List of 3-4 nearest major employment / industrial zones"],
+//   "transitTrails": ["List of main public transit options / routes connecting this area to job hubs"],
+//   "placementInsight": "A 1-2 sentence executive summary of job industries best suited for learners in this location"
+// }`;
+
+//     const userPrompt = `Please resolve the following South African learner address details:
+// - Stats-SA Area Code: ${statsSaAreaCode || "N/A"}
+// - Street Address: ${streetAddress || "N/A"}
+// - City / Town: ${city || "N/A"}
+// - Province: ${province || "N/A"}
+// - Postal Code: ${postalCode || "N/A"}`;
+
+//     try {
+//       // 3. Call your existing generateCompletion client
+//       const aiResult = await generateCompletion(
+//         [
+//           { role: "system", content: systemPrompt },
+//           { role: "user", content: userPrompt },
+//         ],
+//         0.1, // Low temperature for high precision
+//         1000
+//       );
+
+//       // 4. Clean up any accidental markdown backticks & parse JSON
+//       const cleanJsonText = aiResult.text
+//         .replace(/```json/gi, "")
+//         .replace(/```/g, "")
+//         .trim();
+
+//       const parsedData = JSON.parse(cleanJsonText);
+
+//       return {
+//         success: true,
+//         data: parsedData,
+//         modelUsed: aiResult.modelUsed,
+//       };
+//     } catch (error: any) {
+//       logger.error("AI Municipal Resolution Error:", error);
+//       throw new HttpsError(
+//         "internal",
+//         `Failed to resolve location via AI: ${error.message}`
+//       );
+//     }
+//   }
+// );
+
 export const generateEventReport = onCall(
   {
     secrets: [openRouterSecret, hfTokenSecret],
@@ -10975,7 +11254,7 @@ export const generateEventReport = onCall(
     try {
       const aiResult = await generateCompletion(messages, 0.4, 4000);
 
-      // 🚀 SAVE REPORT HISTORY TO FIRESTORE
+      // SAVE REPORT HISTORY TO FIRESTORE
       const db = admin.firestore();
       const reportRef = db.collection("event_reports").doc();
 
@@ -11002,6 +11281,708 @@ export const generateEventReport = onCall(
       throw new HttpsError(
         "internal",
         "Failed to generate AI report: " + error.message,
+      );
+    }
+  },
+);
+
+// ============================================================================
+// 🚀 ROBUST EMAIL HUNTER HELPER
+// ============================================================================
+const findLearnerEmail = async (
+  db: admin.firestore.Firestore,
+  learnerId: string,
+  baseData: any,
+): Promise<string | null> => {
+  // 1. Direct check on the root and demographics object
+  let email = baseData.email || baseData.demographics?.learnerEmailAddress;
+  if (email && String(email).trim().length > 0) {
+    return String(email).toLowerCase().trim();
+  }
+
+  // Extract clean ID Number and Compound Enrollment ID
+  const cleanIdNumber = learnerId.includes("_")
+    ? learnerId.split("_")[1]
+    : learnerId;
+  const compoundEnrollmentId =
+    baseData.enrollmentId ||
+    (baseData.cohortId ? `${baseData.cohortId}_${cleanIdNumber}` : learnerId);
+
+  // 2. Cross-reference the enrollments collection
+  const enrollmentDoc = await db
+    .collection("enrollments")
+    .doc(compoundEnrollmentId)
+    .get();
+  if (enrollmentDoc.exists) {
+    const eData = enrollmentDoc.data();
+    const e = eData?.email || eData?.demographics?.learnerEmailAddress;
+    if (e && String(e).trim().length > 0) return String(e).toLowerCase().trim();
+  }
+
+  // 3. Fallback query on enrollments by learnerId field
+  const enrollmentsSnap = await db
+    .collection("enrollments")
+    .where("learnerId", "==", cleanIdNumber)
+    .get();
+
+  if (!enrollmentsSnap.empty) {
+    for (const doc of enrollmentsSnap.docs) {
+      const eData = doc.data();
+      const e = eData.email || eData.demographics?.learnerEmailAddress;
+      if (e && String(e).trim().length > 0)
+        return String(e).toLowerCase().trim();
+    }
+  }
+
+  // 4. Fallback query on learners collection by idNumber field
+  if (cleanIdNumber) {
+    const altLearnerSnap = await db
+      .collection("learners")
+      .where("idNumber", "==", cleanIdNumber)
+      .get();
+
+    if (!altLearnerSnap.empty) {
+      const altData = altLearnerSnap.docs[0].data();
+      const e = altData.email || altData.demographics?.learnerEmailAddress;
+      if (e && String(e).trim().length > 0)
+        return String(e).toLowerCase().trim();
+    }
+  }
+
+  return null;
+};
+
+// ============================================================================
+// 1. REUSABLE EMAIL TEMPLATE BUILDERS
+// ============================================================================
+
+// 🚀 WITHDRAWAL EMAIL TEMPLATE PARAMS
+const getWithdrawalEmailParams = (
+  fullName: string,
+  programmeName: string,
+): EmailTemplateParams => ({
+  title: "Programme Withdrawal Notice",
+  subtitle: "Action Required: Skills Development Exit Form",
+  recipientName: fullName || "Participant",
+  bodyHtml: `
+    <p>We hope this message finds you well.</p>
+    <p>We noticed that you have not been able to participate in more than one programme activity, and as a result, your status is currently reflected as inactive. Unfortunately, this means that you have been withdrawn from <strong>${programmeName || "the STEP UP Programme"}</strong>.</p>
+    <p>We understand that circumstances can sometimes make it difficult to continue participating, and we sincerely appreciate the time and effort you invested while you were part of the programme.</p>
+
+    <!-- DISPUTE / MISTAKE NOTICE -->
+    <div style="background-color: #f0f9ff; border: 1px solid #bae6fd; border-left: 4px solid #0284c7; padding: 14px; border-radius: 6px; margin: 20px 0;">
+        <p style="margin: 0; color: #0369a1; font-size: 13px; line-height: 1.5;">
+            <strong>Think this is a mistake?</strong><br/>
+            If you have been attending activities or believe your status was updated in error, please contact your Facilitator or email us directly at <a href="mailto:support@mlab.co.za" style="color: #0284c7; font-weight: bold; text-decoration: underline;">support@mlab.co.za</a> within <strong>5 business days</strong> to request an attendance review.
+        </p>
+    </div>
+
+    <!-- EXIT FORM ACTION REQUIRED -->
+    <div style="background-color: #fffbeb; padding: 15px; border-radius: 6px; border: 1px solid #fde68a; border-left: 4px solid #f59e0b; margin: 20px 0;">
+        <p style="margin: 0; color: #92400e; font-size: 13px; line-height: 1.5;">
+            <strong>Action Required (If exiting the programme):</strong><br/>
+            To help us finalise our records, we kindly ask that you complete the Skills Development Exit Form using the secure button below.
+        </p>
+    </div>
+
+    <p>Thank you for being part of the programme. We wish you every success in your future endeavours, and should your circumstances change, we hope to have the opportunity to engage with you again in the future.</p>
+    <p>If you have any questions or require any assistance, please do not hesitate to contact us.</p>
+  `,
+  ctaText: "Complete Exit Form",
+  ctaLink: "https://survey.zohopublic.eu/zs/0HByGj",
+  showStepIndicator: false,
+});
+
+// REINSTATEMENT EMAIL TEMPLATE PARAMS
+const getReinstatementEmailParams = (
+  fullName: string,
+  programmeName: string,
+): EmailTemplateParams => ({
+  title: "Programme Reinstatement Notice",
+  subtitle: "Welcome Back to the STEP UP Programme",
+  recipientName: fullName || "Participant",
+  bodyHtml: `
+    <p>We hope this message finds you well.</p>
+    <p>We are pleased to inform you that your participation in <strong>${programmeName || "the STEP UP Programme"}</strong> has been reinstated.</p>
+    <p>Following a review of your status, we are delighted to welcome you back to the programme. We understand that there are occasions where participants may be withdrawn in error or due to circumstances beyond their control, and we are committed to supporting your continued learning journey.</p>
+    
+    <!-- INSTRUCTION BOX -->
+    <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-left: 4px solid #16a34a; padding: 15px; border-radius: 6px; margin: 20px 0;">
+        <p style="margin: 0 0 8px 0; color: #15803d; font-size: 13px;"><strong>To ensure a smooth return to the programme, please:</strong></p>
+        <ul style="margin: 0; padding-left: 20px; color: #166534; font-size: 13px; line-height: 1.6;">
+            <li style="margin-bottom: 6px;">Resume attending all scheduled training sessions and programme activities.</li>
+            <li style="margin-bottom: 6px;">Regularly check your email and communication platforms for important updates.</li>
+            <li>Contact the programme team if you require any assistance or need clarification regarding your next steps.</li>
+        </ul>
+    </div>
+
+    <p>We encourage you to make the most of this opportunity and remain actively engaged throughout the remainder of the programme.</p>
+    <p>Should you have any questions or require support, please do not hesitate to contact us. We look forward to your continued participation and wish you every success in the programme.</p>
+    <p><strong>Welcome back, and we look forward to having you continue your learning journey with us.</strong></p>
+  `,
+  ctaText: "Access Learner Portal",
+  ctaLink: "https://assessment.mlab.co.za",
+  showStepIndicator: false,
+});
+
+// ============================================================================
+// 2. AUTOMATIC FIRESTORE TRIGGER: ON LEARNER DROPPED
+// ============================================================================
+export const onLearnerDropped = onDocumentUpdated(
+  { document: "learners/{learnerId}", secrets: [mailgunSecret] },
+  async (event) => {
+    const rawLearnerId = event.params.learnerId;
+    const beforeData = event.data?.before.data();
+    const afterData = event.data?.after.data();
+
+    if (!beforeData || !afterData) return;
+
+    const wasActive = beforeData.status !== "dropped";
+    const isNowDropped = afterData.status === "dropped";
+
+    if (wasActive && isNowDropped) {
+      logger.info(
+        `🛑 [onLearnerDropped] Processing learner ${rawLearnerId}...`,
+      );
+
+      const db = admin.firestore();
+      const cleanIdNumber = rawLearnerId.includes("_")
+        ? rawLearnerId.split("_")[1]
+        : rawLearnerId;
+      const compoundEnrollmentId =
+        afterData.enrollmentId ||
+        (afterData.cohortId
+          ? `${afterData.cohortId}_${cleanIdNumber}`
+          : rawLearnerId);
+
+      const rawEmail = await findLearnerEmail(db, rawLearnerId, afterData);
+      const fullName = afterData.fullName || "Participant";
+      const programmeName =
+        afterData.qualification?.name || "the STEP UP Programme";
+
+      if (!rawEmail) {
+        const errorMsg =
+          "No email address found on profile or enrollment record.";
+        logger.error(`[onLearnerDropped] ${errorMsg} for ID: ${rawLearnerId}`);
+
+        const errorPayload = {
+          withdrawalEmailStatus: {
+            sent: false,
+            failedAt: admin.firestore.FieldValue.serverTimestamp(),
+            error: errorMsg,
+          },
+          lastSystemMessage: `❌ Email delivery skipped: ${errorMsg}`,
+        };
+
+        await event.data?.after.ref.set(errorPayload, { merge: true });
+        await db
+          .collection("enrollments")
+          .doc(compoundEnrollmentId)
+          .set(errorPayload, { merge: true })
+          .catch(() => {});
+        return;
+      }
+
+      const email = String(rawEmail).trim().toLowerCase();
+
+      if (!isValidEmailFormat(email)) {
+        const errorMsg = `Invalid email syntax: '${email}'. Must be formatted as user@domain.com.`;
+        logger.error(`[onLearnerDropped] ${errorMsg}`);
+
+        const errorPayload = {
+          withdrawalEmailStatus: {
+            sent: false,
+            failedAt: admin.firestore.FieldValue.serverTimestamp(),
+            error: errorMsg,
+            recipient: email,
+          },
+          lastSystemMessage: `❌ Email delivery failed: ${errorMsg}`,
+        };
+
+        await event.data?.after.ref.set(errorPayload, { merge: true });
+        await db
+          .collection("enrollments")
+          .doc(compoundEnrollmentId)
+          .set(errorPayload, { merge: true })
+          .catch(() => {});
+        return;
+      }
+
+      const emailParams = getWithdrawalEmailParams(fullName, programmeName);
+
+      try {
+        await sendMailgunEmail({
+          to: email,
+          subject: "Notice of Withdrawal from Programme",
+          text: buildMlabEmailPlainText(emailParams),
+          html: buildMlabEmailHtml(emailParams),
+        });
+
+        logger.info(
+          `✅ [onLearnerDropped] Email successfully delivered to ${email}`,
+        );
+
+        const successPayload = {
+          withdrawalEmailStatus: {
+            sent: true,
+            sentAt: admin.firestore.FieldValue.serverTimestamp(),
+            recipient: email,
+          },
+          lastSystemMessage: `Withdrawal notice emailed to ${email}`,
+        };
+
+        await event.data?.after.ref.set(successPayload, { merge: true });
+        await db
+          .collection("enrollments")
+          .doc(compoundEnrollmentId)
+          .set(successPayload, { merge: true })
+          .catch(() => {});
+      } catch (error: any) {
+        const readableError = parseMailgunError(error);
+        logger.error(
+          `❌ [onLearnerDropped] Email sending failed for ${email}: ${readableError}`,
+          error,
+        );
+
+        const failurePayload = {
+          withdrawalEmailStatus: {
+            sent: false,
+            failedAt: admin.firestore.FieldValue.serverTimestamp(),
+            error: readableError,
+            recipient: email,
+          },
+          lastSystemMessage: `❌ Failed to send withdrawal email: ${readableError}`,
+        };
+
+        await event.data?.after.ref.set(failurePayload, { merge: true });
+        await db
+          .collection("enrollments")
+          .doc(compoundEnrollmentId)
+          .set(failurePayload, { merge: true })
+          .catch(() => {});
+      }
+    }
+  },
+);
+
+// ============================================================================
+// 2. ONE-OFF SCRIPT: BACKFILL DROPPED LEARNER WITHDRAWAL EMAILS
+// ============================================================================
+export const backfillWithdrawalEmails = onRequest(
+  { secrets: [mailgunSecret], timeoutSeconds: 540, memory: "256MiB" },
+  (req, res) => {
+    return cors(req, res, async () => {
+      logger.info("Initiating Withdrawal Email Backfill Script...");
+      const db = admin.firestore();
+      const isDryRun = req.query.execute !== "true";
+
+      try {
+        const droppedLearnersSnap = await db
+          .collection("learners")
+          .where("status", "==", "dropped")
+          .get();
+
+        if (droppedLearnersSnap.empty) {
+          res
+            .status(200)
+            .send({ success: true, message: "No dropped learners found." });
+          return;
+        }
+
+        let processedCount = 0;
+        let successCount = 0;
+        let failCount = 0;
+        let skippedCount = 0;
+
+        for (const docSnap of droppedLearnersSnap.docs) {
+          const data = docSnap.data();
+          const rawLearnerId = docSnap.id;
+
+          if (data.withdrawalEmailStatus?.sent === true) {
+            skippedCount++;
+            continue;
+          }
+
+          processedCount++;
+
+          const email = await findLearnerEmail(db, rawLearnerId, data);
+          const fullName = data.fullName || "Participant";
+          const programmeName =
+            data.qualification?.name || "the STEP UP Programme";
+
+          const cleanIdNumber = rawLearnerId.includes("_")
+            ? rawLearnerId.split("_")[1]
+            : rawLearnerId;
+          const compoundEnrollmentId =
+            data.enrollmentId ||
+            (data.cohortId
+              ? `${data.cohortId}_${cleanIdNumber}`
+              : rawLearnerId);
+
+          if (isDryRun) {
+            logger.info(
+              `[DRY RUN] Would send to: ${email || "NO EMAIL"} for Learner ${rawLearnerId}`,
+            );
+            continue;
+          }
+
+          if (!email) {
+            failCount++;
+            const errorPayload = {
+              withdrawalEmailStatus: {
+                sent: false,
+                failedAt: admin.firestore.FieldValue.serverTimestamp(),
+                error: "No email address found on profile.",
+              },
+            };
+            await docSnap.ref.set(errorPayload, { merge: true });
+            await db
+              .collection("enrollments")
+              .doc(compoundEnrollmentId)
+              .set(errorPayload, { merge: true })
+              .catch(() => {});
+            continue;
+          }
+
+          const emailParams = getWithdrawalEmailParams(fullName, programmeName);
+
+          try {
+            await sendMailgunEmail({
+              to: email,
+              subject: "Notice of Withdrawal from Programme",
+              text: buildMlabEmailPlainText(emailParams),
+              html: buildMlabEmailHtml(emailParams),
+            });
+
+            successCount++;
+            const successPayload = {
+              withdrawalEmailStatus: {
+                sent: true,
+                sentAt: admin.firestore.FieldValue.serverTimestamp(),
+                recipient: email,
+                isBackfilled: true,
+              },
+            };
+
+            await docSnap.ref.set(successPayload, { merge: true });
+            await db
+              .collection("enrollments")
+              .doc(compoundEnrollmentId)
+              .set(successPayload, { merge: true })
+              .catch(() => {});
+          } catch (error: any) {
+            failCount++;
+            const failurePayload = {
+              withdrawalEmailStatus: {
+                sent: false,
+                failedAt: admin.firestore.FieldValue.serverTimestamp(),
+                error: error.message || "Mailer error during backfill.",
+                isBackfilled: true,
+              },
+            };
+
+            await docSnap.ref.set(failurePayload, { merge: true });
+            await db
+              .collection("enrollments")
+              .doc(compoundEnrollmentId)
+              .set(failurePayload, { merge: true })
+              .catch(() => {});
+          }
+        }
+
+        if (isDryRun) {
+          res.status(200).send({
+            success: true,
+            mode: "DRY RUN",
+            message: `Found ${droppedLearnersSnap.size} dropped learners. Would process ${processedCount} (Skipping ${skippedCount} already sent). Add ?execute=true to the URL to run.`,
+          });
+        } else {
+          res.status(200).send({
+            success: true,
+            mode: "LIVE EXECUTION",
+            processed: processedCount,
+            successful: successCount,
+            failed: failCount,
+            skipped: skippedCount,
+            message: "Backfill complete.",
+          });
+        }
+      } catch (error: any) {
+        logger.error("Backfill Script Failed:", error);
+        res.status(500).send({ success: false, error: error.message });
+      }
+    });
+  },
+);
+
+// ============================================================================
+// 3. MANUAL FRONTEND TRIGGER: RESEND WITHDRAWAL EMAIL
+// ============================================================================
+export const resendWithdrawalEmail = onCall(
+  { secrets: [mailgunSecret] },
+  async (request) => {
+    const TEST_MODE = false;
+
+    const auth = request.auth;
+    if (!auth || !["admin", "facilitator"].includes(auth.token.role)) {
+      throw new HttpsError(
+        "permission-denied",
+        "Only staff members can send withdrawal emails.",
+      );
+    }
+
+    const {
+      learnerId,
+      enrollmentId,
+      cohortId,
+      email: rawEmail,
+      fullName,
+      programmeName,
+    } = request.data;
+
+    if (!learnerId) {
+      throw new HttpsError("invalid-argument", "Missing Learner ID.");
+    }
+
+    if (!rawEmail || typeof rawEmail !== "string" || !rawEmail.trim()) {
+      throw new HttpsError(
+        "failed-precondition",
+        "No email address found on profile.",
+      );
+    }
+
+    const email = rawEmail.trim().toLowerCase();
+    const cleanIdNumber = learnerId.includes("_")
+      ? learnerId.split("_")[1]
+      : learnerId;
+    const db = admin.firestore();
+
+    try {
+      const emailParams = getWithdrawalEmailParams(
+        fullName || "Participant",
+        programmeName || "the STEP UP Programme",
+      );
+
+      if (TEST_MODE) {
+        logger.info(
+          `🧪 [TEST MODE ACTIVE] Email NOT sent to real user (${email}). Updating DB records only.`,
+        );
+      } else {
+        await sendMailgunEmail({
+          to: email,
+          subject: "Notice of Withdrawal from Programme",
+          text: buildMlabEmailPlainText(emailParams),
+          html: buildMlabEmailHtml(emailParams),
+        });
+      }
+
+      const statusPayload = {
+        withdrawalEmailStatus: {
+          sent: true,
+          sentAt: admin.firestore.FieldValue.serverTimestamp(),
+          recipient: email,
+          isManualResend: true,
+          isTestRun: TEST_MODE,
+        },
+        lastSystemMessage: `Withdrawal notice ${TEST_MODE ? "[TEST RUN] " : ""}emailed to ${email}`,
+      };
+
+      await db
+        .collection("learners")
+        .doc(cleanIdNumber)
+        .set(statusPayload, { merge: true });
+
+      if (enrollmentId) {
+        await db
+          .collection("enrollments")
+          .doc(enrollmentId)
+          .set(statusPayload, { merge: true })
+          .catch(() => {});
+      }
+
+      if (cohortId) {
+        await db
+          .collection("enrollments")
+          .doc(`${cohortId}_${cleanIdNumber}`)
+          .set(statusPayload, { merge: true })
+          .catch(() => {});
+      }
+
+      const enrollmentsSnap = await db
+        .collection("enrollments")
+        .where("idNumber", "==", cleanIdNumber)
+        .get();
+      const batch = db.batch();
+      enrollmentsSnap.docs.forEach((doc) => {
+        batch.set(doc.ref, statusPayload, { merge: true });
+      });
+      await batch.commit();
+
+      logger.info(
+        `✅ [resendWithdrawalEmail] Successfully updated ${enrollmentsSnap.size + 1} records for ID Number: ${cleanIdNumber}`,
+      );
+
+      return {
+        success: true,
+        message: `Withdrawal status updated ${TEST_MODE ? "(Test Mode: Email Bypassed)" : ""}.`,
+      };
+    } catch (error: any) {
+      logger.error(
+        `❌ [resendWithdrawalEmail] Error for ${cleanIdNumber}:`,
+        error,
+      );
+      throw new HttpsError(
+        "internal",
+        error.message || "Failed to process withdrawal email.",
+      );
+    }
+  },
+);
+
+// ============================================================================
+// 4. MANUAL FRONTEND TRIGGER: REINSTATE WITHDRAWN LEARNER & NOTIFY
+// ============================================================================
+export const reinstateLearner = onCall(
+  { secrets: [mailgunSecret] },
+  async (request) => {
+    const auth = request.auth;
+    if (!auth || !["admin", "facilitator"].includes(auth.token.role)) {
+      throw new HttpsError(
+        "permission-denied",
+        "Only staff members can reinstate learners.",
+      );
+    }
+
+    const {
+      learnerId,
+      enrollmentId,
+      cohortId,
+      email: rawEmail,
+      fullName: providedName,
+      programmeName: providedProgramme,
+      notes, // 👈 Destructured here
+    } = request.data;
+
+    if (!learnerId) {
+      throw new HttpsError("invalid-argument", "Missing Learner ID.");
+    }
+
+    const cleanIdNumber = learnerId.includes("_")
+      ? learnerId.split("_")[1]
+      : learnerId;
+    const db = admin.firestore();
+
+    const learnerDocRef = db.collection("learners").doc(cleanIdNumber);
+    const learnerSnap = await learnerDocRef.get();
+    const learnerData = learnerSnap.exists ? learnerSnap.data() || {} : {};
+
+    const fullName = providedName || learnerData.fullName || "Participant";
+    const programmeName =
+      providedProgramme ||
+      learnerData.qualification?.name ||
+      "the STEP UP Programme";
+
+    const emailToUse =
+      rawEmail || (await findLearnerEmail(db, cleanIdNumber, learnerData));
+    const cleanEmail = emailToUse
+      ? String(emailToUse).trim().toLowerCase()
+      : "";
+
+    try {
+      const timestamp = admin.firestore.FieldValue.serverTimestamp();
+      let emailStatus: any = { sent: false, note: "No valid email available" };
+
+      if (cleanEmail && isValidEmailFormat(cleanEmail)) {
+        const emailParams = getReinstatementEmailParams(
+          fullName,
+          programmeName,
+        );
+
+        try {
+          await sendMailgunEmail({
+            to: cleanEmail,
+            subject: "Notice of Reinstatement — STEP UP Programme",
+            text: buildMlabEmailPlainText(emailParams),
+            html: buildMlabEmailHtml(emailParams),
+          });
+
+          emailStatus = {
+            sent: true,
+            sentAt: timestamp,
+            recipient: cleanEmail,
+          };
+          logger.info(
+            `✅ [reinstateLearner] Reinstatement email sent to ${cleanEmail}`,
+          );
+        } catch (emailError: any) {
+          const errorMsg = parseMailgunError(emailError);
+          logger.error(
+            `❌ [reinstateLearner] Email failed for ${cleanEmail}: ${errorMsg}`,
+          );
+          emailStatus = {
+            sent: false,
+            failedAt: timestamp,
+            error: errorMsg,
+            recipient: cleanEmail,
+          };
+        }
+      }
+
+      // 🚀 USE 'notes' IN THE PAYLOAD & SYSTEM MESSAGE
+      const reinstatementPayload = {
+        status: "active",
+        reinstatedAt: timestamp,
+        reinstatedBy: auth.uid,
+        reinstatementNotes: notes || null, // 👈 Saved for audit logs
+        reinstatementEmailStatus: emailStatus,
+        lastSystemMessage: `Learner reinstated by staff${
+          notes ? ` (${notes})` : ""
+        }${emailStatus.sent ? ` & email sent to ${cleanEmail}` : ""}`,
+        isReinstated: true,
+      };
+
+      await learnerDocRef.set(reinstatementPayload, { merge: true });
+
+      if (enrollmentId) {
+        await db
+          .collection("enrollments")
+          .doc(enrollmentId)
+          .set(reinstatementPayload, { merge: true })
+          .catch(() => {});
+      }
+
+      if (cohortId) {
+        await db
+          .collection("enrollments")
+          .doc(`${cohortId}_${cleanIdNumber}`)
+          .set(reinstatementPayload, { merge: true })
+          .catch(() => {});
+      }
+
+      const enrollmentsSnap = await db
+        .collection("enrollments")
+        .where("idNumber", "==", cleanIdNumber)
+        .get();
+      const batch = db.batch();
+      enrollmentsSnap.docs.forEach((doc) => {
+        batch.set(doc.ref, reinstatementPayload, { merge: true });
+      });
+      await batch.commit();
+
+      logger.info(
+        `✅ [reinstateLearner] Reinstated learner ID: ${cleanIdNumber} (Updated ${enrollmentsSnap.size + 1} DB records)`,
+      );
+
+      return {
+        success: true,
+        message: `${fullName} reinstated to Active status successfully.`,
+        emailSent: emailStatus.sent,
+      };
+    } catch (error: any) {
+      logger.error(`❌ [reinstateLearner] Failed for ${cleanIdNumber}:`, error);
+      throw new HttpsError(
+        "internal",
+        error.message || "Failed to reinstate learner.",
       );
     }
   },

@@ -1483,7 +1483,7 @@ export const useStore = create<StoreState>()(
         );
 
         // 🚀 DIAGNOSTIC PRINT: Inspect the raw records currently sitting in Staging
-        console.log("📥 [Staging Debug] Raw Staging Queue Snapshot:");
+        // console.log("📥 [Staging Debug] Raw Staging Queue Snapshot:");
         if (list.length === 0) {
           console.log("   (Staging queue is completely empty)");
         } else {
@@ -1508,7 +1508,7 @@ export const useStore = create<StoreState>()(
         });
       } catch (error) {
         console.error(
-          "❌ [Staging Debug] Failed to fetch staging database:",
+          "[Staging Debug] Failed to fetch staging database:",
           error,
         );
       }
@@ -1521,9 +1521,9 @@ export const useStore = create<StoreState>()(
       const functions = getFunctions();
       const createAccountFn = httpsCallable(functions, "createLearnerAccount");
 
-      console.log(
-        `🚀 [Approval Loop Initiated] Target Count: ${learnersToApprove.length} | Mode: "${mode}"`,
-      );
+      // console.log(
+      //   `🚀 [Approval Loop Initiated] Target Count: ${learnersToApprove.length} | Mode: "${mode}"`,
+      // );
 
       try {
         const batch = writeBatch(db);
@@ -1531,9 +1531,9 @@ export const useStore = create<StoreState>()(
 
         for (const l of learnersToApprove) {
           try {
-            console.log(
-              `⚡ [Processing Staged Row] Checking data for: "${l.fullName || "Unknown Name"}"`,
-            );
+            // console.log(
+            //   `⚡ [Processing Staged Row] Checking data for: "${l.fullName || "Unknown Name"}"`,
+            // );
 
             // 🚀 HOTFIX: Detect corrupted Excel floating-point scientific expressions
             const isScientificNotation = /E\+/i.test(l.idNumber || "");

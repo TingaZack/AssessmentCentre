@@ -819,8 +819,8 @@ export const ProctoringWrapper: React.FC<ProctoringWrapperProps> = ({ children, 
                                     </div>
                                     {hasCamera && !hasScreen && (
                                         <button 
-                                            className={`lfm-btn pw-btn-small ${screenError ? 'pw-btn-danger' : 'lfm-btn--primary'}`} 
-                                            style={{ background: screenError ? 'var(--mlab-red)' : undefined }}
+                                            className={`lfm-btn pw-btn-sall ${screenError ? 'pw-btn-danger' : 'lfm-btn--primary'}`} 
+                                            style={{ background: screenError ? 'var(--mlab-red)' : undefined, width: 'auto' }}
                                             onClick={requestScreenAccess}
                                         >
                                             {screenError ? 'Retry Screen Share' : 'Share Screen'}

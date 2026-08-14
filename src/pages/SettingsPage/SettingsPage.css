@@ -988,3 +988,25 @@ select.mlab-input {
     padding: 1rem;
   }
 }
+
+/* Force Google Autocomplete dropdown above all layout layers */
+.pac-container {
+  z-index: 9999999 !important;
+  pointer-events: auto !important;
+  background-color: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  border-radius: 8px !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15) !important;
+}
+
+/* Ensure prediction items are visible and legible */
+.pac-item {
+  padding: 10px 14px !important;
+  font-size: 0.85rem !important;
+  color: #0f172a !important;
+  cursor: pointer !important;
+}
+
+.pac-item:hover {
+  background-color: #f1f5f9 !important;
+}

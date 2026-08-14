@@ -1,5 +1,18 @@
+// src/pages/FacilitatorDashboard/SubmissionReview/SubmissionReview/ExcuseReopenModal.tsx
+
 import React, { useState } from 'react';
-import { ShieldCheck, AlertCircle, Unlock } from 'lucide-react';
+import { Unlock, X, AlertCircle } from 'lucide-react';
+
+// 🚀 Predefined list of acceptable QCTO/Audit excuses
+const PRESET_EXCUSE_REASONS = [
+    "Verified Power Outage / Loadshedding",
+    "Network / Internet Disconnection",
+    "Browser / IDE Technical Crash",
+    "Hardware / Device Failure",
+    "Invigilator / Facilitator Discretion",
+    "Medical / Personal Emergency",
+    "Other (Details specified below)"
+];
 
 interface ExcuseReopenModalProps {
     learnerName: string;
@@ -8,56 +21,107 @@ interface ExcuseReopenModalProps {
 }
 
 export const ExcuseReopenModal: React.FC<ExcuseReopenModalProps> = ({ learnerName, onClose, onSubmit }) => {
-    const [reason, setReason] = useState('');
+    const [selectedPreset, setSelectedPreset] = useState<string>(PRESET_EXCUSE_REASONS[0]);
+    const [details, setDetails] = useState('');
     const [error, setError] = useState('');
 
-    const handleSubmit = () => {
-        if (!reason.trim()) {
-            setError('Please provide a justification for overriding this security incident.');
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+
+        const combinedReason = details.trim()
+            ? `${selectedPreset} — ${details.trim()}`
+            : selectedPreset;
+
+        // Force details if "Other" is selected
+        if (selectedPreset.startsWith("Other") && !details.trim()) {
+            setError('Please provide specific details in the text box when selecting "Other".');
             return;
         }
-        onSubmit(reason.trim());
+
+        onSubmit(combinedReason);
     };
 
     return (
-        <div className="lfm-overlay" style={{ position: 'fixed', inset: 0, zIndex: 999999, background: 'rgba(15,23,42,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
-            <div className="lfm-modal" style={{ maxWidth: '520px', width: '100%', background: 'white', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.37)' }}>
-                <div style={{ background: '#0f172a', padding: '1rem 1.25rem', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <div style={{ background: '#10b981', padding: '6px', borderRadius: '6px' }}>
-                            <Unlock size={18} color="white" />
-                        </div>
-                        <h3 style={{ margin: 0, fontSize: '1rem', color: 'white' }}>Excuse & Reopen Assessment</h3>
-                    </div>
-                    <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '1.2rem', cursor: 'pointer' }}>✕</button>
-                </div>
+        <div className="lfm-overlay" onClick={onClose}>
+            <div className="lfm-modal" style={{ maxWidth: '520px' }} onClick={(e) => e.stopPropagation()}>
 
-                <div style={{ padding: '1.25rem' }}>
-                    <p style={{ margin: '0 0 12px 0', fontSize: '0.85rem', color: '#334155', lineHeight: 1.5 }}>
-                        You are clearing the security block for <strong>{learnerName}</strong>. The original violation logs and evidence snapshots will remain permanently archived for QCTO/SETA audits.
-                    </p>
-
-                    <div style={{ marginBottom: '1rem' }}>
-                        <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 'bold', color: '#0f172a', textTransform: 'uppercase', marginBottom: '6px' }}>
-                            Justification / Excuse Rationale <span style={{ color: '#ef4444' }}>*</span>
-                        </label>
-                        <textarea
-                            rows={3}
-                            style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem', resize: 'vertical' }}
-                            placeholder="e.g., Learner experienced a verified power outage; technical issue confirmed by invigilator..."
-                            value={reason}
-                            onChange={(e) => { setReason(e.target.value); setError(''); }}
-                        />
-                        {error && <span style={{ color: '#ef4444', fontSize: '0.75rem', marginTop: '4px', display: 'block' }}>{error}</span>}
-                    </div>
-                </div>
-
-                <div style={{ padding: '12px 1.25rem', background: '#f8fafc', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-                    <button onClick={onClose} className="mlab-btn mlab-btn--ghost" style={{ fontSize: '0.8rem' }}>Cancel</button>
-                    <button onClick={handleSubmit} className="mlab-btn" style={{ background: '#10b981', color: 'white', border: 'none', fontSize: '0.8rem', fontWeight: 'bold' }}>
-                        Excuse & Reopen
+                {/* ── HEADER ── */}
+                <div className="lfm-header">
+                    <h2 className="lfm-header__title">
+                        <Unlock size={16} /> Excuse & Reopen Assessment
+                    </h2>
+                    <button className="lfm-close-btn" type="button" onClick={onClose}>
+                        <X size={20} />
                     </button>
                 </div>
+
+                <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+                    {/* ── BODY ── */}
+                    <div className="lfm-body">
+
+                        {error && (
+                            <div className="lfm-error-banner">
+                                <AlertCircle size={16} />
+                                <span>{error}</span>
+                            </div>
+                        )}
+
+                        <div className="lfm-flags-panel" style={{ marginTop: 0 }}>
+                            <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--mlab-blue)', lineHeight: 1.5 }}>
+                                You are clearing the security block for <strong>{learnerName}</strong>. The original violation logs and evidence snapshots will remain permanently archived for QCTO/SETA audits.
+                            </p>
+                        </div>
+
+                        {/* Standard Reason Dropdown */}
+                        <div className="lfm-fg">
+                            <label>Standard Audit Category *</label>
+                            <select
+                                className="lfm-input lfm-select"
+                                value={selectedPreset}
+                                onChange={(e) => {
+                                    setSelectedPreset(e.target.value);
+                                    if (error) setError('');
+                                }}
+                                required
+                            >
+                                {PRESET_EXCUSE_REASONS.map((reason, idx) => (
+                                    <option key={idx} value={reason}>
+                                        {reason}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        {/* Additional Supporting Evidence Text Area */}
+                        <div className="lfm-fg">
+                            <label>
+                                Additional Notes / Supporting Evidence
+                                {selectedPreset.startsWith('Other') && <span style={{ color: '#ef4444' }}> *</span>}
+                            </label>
+                            <textarea
+                                className="lfm-input"
+                                rows={3}
+                                placeholder="e.g., Ticket number, invigilator notes, specific error message..."
+                                value={details}
+                                onChange={(e) => {
+                                    setDetails(e.target.value);
+                                    if (error) setError('');
+                                }}
+                                style={{ resize: 'vertical' }}
+                            />
+                        </div>
+                    </div>
+
+                    {/* ── FOOTER ── */}
+                    <div className="lfm-footer">
+                        <button type="button" className="lfm-btn lfm-btn--ghost" onClick={onClose}>
+                            Cancel
+                        </button>
+                        <button type="submit" className="lfm-btn lfm-btn--primary">
+                            <Unlock size={13} /> Excuse & Reopen
+                        </button>
+                    </div>
+                </form>
             </div>
         </div>
     );

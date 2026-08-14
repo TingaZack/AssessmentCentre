@@ -46,7 +46,6 @@ import { ModeratorDashboard } from './pages/FacilitatorDashboard/ModeratorDashbo
 // Mentor (Workplace)
 import { MentorProfileSetup } from './pages/mentor/MentorProfileSetup/MentorProfileSetup';
 import { MentorDashboard } from './pages/mentor/MentorDashboard/MentorDashboard';
-// IMPORT THE MENTOR MAGIC LINK APPROVAL VIEW
 import { MentorApprovalView } from './components/views/MentorApprovalView/MentorApprovalView';
 
 // Learner & Public
@@ -92,12 +91,18 @@ const RootRedirect = () => {
   const uploadedDocs = Array.isArray(rawUploadedDocs) ? rawUploadedDocs : [];
   const hasDoc = (docId: string) => uploadedDocs.some((doc: any) => doc.id === docId && typeof doc.url === 'string' && doc.url.trim() !== '');
 
-  // 1. Learner Compliance Logic
+  // 1. Learner Strict Compliance Logic (Includes Proof of Address & Municipal Metadata)
   const isLearnerCompliant = () => {
     if (user.role !== 'learner') return true;
     const d = (user as any).demographics || {};
-    const hasDemographics = !!d.equityCode && !!d.provinceCode && (!!d.statssaAreaCode || !!d.statsaaAreaCode) && !!d.learnerTitle;
-    return user.profileCompleted === true && hasDemographics && hasDoc('id') && hasDoc('qual');
+    const hasDemographics =
+      !!d.equityCode &&
+      !!d.provinceCode &&
+      (!!d.statssaAreaCode || !!d.statsaaAreaCode) &&
+      !!d.localMunicipality &&
+      !!d.learnerTitle;
+
+    return user.profileCompleted === true && hasDemographics && hasDoc('id') && hasDoc('qual') && hasDoc('poa');
   };
 
   // 2. Staff Compliance Logic
@@ -118,9 +123,8 @@ const RootRedirect = () => {
       case 'moderator':
         return hasStaffProvince && hasDoc('id') && hasDoc('moderator_cert') && hasDoc('reg_letter') && hasPermitIfForeign;
       case 'admin':
-      case 'assistant_admin': // 🚀 Handle Assistance Admin Role
-        if ((user as any).isSuperAdmin) return true; // Super admins skip compliance checks
-        // 🚀 Strictly enforce signature upload for access
+      case 'assistant_admin':
+        if ((user as any).isSuperAdmin) return true;
         const hasSignature = hasDoc('signature') || !!(user as any).signatureUrl;
         return hasStaffProvince && hasDoc('id') && hasDoc('appointment') && hasPermitIfForeign && hasSignature;
       case 'mentor':
@@ -135,7 +139,6 @@ const RootRedirect = () => {
     return <Navigate to="/setup-profile" replace />;
   }
 
-  // 🚀 Include assistant_admin in the tracked staff roles
   const staffRoles = ['facilitator', 'assistant_facilitator', 'assessor', 'moderator', 'mentor', 'admin', 'assistant_admin'];
   if (staffRoles.includes(user.role) && !isStaffCompliant()) {
     return <Navigate to={`/setup-${user.role === 'assistant_facilitator' ? 'facilitator' : user.role === 'assistant_admin' ? 'admin' : user.role}`} replace />;
@@ -233,7 +236,6 @@ function App() {
 
             {/* ================= ONBOARDING GATES ================= */}
             <Route path="/setup-admin" element={
-              // 🚀 Allow Assistance Admins into Setup
               <RoleProtectedRoute allowedRoles={['admin', 'assistant_admin']}>
                 <AdminProfileSetup />
               </RoleProtectedRoute>
@@ -268,7 +270,6 @@ function App() {
 
             {/* ADMIN CONSOLE */}
             <Route path="/admin" element={
-              // 🚀 Allow Assistance Admins to view the dashboard container
               <RoleProtectedRoute allowedRoles={['admin', 'assistant_admin']}>
                 <AdminDashboard />
               </RoleProtectedRoute>
@@ -328,7 +329,7 @@ function App() {
 
             {/* FACILITATOR SUITE */}
             <Route path="/facilitator" element={
-              <RoleProtectedRoute allowedRoles={['facilitator', 'assistant_facilitator']}>
+              <RoleProtectedRoute allowedRoles={['facilitator', 'assistant_facilitator', 'admin', 'assistant_admin']}>
                 <FacilitatorLayout />
               </RoleProtectedRoute>
             }>
@@ -364,14 +365,14 @@ function App() {
               </RoleProtectedRoute>
             } />
 
-            {/* ASSESSOR / MODERATOR / MENTOR */}
+            {/* ASSESSOR / MARKING SUITE (🚀 ALLOWS ADMINS & FACILITATORS WITH MARKING RIGHTS) */}
             <Route path="/marking/*" element={
-              <RoleProtectedRoute allowedRoles={['assessor']}>
+              <RoleProtectedRoute allowedRoles={['assessor', 'admin', 'assistant_admin', 'facilitator', 'assistant_facilitator']}>
                 <AssessorDashboard />
               </RoleProtectedRoute>
             } />
             <Route path="/moderation/*" element={
-              <RoleProtectedRoute allowedRoles={['moderator']}>
+              <RoleProtectedRoute allowedRoles={['moderator', 'admin', 'assistant_admin']}>
                 <ModeratorDashboard />
               </RoleProtectedRoute>
             } />

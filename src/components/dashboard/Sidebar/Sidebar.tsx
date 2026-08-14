@@ -52,7 +52,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, currentNav, setCurrentNa
                 const isSuperAdmin = currentUser?.isSuperAdmin === true;
                 const privs = currentUser?.privileges || {};
 
-                // 🚀 DYNAMIC RBAC FILTERING: Only show tabs the admin has access to
+                // DYNAMIC RBAC FILTERING: Only show tabs the admin has access to
                 const adminMenu = [
                     { id: 'dashboard', label: 'Overview', icon: LayoutDashboard, path: '/admin' },
                     (isSuperAdmin || privs.directory) && { id: 'directory', label: 'Master Directory', icon: Users, path: '/admin' },
@@ -112,7 +112,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, currentNav, setCurrentNa
     const menuItems = getMenuItems();
 
     const handleNavigation = (item: any) => {
-        // 🚀 FIX: If we are already on the correct base path (e.g. /admin), 
+        // If we are already on the correct base path (e.g. /admin), 
         // DO NOT use navigate(). Let the parent's setCurrentNav handle the URL parameters smoothly.
         if (location.pathname === item.path || location.pathname === `${item.path}/`) {
             if (setCurrentNav) setCurrentNav(item.id);
@@ -171,7 +171,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, currentNav, setCurrentNa
             </nav>
 
             <div className="sidebar-footer">
-                {/* 🚀 Support settings rendering for both admin types */}
+                {/* Support settings rendering for both admin types */}
                 {(!['admin', 'assistant_admin'].includes(activeRole || '') || (user as any)?.isSuperAdmin || (user as any)?.privileges?.settings) && (
                     <button className={`nav-item ${currentNav === 'settings' || location.pathname === '/settings' ? 'active' : ''}`} onClick={() => { if (setCurrentNav) setCurrentNav('settings'); navigate('/settings'); }}>
                         <Settings size={20} />

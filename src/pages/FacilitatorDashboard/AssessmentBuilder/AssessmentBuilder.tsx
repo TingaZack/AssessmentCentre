@@ -44,6 +44,18 @@ import { StatusModal } from "../../../components/common/StatusModal/StatusModal"
 import { createPortal } from "react-dom";
 import JSZip from "jszip";
 
+// 🚀 UTILITY: STRIP UNDEFINED VALUES TO PREVENT FIRESTORE BATCH SET ERRORS
+const cleanUndefined = (obj: any): any => {
+    if (obj === undefined) return null;
+    if (obj === null || typeof obj !== 'object') return obj;
+    if (Array.isArray(obj)) return obj.map(cleanUndefined);
+    const cleaned: Record<string, any> = {};
+    for (const [key, value] of Object.entries(obj)) {
+        cleaned[key] = value === undefined ? null : cleanUndefined(value);
+    }
+    return cleaned;
+};
+
 // 🚀 Custom Debounce Hook to protect KaTeX from Quill's DOM re-renders
 function useDebounce<T>(value: T, delay: number): T {
     const [debouncedValue, setDebouncedValue] = useState<T>(value);
@@ -413,6 +425,8 @@ export const AssessmentBuilder: React.FC = () => {
         if (programmes.length === 0) fetchProgrammes();
         if (staff.length === 0) fetchStaff();
 
+        const currentUid = user?.uid || user?.id || user?.authUid || null;
+
         if (!assessmentId) {
             if (location.state?.cloneData && isInitialLoad.current) {
                 const cd = location.state.cloneData;
@@ -449,14 +463,14 @@ export const AssessmentBuilder: React.FC = () => {
                 });
                 setBlocks(newBlocks);
 
-                setCreatorId(user?.uid || null);
+                setCreatorId(currentUid);
                 setAutoCloseTaskId(null);
                 setSaveStatus("unsaved");
                 isInitialLoad.current = false;
 
                 window.history.replaceState({}, document.title);
             } else {
-                setCreatorId(user?.uid || null);
+                setCreatorId(currentUid);
             }
             return;
         }
@@ -487,7 +501,7 @@ export const AssessmentBuilder: React.FC = () => {
                     setCohortIds(d.cohortIds || (d.cohortId ? [d.cohortId] : []));
                     setNotifiedCohortIds(d.notifiedCohortIds || []);
                     setCollaboratorIds(d.collaboratorIds || []);
-                    setCreatorId(d.createdBy || d.facilitatorId || null);
+                    setCreatorId(d.createdBy || d.facilitatorId || currentUid);
                     setPublisherId(d.publishedBy || null);
                     setAutoCloseTaskId(d.autoCloseTaskId || null);
                     setInstructions(d.instructions || "");
@@ -525,7 +539,7 @@ export const AssessmentBuilder: React.FC = () => {
                     isInitialLoad.current = false;
                     setLoading(false);
                 } else {
-                    if (d.lastUpdatedBy && d.lastUpdatedBy !== user?.uid) {
+                    if (d.lastUpdatedBy && d.lastUpdatedBy !== currentUid) {
                         setIsLiveSyncing(true);
                         toast.info("A collaborator updated the workbook. Syncing changes...");
 
@@ -566,7 +580,7 @@ export const AssessmentBuilder: React.FC = () => {
         });
 
         return () => unsubscribe();
-    }, [assessmentId, user?.uid, location.state]);
+    }, [assessmentId, user?.uid, user?.id, user?.authUid, location.state]);
 
     useEffect(() => {
         if (!selectedProgrammeId || !selectedModuleCode) return;
@@ -692,9 +706,9 @@ export const AssessmentBuilder: React.FC = () => {
 
     const toggleSelectAllCohorts = () => {
         if (cohortIds.length === cohorts.length) {
-            setCohortIds([]); // Deselect all
+            setCohortIds([]);
         } else {
-            setCohortIds(cohorts.map(c => c.id)); // Select all
+            setCohortIds(cohorts.map(c => c.id));
         }
     };
 
@@ -850,6 +864,8 @@ export const AssessmentBuilder: React.FC = () => {
         setSaveStatus("saving");
 
         try {
+            const currentUserId = user?.uid || user?.id || user?.authUid || null;
+
             const sanitizedBlocks = blocks.map((b) => {
                 const c: any = { id: b.id, type: b.type, marks: b.marks || 0 };
                 if (b.imageUrl) c.imageUrl = b.imageUrl;
@@ -893,9 +909,13 @@ export const AssessmentBuilder: React.FC = () => {
                     c.requireGoalPlanning = b.requireGoalPlanning !== false;
                 }
                 if (b.type === "task") {
-                    c.allowText = b.allowText; c.allowUpload = b.allowUpload; c.allowAudio = b.allowAudio;
-                    c.allowUrl = b.allowUrl; c.allowCode = b.allowCode; c.allowedFileTypes = b.allowedFileTypes;
-                    c.codeLanguage = b.codeLanguage;
+                    c.allowText = b.allowText ?? true;
+                    c.allowUpload = b.allowUpload ?? false;
+                    c.allowAudio = b.allowAudio ?? false;
+                    c.allowUrl = b.allowUrl ?? false;
+                    c.allowCode = b.allowCode ?? false;
+                    c.allowedFileTypes = b.allowedFileTypes || "all";
+                    c.codeLanguage = b.codeLanguage || "javascript";
                 }
 
                 if (b.type === "code_sandbox") {
@@ -992,46 +1012,61 @@ export const AssessmentBuilder: React.FC = () => {
                 ? [...notifiedCohortIds, ...unnotifiedCohorts]
                 : notifiedCohortIds;
 
-            const payload: any = {
+            // 🚀 FIRESTORE FIELDPAYLOAD SANITIZATION (CLEANS ALL UNDEFINED PROPERTIES RECURSIVELY)
+            const rawPayload: any = {
                 id: targetDocId,
-                title, type, moduleType, cohortIds,
-                notifiedCohortIds: nextNotifiedArray,
-                collaboratorIds,
-                linkedProgrammeId: selectedProgrammeId,
-                linkedModuleCode: selectedModuleCode,
-                scheduledDate: finalScheduledDate,
+                title: title || "",
+                type: type || "formative",
+                moduleType: moduleType || "knowledge",
+                cohortIds: cohortIds || [],
+                notifiedCohortIds: nextNotifiedArray || [],
+                collaboratorIds: collaboratorIds || [],
+                linkedProgrammeId: selectedProgrammeId || null,
+                linkedModuleCode: selectedModuleCode || null,
+                scheduledDate: finalScheduledDate || null,
                 isScheduled: releaseState === "scheduled",
                 instructions: instructions || "",
                 requiresInvigilation: moduleType === 'knowledge' ? requiresInvigilation : false,
-                moduleInfo, showModuleHeader, isOpenBook, referenceManualUrl,
+                moduleInfo: moduleInfo || {},
+                showModuleHeader: showModuleHeader ?? true,
+                isOpenBook: isOpenBook ?? false,
+                referenceManualUrl: referenceManualUrl || "",
                 learnerGuide: {
-                    note: learnerNote, purpose: modulePurpose, entryRequirements,
-                    providerRequirements, exemptions, assessmentInfo: instructions, stakeholderGuidelines,
+                    note: learnerNote || "", purpose: modulePurpose || "", entryRequirements: entryRequirements || "",
+                    providerRequirements: providerRequirements || "", exemptions: exemptions || "", assessmentInfo: instructions || "", stakeholderGuidelines: stakeholderGuidelines || "",
                 },
-                topics, blocks: sanitizedBlocks, totalMarks, status: finalStatus,
+                topics: topics || [],
+                blocks: sanitizedBlocks || [],
+                totalMarks: totalMarks || 0,
+                status: finalStatus,
                 lastUpdated: new Date().toISOString(),
-                lastUpdatedBy: user?.uid,
+                lastUpdatedBy: currentUserId,
                 isWorkbook: true,
                 autoCloseTaskId: newTaskId || null,
             };
 
             if (targetDocId !== assessmentId) {
-                payload.createdAt = new Date().toISOString();
+                rawPayload.createdAt = new Date().toISOString();
             }
 
             if (creatorId) {
-                payload.createdBy = creatorId;
-                payload.facilitatorId = creatorId;
+                rawPayload.createdBy = creatorId;
+                rawPayload.facilitatorId = creatorId;
             } else {
-                payload.createdBy = user?.uid;
-                payload.facilitatorId = user?.uid;
+                rawPayload.createdBy = currentUserId;
+                rawPayload.facilitatorId = currentUserId;
             }
 
             if (isFirstPublish) {
-                payload.publishedBy = user?.uid;
+                rawPayload.publishedBy = currentUserId;
             } else if (publisherId) {
-                payload.publishedBy = publisherId;
+                rawPayload.publishedBy = publisherId;
+            } else {
+                rawPayload.publishedBy = null;
             }
+
+            // 🚀 GUARANTEE NO UNDEFINED FIELDS LEAK TO FIRESTORE
+            const payload = cleanUndefined(rawPayload);
 
             const batch = writeBatch(db);
 
@@ -1056,17 +1091,17 @@ export const AssessmentBuilder: React.FC = () => {
                         const sid = `${enrol.cohortId}_${targetLearnerId}_${targetDocId}`;
                         const ref = doc(db, "learner_submissions", sid);
 
-                        const subData: any = {
+                        const subData: any = cleanUndefined({
                             title: payload.title,
                             type: payload.type,
                             moduleType: payload.moduleType,
                             totalMarks: payload.totalMarks,
                             moduleNumber: payload.moduleInfo?.moduleNumber || "",
                             updatedAt: new Date().toISOString()
-                        };
+                        });
 
                         if (!existingIds.has(sid)) {
-                            batch.set(ref, {
+                            batch.set(ref, cleanUndefined({
                                 ...subData,
                                 learnerId: targetLearnerId,
                                 enrollmentId: enrol.id,
@@ -1077,8 +1112,8 @@ export const AssessmentBuilder: React.FC = () => {
                                 assignedAt: new Date().toISOString(),
                                 marks: 0,
                                 createdAt: new Date().toISOString(),
-                                createdBy: user?.uid || "System",
-                            });
+                                createdBy: currentUserId || "System",
+                            }));
                         } else {
                             batch.set(ref, subData, { merge: true });
                         }
@@ -1131,8 +1166,8 @@ export const AssessmentBuilder: React.FC = () => {
             }
 
             setAssessmentStatus(finalStatus);
-            if (isFirstPublish) setPublisherId(user?.uid || null);
-            if (!creatorId) setCreatorId(user?.uid || null);
+            if (isFirstPublish) setPublisherId(currentUserId);
+            if (!creatorId) setCreatorId(currentUserId);
 
             setSaveStatus("saved");
             setLastSaved(new Date());
@@ -1831,7 +1866,7 @@ export const AssessmentBuilder: React.FC = () => {
                                 ) : (
                                     staff.map((member: StaffMember) => {
                                         const isCreator = member.id === creatorId || member.authUid === creatorId;
-                                        const isCurrentUser = member.id === user?.uid || member.authUid === user?.uid;
+                                        const isCurrentUser = member.id === user?.uid || member.authUid === user?.uid || member.id === user?.id;
 
                                         if (isCreator || isCurrentUser) return null;
 
@@ -2088,7 +2123,7 @@ const BlockCard: React.FC<BlockCardProps> = ({
     const removeSE = (wi: number, si: number) => { const l = [...(block.workActivities || [])]; l[wi] = { ...l[wi], evidenceItems: (l[wi].evidenceItems || []).filter((_, i) => i !== si) }; onUpdate(block.id, "workActivities", l); };
     const addSE = (wi: number) => { const l = [...(block.workActivities || [])]; l[wi] = { ...l[wi], evidenceItems: [...(l[wi].evidenceItems || []), { id: mkId(), code: "", description: "" }] }; onUpdate(block.id, "workActivities", l); };
 
-    // 🚀 SMART ZIP IMPORTER
+    // SMART ZIP IMPORTER (FIXED FOR MACOS JUNK & ROOT FOLDER STRIPPING)
     const handleZipUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -2099,46 +2134,81 @@ const BlockCard: React.FC<BlockCardProps> = ({
             const zip = new JSZip();
             const contents = await zip.loadAsync(file);
 
-            const newFiles: Record<string, string> = {};
-            let isVite = false;
-            let packageJsonDeps = {};
+            // 1. Filter out directory markers and macOS / system junk files
+            const allPaths = Object.keys(contents.files).filter(p => !contents.files[p].dir);
 
-            const filePaths = Object.keys(contents.files).filter(p => !contents.files[p].dir);
-            const validPaths = filePaths.filter(p => !p.includes('node_modules/') && !p.includes('.git/') && !p.includes('.DS_Store'));
+            const validPaths = allPaths.filter(path => {
+                const fileName = path.split('/').pop() || '';
+                // Ignore macOS metadata, git internal tracking, node_modules, and OS junk
+                if (path.includes('__MACOSX') || path.includes('node_modules/') || path.includes('.git/')) return false;
+                if (fileName.startsWith('._') || fileName === '.DS_Store' || fileName === 'Thumbs.db') return false;
+                return true;
+            });
 
-            const firstSegments = new Set(validPaths.map(p => p.split('/')[0]));
-            let prefixToStrip = "";
-            if (firstSegments.size === 1 && validPaths[0].includes('/')) {
-                prefixToStrip = Array.from(firstSegments)[0] + '/';
+            if (validPaths.length === 0) {
+                toast.error("No valid project files found in the ZIP archive.");
+                setIsUploadingZip(false);
+                return;
             }
 
-            for (const path of validPaths) {
-                const relativePath = path.replace(prefixToStrip, '');
-                if (relativePath.startsWith('.')) continue;
-
-                const fileData = await contents.files[path].async('string');
-                const finalPath = relativePath.startsWith('/') ? relativePath : `/${relativePath}`;
-                newFiles[finalPath] = fileData;
-
-                if (finalPath.includes('vite.config')) isVite = true;
-                if (finalPath === '/package.json') {
-                    try {
-                        const pkg = JSON.parse(fileData);
-                        if (pkg.dependencies) packageJsonDeps = pkg.dependencies;
-                    } catch (e) { }
+            // 2. Detect and strip top-level wrapper folder (e.g., "insure-landing-page/index.html" -> "/index.html")
+            let prefixToStrip = "";
+            const firstSegments = new Set(validPaths.map(p => p.split('/')[0]));
+            if (firstSegments.size === 1) {
+                const singleFolder = Array.from(firstSegments)[0];
+                if (validPaths.every(p => p.startsWith(singleFolder + '/'))) {
+                    prefixToStrip = singleFolder + '/';
                 }
             }
 
+            const newFiles: Record<string, string> = {};
+            let hasIndexHtml = false;
+            let isVite = false;
+            let hasReact = false;
+            let packageJsonDeps: Record<string, string> = {};
+
+            for (const path of validPaths) {
+                const relativePath = path.startsWith(prefixToStrip) ? path.slice(prefixToStrip.length) : path;
+                if (!relativePath) continue;
+
+                const fileData = await contents.files[path].async('string');
+                const finalPath = relativePath.startsWith('/') ? relativePath : `/${relativePath}`;
+
+                newFiles[finalPath] = fileData;
+
+                const lowerPath = finalPath.toLowerCase();
+                if (lowerPath === '/index.html') hasIndexHtml = true;
+                if (lowerPath.includes('vite.config')) isVite = true;
+
+                if (lowerPath === '/package.json') {
+                    try {
+                        const pkg = JSON.parse(fileData);
+                        const allDeps = { ...pkg.dependencies, ...pkg.devDependencies };
+                        packageJsonDeps = pkg.dependencies || {};
+                        if (allDeps.react || allDeps['react-dom']) hasReact = true;
+                        if (allDeps.vite) isVite = true;
+                    } catch (err) {
+                        console.warn("Failed to parse package.json in ZIP", err);
+                    }
+                }
+            }
+
+            // 3. Commit extracted files and dependencies to block state
             onUpdate(block.id, "initialFiles", newFiles);
             onUpdate(block.id, "dependencies", packageJsonDeps);
 
-            if (isVite) {
-                onUpdate(block.id, "template", "vite-react");
-            } else if (block.template !== "create-react-app" && block.template !== "node" && block.template !== "html") {
-                onUpdate(block.id, "template", "create-react-app");
+            // 4. Auto-detect & set correct template
+            if (hasReact) {
+                onUpdate(block.id, "template", isVite ? "vite-react" : "create-react-app");
+            } else if (hasIndexHtml) {
+                onUpdate(block.id, "template", isVite ? "vite-react" : "html");
+            } else if (block.template !== "create-react-app" && block.template !== "node" && block.template !== "html" && block.template !== "python" && block.template !== "sql") {
+                onUpdate(block.id, "template", "javascript");
             }
-            toast.success("Project imported successfully!");
+
+            toast.success(`Successfully imported ${Object.keys(newFiles).length} file(s)!`);
         } catch (err: any) {
+            console.error("ZIP extract error:", err);
             toast.error("Failed to parse ZIP: " + err.message);
         } finally {
             setIsUploadingZip(false);
@@ -2146,7 +2216,7 @@ const BlockCard: React.FC<BlockCardProps> = ({
         }
     };
 
-    // 🚀 SMART GITHUB IMPORTER
+    // SMART GITHUB IMPORTER
     const handleGitImport = async () => {
         if (!gitUrl.trim()) return;
         setIsImportingGit(true);
@@ -2612,7 +2682,8 @@ const BlockCard: React.FC<BlockCardProps> = ({
 
                                 <span style={{ color: '#94a3b8', display: 'flex', alignItems: 'center', fontSize: '0.8rem', fontWeight: 'bold' }}>OR</span>
 
-                                <label className={`ab-btn ab-btn-outline ${isUploadingZip || isImportingGit ? 'ab-disabled' : ''}`} style={{ cursor: 'pointer' }}>
+                                <label className={`ab-btn ab-btn-outline ${isUploadingZip || isImportingGit ? 'ab-disabled' : ''}`}
+                                    style={{ cursor: 'pointer', backgroundColor: 'orange' }}>
                                     {isUploadingZip ? <Loader2 size={14} className="ap-spin" /> : <UploadCloud size={14} />}
                                     Upload .ZIP
                                     <input
@@ -2951,7 +3022,6 @@ const EmptyCanvas: React.FC<{ onAdd: (t: string) => void }> = ({ onAdd }) => (
 export default AssessmentBuilder;
 
 
-
 // // src/components/views/AssessmentBuilder/AssessmentBuilder.tsx
 
 // import React, { useState, useEffect, useRef } from "react";
@@ -2984,7 +3054,6 @@ export default AssessmentBuilder;
 // import "./AssessmentBuilder.css";
 
 // // 🚀 Core Charting Engine Registration
-// // Adjust this path if AxisWorkspace is located elsewhere in your directory
 // import AxisWorkspace from "../../../components/common/AxisWorkspace/AxisWorkspace";
 
 // // 🚀 Math Support Configuration
@@ -3032,7 +3101,7 @@ export default AssessmentBuilder;
 //         import('katex/dist/contrib/auto-render.mjs').then((module) => {
 //             if (containerRef.current) {
 //                 module.default(containerRef.current, {
-//                     delinders: [
+//                     delimiters: [
 //                         { left: '$$', right: '$$', display: true },
 //                         { left: '$', right: '$', display: false },
 //                         { left: '\\(', right: '\\)', display: false },
@@ -3105,6 +3174,8 @@ export default AssessmentBuilder;
 //     requireGoalPlanning?: boolean;
 //     imageUrl?: string;
 //     imageCaption?: string;
+//     fileUrl?: string;
+//     fileName?: string;
 
 //     // Mathpad Memorandum Properties
 //     correctAnswer?: string;
@@ -3725,7 +3796,7 @@ export default AssessmentBuilder;
 //         } else if (actualType === "code_sandbox") {
 //             nb.title = "Practical Coding Task";
 //             nb.question = "Follow the instructions and write your solution in the editor below:";
-//             nb.template = "javascript"; // Default to basic JS environment
+//             nb.template = "javascript";
 //             nb.marks = 20;
 //             nb.initialFiles = CODESANDBOX_BOILERPLATES.javascript.files;
 //             nb.dependencies = {};
@@ -3807,6 +3878,8 @@ export default AssessmentBuilder;
 //                 const c: any = { id: b.id, type: b.type, marks: b.marks || 0 };
 //                 if (b.imageUrl) c.imageUrl = b.imageUrl;
 //                 if (b.imageCaption) c.imageCaption = b.imageCaption;
+//                 if (b.fileUrl) c.fileUrl = b.fileUrl;
+//                 if (b.fileName) c.fileName = b.fileName;
 //                 if (b.linkedTopicId) {
 //                     const t = topics.find((tp) => tp.id === b.linkedTopicId);
 //                     if (t) c.linkedTopicCode = t.code;
@@ -3818,7 +3891,6 @@ export default AssessmentBuilder;
 //                 if (["text", "mcq", "task", "mathpad", "graph"].includes(b.type)) c.question = b.question || "";
 //                 if (b.type === "mcq") { c.options = b.options || ["", "", "", ""]; c.correctOption = b.correctOption || 0; }
 
-//                 // Save the Math Memorandum securely
 //                 if (b.type === "mathpad") {
 //                     c.correctAnswer = b.correctAnswer || "";
 //                     c.modelSolution = b.modelSolution || "";
@@ -3827,7 +3899,6 @@ export default AssessmentBuilder;
 //                     c.memoGraph = b.memoGraph || { points: [], shapes: [] };
 //                 }
 
-//                 // Save the Graph Memorandum securely
 //                 if (b.type === "graph") {
 //                     c.memoGraph = b.memoGraph || { points: [], shapes: [] };
 //                 }
@@ -3846,12 +3917,15 @@ export default AssessmentBuilder;
 //                     c.requireGoalPlanning = b.requireGoalPlanning !== false;
 //                 }
 //                 if (b.type === "task") {
-//                     c.allowText = b.allowText; c.allowUpload = b.allowUpload; c.allowAudio = b.allowAudio;
-//                     c.allowUrl = b.allowUrl; c.allowCode = b.allowCode; c.allowedFileTypes = b.allowedFileTypes;
-//                     c.codeLanguage = b.codeLanguage;
+//                     c.allowText = b.allowText ?? true;
+//                     c.allowUpload = b.allowUpload ?? false;
+//                     c.allowAudio = b.allowAudio ?? false;
+//                     c.allowUrl = b.allowUrl ?? false;
+//                     c.allowCode = b.allowCode ?? false;
+//                     c.allowedFileTypes = b.allowedFileTypes || "all";
+//                     c.codeLanguage = b.codeLanguage || "javascript";
 //                 }
 
-//                 // Sanitize Code Sandbox
 //                 if (b.type === "code_sandbox") {
 //                     c.question = b.question || "";
 //                     c.template = b.template || "javascript";
@@ -3946,25 +4020,26 @@ export default AssessmentBuilder;
 //                 ? [...notifiedCohortIds, ...unnotifiedCohorts]
 //                 : notifiedCohortIds;
 
+//             // 🚀 FIRESTORE FIELDPAYLOAD SANITIZATION (PREVENTS 'UNSUPPORTED FIELD VALUE: UNDEFINED')
 //             const payload: any = {
 //                 id: targetDocId,
 //                 title, type, moduleType, cohortIds,
 //                 notifiedCohortIds: nextNotifiedArray,
 //                 collaboratorIds,
-//                 linkedProgrammeId: selectedProgrammeId,
-//                 linkedModuleCode: selectedModuleCode,
-//                 scheduledDate: finalScheduledDate,
+//                 linkedProgrammeId: selectedProgrammeId || null,
+//                 linkedModuleCode: selectedModuleCode || null,
+//                 scheduledDate: finalScheduledDate || null,
 //                 isScheduled: releaseState === "scheduled",
 //                 instructions: instructions || "",
 //                 requiresInvigilation: moduleType === 'knowledge' ? requiresInvigilation : false,
-//                 moduleInfo, showModuleHeader, isOpenBook, referenceManualUrl,
+//                 moduleInfo, showModuleHeader, isOpenBook, referenceManualUrl: referenceManualUrl || "",
 //                 learnerGuide: {
-//                     note: learnerNote, purpose: modulePurpose, entryRequirements,
-//                     providerRequirements, exemptions, assessmentInfo: instructions, stakeholderGuidelines,
+//                     note: learnerNote || "", purpose: modulePurpose || "", entryRequirements: entryRequirements || "",
+//                     providerRequirements: providerRequirements || "", exemptions: exemptions || "", assessmentInfo: instructions || "", stakeholderGuidelines: stakeholderGuidelines || "",
 //                 },
 //                 topics, blocks: sanitizedBlocks, totalMarks, status: finalStatus,
 //                 lastUpdated: new Date().toISOString(),
-//                 lastUpdatedBy: user?.uid,
+//                 lastUpdatedBy: user?.uid || null,
 //                 isWorkbook: true,
 //                 autoCloseTaskId: newTaskId || null,
 //             };
@@ -3977,14 +4052,16 @@ export default AssessmentBuilder;
 //                 payload.createdBy = creatorId;
 //                 payload.facilitatorId = creatorId;
 //             } else {
-//                 payload.createdBy = user?.uid;
-//                 payload.facilitatorId = user?.uid;
+//                 payload.createdBy = user?.uid || null;
+//                 payload.facilitatorId = user?.uid || null;
 //             }
 
 //             if (isFirstPublish) {
-//                 payload.publishedBy = user?.uid;
+//                 payload.publishedBy = user?.uid || null;
 //             } else if (publisherId) {
 //                 payload.publishedBy = publisherId;
+//             } else {
+//                 payload.publishedBy = null;
 //             }
 
 //             const batch = writeBatch(db);
@@ -4666,10 +4743,6 @@ export default AssessmentBuilder;
 
 //                     <div className="ab-canvas-inner">
 //                         {isDeployed && (
-//                             // <div className="ab-deployed-banner">
-//                             //     <AlertTriangle size={20} />
-//                             //     <div><strong>Strict Mode — Assessment Deployed.</strong> Structural changes are locked to protect learner data. You may edit text only.</div>
-//                             // </div>
 //                             <div className="ab-deployed-banner">
 //                                 <AlertTriangle size={20} />
 //                                 <div>
@@ -4711,7 +4784,6 @@ export default AssessmentBuilder;
 //                         )}
 
 //                         {blocks.length === 0 ? (
-//                             // <EmptyCanvas onAdd={addBlock} />
 //                             !isLockedStructure ? <EmptyCanvas onAdd={addBlock} /> : <div className="ab-empty-canvas"><p style={{ color: '#64748b', fontSize: '0.9rem' }}>This assessment is locked and has no blocks.</p></div>
 //                         ) : (
 //                             <div className="ab-blocks-list">
@@ -4976,6 +5048,7 @@ export default AssessmentBuilder;
 //     const topic = topics.find((t: Topic) => t.id === block.linkedTopicId);
 
 //     const [isUploadingImage, setIsUploadingImage] = useState(false);
+//     const [isUploadingFile, setIsUploadingFile] = useState(false);
 
 //     const [showGraphMemo, setShowGraphMemo] = useState(false);
 
@@ -5012,6 +5085,29 @@ export default AssessmentBuilder;
 //         }
 //     };
 
+//     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+//         const file = e.target.files?.[0];
+//         if (!file) return;
+//         setIsUploadingFile(true);
+//         toast.info("Uploading starter file...");
+//         try {
+//             const task = uploadBytesResumable(fbStorageRef(getStorage(), `assessments/starter_files/${Date.now()}_${file.name}`), file);
+//             task.on("state_changed", null, () => {
+//                 toast.error("File upload failed.");
+//                 setIsUploadingFile(false);
+//             }, async () => {
+//                 const url = await getDownloadURL(task.snapshot.ref);
+//                 onUpdate(block.id, "fileUrl", url);
+//                 onUpdate(block.id, "fileName", file.name);
+//                 toast.success("Starter file attached!");
+//                 setIsUploadingFile(false);
+//             });
+//         } catch {
+//             toast.error("Upload failed.");
+//             setIsUploadingFile(false);
+//         }
+//     };
+
 //     const updateCriterion = (i: number, v: string) => { const c = [...(block.criteria || [])]; c[i] = v; onUpdate(block.id, "criteria", c); };
 //     const removeCriterion = (i: number) => onUpdate(block.id, "criteria", (block.criteria || []).filter((_, idx) => idx !== i));
 //     const addCriterion = () => onUpdate(block.id, "criteria", [...(block.criteria || []), ""]);
@@ -5023,7 +5119,7 @@ export default AssessmentBuilder;
 //     const removeSE = (wi: number, si: number) => { const l = [...(block.workActivities || [])]; l[wi] = { ...l[wi], evidenceItems: (l[wi].evidenceItems || []).filter((_, i) => i !== si) }; onUpdate(block.id, "workActivities", l); };
 //     const addSE = (wi: number) => { const l = [...(block.workActivities || [])]; l[wi] = { ...l[wi], evidenceItems: [...(l[wi].evidenceItems || []), { id: mkId(), code: "", description: "" }] }; onUpdate(block.id, "workActivities", l); };
 
-//     // 🚀 SMART ZIP IMPORTER
+//     // SMART ZIP IMPORTER (FIXED FOR MACOS JUNK & ROOT FOLDER STRIPPING)
 //     const handleZipUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
 //         const file = e.target.files?.[0];
 //         if (!file) return;
@@ -5034,47 +5130,81 @@ export default AssessmentBuilder;
 //             const zip = new JSZip();
 //             const contents = await zip.loadAsync(file);
 
-//             const newFiles: Record<string, string> = {};
-//             let isVite = false;
-//             let packageJsonDeps = {};
+//             // 1. Filter out directory markers and macOS / system junk files
+//             const allPaths = Object.keys(contents.files).filter(p => !contents.files[p].dir);
 
-//             const filePaths = Object.keys(contents.files).filter(p => !contents.files[p].dir);
-//             const validPaths = filePaths.filter(p => !p.includes('node_modules/') && !p.includes('.git/') && !p.includes('.DS_Store'));
+//             const validPaths = allPaths.filter(path => {
+//                 const fileName = path.split('/').pop() || '';
+//                 // Ignore macOS metadata, git internal tracking, node_modules, and OS junk
+//                 if (path.includes('__MACOSX') || path.includes('node_modules/') || path.includes('.git/')) return false;
+//                 if (fileName.startsWith('._') || fileName === '.DS_Store' || fileName === 'Thumbs.db') return false;
+//                 return true;
+//             });
 
-//             // Strip root wrapper folder if exists
-//             const firstSegments = new Set(validPaths.map(p => p.split('/')[0]));
-//             let prefixToStrip = "";
-//             if (firstSegments.size === 1 && validPaths[0].includes('/')) {
-//                 prefixToStrip = Array.from(firstSegments)[0] + '/';
+//             if (validPaths.length === 0) {
+//                 toast.error("No valid project files found in the ZIP archive.");
+//                 setIsUploadingZip(false);
+//                 return;
 //             }
 
-//             for (const path of validPaths) {
-//                 const relativePath = path.replace(prefixToStrip, '');
-//                 if (relativePath.startsWith('.')) continue; // Skip hidden root files
-
-//                 const fileData = await contents.files[path].async('string');
-//                 const finalPath = relativePath.startsWith('/') ? relativePath : `/${relativePath}`;
-//                 newFiles[finalPath] = fileData;
-
-//                 if (finalPath.includes('vite.config')) isVite = true;
-//                 if (finalPath === '/package.json') {
-//                     try {
-//                         const pkg = JSON.parse(fileData);
-//                         if (pkg.dependencies) packageJsonDeps = pkg.dependencies;
-//                     } catch (e) { }
+//             // 2. Detect and strip top-level wrapper folder (e.g., "insure-landing-page/index.html" -> "/index.html")
+//             let prefixToStrip = "";
+//             const firstSegments = new Set(validPaths.map(p => p.split('/')[0]));
+//             if (firstSegments.size === 1) {
+//                 const singleFolder = Array.from(firstSegments)[0];
+//                 if (validPaths.every(p => p.startsWith(singleFolder + '/'))) {
+//                     prefixToStrip = singleFolder + '/';
 //                 }
 //             }
 
+//             const newFiles: Record<string, string> = {};
+//             let hasIndexHtml = false;
+//             let isVite = false;
+//             let hasReact = false;
+//             let packageJsonDeps: Record<string, string> = {};
+
+//             for (const path of validPaths) {
+//                 const relativePath = path.startsWith(prefixToStrip) ? path.slice(prefixToStrip.length) : path;
+//                 if (!relativePath) continue;
+
+//                 const fileData = await contents.files[path].async('string');
+//                 const finalPath = relativePath.startsWith('/') ? relativePath : `/${relativePath}`;
+
+//                 newFiles[finalPath] = fileData;
+
+//                 const lowerPath = finalPath.toLowerCase();
+//                 if (lowerPath === '/index.html') hasIndexHtml = true;
+//                 if (lowerPath.includes('vite.config')) isVite = true;
+
+//                 if (lowerPath === '/package.json') {
+//                     try {
+//                         const pkg = JSON.parse(fileData);
+//                         const allDeps = { ...pkg.dependencies, ...pkg.devDependencies };
+//                         packageJsonDeps = pkg.dependencies || {};
+//                         if (allDeps.react || allDeps['react-dom']) hasReact = true;
+//                         if (allDeps.vite) isVite = true;
+//                     } catch (err) {
+//                         console.warn("Failed to parse package.json in ZIP", err);
+//                     }
+//                 }
+//             }
+
+//             // 3. Commit extracted files and dependencies to block state
 //             onUpdate(block.id, "initialFiles", newFiles);
 //             onUpdate(block.id, "dependencies", packageJsonDeps);
 
-//             if (isVite) {
-//                 onUpdate(block.id, "template", "vite-react");
-//             } else if (block.template !== "create-react-app" && block.template !== "node" && block.template !== "html") {
-//                 onUpdate(block.id, "template", "create-react-app");
+//             // 4. Auto-detect & set correct template
+//             if (hasReact) {
+//                 onUpdate(block.id, "template", isVite ? "vite-react" : "create-react-app");
+//             } else if (hasIndexHtml) {
+//                 onUpdate(block.id, "template", isVite ? "vite-react" : "html");
+//             } else if (block.template !== "create-react-app" && block.template !== "node" && block.template !== "html" && block.template !== "python" && block.template !== "sql") {
+//                 onUpdate(block.id, "template", "javascript");
 //             }
-//             toast.success("Project imported successfully!");
+
+//             toast.success(`Successfully imported ${Object.keys(newFiles).length} file(s)!`);
 //         } catch (err: any) {
+//             console.error("ZIP extract error:", err);
 //             toast.error("Failed to parse ZIP: " + err.message);
 //         } finally {
 //             setIsUploadingZip(false);
@@ -5082,7 +5212,7 @@ export default AssessmentBuilder;
 //         }
 //     };
 
-//     // 🚀 SMART GITHUB IMPORTER
+//     // SMART GITHUB IMPORTER
 //     const handleGitImport = async () => {
 //         if (!gitUrl.trim()) return;
 //         setIsImportingGit(true);
@@ -5093,13 +5223,11 @@ export default AssessmentBuilder;
 //             if (!match) throw new Error("Invalid GitHub URL. Must be: https://github.com/owner/repo");
 //             const [, owner, repo] = match;
 
-//             // Fetch default branch
 //             const repoRes = await fetch(`https://api.github.com/repos/${owner}/${repo}`);
 //             if (!repoRes.ok) throw new Error("Repository not found or is private.");
 //             const repoData = await repoRes.json();
 //             const defaultBranch = repoData.default_branch;
 
-//             // Fetch file tree
 //             const treeRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/trees/${defaultBranch}?recursive=1`);
 //             const treeData = await treeRes.json();
 
@@ -5187,10 +5315,20 @@ export default AssessmentBuilder;
 //                 </div>
 //             )}
 
-//             {/* INFO */}
+//             {/* INFO (READING BLOCK WITH REACT-QUILL) */}
 //             {block.type === "info" && (
-//                 <div className="ab-info-body">
-//                     <textarea className="ab-textarea-block" rows={5} value={block.content || ""} onChange={(e) => onUpdate(block.id, "content", e.target.value)} onClick={(e) => e.stopPropagation()} placeholder="Enter reading material…" />
+//                 <div className="ab-info-body" onClick={(e) => e.stopPropagation()}>
+//                     <div className={`ab-quill-wrapper ${isDeployed ? "locked" : ""}`}>
+//                         <ReactQuill
+//                             theme="snow"
+//                             value={block.content || ""}
+//                             onChange={(v) => onUpdate(block.id, "content", v)}
+//                             readOnly={isDeployed}
+//                             modules={quillModules}
+//                             formats={quillFormats}
+//                             placeholder="Enter reading material…"
+//                         />
+//                     </div>
 //                 </div>
 //             )}
 
@@ -5231,7 +5369,7 @@ export default AssessmentBuilder;
 //                         />
 //                     </div>
 
-//                     {/* 🚀 FIX: Live Math Preview for the Question Editor */}
+//                     {/* Live Math Preview for the Question Editor */}
 //                     {debouncedQuestion && (debouncedQuestion.includes('$') || debouncedQuestion.includes('\\(')) && (
 //                         <div style={{ marginBottom: '1rem', padding: '10px 12px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '6px', color: '#166534', fontSize: '0.95rem' }}>
 //                             <strong style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '8px', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
@@ -5264,7 +5402,6 @@ export default AssessmentBuilder;
 //                     </div>
 
 //                     {/* Allow Facilitator to define the Expected Answer and Model Solution */}
-//                     {/* Allow Facilitator to define the Expected Answer and Model Solution */}
 //                     {block.type === "mathpad" && (
 //                         <div className="ab-math-memo" style={{ marginTop: '1rem', padding: '1rem', background: '#fdf2f8', border: '1px solid #fbcfe8', borderRadius: '6px' }}>
 //                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#be185d', fontSize: '0.85rem', marginBottom: '12px', fontWeight: 'bold' }}>
@@ -5293,119 +5430,58 @@ export default AssessmentBuilder;
 //                                         placeholder="Provide the step-by-step working out to guide the assessor..."
 //                                     />
 //                                 </div>
-//                                 {debouncedModelSolution && (debouncedModelSolution.includes('$') || debouncedModelSolution.includes('\\(')) && (
-//                                     <div style={{ marginTop: '8px', padding: '10px 12px', background: '#fff', border: '1px dashed #fbcfe8', borderRadius: '6px', color: '#be185d', fontSize: '0.95rem' }}>
-//                                         <strong style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '8px', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-//                                             <Eye size={12} /> Live Render Preview
-//                                         </strong>
-//                                         <MathRenderedText text={debouncedModelSolution} className="quill-read-only-content" style={{ display: 'block' }} />
-//                                     </div>
-//                                 )}
 //                             </div>
-
-//                             {/* ollapsible Graphing Memorandum exclusively for Mathpad */}
-//                             {block.allowGraphing !== false && (
-//                                 <div className="ab-form-group" style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px dashed #fbcfe8' }}>
-//                                     <div
-//                                         style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', background: '#fce7f3', padding: '10px 12px', borderRadius: '6px', border: '1px solid #fbcfe8' }}
-//                                         onClick={(e) => { e.stopPropagation(); setShowGraphMemo(!showGraphMemo); }}
-//                                     >
-//                                         <div>
-//                                             <label style={{ color: '#9d174d', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', margin: 0, fontWeight: 'bold', fontSize: '0.85rem' }}>
-//                                                 <BarChart size={14} /> Expected Graph Solution (Optional)
-//                                             </label>
-//                                             <p style={{ fontSize: '0.75rem', color: '#be185d', margin: '4px 0 0 0' }}>
-//                                                 Click to {showGraphMemo ? 'collapse' : 'expand'} the Cartesian graphing workspace.
-//                                             </p>
-//                                         </div>
-//                                         <div style={{ color: '#9d174d', padding: '4px', background: '#fdf2f8', borderRadius: '4px' }}>
-//                                             {showGraphMemo ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-//                                         </div>
-//                                     </div>
-
-//                                     {/* The canvas only renders if the accordion is open */}
-//                                     {showGraphMemo && (
-//                                         <div
-//                                             onClick={e => e.stopPropagation()}
-//                                             style={{
-//                                                 position: 'relative',
-//                                                 width: '100%',
-//                                                 height: '500px',
-//                                                 background: '#fff',
-//                                                 borderRadius: '8px',
-//                                                 overflow: 'hidden',
-//                                                 border: '1px solid #fbcfe8',
-//                                                 marginTop: '12px',
-//                                                 animation: 'fadeIn 0.2s ease-out'
-//                                             }}
-//                                         >
-//                                             <AxisWorkspace
-//                                                 value={block.memoGraph || { points: [], shapes: [] }}
-//                                                 onChange={(val) => onUpdate(block.id, "memoGraph", val)}
-//                                                 readOnly={isDeployed}
-//                                             />
-//                                         </div>
-//                                     )}
+//                             {debouncedModelSolution && (debouncedModelSolution.includes('$') || debouncedModelSolution.includes('\\(')) && (
+//                                 <div style={{ marginTop: '8px', padding: '10px 12px', background: '#fff', border: '1px dashed #fbcfe8', borderRadius: '6px', color: '#be185d', fontSize: '0.95rem' }}>
+//                                     <strong style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '8px', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+//                                         <Eye size={12} /> Live Render Preview
+//                                     </strong>
+//                                     <MathRenderedText text={debouncedModelSolution} className="quill-read-only-content" style={{ display: 'block' }} />
 //                                 </div>
 //                             )}
 //                         </div>
 //                     )}
 
-//                     {block.type === "mcq" && (
-//                         <div className="ab-mcq-opts">
-//                             {block.options?.map((opt, i) => (
-//                                 <div key={i} className={`ab-opt-row ${block.correctOption === i ? "correct" : ""}`} onClick={(e) => { if (isDeployed) return; e.stopPropagation(); onUpdate(block.id, "correctOption", i); }}>
-//                                     <div className="ab-radio">{block.correctOption === i && <div className="ab-radio-dot" />}</div>
-//                                     <span className="ab-opt-letter">{String.fromCharCode(65 + i)}</span>
-//                                     <input className="ab-opt-input" value={opt} placeholder={`Option ${String.fromCharCode(65 + i)}`} onChange={(e) => { e.stopPropagation(); onUpdateOption(block.id, i, e.target.value); }} onClick={(e) => e.stopPropagation()} />
-//                                     {block.correctOption === i && <span className="ab-correct-tag">Correct</span>}
-//                                 </div>
-//                             ))}
-//                         </div>
-//                     )}
-
-//                     {block.type === "task" && (
-//                         <div className="ab-evidence-card" onClick={(e) => e.stopPropagation()}>
-//                             <span className="ab-evidence-card-title">Allowed Evidence Types</span>
-//                             <div className="ab-evidence-grid">
-//                                 {[
-//                                     { key: "allowText", icon: <AlignLeft size={14} />, label: "Rich Text" },
-//                                     { key: "allowAudio", icon: <Mic size={14} />, label: "Audio" },
-//                                     { key: "allowUrl", icon: <LinkIcon size={14} />, label: "URL/Link" },
-//                                     { key: "allowUpload", icon: <UploadCloud size={14} />, label: "File Upload" },
-//                                     { key: "allowCode", icon: <Code size={14} />, label: "Code Editor" },
-//                                 ].map(({ key, icon, label }) => (
-//                                     <label key={key} className={`ab-evidence-row ${isDeployed ? "ab-disabled" : ""}`}>
-//                                         <input type="checkbox" checked={(block as any)[key]} disabled={isDeployed} onChange={(e) => onUpdate(block.id, key as keyof AssessmentBlock, e.target.checked)} className="ab-checkbox" />
-//                                         {icon}<span>{label}</span>
+//                     {/* Collapsible Graphing Memorandum exclusively for Mathpad */}
+//                     {block.type === "mathpad" && block.allowGraphing !== false && (
+//                         <div className="ab-form-group" style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px dashed #fbcfe8' }}>
+//                             <div
+//                                 style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', background: '#fce7f3', padding: '10px 12px', borderRadius: '6px', border: '1px solid #fbcfe8' }}
+//                                 onClick={(e) => { e.stopPropagation(); setShowGraphMemo(!showGraphMemo); }}
+//                             >
+//                                 <div>
+//                                     <label style={{ color: '#9d174d', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', margin: 0, fontWeight: 'bold', fontSize: '0.85rem' }}>
+//                                         <BarChart size={14} /> Expected Graph Solution (Optional)
 //                                     </label>
-//                                 ))}
+//                                     <p style={{ fontSize: '0.75rem', color: '#be185d', margin: '4px 0 0 0' }}>
+//                                         Click to {showGraphMemo ? 'collapse' : 'expand'} the Cartesian graphing workspace.
+//                                     </p>
+//                                 </div>
+//                                 <div style={{ color: '#9d174d', padding: '4px', background: '#fdf2f8', borderRadius: '4px' }}>
+//                                     {showGraphMemo ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+//                                 </div>
 //                             </div>
-//                             {(block.allowUpload || block.allowCode) && (
-//                                 <div className="ab-evidence-sub">
-//                                     {block.allowUpload && (
-//                                         <div className="ab-form-group ab-flex-1">
-//                                             <label className="ab-field-lbl">File Type Restriction</label>
-//                                             <select className="ab-input" value={block.allowedFileTypes || "all"} disabled={isDeployed} onChange={(e) => onUpdate(block.id, "allowedFileTypes", e.target.value)}>
-//                                                 <option value="all">Any File</option>
-//                                                 <option value="presentation">Presentations (.pptx, .pdf)</option>
-//                                                 <option value="video">Video (.mp4, .mov)</option>
-//                                                 <option value="image">Images (.png, .jpg)</option>
-//                                             </select>
-//                                         </div>
-//                                     )}
-//                                     {block.allowCode && (
-//                                         <div className="ab-form-group ab-flex-1">
-//                                             <label className="ab-field-lbl">Syntax Highlighting</label>
-//                                             <select className="ab-input" value={block.codeLanguage || "javascript"} disabled={isDeployed} onChange={(e) => onUpdate(block.id, "codeLanguage", e.target.value)}>
-//                                                 <option value="javascript">JavaScript / TypeScript</option>
-//                                                 <option value="python">Python</option>
-//                                                 <option value="html">HTML / CSS</option>
-//                                                 <option value="sql">SQL</option>
-//                                                 <option value="other">Other</option>
-//                                             </select>
-//                                         </div>
-//                                     )}
+
+//                             {showGraphMemo && (
+//                                 <div
+//                                     onClick={e => e.stopPropagation()}
+//                                     style={{
+//                                         position: 'relative',
+//                                         width: '100%',
+//                                         height: '500px',
+//                                         background: '#fff',
+//                                         borderRadius: '8px',
+//                                         overflow: 'hidden',
+//                                         border: '1px solid #fbcfe8',
+//                                         marginTop: '12px',
+//                                         animation: 'fadeIn 0.2s ease-out'
+//                                     }}
+//                                 >
+//                                     <AxisWorkspace
+//                                         value={block.memoGraph || { points: [], shapes: [] }}
+//                                         onChange={(val) => onUpdate(block.id, "memoGraph", val)}
+//                                         readOnly={isDeployed}
+//                                     />
 //                                 </div>
 //                             )}
 //                         </div>
@@ -5413,7 +5489,67 @@ export default AssessmentBuilder;
 //                 </div>
 //             )}
 
-//             {/* ── CARTESIAN GRAPH BLOCK ────────────────────────────────────────────────────────── */}
+//             {block.type === "mcq" && (
+//                 <div className="ab-mcq-opts">
+//                     {block.options?.map((opt, i) => (
+//                         <div key={i} className={`ab-opt-row ${block.correctOption === i ? "correct" : ""}`} onClick={(e) => { if (isDeployed) return; e.stopPropagation(); onUpdate(block.id, "correctOption", i); }}>
+//                             <div className="ab-radio">{block.correctOption === i && <div className="ab-radio-dot" />}</div>
+//                             <span className="ab-opt-letter">{String.fromCharCode(65 + i)}</span>
+//                             <input className="ab-opt-input" value={opt} placeholder={`Option ${String.fromCharCode(65 + i)}`} onChange={(e) => { e.stopPropagation(); onUpdateOption(block.id, i, e.target.value); }} onClick={(e) => e.stopPropagation()} />
+//                             {block.correctOption === i && <span className="ab-correct-tag">Correct</span>}
+//                         </div>
+//                     ))}
+//                 </div>
+//             )}
+
+//             {block.type === "task" && (
+//                 <div className="ab-evidence-card" onClick={(e) => e.stopPropagation()}>
+//                     <span className="ab-evidence-card-title">Allowed Evidence Types</span>
+//                     <div className="ab-evidence-grid">
+//                         {[
+//                             { key: "allowText", icon: <AlignLeft size={14} />, label: "Rich Text" },
+//                             { key: "allowAudio", icon: <Mic size={14} />, label: "Audio" },
+//                             { key: "allowUrl", icon: <LinkIcon size={14} />, label: "URL/Link" },
+//                             { key: "allowUpload", icon: <UploadCloud size={14} />, label: "File Upload" },
+//                             { key: "allowCode", icon: <Code size={14} />, label: "Code Editor" },
+//                         ].map(({ key, icon, label }) => (
+//                             <label key={key} className={`ab-evidence-row ${isDeployed ? "ab-disabled" : ""}`}>
+//                                 <input type="checkbox" checked={(block as any)[key]} disabled={isDeployed} onChange={(e) => onUpdate(block.id, key as keyof AssessmentBlock, e.target.checked)} className="ab-checkbox" />
+//                                 {icon}<span>{label}</span>
+//                             </label>
+//                         ))}
+//                     </div>
+//                     {(block.allowUpload || block.allowCode) && (
+//                         <div className="ab-evidence-sub">
+//                             {block.allowUpload && (
+//                                 <div className="ab-form-group ab-flex-1">
+//                                     <label className="ab-field-lbl">File Type Restriction</label>
+//                                     <select className="ab-input" value={block.allowedFileTypes || "all"} disabled={isDeployed} onChange={(e) => onUpdate(block.id, "allowedFileTypes", e.target.value)}>
+//                                         <option value="all">Any File</option>
+//                                         <option value="presentation">Presentations (.pptx, .pdf)</option>
+//                                         <option value="video">Video (.mp4, .mov)</option>
+//                                         <option value="image">Images (.png, .jpg)</option>
+//                                     </select>
+//                                 </div>
+//                             )}
+//                             {block.allowCode && (
+//                                 <div className="ab-form-group ab-flex-1">
+//                                     <label className="ab-field-lbl">Syntax Highlighting</label>
+//                                     <select className="ab-input" value={block.codeLanguage || "javascript"} disabled={isDeployed} onChange={(e) => onUpdate(block.id, "codeLanguage", e.target.value)}>
+//                                         <option value="javascript">JavaScript / TypeScript</option>
+//                                         <option value="python">Python</option>
+//                                         <option value="html">HTML / CSS</option>
+//                                         <option value="sql">SQL</option>
+//                                         <option value="other">Other</option>
+//                                     </select>
+//                                 </div>
+//                             )}
+//                         </div>
+//                     )}
+//                 </div>
+//             )}
+
+//             {/* CARTESIAN GRAPH BLOCK */}
 //             {block.type === "graph" && (
 //                 <div className="ab-q-body">
 //                     <div className="ab-q-top">
@@ -5453,13 +5589,12 @@ export default AssessmentBuilder;
 //                             Plot the correct visual solution below. This graph will be hidden from the learner and only shown to the Assessor during grading.
 //                         </p>
 
-//                         {/* 🚀 FIXED: Added explicit layout dimensions to stop canvas height collapse */}
 //                         <div
 //                             onClick={e => e.stopPropagation()}
 //                             style={{
 //                                 position: 'relative',
 //                                 width: '100%',
-//                                 height: '500px', // Provides a non-zero structural box profile
+//                                 height: '500px',
 //                                 background: '#fff',
 //                                 borderRadius: '8px',
 //                                 overflow: 'hidden',
@@ -5513,7 +5648,7 @@ export default AssessmentBuilder;
 //                         </select>
 //                     </div>
 
-//                     {/* 🚀 SMART PROJECT IMPORTER */}
+//                     {/* SMART PROJECT IMPORTER */}
 //                     {!isDeployed && (
 //                         <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', padding: '12px', borderRadius: '6px', marginBottom: '16px' }}>
 //                             <label className="ab-field-lbl" style={{ marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px', color: '#0f172a' }}>
@@ -5521,7 +5656,6 @@ export default AssessmentBuilder;
 //                             </label>
 
 //                             <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-//                                 {/* GitHub URL Importer */}
 //                                 <div style={{ flex: 1, display: 'flex', gap: '6px', minWidth: '250px' }}>
 //                                     <input
 //                                         type="text"
@@ -5544,8 +5678,8 @@ export default AssessmentBuilder;
 
 //                                 <span style={{ color: '#94a3b8', display: 'flex', alignItems: 'center', fontSize: '0.8rem', fontWeight: 'bold' }}>OR</span>
 
-//                                 {/* ZIP Upload Importer */}
-//                                 <label className={`ab-btn ab-btn-outline ${isUploadingZip || isImportingGit ? 'ab-disabled' : ''}`} style={{ cursor: 'pointer' }}>
+//                                 <label className={`ab-btn ab-btn-outline ${isUploadingZip || isImportingGit ? 'ab-disabled' : ''}`}
+//                                     style={{ cursor: 'pointer', backgroundColor: 'orange' }}>
 //                                     {isUploadingZip ? <Loader2 size={14} className="ap-spin" /> : <UploadCloud size={14} />}
 //                                     Upload .ZIP
 //                                     <input
@@ -5762,20 +5896,55 @@ export default AssessmentBuilder;
 //                 </div>
 //             )}
 
-//             {/* BLOCK IMAGE ATTACHMENT ZONE */}
+//             {/* BLOCK ATTACHMENT ZONE (IMAGE & STARTER SPREADSHEET/FILE) */}
 //             {["text", "mcq", "task", "info", "section", "code_sandbox", "mathpad", "graph"].includes(block.type) && (
-//                 <div style={{ padding: "0 20px 20px 20px" }}>
-//                     {!block.imageUrl && !isUploadingImage ? (
-//                         <label className="ab-image-toggle">
-//                             <ImageIcon size={14} /> Attach Context Image
-//                             <input type="file" accept="image/*" hidden disabled={isDeployed} onChange={handleImageUpload} />
-//                         </label>
-//                     ) : isUploadingImage ? (
+//                 <div style={{ padding: "0 20px 20px 20px", display: 'flex', flexDirection: 'column', gap: '10px' }}>
+//                     <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+//                         {!block.imageUrl && !isUploadingImage && (
+//                             <label className="ab-image-toggle">
+//                                 <ImageIcon size={14} /> Attach Context Image
+//                                 <input type="file" accept="image/*" hidden disabled={isDeployed} onChange={handleImageUpload} />
+//                             </label>
+//                         )}
+
+//                         {!block.fileUrl && !isUploadingFile && (
+//                             <label className="mlab-meta-chip mlab-meta-chip--default" style={{ background: '#f0fdf4', margin: 0, borderColor: '#bbf7d0', color: '#15803d' }}>
+//                                 <UploadCloud size={14} /> Attach Starter File (Spreadsheet/Doc)
+//                                 <input type="file" accept=".xlsx,.xls,.csv,.pdf,.docx,.doc,.zip" hidden disabled={isDeployed} onChange={handleFileUpload} />
+//                             </label>
+//                         )}
+//                     </div>
+
+//                     {/* STARTER FILE PREVIEW */}
+//                     {isUploadingFile ? (
+//                         <div className="ab-image-upload-zone">
+//                             <div className="ab-spinner" style={{ margin: '0 auto', marginBottom: '8px', width: '20px', height: '20px' }} />
+//                             <span style={{ fontSize: '0.8rem', color: '#64748b' }}>Uploading Starter File...</span>
+//                         </div>
+//                     ) : block.fileUrl && (
+//                         <div className="ab-image-upload-zone has-image" style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#f8fafc', border: '1px solid #cbd5e1' }} onClick={(e) => e.stopPropagation()}>
+//                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+//                                 <FileText size={20} color="#0284c7" />
+//                                 <div>
+//                                     <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: '#0f172a', display: 'block' }}>{block.fileName || "Starter File"}</span>
+//                                     <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Starter file attached for learners to download</span>
+//                                 </div>
+//                             </div>
+//                             {!isDeployed && (
+//                                 <button className="ab-btn-text ab-btn-text--rose" style={{ padding: 0 }} onClick={() => { onUpdate(block.id, "fileUrl", ""); onUpdate(block.id, "fileName", ""); }}>
+//                                     <Trash2 size={12} style={{ marginRight: '4px' }} /> Remove File
+//                                 </button>
+//                             )}
+//                         </div>
+//                     )}
+
+//                     {/* IMAGE PREVIEW */}
+//                     {isUploadingImage ? (
 //                         <div className="ab-image-upload-zone">
 //                             <div className="ab-spinner" style={{ margin: '0 auto', marginBottom: '8px', width: '20px', height: '20px' }} />
 //                             <span style={{ fontSize: '0.8rem', color: '#64748b' }}>Uploading Image...</span>
 //                         </div>
-//                     ) : (
+//                     ) : block.imageUrl && (
 //                         <div className="ab-image-upload-zone has-image" onClick={(e) => e.stopPropagation()}>
 //                             <img src={block.imageUrl} alt="Attached context" crossOrigin="anonymous" className="ab-image-preview" />
 //                             <div className="ab-image-meta">
@@ -5787,11 +5956,7 @@ export default AssessmentBuilder;
 //                                     onChange={(e) => onUpdate(block.id, "imageCaption", e.target.value)}
 //                                 />
 //                                 {!isDeployed && (
-//                                     <button
-//                                         className="ab-btn-text ab-btn-text--rose"
-//                                         style={{ alignSelf: "flex-start", padding: 0 }}
-//                                         onClick={() => { onUpdate(block.id, "imageUrl", ""); onUpdate(block.id, "imageCaption", ""); }}
-//                                     >
+//                                     <button className="ab-btn-text ab-btn-text--rose" style={{ alignSelf: "flex-start", padding: 0 }} onClick={() => { onUpdate(block.id, "imageUrl", ""); onUpdate(block.id, "imageCaption", ""); }}>
 //                                         <Trash2 size={12} style={{ marginRight: '4px' }} /> Remove Image
 //                                     </button>
 //                                 )}
@@ -5852,12 +6017,14 @@ export default AssessmentBuilder;
 
 // export default AssessmentBuilder;
 
+
 // // // src/components/views/AssessmentBuilder/AssessmentBuilder.tsx
 
 // // import React, { useState, useEffect, useRef } from "react";
 // // import { useNavigate, useParams, useLocation } from "react-router-dom";
 // // import {
-// //     collection, doc, setDoc, writeBatch, query, where, getDocs, onSnapshot
+// //     collection, doc, setDoc, writeBatch, query, where, getDocs, onSnapshot,
+// //     limit
 // // } from "firebase/firestore";
 // // import {
 // //     getStorage, ref as fbStorageRef, uploadBytesResumable, getDownloadURL,
@@ -5871,7 +6038,8 @@ export default AssessmentBuilder;
 // //     BookMarked, Plus, Pencil, Check, X, AlertTriangle, RotateCcw, EyeOff, Clock,
 // //     Database, ExternalLink, Calendar, Lock, Layers, UploadCloud, Mic, Code,
 // //     Link as LinkIcon, CalendarRange, Timer, Type, Briefcase, Menu, FileArchive, ShieldAlert, Image as ImageIcon,
-// //     Users, Activity, Mail, Copy, CheckSquare as CheckSquareIcon, Square, Github, FolderArchive, Loader2, Sigma
+// //     Users, Activity, Mail, Copy, CheckSquare as CheckSquareIcon, Square, Github, FolderArchive, Loader2, Sigma, BarChart,
+// //     ChevronUp
 // // } from "lucide-react";
 // // import Tooltip from "../../../components/common/Tooltip/Tooltip";
 // // import type { Cohort, ProgrammeTemplate, StackBlitzTemplate } from "../../../types";
@@ -5880,6 +6048,9 @@ export default AssessmentBuilder;
 // // import ReactQuill from "react-quill-new";
 // // import "react-quill-new/dist/quill.snow.css";
 // // import "./AssessmentBuilder.css";
+
+// // // 🚀 Core Charting Engine Registration
+// // import AxisWorkspace from "../../../components/common/AxisWorkspace/AxisWorkspace";
 
 // // // 🚀 Math Support Configuration
 // // import katex from "katex";
@@ -5893,7 +6064,7 @@ export default AssessmentBuilder;
 // // import { createPortal } from "react-dom";
 // // import JSZip from "jszip";
 
-// // // 🚀 FIX: Custom Debounce Hook to protect KaTeX from Quill's DOM re-renders
+// // // 🚀 Custom Debounce Hook to protect KaTeX from Quill's DOM re-renders
 // // function useDebounce<T>(value: T, delay: number): T {
 // //     const [debouncedValue, setDebouncedValue] = useState<T>(value);
 // //     useEffect(() => {
@@ -5915,7 +6086,7 @@ export default AssessmentBuilder;
 // // };
 // // const quillFormats = ["bold", "italic", "underline", "code-block", "list", "bullet", "formula"];
 
-// // // 🚀 Automatically parses inline/display math delimiters
+// // // Automatically parses inline/display math delimiters
 // // const MathRenderedText: React.FC<{ text?: string; className?: string; style?: React.CSSProperties }> = ({ text, className, style }) => {
 // //     const containerRef = useRef<HTMLDivElement>(null);
 
@@ -5948,7 +6119,7 @@ export default AssessmentBuilder;
 // //     );
 // // };
 
-// // export type BlockType = "section" | "info" | "mcq" | "text" | "task" | "checklist" | "logbook" | "qcto_workplace" | "code_sandbox" | "mathpad";
+// // export type BlockType = "section" | "info" | "mcq" | "text" | "task" | "checklist" | "logbook" | "qcto_workplace" | "code_sandbox" | "mathpad" | "graph";
 
 // // type SidebarPanel = "settings" | "module" | "topics" | "guide" | "outline";
 
@@ -5999,13 +6170,17 @@ export default AssessmentBuilder;
 // //     requireGoalPlanning?: boolean;
 // //     imageUrl?: string;
 // //     imageCaption?: string;
+// //     fileUrl?: string;
+// //     fileName?: string;
 
 // //     // Mathpad Memorandum Properties
 // //     correctAnswer?: string;
 // //     modelSolution?: string;
-
 // //     allowGraphing?: boolean;
 // //     allowDrawing?: boolean;
+
+// //     // Cartesian Graph Properties ---
+// //     memoGraph?: any; // Stores { points: [], shapes: [] }
 
 // //     // Code Sandbox Properties ---
 // //     template?: "create-react-app" | "vite-react" | "node" | "javascript" | "typescript" | "html" | "python" | "sql";
@@ -6063,6 +6238,7 @@ export default AssessmentBuilder;
 // //     qcto_workplace: { label: "QCTO Workplace Checkpoint", color: "#e11d48", icon: <Briefcase size={14} />, desc: "SETA compliant workplace checkpoint" },
 // //     code_sandbox: { label: "Code Sandbox", color: "#3b82f6", icon: <Code size={14} />, desc: "Live embedded IDE for coding assessments" },
 // //     mathpad: { label: "Mathpad", color: "#ec4899", icon: <Sigma size={14} />, desc: "Mathematical workspace with formula support" },
+// //     graph: { label: "Cartesian Graph", color: "#0f766e", icon: <BarChart size={14} />, desc: "Interactive Cartesian plotting engine" },
 // // };
 
 // // const CODESANDBOX_BOILERPLATES: Record<string, { files: Record<string, string>; dependencies: Record<string, string> }> = {
@@ -6162,6 +6338,7 @@ export default AssessmentBuilder;
 
 // //     const [assessmentStatus, setAssessmentStatus] = useState<AssessmentStatusType>("draft");
 // //     const [sendNotification, setSendNotification] = useState(true);
+// //     const [hasSubmissions, setHasSubmissions] = useState(false);
 
 // //     const statusRef = useRef<AssessmentStatusType>("draft");
 // //     useEffect(() => { statusRef.current = assessmentStatus; }, [assessmentStatus]);
@@ -6212,6 +6389,7 @@ export default AssessmentBuilder;
 // //     const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
 // //     const isDeployed = (assessmentStatus === "active" || assessmentStatus === "completed" || assessmentStatus === "scheduled" || assessmentStatus === "upcoming") && assessmentId !== undefined;
+// //     const isLockedStructure = isDeployed || hasSubmissions;
 // //     const isInitialLoad = useRef(true);
 
 // //     const handleBackNavigation = () => {
@@ -6234,6 +6412,20 @@ export default AssessmentBuilder;
 
 // //         navigate('/facilitator/assessments/builder', { state: { cloneData } });
 // //     };
+
+// //     useEffect(() => {
+// //         if (!assessmentId) return;
+// //         const checkSubmissions = async () => {
+// //             try {
+// //                 const q = query(collection(db, "learner_submissions"), where("assessmentId", "==", assessmentId), limit(1));
+// //                 const snap = await getDocs(q);
+// //                 setHasSubmissions(!snap.empty);
+// //             } catch (e) {
+// //                 console.error("Failed to check for submissions", e);
+// //             }
+// //         };
+// //         checkSubmissions();
+// //     }, [assessmentId]);
 
 // //     useEffect(() => {
 // //         if (cohorts.length === 0) fetchCohorts();
@@ -6559,7 +6751,7 @@ export default AssessmentBuilder;
 // //             title: actualType === "section" ? "New Section" : "",
 // //             content: "",
 // //             question: "",
-// //             marks: ["text", "mcq", "task", "mathpad"].includes(actualType) ? 5 : ["checklist", "qcto_workplace"].includes(actualType) ? 10 : 0,
+// //             marks: ["text", "mcq", "task", "mathpad", "graph"].includes(actualType) ? 5 : ["checklist", "qcto_workplace"].includes(actualType) ? 10 : 0,
 // //             options: actualType === "mcq" ? ["", "", "", ""] : [],
 // //             correctOption: 0,
 // //         };
@@ -6592,10 +6784,15 @@ export default AssessmentBuilder;
 // //             nb.question = "Solve the following equation and show your step-by-step working out:";
 // //             nb.marks = 10; nb.allowGraphing = true;
 // //             nb.allowDrawing = true;
+// //         } else if (actualType === "graph") {
+// //             nb.title = "Cartesian Graph Task";
+// //             nb.question = "Plot the following coordinates and draw the linear function connecting them:";
+// //             nb.marks = 10;
+// //             nb.memoGraph = { points: [], shapes: [] };
 // //         } else if (actualType === "code_sandbox") {
 // //             nb.title = "Practical Coding Task";
 // //             nb.question = "Follow the instructions and write your solution in the editor below:";
-// //             nb.template = "javascript"; // Default to basic JS environment
+// //             nb.template = "javascript";
 // //             nb.marks = 20;
 // //             nb.initialFiles = CODESANDBOX_BOILERPLATES.javascript.files;
 // //             nb.dependencies = {};
@@ -6655,7 +6852,7 @@ export default AssessmentBuilder;
 // //     });
 
 // //     const totalMarks = blocks.reduce((s, b) => s + (Number(b.marks) || 0), 0);
-// //     const qCount = blocks.filter((b) => ["text", "mcq", "task", "checklist", "qcto_workplace", "mathpad", "code_sandbox"].includes(b.type)).length;
+// //     const qCount = blocks.filter((b) => ["text", "mcq", "task", "checklist", "qcto_workplace", "mathpad", "graph", "code_sandbox"].includes(b.type)).length;
 // //     const coveredTopicIds = new Set(blocks.map((b) => b.linkedTopicId).filter(Boolean) as string[]);
 
 // //     const handleSave = async (status: AssessmentStatusType | "force_draft", isAutoSave = false) => {
@@ -6677,6 +6874,8 @@ export default AssessmentBuilder;
 // //                 const c: any = { id: b.id, type: b.type, marks: b.marks || 0 };
 // //                 if (b.imageUrl) c.imageUrl = b.imageUrl;
 // //                 if (b.imageCaption) c.imageCaption = b.imageCaption;
+// //                 if (b.fileUrl) c.fileUrl = b.fileUrl;
+// //                 if (b.fileName) c.fileName = b.fileName;
 // //                 if (b.linkedTopicId) {
 // //                     const t = topics.find((tp) => tp.id === b.linkedTopicId);
 // //                     if (t) c.linkedTopicCode = t.code;
@@ -6685,15 +6884,19 @@ export default AssessmentBuilder;
 // //                 if (b.type === "section") { c.title = b.title || "Untitled Section"; c.content = b.content || ""; }
 // //                 if (["checklist", "logbook", "qcto_workplace"].includes(b.type)) c.title = b.title || "Untitled";
 // //                 if (["info", "logbook"].includes(b.type)) c.content = b.content || "";
-// //                 if (["text", "mcq", "task", "mathpad"].includes(b.type)) c.question = b.question || "";
+// //                 if (["text", "mcq", "task", "mathpad", "graph"].includes(b.type)) c.question = b.question || "";
 // //                 if (b.type === "mcq") { c.options = b.options || ["", "", "", ""]; c.correctOption = b.correctOption || 0; }
 
-// //                 // Save the Math Memorandum securely
 // //                 if (b.type === "mathpad") {
 // //                     c.correctAnswer = b.correctAnswer || "";
 // //                     c.modelSolution = b.modelSolution || "";
 // //                     c.allowGraphing = b.allowGraphing !== false;
 // //                     c.allowDrawing = b.allowDrawing !== false;
+// //                     c.memoGraph = b.memoGraph || { points: [], shapes: [] };
+// //                 }
+
+// //                 if (b.type === "graph") {
+// //                     c.memoGraph = b.memoGraph || { points: [], shapes: [] };
 // //                 }
 
 // //                 if (b.type === "checklist") {
@@ -6715,7 +6918,6 @@ export default AssessmentBuilder;
 // //                     c.codeLanguage = b.codeLanguage;
 // //                 }
 
-// //                 // Sanitize Code Sandbox
 // //                 if (b.type === "code_sandbox") {
 // //                     c.question = b.question || "";
 // //                     c.template = b.template || "javascript";
@@ -6967,7 +7169,6 @@ export default AssessmentBuilder;
 // //             if (!isAutoSave) setLoading(false);
 // //         }
 // //     };
-
 
 // //     const toggleCollaborator = (staffId: string) => {
 // //         setCollaboratorIds(prev => {
@@ -7448,6 +7649,7 @@ export default AssessmentBuilder;
 // //                                 onStartEdit={startEdit} onEditChange={(p) => setEditDraft((d) => ({ ...d, ...p }))} onCommitEdit={commitEdit} onCancelEdit={cancelEdit} onConfirmDelete={confirmDelete} onExecuteDelete={executeDelete} onCancelDelete={cancelDelete}
 // //                                 onStartAdd={() => { setAddingTopic(true); setEditingTopicId(null); }} onNewTopicChange={(p) => setNewTopic((d) => ({ ...d, ...p }))} onCommitAdd={commitAdd} onCancelAdd={cancelAdd}
 // //                                 onAddBlock={(bt, tid) => { addBlock(bt, tid); setActivePanel("outline"); }}
+// //                                 isLockedStructure={isLockedStructure}
 // //                             />
 // //                         )}
 
@@ -7520,6 +7722,7 @@ export default AssessmentBuilder;
 // //                             <Tooltip content="Multi-Modal Task" placement="top"><button className="ab-tool-btn ab-tool-btn--primary" onClick={() => addBlock("task")}><Layers size={15} /></button></Tooltip>
 // //                             <Tooltip content="Live Code Sandbox" placement="top"><button className="ab-tool-btn ab-tool-btn--primary" onClick={() => addBlock("code_sandbox")}><Code size={15} /></button></Tooltip>
 // //                             <Tooltip content="Mathpad / Equations" placement="top"><button className="ab-tool-btn ab-tool-btn--primary" onClick={() => addBlock("mathpad")} style={{ color: '#ec4899' }}><Sigma size={15} /></button></Tooltip>
+// //                             <Tooltip content="Cartesian Graph" placement="top"><button className="ab-tool-btn ab-tool-btn--primary" onClick={() => addBlock("graph")} style={{ color: '#0f766e' }}><BarChart size={15} /></button></Tooltip>
 // //                             <div className="ab-toolbar-divider" />
 // //                             <Tooltip content="Observation Checklist" placement="top"><button className="ab-tool-btn ab-tool-btn--practical" onClick={() => addBlock("checklist")}><ListChecks size={15} /></button></Tooltip>
 // //                             <Tooltip content="Basic Logbook" placement="top"><button className="ab-tool-btn ab-tool-btn--practical" onClick={() => addBlock("logbook")}><CalendarRange size={15} /></button></Tooltip>
@@ -7531,7 +7734,13 @@ export default AssessmentBuilder;
 // //                         {isDeployed && (
 // //                             <div className="ab-deployed-banner">
 // //                                 <AlertTriangle size={20} />
-// //                                 <div><strong>Strict Mode — Assessment Deployed.</strong> Structural changes are locked to protect learner data. You may edit text only.</div>
+// //                                 <div>
+// //                                     <strong>Strict Mode — Structure Locked.</strong>
+// //                                     {isDeployed
+// //                                         ? " Assessment is currently deployed."
+// //                                         : " Assessment has existing learner submissions."}
+// //                                     {" Structural changes (adding/deleting questions) are permanently locked to protect learner data. You may edit text only."}
+// //                                 </div>
 // //                             </div>
 // //                         )}
 
@@ -7564,7 +7773,7 @@ export default AssessmentBuilder;
 // //                         )}
 
 // //                         {blocks.length === 0 ? (
-// //                             <EmptyCanvas onAdd={addBlock} />
+// //                             !isLockedStructure ? <EmptyCanvas onAdd={addBlock} /> : <div className="ab-empty-canvas"><p style={{ color: '#64748b', fontSize: '0.9rem' }}>This assessment is locked and has no blocks.</p></div>
 // //                         ) : (
 // //                             <div className="ab-blocks-list">
 // //                                 {blocks.map((b, idx) => (
@@ -7572,6 +7781,7 @@ export default AssessmentBuilder;
 // //                                         onTemplateChange={handleTemplateChange}
 // //                                         key={b.id} block={b} index={idx} total={blocks.length} topics={topics} focused={focusedBlock === b.id} isDeployed={isDeployed}
 // //                                         onFocus={() => setFocusedBlock(b.id)} onUpdate={updateBlock} onUpdateOption={updateOption} onRemove={removeBlock} onMove={moveBlock}
+// //                                         isLockedStructure={isLockedStructure}
 // //                                     />
 // //                                 ))}
 // //                             </div>
@@ -7721,6 +7931,7 @@ export default AssessmentBuilder;
 // //     newTopic: Partial<Topic>;
 // //     deleteConfirmId: string | null;
 // //     isDeployed: boolean;
+// //     isLockedStructure: boolean;
 // //     onStartEdit: (t: Topic) => void;
 // //     onEditChange: (p: Partial<Topic>) => void;
 // //     onCommitEdit: () => void;
@@ -7809,6 +8020,7 @@ export default AssessmentBuilder;
 // //     focused: boolean;
 // //     isDeployed: boolean;
 // //     topics: Topic[];
+// //     isLockedStructure: boolean;
 // //     onFocus: () => void;
 // //     onUpdate: (id: string, field: keyof AssessmentBlock, val: any) => void;
 // //     onUpdateOption: (bid: string, idx: number, val: string) => void;
@@ -7818,15 +8030,18 @@ export default AssessmentBuilder;
 // // }
 
 // // const BlockCard: React.FC<BlockCardProps> = ({
-// //     block, index, total, focused, topics, isDeployed, onFocus, onUpdate, onUpdateOption, onRemove, onMove,
+// //     block, index, total, focused, topics, isDeployed, isLockedStructure, onFocus, onUpdate, onUpdateOption, onRemove, onMove,
 // //     onTemplateChange
 // // }) => {
 // //     const meta = BLOCK_META[block.type];
 // //     const topic = topics.find((t: Topic) => t.id === block.linkedTopicId);
 
 // //     const [isUploadingImage, setIsUploadingImage] = useState(false);
+// //     const [isUploadingFile, setIsUploadingFile] = useState(false);
 
-// //     // NEW STATES: GitHub & ZIP Imports
+// //     const [showGraphMemo, setShowGraphMemo] = useState(false);
+
+// //     // GitHub & ZIP Imports
 // //     const [gitUrl, setGitUrl] = useState("");
 // //     const [isImportingGit, setIsImportingGit] = useState(false);
 // //     const [isUploadingZip, setIsUploadingZip] = useState(false);
@@ -7859,6 +8074,29 @@ export default AssessmentBuilder;
 // //         }
 // //     };
 
+// //     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+// //         const file = e.target.files?.[0];
+// //         if (!file) return;
+// //         setIsUploadingFile(true);
+// //         toast.info("Uploading starter file...");
+// //         try {
+// //             const task = uploadBytesResumable(fbStorageRef(getStorage(), `assessments/starter_files/${Date.now()}_${file.name}`), file);
+// //             task.on("state_changed", null, () => {
+// //                 toast.error("File upload failed.");
+// //                 setIsUploadingFile(false);
+// //             }, async () => {
+// //                 const url = await getDownloadURL(task.snapshot.ref);
+// //                 onUpdate(block.id, "fileUrl", url);
+// //                 onUpdate(block.id, "fileName", file.name);
+// //                 toast.success("Starter file attached!");
+// //                 setIsUploadingFile(false);
+// //             });
+// //         } catch {
+// //             toast.error("Upload failed.");
+// //             setIsUploadingFile(false);
+// //         }
+// //     };
+
 // //     const updateCriterion = (i: number, v: string) => { const c = [...(block.criteria || [])]; c[i] = v; onUpdate(block.id, "criteria", c); };
 // //     const removeCriterion = (i: number) => onUpdate(block.id, "criteria", (block.criteria || []).filter((_, idx) => idx !== i));
 // //     const addCriterion = () => onUpdate(block.id, "criteria", [...(block.criteria || []), ""]);
@@ -7870,7 +8108,7 @@ export default AssessmentBuilder;
 // //     const removeSE = (wi: number, si: number) => { const l = [...(block.workActivities || [])]; l[wi] = { ...l[wi], evidenceItems: (l[wi].evidenceItems || []).filter((_, i) => i !== si) }; onUpdate(block.id, "workActivities", l); };
 // //     const addSE = (wi: number) => { const l = [...(block.workActivities || [])]; l[wi] = { ...l[wi], evidenceItems: [...(l[wi].evidenceItems || []), { id: mkId(), code: "", description: "" }] }; onUpdate(block.id, "workActivities", l); };
 
-// //     // 🚀 SMART ZIP IMPORTER
+// //     // SMART ZIP IMPORTER (FIXED FOR MACOS JUNK & ROOT FOLDER STRIPPING)
 // //     const handleZipUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
 // //         const file = e.target.files?.[0];
 // //         if (!file) return;
@@ -7881,47 +8119,81 @@ export default AssessmentBuilder;
 // //             const zip = new JSZip();
 // //             const contents = await zip.loadAsync(file);
 
-// //             const newFiles: Record<string, string> = {};
-// //             let isVite = false;
-// //             let packageJsonDeps = {};
+// //             // 1. Filter out directory markers and macOS / system junk files
+// //             const allPaths = Object.keys(contents.files).filter(p => !contents.files[p].dir);
 
-// //             const filePaths = Object.keys(contents.files).filter(p => !contents.files[p].dir);
-// //             const validPaths = filePaths.filter(p => !p.includes('node_modules/') && !p.includes('.git/') && !p.includes('.DS_Store'));
+// //             const validPaths = allPaths.filter(path => {
+// //                 const fileName = path.split('/').pop() || '';
+// //                 // Ignore macOS metadata, git internal tracking, node_modules, and OS junk
+// //                 if (path.includes('__MACOSX') || path.includes('node_modules/') || path.includes('.git/')) return false;
+// //                 if (fileName.startsWith('._') || fileName === '.DS_Store' || fileName === 'Thumbs.db') return false;
+// //                 return true;
+// //             });
 
-// //             // Strip root wrapper folder if exists
-// //             const firstSegments = new Set(validPaths.map(p => p.split('/')[0]));
-// //             let prefixToStrip = "";
-// //             if (firstSegments.size === 1 && validPaths[0].includes('/')) {
-// //                 prefixToStrip = Array.from(firstSegments)[0] + '/';
+// //             if (validPaths.length === 0) {
+// //                 toast.error("No valid project files found in the ZIP archive.");
+// //                 setIsUploadingZip(false);
+// //                 return;
 // //             }
 
-// //             for (const path of validPaths) {
-// //                 const relativePath = path.replace(prefixToStrip, '');
-// //                 if (relativePath.startsWith('.')) continue; // Skip hidden root files
-
-// //                 const fileData = await contents.files[path].async('string');
-// //                 const finalPath = relativePath.startsWith('/') ? relativePath : `/${relativePath}`;
-// //                 newFiles[finalPath] = fileData;
-
-// //                 if (finalPath.includes('vite.config')) isVite = true;
-// //                 if (finalPath === '/package.json') {
-// //                     try {
-// //                         const pkg = JSON.parse(fileData);
-// //                         if (pkg.dependencies) packageJsonDeps = pkg.dependencies;
-// //                     } catch (e) { }
+// //             // 2. Detect and strip top-level wrapper folder (e.g., "insure-landing-page/index.html" -> "/index.html")
+// //             let prefixToStrip = "";
+// //             const firstSegments = new Set(validPaths.map(p => p.split('/')[0]));
+// //             if (firstSegments.size === 1) {
+// //                 const singleFolder = Array.from(firstSegments)[0];
+// //                 if (validPaths.every(p => p.startsWith(singleFolder + '/'))) {
+// //                     prefixToStrip = singleFolder + '/';
 // //                 }
 // //             }
 
+// //             const newFiles: Record<string, string> = {};
+// //             let hasIndexHtml = false;
+// //             let isVite = false;
+// //             let hasReact = false;
+// //             let packageJsonDeps: Record<string, string> = {};
+
+// //             for (const path of validPaths) {
+// //                 const relativePath = path.startsWith(prefixToStrip) ? path.slice(prefixToStrip.length) : path;
+// //                 if (!relativePath) continue;
+
+// //                 const fileData = await contents.files[path].async('string');
+// //                 const finalPath = relativePath.startsWith('/') ? relativePath : `/${relativePath}`;
+
+// //                 newFiles[finalPath] = fileData;
+
+// //                 const lowerPath = finalPath.toLowerCase();
+// //                 if (lowerPath === '/index.html') hasIndexHtml = true;
+// //                 if (lowerPath.includes('vite.config')) isVite = true;
+
+// //                 if (lowerPath === '/package.json') {
+// //                     try {
+// //                         const pkg = JSON.parse(fileData);
+// //                         const allDeps = { ...pkg.dependencies, ...pkg.devDependencies };
+// //                         packageJsonDeps = pkg.dependencies || {};
+// //                         if (allDeps.react || allDeps['react-dom']) hasReact = true;
+// //                         if (allDeps.vite) isVite = true;
+// //                     } catch (err) {
+// //                         console.warn("Failed to parse package.json in ZIP", err);
+// //                     }
+// //                 }
+// //             }
+
+// //             // 3. Commit extracted files and dependencies to block state
 // //             onUpdate(block.id, "initialFiles", newFiles);
 // //             onUpdate(block.id, "dependencies", packageJsonDeps);
 
-// //             if (isVite) {
-// //                 onUpdate(block.id, "template", "vite-react");
-// //             } else if (block.template !== "create-react-app" && block.template !== "node" && block.template !== "html") {
-// //                 onUpdate(block.id, "template", "create-react-app");
+// //             // 4. Auto-detect & set correct template
+// //             if (hasReact) {
+// //                 onUpdate(block.id, "template", isVite ? "vite-react" : "create-react-app");
+// //             } else if (hasIndexHtml) {
+// //                 onUpdate(block.id, "template", isVite ? "vite-react" : "html");
+// //             } else if (block.template !== "create-react-app" && block.template !== "node" && block.template !== "html" && block.template !== "python" && block.template !== "sql") {
+// //                 onUpdate(block.id, "template", "javascript");
 // //             }
-// //             toast.success("Project imported successfully!");
+
+// //             toast.success(`Successfully imported ${Object.keys(newFiles).length} file(s)!`);
 // //         } catch (err: any) {
+// //             console.error("ZIP extract error:", err);
 // //             toast.error("Failed to parse ZIP: " + err.message);
 // //         } finally {
 // //             setIsUploadingZip(false);
@@ -7929,7 +8201,7 @@ export default AssessmentBuilder;
 // //         }
 // //     };
 
-// //     // 🚀 SMART GITHUB IMPORTER
+// //     // SMART GITHUB IMPORTER
 // //     const handleGitImport = async () => {
 // //         if (!gitUrl.trim()) return;
 // //         setIsImportingGit(true);
@@ -7940,13 +8212,11 @@ export default AssessmentBuilder;
 // //             if (!match) throw new Error("Invalid GitHub URL. Must be: https://github.com/owner/repo");
 // //             const [, owner, repo] = match;
 
-// //             // Fetch default branch
 // //             const repoRes = await fetch(`https://api.github.com/repos/${owner}/${repo}`);
 // //             if (!repoRes.ok) throw new Error("Repository not found or is private.");
 // //             const repoData = await repoRes.json();
 // //             const defaultBranch = repoData.default_branch;
 
-// //             // Fetch file tree
 // //             const treeRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/trees/${defaultBranch}?recursive=1`);
 // //             const treeData = await treeRes.json();
 
@@ -8009,9 +8279,9 @@ export default AssessmentBuilder;
 // //                 <div className="ab-block-left">
 // //                     <span className="ab-block-type-badge" style={{ color: meta.color, background: `${meta.color}18`, borderColor: `${meta.color}35` }}>{meta.icon}{meta.label}</span>
 // //                     {topic && <span className="ab-block-topic-tag">{topic.code}</span>}
-// //                     {isDeployed && <span className="ab-locked-icon" title="Structure Locked"><Lock size={11} /></span>}
+// //                     {isLockedStructure && <span className="ab-locked-icon" title="Structure Locked"><Lock size={11} /></span>}
 // //                 </div>
-// //                 {!isDeployed && (
+// //                 {!isLockedStructure && (
 // //                     <div className="ab-block-actions">
 // //                         <Tooltip content="Move up" placement="top"><button className="ab-ctrl-btn" onClick={(e) => { e.stopPropagation(); onMove(block.id, "up"); }} disabled={index === 0}>↑</button></Tooltip>
 // //                         <Tooltip content="Move down" placement="top"><button className="ab-ctrl-btn" onClick={(e) => { e.stopPropagation(); onMove(block.id, "down"); }} disabled={index === total - 1}>↓</button></Tooltip>
@@ -8034,10 +8304,20 @@ export default AssessmentBuilder;
 // //                 </div>
 // //             )}
 
-// //             {/* INFO */}
+// //             {/* INFO (READING BLOCK WITH REACT-QUILL) */}
 // //             {block.type === "info" && (
-// //                 <div className="ab-info-body">
-// //                     <textarea className="ab-textarea-block" rows={5} value={block.content || ""} onChange={(e) => onUpdate(block.id, "content", e.target.value)} onClick={(e) => e.stopPropagation()} placeholder="Enter reading material…" />
+// //                 <div className="ab-info-body" onClick={(e) => e.stopPropagation()}>
+// //                     <div className={`ab-quill-wrapper ${isDeployed ? "locked" : ""}`}>
+// //                         <ReactQuill
+// //                             theme="snow"
+// //                             value={block.content || ""}
+// //                             onChange={(v) => onUpdate(block.id, "content", v)}
+// //                             readOnly={isDeployed}
+// //                             modules={quillModules}
+// //                             formats={quillFormats}
+// //                             placeholder="Enter reading material…"
+// //                         />
+// //                     </div>
 // //                 </div>
 // //             )}
 
@@ -8078,7 +8358,7 @@ export default AssessmentBuilder;
 // //                         />
 // //                     </div>
 
-// //                     {/* 🚀 FIX: Live Math Preview for the Question Editor */}
+// //                     {/* Live Math Preview for the Question Editor */}
 // //                     {debouncedQuestion && (debouncedQuestion.includes('$') || debouncedQuestion.includes('\\(')) && (
 // //                         <div style={{ marginBottom: '1rem', padding: '10px 12px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '6px', color: '#166534', fontSize: '0.95rem' }}>
 // //                             <strong style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '8px', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
@@ -8118,7 +8398,7 @@ export default AssessmentBuilder;
 // //                             </div>
 
 // //                             <div className="ab-form-group">
-// //                                 <label className="ab-field-lbl" style={{ color: '#9d174d' }}>Expected Final Answer</label>
+// //                                 <label className="ab-field-lbl" style={{ color: '#9d174d' }}>Expected Final Answer (Equation)</label>
 // //                                 <MathpadInput
 // //                                     value={block.correctAnswer || ""}
 // //                                     onChange={(v) => onUpdate(block.id, "correctAnswer", v)}
@@ -8139,78 +8419,184 @@ export default AssessmentBuilder;
 // //                                         placeholder="Provide the step-by-step working out to guide the assessor..."
 // //                                     />
 // //                                 </div>
-// //                                 {/* 🚀 FIX: Live Math Preview for the Model Solution Editor */}
-// //                                 {debouncedModelSolution && (debouncedModelSolution.includes('$') || debouncedModelSolution.includes('\\(')) && (
-// //                                     <div style={{ marginTop: '8px', padding: '10px 12px', background: '#fff', border: '1px dashed #fbcfe8', borderRadius: '6px', color: '#be185d', fontSize: '0.95rem' }}>
-// //                                         <strong style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '8px', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-// //                                             <Eye size={12} /> Live Render Preview
-// //                                         </strong>
-// //                                         <MathRenderedText text={debouncedModelSolution} className="quill-read-only-content" style={{ display: 'block' }} />
-// //                                     </div>
-// //                                 )}
 // //                             </div>
-// //                         </div>
-// //                     )}
-
-// //                     {block.type === "mcq" && (
-// //                         <div className="ab-mcq-opts">
-// //                             {block.options?.map((opt, i) => (
-// //                                 <div key={i} className={`ab-opt-row ${block.correctOption === i ? "correct" : ""}`} onClick={(e) => { if (isDeployed) return; e.stopPropagation(); onUpdate(block.id, "correctOption", i); }}>
-// //                                     <div className="ab-radio">{block.correctOption === i && <div className="ab-radio-dot" />}</div>
-// //                                     <span className="ab-opt-letter">{String.fromCharCode(65 + i)}</span>
-// //                                     <input className="ab-opt-input" value={opt} placeholder={`Option ${String.fromCharCode(65 + i)}`} onChange={(e) => { e.stopPropagation(); onUpdateOption(block.id, i, e.target.value); }} onClick={(e) => e.stopPropagation()} />
-// //                                     {block.correctOption === i && <span className="ab-correct-tag">Correct</span>}
-// //                                 </div>
-// //                             ))}
-// //                         </div>
-// //                     )}
-
-// //                     {block.type === "task" && (
-// //                         <div className="ab-evidence-card" onClick={(e) => e.stopPropagation()}>
-// //                             <span className="ab-evidence-card-title">Allowed Evidence Types</span>
-// //                             <div className="ab-evidence-grid">
-// //                                 {[
-// //                                     { key: "allowText", icon: <AlignLeft size={14} />, label: "Rich Text" },
-// //                                     { key: "allowAudio", icon: <Mic size={14} />, label: "Audio" },
-// //                                     { key: "allowUrl", icon: <LinkIcon size={14} />, label: "URL/Link" },
-// //                                     { key: "allowUpload", icon: <UploadCloud size={14} />, label: "File Upload" },
-// //                                     { key: "allowCode", icon: <Code size={14} />, label: "Code Editor" },
-// //                                 ].map(({ key, icon, label }) => (
-// //                                     <label key={key} className={`ab-evidence-row ${isDeployed ? "ab-disabled" : ""}`}>
-// //                                         <input type="checkbox" checked={(block as any)[key]} disabled={isDeployed} onChange={(e) => onUpdate(block.id, key as keyof AssessmentBlock, e.target.checked)} className="ab-checkbox" />
-// //                                         {icon}<span>{label}</span>
-// //                                     </label>
-// //                                 ))}
-// //                             </div>
-// //                             {(block.allowUpload || block.allowCode) && (
-// //                                 <div className="ab-evidence-sub">
-// //                                     {block.allowUpload && (
-// //                                         <div className="ab-form-group ab-flex-1">
-// //                                             <label className="ab-field-lbl">File Type Restriction</label>
-// //                                             <select className="ab-input" value={block.allowedFileTypes || "all"} disabled={isDeployed} onChange={(e) => onUpdate(block.id, "allowedFileTypes", e.target.value)}>
-// //                                                 <option value="all">Any File</option>
-// //                                                 <option value="presentation">Presentations (.pptx, .pdf)</option>
-// //                                                 <option value="video">Video (.mp4, .mov)</option>
-// //                                                 <option value="image">Images (.png, .jpg)</option>
-// //                                             </select>
-// //                                         </div>
-// //                                     )}
-// //                                     {block.allowCode && (
-// //                                         <div className="ab-form-group ab-flex-1">
-// //                                             <label className="ab-field-lbl">Syntax Highlighting</label>
-// //                                             <select className="ab-input" value={block.codeLanguage || "javascript"} disabled={isDeployed} onChange={(e) => onUpdate(block.id, "codeLanguage", e.target.value)}>
-// //                                                 <option value="javascript">JavaScript / TypeScript</option>
-// //                                                 <option value="python">Python</option>
-// //                                                 <option value="html">HTML / CSS</option>
-// //                                                 <option value="sql">SQL</option>
-// //                                                 <option value="other">Other</option>
-// //                                             </select>
-// //                                         </div>
-// //                                     )}
+// //                             {debouncedModelSolution && (debouncedModelSolution.includes('$') || debouncedModelSolution.includes('\\(')) && (
+// //                                 <div style={{ marginTop: '8px', padding: '10px 12px', background: '#fff', border: '1px dashed #fbcfe8', borderRadius: '6px', color: '#be185d', fontSize: '0.95rem' }}>
+// //                                     <strong style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '8px', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+// //                                         <Eye size={12} /> Live Render Preview
+// //                                     </strong>
+// //                                     <MathRenderedText text={debouncedModelSolution} className="quill-read-only-content" style={{ display: 'block' }} />
 // //                                 </div>
 // //                             )}
 // //                         </div>
 // //                     )}
+
+// //                     {/* Collapsible Graphing Memorandum exclusively for Mathpad */}
+// //                     {block.type === "mathpad" && block.allowGraphing !== false && (
+// //                         <div className="ab-form-group" style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px dashed #fbcfe8' }}>
+// //                             <div
+// //                                 style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', background: '#fce7f3', padding: '10px 12px', borderRadius: '6px', border: '1px solid #fbcfe8' }}
+// //                                 onClick={(e) => { e.stopPropagation(); setShowGraphMemo(!showGraphMemo); }}
+// //                             >
+// //                                 <div>
+// //                                     <label style={{ color: '#9d174d', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', margin: 0, fontWeight: 'bold', fontSize: '0.85rem' }}>
+// //                                         <BarChart size={14} /> Expected Graph Solution (Optional)
+// //                                     </label>
+// //                                     <p style={{ fontSize: '0.75rem', color: '#be185d', margin: '4px 0 0 0' }}>
+// //                                         Click to {showGraphMemo ? 'collapse' : 'expand'} the Cartesian graphing workspace.
+// //                                     </p>
+// //                                 </div>
+// //                                 <div style={{ color: '#9d174d', padding: '4px', background: '#fdf2f8', borderRadius: '4px' }}>
+// //                                     {showGraphMemo ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+// //                                 </div>
+// //                             </div>
+
+// //                             {showGraphMemo && (
+// //                                 <div
+// //                                     onClick={e => e.stopPropagation()}
+// //                                     style={{
+// //                                         position: 'relative',
+// //                                         width: '100%',
+// //                                         height: '500px',
+// //                                         background: '#fff',
+// //                                         borderRadius: '8px',
+// //                                         overflow: 'hidden',
+// //                                         border: '1px solid #fbcfe8',
+// //                                         marginTop: '12px',
+// //                                         animation: 'fadeIn 0.2s ease-out'
+// //                                     }}
+// //                                 >
+// //                                     <AxisWorkspace
+// //                                         value={block.memoGraph || { points: [], shapes: [] }}
+// //                                         onChange={(val) => onUpdate(block.id, "memoGraph", val)}
+// //                                         readOnly={isDeployed}
+// //                                     />
+// //                                 </div>
+// //                             )}
+// //                         </div>
+// //                     )}
+// //                 </div>
+// //             )}
+
+// //             {block.type === "mcq" && (
+// //                 <div className="ab-mcq-opts">
+// //                     {block.options?.map((opt, i) => (
+// //                         <div key={i} className={`ab-opt-row ${block.correctOption === i ? "correct" : ""}`} onClick={(e) => { if (isDeployed) return; e.stopPropagation(); onUpdate(block.id, "correctOption", i); }}>
+// //                             <div className="ab-radio">{block.correctOption === i && <div className="ab-radio-dot" />}</div>
+// //                             <span className="ab-opt-letter">{String.fromCharCode(65 + i)}</span>
+// //                             <input className="ab-opt-input" value={opt} placeholder={`Option ${String.fromCharCode(65 + i)}`} onChange={(e) => { e.stopPropagation(); onUpdateOption(block.id, i, e.target.value); }} onClick={(e) => e.stopPropagation()} />
+// //                             {block.correctOption === i && <span className="ab-correct-tag">Correct</span>}
+// //                         </div>
+// //                     ))}
+// //                 </div>
+// //             )}
+
+// //             {block.type === "task" && (
+// //                 <div className="ab-evidence-card" onClick={(e) => e.stopPropagation()}>
+// //                     <span className="ab-evidence-card-title">Allowed Evidence Types</span>
+// //                     <div className="ab-evidence-grid">
+// //                         {[
+// //                             { key: "allowText", icon: <AlignLeft size={14} />, label: "Rich Text" },
+// //                             { key: "allowAudio", icon: <Mic size={14} />, label: "Audio" },
+// //                             { key: "allowUrl", icon: <LinkIcon size={14} />, label: "URL/Link" },
+// //                             { key: "allowUpload", icon: <UploadCloud size={14} />, label: "File Upload" },
+// //                             { key: "allowCode", icon: <Code size={14} />, label: "Code Editor" },
+// //                         ].map(({ key, icon, label }) => (
+// //                             <label key={key} className={`ab-evidence-row ${isDeployed ? "ab-disabled" : ""}`}>
+// //                                 <input type="checkbox" checked={(block as any)[key]} disabled={isDeployed} onChange={(e) => onUpdate(block.id, key as keyof AssessmentBlock, e.target.checked)} className="ab-checkbox" />
+// //                                 {icon}<span>{label}</span>
+// //                             </label>
+// //                         ))}
+// //                     </div>
+// //                     {(block.allowUpload || block.allowCode) && (
+// //                         <div className="ab-evidence-sub">
+// //                             {block.allowUpload && (
+// //                                 <div className="ab-form-group ab-flex-1">
+// //                                     <label className="ab-field-lbl">File Type Restriction</label>
+// //                                     <select className="ab-input" value={block.allowedFileTypes || "all"} disabled={isDeployed} onChange={(e) => onUpdate(block.id, "allowedFileTypes", e.target.value)}>
+// //                                         <option value="all">Any File</option>
+// //                                         <option value="presentation">Presentations (.pptx, .pdf)</option>
+// //                                         <option value="video">Video (.mp4, .mov)</option>
+// //                                         <option value="image">Images (.png, .jpg)</option>
+// //                                     </select>
+// //                                 </div>
+// //                             )}
+// //                             {block.allowCode && (
+// //                                 <div className="ab-form-group ab-flex-1">
+// //                                     <label className="ab-field-lbl">Syntax Highlighting</label>
+// //                                     <select className="ab-input" value={block.codeLanguage || "javascript"} disabled={isDeployed} onChange={(e) => onUpdate(block.id, "codeLanguage", e.target.value)}>
+// //                                         <option value="javascript">JavaScript / TypeScript</option>
+// //                                         <option value="python">Python</option>
+// //                                         <option value="html">HTML / CSS</option>
+// //                                         <option value="sql">SQL</option>
+// //                                         <option value="other">Other</option>
+// //                                     </select>
+// //                                 </div>
+// //                             )}
+// //                         </div>
+// //                     )}
+// //                 </div>
+// //             )}
+
+// //             {/* CARTESIAN GRAPH BLOCK */}
+// //             {block.type === "graph" && (
+// //                 <div className="ab-q-body">
+// //                     <div className="ab-q-top">
+// //                         <span className="ab-q-num" style={{ background: "rgba(20, 184, 166, 0.18)", color: "#0f766e" }}>PLOT</span>
+// //                         <div className="ab-marks-stepper">
+// //                             <button className="ab-step-btn" disabled={isDeployed} onClick={(e) => { e.stopPropagation(); onUpdate(block.id, "marks", Math.max(0, (block.marks || 0) - 1)); }}>−</button>
+// //                             <span className="ab-step-val">{block.marks || 0}</span>
+// //                             <button className="ab-step-btn" disabled={isDeployed} onClick={(e) => { e.stopPropagation(); onUpdate(block.id, "marks", (block.marks || 0) + 1); }}>+</button>
+// //                         </div>
+// //                         <div className="ab-topic-sel-wrap">
+// //                             <select className="ab-topic-sel" value={block.linkedTopicId || ""} disabled={isDeployed} onChange={(e) => onUpdate(block.id, "linkedTopicId", e.target.value || undefined)}>
+// //                                 <option value="">Link topic…</option>
+// //                                 {topics.map((t: Topic) => <option key={t.id} value={t.id}>{t.code}</option>)}
+// //                             </select>
+// //                             {!isDeployed && <ChevronDown size={11} className="ab-topic-sel-arr" />}
+// //                         </div>
+// //                     </div>
+
+// //                     <div className={`ab-quill-wrapper ${isDeployed ? "locked" : ""}`} style={{ marginBottom: '1rem', background: '#fff' }} onClick={(e) => e.stopPropagation()}>
+// //                         <ReactQuill
+// //                             theme="snow"
+// //                             value={block.question || ""}
+// //                             onChange={(v) => onUpdate(block.id, "question", v)}
+// //                             readOnly={isDeployed}
+// //                             modules={quillModules}
+// //                             formats={quillFormats}
+// //                             placeholder="Describe the coordinates or linear equations the learner needs to plot..."
+// //                         />
+// //                     </div>
+
+// //                     {/* GRAPH MEMORANDUM FOR ASSESSORS */}
+// //                     <div className="ab-math-memo" style={{ marginTop: '1rem', padding: '1rem', background: '#fdf2f8', border: '1px solid #fbcfe8', borderRadius: '6px' }}>
+// //                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#be185d', fontSize: '0.85rem', marginBottom: '12px', fontWeight: 'bold' }}>
+// //                             <Lock size={14} /> Assessor Memorandum (Graph Solution)
+// //                         </div>
+// //                         <p style={{ fontSize: '0.8rem', color: '#9d174d', marginBottom: '1rem' }}>
+// //                             Plot the correct visual solution below. This graph will be hidden from the learner and only shown to the Assessor during grading.
+// //                         </p>
+
+// //                         <div
+// //                             onClick={e => e.stopPropagation()}
+// //                             style={{
+// //                                 position: 'relative',
+// //                                 width: '100%',
+// //                                 height: '500px',
+// //                                 background: '#fff',
+// //                                 borderRadius: '8px',
+// //                                 overflow: 'hidden',
+// //                                 border: '1px solid #fbcfe8'
+// //                             }}
+// //                         >
+// //                             <AxisWorkspace
+// //                                 value={block.memoGraph || { points: [], shapes: [] }}
+// //                                 onChange={(val) => onUpdate(block.id, "memoGraph", val)}
+// //                                 readOnly={isDeployed}
+// //                             />
+// //                         </div>
+// //                     </div>
 // //                 </div>
 // //             )}
 
@@ -8251,7 +8637,7 @@ export default AssessmentBuilder;
 // //                         </select>
 // //                     </div>
 
-// //                     {/* 🚀 SMART PROJECT IMPORTER */}
+// //                     {/* SMART PROJECT IMPORTER */}
 // //                     {!isDeployed && (
 // //                         <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', padding: '12px', borderRadius: '6px', marginBottom: '16px' }}>
 // //                             <label className="ab-field-lbl" style={{ marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px', color: '#0f172a' }}>
@@ -8259,7 +8645,6 @@ export default AssessmentBuilder;
 // //                             </label>
 
 // //                             <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-// //                                 {/* GitHub URL Importer */}
 // //                                 <div style={{ flex: 1, display: 'flex', gap: '6px', minWidth: '250px' }}>
 // //                                     <input
 // //                                         type="text"
@@ -8282,8 +8667,8 @@ export default AssessmentBuilder;
 
 // //                                 <span style={{ color: '#94a3b8', display: 'flex', alignItems: 'center', fontSize: '0.8rem', fontWeight: 'bold' }}>OR</span>
 
-// //                                 {/* ZIP Upload Importer */}
-// //                                 <label className={`ab-btn ab-btn-outline ${isUploadingZip || isImportingGit ? 'ab-disabled' : ''}`} style={{ cursor: 'pointer' }}>
+// //                                 <label className={`ab-btn ab-btn-outline ${isUploadingZip || isImportingGit ? 'ab-disabled' : ''}`}
+// //                                     style={{ cursor: 'pointer', backgroundColor: 'orange' }}>
 // //                                     {isUploadingZip ? <Loader2 size={14} className="ap-spin" /> : <UploadCloud size={14} />}
 // //                                     Upload .ZIP
 // //                                     <input
@@ -8391,7 +8776,7 @@ export default AssessmentBuilder;
 // //                                 <div className="ab-criterion-header">
 // //                                     <span className="ab-criterion-num">{i + 1}</span>
 // //                                     <input type="text" className="ab-input ab-input--bold" value={criterion} disabled={isDeployed} onChange={(e) => updateCriterion(i, e.target.value)} placeholder="e.g. Open files and folders" />
-// //                                     {!isDeployed && <button className="ab-btn-transform-danger" onClick={() => removeCriterion(i)}><X size={15} /></button>}
+// //                                     {!isLockedStructure && <button className="ab-btn-transform-danger" onClick={() => removeCriterion(i)}><X size={15} /></button>}
 // //                                 </div>
 // //                                 <div className="ab-criterion-preview-stack">
 // //                                     {block.requireEvidencePerCriterion !== false && (
@@ -8412,7 +8797,7 @@ export default AssessmentBuilder;
 // //                                 </div>
 // //                             </div>
 // //                         ))}
-// //                         {!isDeployed && <button className="ab-btn-text" onClick={addCriterion}><Plus size={13} /> Add Criterion</button>}
+// //                         {!isLockedStructure && <button className="ab-btn-text" onClick={addCriterion}><Plus size={13} /> Add Criterion</button>}
 
 // //                         <div className="ab-signoff-preview">
 // //                             <span className="ab-signoff-title">Global Assessor / Mentor Sign-off Preview</span>
@@ -8469,7 +8854,7 @@ export default AssessmentBuilder;
 // //                                     <div className="ab-wa-inputs">
 // //                                         <input type="text" className="ab-input ab-w-80" value={wa.code} onChange={(e) => updateWA(wi, "code", e.target.value)} disabled={isDeployed} placeholder="WA0101" />
 // //                                         <input type="text" className="ab-input ab-flex-1" value={wa.description} onChange={(e) => updateWA(wi, "description", e.target.value)} disabled={isDeployed} placeholder="Activity description…" />
-// //                                         {!isDeployed && <button className="ab-btn-icon-danger" onClick={() => removeWA(wi)}><X size={15} /></button>}
+// //                                         {!isLockedStructure && <button className="ab-btn-icon-danger" onClick={() => removeWA(wi)}><X size={15} /></button>}
 // //                                     </div>
 // //                                     <div className="ab-se-list">
 // //                                         <span className="ab-se-title">Required Supporting Evidence (SE)</span>
@@ -8477,14 +8862,14 @@ export default AssessmentBuilder;
 // //                                             <div key={se.id} className="ab-se-row">
 // //                                                 <input type="text" className="ab-input sm ab-w-70" value={se.code} onChange={(e) => updateSE(wi, si, "code", e.target.value)} disabled={isDeployed} placeholder="SE0101" />
 // //                                                 <input type="text" className="ab-input sm ab-flex-1" value={se.description} onChange={(e) => updateSE(wi, si, "description", e.target.value)} disabled={isDeployed} placeholder="Describe expected evidence…" />
-// //                                                 {!isDeployed && <button className="ab-btn-icon-danger ab-btn-icon-sm" onClick={() => removeSE(wi, si)}><Trash2 size={11} /></button>}
+// //                                                 {!isLockedStructure && <button className="ab-btn-icon-danger ab-btn-icon-sm" onClick={() => removeSE(wi, si)}><Trash2 size={11} /></button>}
 // //                                             </div>
 // //                                         ))}
-// //                                         {!isDeployed && <button className="ab-btn-text ab-btn-text--sm ab-btn-text--rose" onClick={() => addSE(wi)}><Plus size={11} /> Add Evidence</button>}
+// //                                         {!isLockedStructure && <button className="ab-btn-text ab-btn-text--sm ab-btn-text--rose" onClick={() => addSE(wi)}><Plus size={11} /> Add Evidence</button>}
 // //                                     </div>
 // //                                 </div>
 // //                             ))}
-// //                             {!isDeployed && <button className="ab-btn-text ab-btn-text--rose" onClick={addWA}><Plus size={13} /> Add Workplace Activity</button>}
+// //                             {!isLockedStructure && <button className="ab-btn-text ab-btn-text--rose" onClick={addWA}><Plus size={13} /> Add Workplace Activity</button>}
 // //                         </div>
 // //                         <div className="ab-qcto-toggles">
 // //                             <label className={`ab-qcto-toggle-row ${isDeployed ? "ab-disabled" : ""}`}>
@@ -8500,20 +8885,55 @@ export default AssessmentBuilder;
 // //                 </div>
 // //             )}
 
-// //             {/* BLOCK IMAGE ATTACHMENT ZONE */}
-// //             {["text", "mcq", "task", "info", "section", "code_sandbox", "mathpad"].includes(block.type) && (
-// //                 <div style={{ padding: "0 20px 20px 20px" }}>
-// //                     {!block.imageUrl && !isUploadingImage ? (
-// //                         <label className="ab-image-toggle">
-// //                             <ImageIcon size={14} /> Attach Context Image
-// //                             <input type="file" accept="image/*" hidden disabled={isDeployed} onChange={handleImageUpload} />
-// //                         </label>
-// //                     ) : isUploadingImage ? (
+// //             {/* BLOCK ATTACHMENT ZONE (IMAGE & STARTER SPREADSHEET/FILE) */}
+// //             {["text", "mcq", "task", "info", "section", "code_sandbox", "mathpad", "graph"].includes(block.type) && (
+// //                 <div style={{ padding: "0 20px 20px 20px", display: 'flex', flexDirection: 'column', gap: '10px' }}>
+// //                     <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+// //                         {!block.imageUrl && !isUploadingImage && (
+// //                             <label className="ab-image-toggle">
+// //                                 <ImageIcon size={14} /> Attach Context Image
+// //                                 <input type="file" accept="image/*" hidden disabled={isDeployed} onChange={handleImageUpload} />
+// //                             </label>
+// //                         )}
+
+// //                         {!block.fileUrl && !isUploadingFile && (
+// //                             <label className="mlab-meta-chip mlab-meta-chip--default" style={{ background: '#f0fdf4', margin: 0, borderColor: '#bbf7d0', color: '#15803d' }}>
+// //                                 <UploadCloud size={14} /> Attach Starter File (Spreadsheet/Doc)
+// //                                 <input type="file" accept=".xlsx,.xls,.csv,.pdf,.docx,.doc,.zip" hidden disabled={isDeployed} onChange={handleFileUpload} />
+// //                             </label>
+// //                         )}
+// //                     </div>
+
+// //                     {/* STARTER FILE PREVIEW */}
+// //                     {isUploadingFile ? (
+// //                         <div className="ab-image-upload-zone">
+// //                             <div className="ab-spinner" style={{ margin: '0 auto', marginBottom: '8px', width: '20px', height: '20px' }} />
+// //                             <span style={{ fontSize: '0.8rem', color: '#64748b' }}>Uploading Starter File...</span>
+// //                         </div>
+// //                     ) : block.fileUrl && (
+// //                         <div className="ab-image-upload-zone has-image" style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#f8fafc', border: '1px solid #cbd5e1' }} onClick={(e) => e.stopPropagation()}>
+// //                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+// //                                 <FileText size={20} color="#0284c7" />
+// //                                 <div>
+// //                                     <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: '#0f172a', display: 'block' }}>{block.fileName || "Starter File"}</span>
+// //                                     <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Starter file attached for learners to download</span>
+// //                                 </div>
+// //                             </div>
+// //                             {!isDeployed && (
+// //                                 <button className="ab-btn-text ab-btn-text--rose" style={{ padding: 0 }} onClick={() => { onUpdate(block.id, "fileUrl", ""); onUpdate(block.id, "fileName", ""); }}>
+// //                                     <Trash2 size={12} style={{ marginRight: '4px' }} /> Remove File
+// //                                 </button>
+// //                             )}
+// //                         </div>
+// //                     )}
+
+// //                     {/* IMAGE PREVIEW */}
+// //                     {isUploadingImage ? (
 // //                         <div className="ab-image-upload-zone">
 // //                             <div className="ab-spinner" style={{ margin: '0 auto', marginBottom: '8px', width: '20px', height: '20px' }} />
 // //                             <span style={{ fontSize: '0.8rem', color: '#64748b' }}>Uploading Image...</span>
 // //                         </div>
-// //                     ) : (
+// //                     ) : block.imageUrl && (
 // //                         <div className="ab-image-upload-zone has-image" onClick={(e) => e.stopPropagation()}>
 // //                             <img src={block.imageUrl} alt="Attached context" crossOrigin="anonymous" className="ab-image-preview" />
 // //                             <div className="ab-image-meta">
@@ -8525,11 +8945,7 @@ export default AssessmentBuilder;
 // //                                     onChange={(e) => onUpdate(block.id, "imageCaption", e.target.value)}
 // //                                 />
 // //                                 {!isDeployed && (
-// //                                     <button
-// //                                         className="ab-btn-text ab-btn-text--rose"
-// //                                         style={{ alignSelf: "flex-start", padding: 0 }}
-// //                                         onClick={() => { onUpdate(block.id, "imageUrl", ""); onUpdate(block.id, "imageCaption", ""); }}
-// //                                     >
+// //                                     <button className="ab-btn-text ab-btn-text--rose" style={{ alignSelf: "flex-start", padding: 0 }} onClick={() => { onUpdate(block.id, "imageUrl", ""); onUpdate(block.id, "imageCaption", ""); }}>
 // //                                         <Trash2 size={12} style={{ marginRight: '4px' }} /> Remove Image
 // //                                     </button>
 // //                                 )}
@@ -8591,12 +9007,14 @@ export default AssessmentBuilder;
 // // export default AssessmentBuilder;
 
 
+
 // // // // src/components/views/AssessmentBuilder/AssessmentBuilder.tsx
 
 // // // import React, { useState, useEffect, useRef } from "react";
 // // // import { useNavigate, useParams, useLocation } from "react-router-dom";
 // // // import {
-// // //     collection, doc, setDoc, writeBatch, query, where, getDocs, onSnapshot
+// // //     collection, doc, setDoc, writeBatch, query, where, getDocs, onSnapshot,
+// // //     limit
 // // // } from "firebase/firestore";
 // // // import {
 // // //     getStorage, ref as fbStorageRef, uploadBytesResumable, getDownloadURL,
@@ -8610,7 +9028,8 @@ export default AssessmentBuilder;
 // // //     BookMarked, Plus, Pencil, Check, X, AlertTriangle, RotateCcw, EyeOff, Clock,
 // // //     Database, ExternalLink, Calendar, Lock, Layers, UploadCloud, Mic, Code,
 // // //     Link as LinkIcon, CalendarRange, Timer, Type, Briefcase, Menu, FileArchive, ShieldAlert, Image as ImageIcon,
-// // //     Users, Activity, Mail, Copy, CheckSquare as CheckSquareIcon, Square, Github, FolderArchive, Loader2
+// // //     Users, Activity, Mail, Copy, CheckSquare as CheckSquareIcon, Square, Github, FolderArchive, Loader2, Sigma, BarChart,
+// // //     ChevronUp
 // // // } from "lucide-react";
 // // // import Tooltip from "../../../components/common/Tooltip/Tooltip";
 // // // import type { Cohort, ProgrammeTemplate, StackBlitzTemplate } from "../../../types";
@@ -8619,21 +9038,79 @@ export default AssessmentBuilder;
 // // // import ReactQuill from "react-quill-new";
 // // // import "react-quill-new/dist/quill.snow.css";
 // // // import "./AssessmentBuilder.css";
+
+// // // // 🚀 Core Charting Engine Registration
+// // // // Adjust this path if AxisWorkspace is located elsewhere in your directory
+// // // import AxisWorkspace from "../../../components/common/AxisWorkspace/AxisWorkspace";
+
+// // // // 🚀 Math Support Configuration
+// // // import katex from "katex";
+// // // import "katex/dist/katex.min.css";
+// // // import "mathlive";
+
+// // // (window as any).katex = katex;
+
 // // // import { ToastContainer, useToast } from "../../../components/common/Toast/Toast";
 // // // import { StatusModal } from "../../../components/common/StatusModal/StatusModal";
 // // // import { createPortal } from "react-dom";
 // // // import JSZip from "jszip";
 
+// // // // 🚀 Custom Debounce Hook to protect KaTeX from Quill's DOM re-renders
+// // // function useDebounce<T>(value: T, delay: number): T {
+// // //     const [debouncedValue, setDebouncedValue] = useState<T>(value);
+// // //     useEffect(() => {
+// // //         const handler = setTimeout(() => {
+// // //             setDebouncedValue(value);
+// // //         }, delay);
+// // //         return () => clearTimeout(handler);
+// // //     }, [value, delay]);
+// // //     return debouncedValue;
+// // // }
+
 // // // const quillModules = {
 // // //     toolbar: [
 // // //         ["bold", "italic", "underline", "code-block"],
 // // //         [{ list: "ordered" }, { list: "bullet" }],
+// // //         ["formula"],
 // // //         ["clean"],
 // // //     ],
 // // // };
-// // // const quillFormats = ["bold", "italic", "underline", "code-block", "list", "bullet"];
+// // // const quillFormats = ["bold", "italic", "underline", "code-block", "list", "bullet", "formula"];
 
-// // // export type BlockType = "section" | "info" | "mcq" | "text" | "task" | "checklist" | "logbook" | "qcto_workplace" | "code_sandbox";
+// // // // Automatically parses inline/display math delimiters
+// // // const MathRenderedText: React.FC<{ text?: string; className?: string; style?: React.CSSProperties }> = ({ text, className, style }) => {
+// // //     const containerRef = useRef<HTMLDivElement>(null);
+
+// // //     useEffect(() => {
+// // //         if (!containerRef.current || !text) return;
+
+// // //         // @ts-ignore
+// // //         import('katex/dist/contrib/auto-render.mjs').then((module) => {
+// // //             if (containerRef.current) {
+// // //                 module.default(containerRef.current, {
+// // //                     delinders: [
+// // //                         { left: '$$', right: '$$', display: true },
+// // //                         { left: '$', right: '$', display: false },
+// // //                         { left: '\\(', right: '\\)', display: false },
+// // //                         { left: '\\[', right: '\\]', display: true }
+// // //                     ],
+// // //                     throwOnError: false
+// // //                 });
+// // //             }
+// // //         }).catch(err => console.error("Failed to load KaTeX auto-render in Builder:", err));
+// // //     }, [text]);
+
+// // //     return (
+// // //         <span
+// // //             ref={containerRef}
+// // //             className={className}
+// // //             style={style}
+// // //             dangerouslySetInnerHTML={{ __html: text ? text.replace(/&nbsp;/g, ' ') : '' }}
+// // //         />
+// // //     );
+// // // };
+
+// // // export type BlockType = "section" | "info" | "mcq" | "text" | "task" | "checklist" | "logbook" | "qcto_workplace" | "code_sandbox" | "mathpad" | "graph";
 
 // // // type SidebarPanel = "settings" | "module" | "topics" | "guide" | "outline";
 
@@ -8684,6 +9161,15 @@ export default AssessmentBuilder;
 // // //     requireGoalPlanning?: boolean;
 // // //     imageUrl?: string;
 // // //     imageCaption?: string;
+
+// // //     // Mathpad Memorandum Properties
+// // //     correctAnswer?: string;
+// // //     modelSolution?: string;
+// // //     allowGraphing?: boolean;
+// // //     allowDrawing?: boolean;
+
+// // //     // Cartesian Graph Properties ---
+// // //     memoGraph?: any; // Stores { points: [], shapes: [] }
 
 // // //     // Code Sandbox Properties ---
 // // //     template?: "create-react-app" | "vite-react" | "node" | "javascript" | "typescript" | "html" | "python" | "sql";
@@ -8740,9 +9226,10 @@ export default AssessmentBuilder;
 // // //     logbook: { label: "Basic Logbook", color: "#f97316", icon: <CalendarRange size={14} />, desc: "Standard workplace hours logbook" },
 // // //     qcto_workplace: { label: "QCTO Workplace Checkpoint", color: "#e11d48", icon: <Briefcase size={14} />, desc: "SETA compliant workplace checkpoint" },
 // // //     code_sandbox: { label: "Code Sandbox", color: "#3b82f6", icon: <Code size={14} />, desc: "Live embedded IDE for coding assessments" },
+// // //     mathpad: { label: "Mathpad", color: "#ec4899", icon: <Sigma size={14} />, desc: "Mathematical workspace with formula support" },
+// // //     graph: { label: "Cartesian Graph", color: "#0f766e", icon: <BarChart size={14} />, desc: "Interactive Cartesian plotting engine" },
 // // // };
 
-// // // // 🚀 RE-ENGINEERED: Boilerplates designed specifically for Sandpack (React) and Piston (Python/Node/SQL)
 // // // const CODESANDBOX_BOILERPLATES: Record<string, { files: Record<string, string>; dependencies: Record<string, string> }> = {
 // // //     javascript: {
 // // //         files: { "/index.js": "// Pure JavaScript Environment\nconsole.log('Vanilla JS workspace ready.');\n" },
@@ -8794,6 +9281,28 @@ export default AssessmentBuilder;
 // // //     }
 // // // };
 
+// // // // Mathpad Input Wrapper for the Builder
+// // // const MathpadInput: React.FC<{ value: string; onChange: (val: string) => void; disabled: boolean }> = ({ value, onChange, disabled }) => {
+// // //     const mfRef = useRef<any>(null);
+// // //     useEffect(() => {
+// // //         if (mfRef.current && mfRef.current.value !== value) {
+// // //             mfRef.current.value = value || '';
+// // //         }
+// // //     }, [value]);
+// // //     useEffect(() => {
+// // //         const mf = mfRef.current;
+// // //         if (!mf) return;
+// // //         const handleInput = (e: any) => onChange(e.target.value);
+// // //         mf.addEventListener('input', handleInput);
+// // //         return () => mf.removeEventListener('input', handleInput);
+// // //     }, [onChange]);
+// // //     return React.createElement('math-field', {
+// // //         ref: mfRef,
+// // //         style: { width: '100%', fontSize: '1.2rem', padding: '8px', background: disabled ? '#f8fafc' : '#fff', border: '1px solid #fbcfe8', borderRadius: '4px', color: '#0f172a' },
+// // //         disabled: disabled ? "" : undefined
+// // //     });
+// // // };
+
 // // // export const AssessmentBuilder: React.FC = () => {
 // // //     const { assessmentId } = useParams();
 // // //     const navigate = useNavigate();
@@ -8818,6 +9327,7 @@ export default AssessmentBuilder;
 
 // // //     const [assessmentStatus, setAssessmentStatus] = useState<AssessmentStatusType>("draft");
 // // //     const [sendNotification, setSendNotification] = useState(true);
+// // //     const [hasSubmissions, setHasSubmissions] = useState(false);
 
 // // //     const statusRef = useRef<AssessmentStatusType>("draft");
 // // //     useEffect(() => { statusRef.current = assessmentStatus; }, [assessmentStatus]);
@@ -8868,6 +9378,7 @@ export default AssessmentBuilder;
 // // //     const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
 // // //     const isDeployed = (assessmentStatus === "active" || assessmentStatus === "completed" || assessmentStatus === "scheduled" || assessmentStatus === "upcoming") && assessmentId !== undefined;
+// // //     const isLockedStructure = isDeployed || hasSubmissions;
 // // //     const isInitialLoad = useRef(true);
 
 // // //     const handleBackNavigation = () => {
@@ -8890,6 +9401,20 @@ export default AssessmentBuilder;
 
 // // //         navigate('/facilitator/assessments/builder', { state: { cloneData } });
 // // //     };
+
+// // //     useEffect(() => {
+// // //         if (!assessmentId) return;
+// // //         const checkSubmissions = async () => {
+// // //             try {
+// // //                 const q = query(collection(db, "learner_submissions"), where("assessmentId", "==", assessmentId), limit(1));
+// // //                 const snap = await getDocs(q);
+// // //                 setHasSubmissions(!snap.empty);
+// // //             } catch (e) {
+// // //                 console.error("Failed to check for submissions", e);
+// // //             }
+// // //         };
+// // //         checkSubmissions();
+// // //     }, [assessmentId]);
 
 // // //     useEffect(() => {
 // // //         if (cohorts.length === 0) fetchCohorts();
@@ -9215,7 +9740,7 @@ export default AssessmentBuilder;
 // // //             title: actualType === "section" ? "New Section" : "",
 // // //             content: "",
 // // //             question: "",
-// // //             marks: ["text", "mcq", "task"].includes(actualType) ? 5 : ["checklist", "qcto_workplace"].includes(actualType) ? 10 : 0,
+// // //             marks: ["text", "mcq", "task", "mathpad", "graph"].includes(actualType) ? 5 : ["checklist", "qcto_workplace"].includes(actualType) ? 10 : 0,
 // // //             options: actualType === "mcq" ? ["", "", "", ""] : [],
 // // //             correctOption: 0,
 // // //         };
@@ -9243,6 +9768,16 @@ export default AssessmentBuilder;
 // // //             ];
 // // //             nb.requireSelfAssessment = true;
 // // //             nb.requireGoalPlanning = true;
+// // //         } else if (actualType === "mathpad") {
+// // //             nb.title = "Mathematics Task";
+// // //             nb.question = "Solve the following equation and show your step-by-step working out:";
+// // //             nb.marks = 10; nb.allowGraphing = true;
+// // //             nb.allowDrawing = true;
+// // //         } else if (actualType === "graph") {
+// // //             nb.title = "Cartesian Graph Task";
+// // //             nb.question = "Plot the following coordinates and draw the linear function connecting them:";
+// // //             nb.marks = 10;
+// // //             nb.memoGraph = { points: [], shapes: [] };
 // // //         } else if (actualType === "code_sandbox") {
 // // //             nb.title = "Practical Coding Task";
 // // //             nb.question = "Follow the instructions and write your solution in the editor below:";
@@ -9306,7 +9841,7 @@ export default AssessmentBuilder;
 // // //     });
 
 // // //     const totalMarks = blocks.reduce((s, b) => s + (Number(b.marks) || 0), 0);
-// // //     const qCount = blocks.filter((b) => ["text", "mcq", "task", "checklist", "qcto_workplace"].includes(b.type)).length;
+// // //     const qCount = blocks.filter((b) => ["text", "mcq", "task", "checklist", "qcto_workplace", "mathpad", "graph", "code_sandbox"].includes(b.type)).length;
 // // //     const coveredTopicIds = new Set(blocks.map((b) => b.linkedTopicId).filter(Boolean) as string[]);
 
 // // //     const handleSave = async (status: AssessmentStatusType | "force_draft", isAutoSave = false) => {
@@ -9336,8 +9871,23 @@ export default AssessmentBuilder;
 // // //                 if (b.type === "section") { c.title = b.title || "Untitled Section"; c.content = b.content || ""; }
 // // //                 if (["checklist", "logbook", "qcto_workplace"].includes(b.type)) c.title = b.title || "Untitled";
 // // //                 if (["info", "logbook"].includes(b.type)) c.content = b.content || "";
-// // //                 if (["text", "mcq", "task"].includes(b.type)) c.question = b.question || "";
+// // //                 if (["text", "mcq", "task", "mathpad", "graph"].includes(b.type)) c.question = b.question || "";
 // // //                 if (b.type === "mcq") { c.options = b.options || ["", "", "", ""]; c.correctOption = b.correctOption || 0; }
+
+// // //                 // Save the Math Memorandum securely
+// // //                 if (b.type === "mathpad") {
+// // //                     c.correctAnswer = b.correctAnswer || "";
+// // //                     c.modelSolution = b.modelSolution || "";
+// // //                     c.allowGraphing = b.allowGraphing !== false;
+// // //                     c.allowDrawing = b.allowDrawing !== false;
+// // //                     c.memoGraph = b.memoGraph || { points: [], shapes: [] };
+// // //                 }
+
+// // //                 // Save the Graph Memorandum securely
+// // //                 if (b.type === "graph") {
+// // //                     c.memoGraph = b.memoGraph || { points: [], shapes: [] };
+// // //                 }
+
 // // //                 if (b.type === "checklist") {
 // // //                     c.criteria = b.criteria || [];
 // // //                     c.requireTimeTracking = b.requireTimeTracking !== false;
@@ -9609,7 +10159,6 @@ export default AssessmentBuilder;
 // // //             if (!isAutoSave) setLoading(false);
 // // //         }
 // // //     };
-
 
 // // //     const toggleCollaborator = (staffId: string) => {
 // // //         setCollaboratorIds(prev => {
@@ -10090,6 +10639,7 @@ export default AssessmentBuilder;
 // // //                                 onStartEdit={startEdit} onEditChange={(p) => setEditDraft((d) => ({ ...d, ...p }))} onCommitEdit={commitEdit} onCancelEdit={cancelEdit} onConfirmDelete={confirmDelete} onExecuteDelete={executeDelete} onCancelDelete={cancelDelete}
 // // //                                 onStartAdd={() => { setAddingTopic(true); setEditingTopicId(null); }} onNewTopicChange={(p) => setNewTopic((d) => ({ ...d, ...p }))} onCommitAdd={commitAdd} onCancelAdd={cancelAdd}
 // // //                                 onAddBlock={(bt, tid) => { addBlock(bt, tid); setActivePanel("outline"); }}
+// // //                                 isLockedStructure={isLockedStructure}
 // // //                             />
 // // //                         )}
 
@@ -10127,14 +10677,17 @@ export default AssessmentBuilder;
 // // //                                 <SectionHdr icon={<Eye size={13} />} label="Outline" />
 // // //                                 {blocks.length === 0 ? <p className="ab-prose sm">No blocks yet.</p> : (
 // // //                                     <ol className="ab-outline-list">
-// // //                                         {blocks.map((b, i) => (
-// // //                                             <li key={b.id} className={`ab-outline-item ${focusedBlock === b.id ? "focused" : ""}`} onClick={() => document.getElementById(`block-${b.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" })}>
-// // //                                                 <span className="ab-ol-dot" style={{ background: BLOCK_META[b.type].color }} />
-// // //                                                 <div className="ab-ol-text">
-// // //                                                     <span className="ab-ol-main">{b.type === "section" ? b.title || "Section" : b.type === "info" ? "Reading Material" : b.question?.replace(/<[^>]*>?/gm, '').slice(0, 40) || b.title || `Question ${i + 1}`}</span>
-// // //                                                 </div>
-// // //                                             </li>
-// // //                                         ))}
+// // //                                         {blocks.map((b, i) => {
+// // //                                             const rawLabel = b.type === "section" ? b.title || "Section" : b.type === "info" ? "Reading Material" : b.question?.replace(/<[^>]*>?/gm, '').slice(0, 40) || b.title || `Question ${i + 1}`;
+// // //                                             return (
+// // //                                                 <li key={b.id} className={`ab-outline-item ${focusedBlock === b.id ? "focused" : ""}`} onClick={() => document.getElementById(`block-${b.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" })}>
+// // //                                                     <span className="ab-ol-dot" style={{ background: BLOCK_META[b.type].color }} />
+// // //                                                     <div className="ab-ol-text">
+// // //                                                         <MathRenderedText text={rawLabel} className="ab-ol-main" />
+// // //                                                     </div>
+// // //                                                 </li>
+// // //                                             );
+// // //                                         })}
 // // //                                     </ol>
 // // //                                 )}
 // // //                             </>
@@ -10158,6 +10711,8 @@ export default AssessmentBuilder;
 // // //                             <Tooltip content="Code Submission" placement="top"><button className="ab-tool-btn ab-tool-btn--primary" onClick={() => addBlock("code")}><Code size={15} /></button></Tooltip>
 // // //                             <Tooltip content="Multi-Modal Task" placement="top"><button className="ab-tool-btn ab-tool-btn--primary" onClick={() => addBlock("task")}><Layers size={15} /></button></Tooltip>
 // // //                             <Tooltip content="Live Code Sandbox" placement="top"><button className="ab-tool-btn ab-tool-btn--primary" onClick={() => addBlock("code_sandbox")}><Code size={15} /></button></Tooltip>
+// // //                             <Tooltip content="Mathpad / Equations" placement="top"><button className="ab-tool-btn ab-tool-btn--primary" onClick={() => addBlock("mathpad")} style={{ color: '#ec4899' }}><Sigma size={15} /></button></Tooltip>
+// // //                             <Tooltip content="Cartesian Graph" placement="top"><button className="ab-tool-btn ab-tool-btn--primary" onClick={() => addBlock("graph")} style={{ color: '#0f766e' }}><BarChart size={15} /></button></Tooltip>
 // // //                             <div className="ab-toolbar-divider" />
 // // //                             <Tooltip content="Observation Checklist" placement="top"><button className="ab-tool-btn ab-tool-btn--practical" onClick={() => addBlock("checklist")}><ListChecks size={15} /></button></Tooltip>
 // // //                             <Tooltip content="Basic Logbook" placement="top"><button className="ab-tool-btn ab-tool-btn--practical" onClick={() => addBlock("logbook")}><CalendarRange size={15} /></button></Tooltip>
@@ -10167,9 +10722,19 @@ export default AssessmentBuilder;
 
 // // //                     <div className="ab-canvas-inner">
 // // //                         {isDeployed && (
+// // //                             // <div className="ab-deployed-banner">
+// // //                             //     <AlertTriangle size={20} />
+// // //                             //     <div><strong>Strict Mode — Assessment Deployed.</strong> Structural changes are locked to protect learner data. You may edit text only.</div>
+// // //                             // </div>
 // // //                             <div className="ab-deployed-banner">
 // // //                                 <AlertTriangle size={20} />
-// // //                                 <div><strong>Strict Mode — Assessment Deployed.</strong> Structural changes are locked to protect learner data. You may edit text only.</div>
+// // //                                 <div>
+// // //                                     <strong>Strict Mode — Structure Locked.</strong>
+// // //                                     {isDeployed
+// // //                                         ? " Assessment is currently deployed."
+// // //                                         : " Assessment has existing learner submissions."}
+// // //                                     {" Structural changes (adding/deleting questions) are permanently locked to protect learner data. You may edit text only."}
+// // //                                 </div>
 // // //                             </div>
 // // //                         )}
 
@@ -10185,8 +10750,12 @@ export default AssessmentBuilder;
 // // //                                         ) : null}
 // // //                                         <span className={`ab-mc-b type-${type.toLowerCase().replace(/ /g, '-')}`}>{type}</span>
 // // //                                     </div>
-// // //                                     <h1 className="ab-mc-title">{title || "Untitled Workbook"}</h1>
-// // //                                     <p className="ab-mc-sub">{moduleInfo.qualificationTitle} · {moduleInfo.moduleNumber}</p>
+// // //                                     <h1 className="ab-mc-title">
+// // //                                         <MathRenderedText text={title || "Untitled Workbook"} />
+// // //                                     </h1>
+// // //                                     <p className="ab-mc-sub">
+// // //                                         <MathRenderedText text={`${moduleInfo.qualificationTitle || ''} · ${moduleInfo.moduleNumber || ''}`} />
+// // //                                     </p>
 // // //                                 </div>
 // // //                                 <div className="ab-mc-right">
 // // //                                     <div className="ab-mc-stat"><span className="ab-mc-val">{qCount}</span><span className="ab-mc-lbl">Qs</span></div>
@@ -10198,7 +10767,8 @@ export default AssessmentBuilder;
 // // //                         )}
 
 // // //                         {blocks.length === 0 ? (
-// // //                             <EmptyCanvas onAdd={addBlock} />
+// // //                             // <EmptyCanvas onAdd={addBlock} />
+// // //                             !isLockedStructure ? <EmptyCanvas onAdd={addBlock} /> : <div className="ab-empty-canvas"><p style={{ color: '#64748b', fontSize: '0.9rem' }}>This assessment is locked and has no blocks.</p></div>
 // // //                         ) : (
 // // //                             <div className="ab-blocks-list">
 // // //                                 {blocks.map((b, idx) => (
@@ -10206,6 +10776,7 @@ export default AssessmentBuilder;
 // // //                                         onTemplateChange={handleTemplateChange}
 // // //                                         key={b.id} block={b} index={idx} total={blocks.length} topics={topics} focused={focusedBlock === b.id} isDeployed={isDeployed}
 // // //                                         onFocus={() => setFocusedBlock(b.id)} onUpdate={updateBlock} onUpdateOption={updateOption} onRemove={removeBlock} onMove={moveBlock}
+// // //                                         isLockedStructure={isLockedStructure}
 // // //                                     />
 // // //                                 ))}
 // // //                             </div>
@@ -10355,6 +10926,7 @@ export default AssessmentBuilder;
 // // //     newTopic: Partial<Topic>;
 // // //     deleteConfirmId: string | null;
 // // //     isDeployed: boolean;
+// // //     isLockedStructure: boolean;
 // // //     onStartEdit: (t: Topic) => void;
 // // //     onEditChange: (p: Partial<Topic>) => void;
 // // //     onCommitEdit: () => void;
@@ -10443,6 +11015,7 @@ export default AssessmentBuilder;
 // // //     focused: boolean;
 // // //     isDeployed: boolean;
 // // //     topics: Topic[];
+// // //     isLockedStructure: boolean;
 // // //     onFocus: () => void;
 // // //     onUpdate: (id: string, field: keyof AssessmentBlock, val: any) => void;
 // // //     onUpdateOption: (bid: string, idx: number, val: string) => void;
@@ -10452,7 +11025,7 @@ export default AssessmentBuilder;
 // // // }
 
 // // // const BlockCard: React.FC<BlockCardProps> = ({
-// // //     block, index, total, focused, topics, isDeployed, onFocus, onUpdate, onUpdateOption, onRemove, onMove,
+// // //     block, index, total, focused, topics, isDeployed, isLockedStructure, onFocus, onUpdate, onUpdateOption, onRemove, onMove,
 // // //     onTemplateChange
 // // // }) => {
 // // //     const meta = BLOCK_META[block.type];
@@ -10460,12 +11033,18 @@ export default AssessmentBuilder;
 
 // // //     const [isUploadingImage, setIsUploadingImage] = useState(false);
 
-// // //     // NEW STATES: GitHub & ZIP Imports
+// // //     const [showGraphMemo, setShowGraphMemo] = useState(false);
+
+// // //     // GitHub & ZIP Imports
 // // //     const [gitUrl, setGitUrl] = useState("");
 // // //     const [isImportingGit, setIsImportingGit] = useState(false);
 // // //     const [isUploadingZip, setIsUploadingZip] = useState(false);
 
 // // //     const toast = useToast();
+
+// // //     // 🚀 Use the debouncer for live Math previews
+// // //     const debouncedQuestion = useDebounce(block.question || "", 500);
+// // //     const debouncedModelSolution = useDebounce(block.modelSolution || "", 500);
 
 // // //     const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
 // // //         const file = e.target.files?.[0];
@@ -10639,9 +11218,9 @@ export default AssessmentBuilder;
 // // //                 <div className="ab-block-left">
 // // //                     <span className="ab-block-type-badge" style={{ color: meta.color, background: `${meta.color}18`, borderColor: `${meta.color}35` }}>{meta.icon}{meta.label}</span>
 // // //                     {topic && <span className="ab-block-topic-tag">{topic.code}</span>}
-// // //                     {isDeployed && <span className="ab-locked-icon" title="Structure Locked"><Lock size={11} /></span>}
+// // //                     {isLockedStructure && <span className="ab-locked-icon" title="Structure Locked"><Lock size={11} /></span>}
 // // //                 </div>
-// // //                 {!isDeployed && (
+// // //                 {!isLockedStructure && (
 // // //                     <div className="ab-block-actions">
 // // //                         <Tooltip content="Move up" placement="top"><button className="ab-ctrl-btn" onClick={(e) => { e.stopPropagation(); onMove(block.id, "up"); }} disabled={index === 0}>↑</button></Tooltip>
 // // //                         <Tooltip content="Move down" placement="top"><button className="ab-ctrl-btn" onClick={(e) => { e.stopPropagation(); onMove(block.id, "down"); }} disabled={index === total - 1}>↓</button></Tooltip>
@@ -10671,11 +11250,17 @@ export default AssessmentBuilder;
 // // //                 </div>
 // // //             )}
 
-// // //             {/* WRITTEN / MCQ / TASK */}
-// // //             {["text", "mcq", "task"].includes(block.type) && (
+// // //             {/* WRITTEN / MCQ / TASK / MATHPAD */}
+// // //             {["text", "mcq", "task", "mathpad"].includes(block.type) && (
 // // //                 <div className="ab-q-body">
 // // //                     <div className="ab-q-top">
-// // //                         <span className="ab-q-num" style={block.type === "task" ? { background: "rgba(139,92,246,.18)", color: "#a78bfa" } : undefined}>Q{index + 1}</span>
+// // //                         <span className="ab-q-num" style={
+// // //                             block.type === "task" ? { background: "rgba(139,92,246,.18)", color: "#a78bfa" } :
+// // //                                 block.type === "mathpad" ? { background: "rgba(236,72,153,.18)", color: "#ec4899" } :
+// // //                                     undefined
+// // //                         }>
+// // //                             {block.type === "mathpad" ? "MATH" : `Q${index + 1}`}
+// // //                         </span>
 // // //                         <div className="ab-marks-stepper">
 // // //                             <button className="ab-step-btn" disabled={isDeployed} onClick={(e) => { e.stopPropagation(); onUpdate(block.id, "marks", Math.max(0, (block.marks || 0) - 1)); }}>−</button>
 // // //                             <span className="ab-step-val">{block.marks}</span>
@@ -10702,8 +11287,124 @@ export default AssessmentBuilder;
 // // //                         />
 // // //                     </div>
 
+// // //                     {/* 🚀 FIX: Live Math Preview for the Question Editor */}
+// // //                     {debouncedQuestion && (debouncedQuestion.includes('$') || debouncedQuestion.includes('\\(')) && (
+// // //                         <div style={{ marginBottom: '1rem', padding: '10px 12px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '6px', color: '#166534', fontSize: '0.95rem' }}>
+// // //                             <strong style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '8px', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+// // //                                 <Eye size={12} /> Live Learner Preview
+// // //                             </strong>
+// // //                             <MathRenderedText text={debouncedQuestion} className="quill-read-only-content" style={{ display: 'block' }} />
+// // //                         </div>
+// // //                     )}
+
 // // //                     {block.type === "text" && (
 // // //                         <div className="ab-answer-placeholder"><FileText size={13} /><span>Learner types answer here</span></div>
+// // //                     )}
+
+// // //                     <div className="ab-evidence-card" onClick={(e) => e.stopPropagation()} style={{ marginTop: '1rem', marginBottom: '1rem' }}>
+// // //                         <span className="ab-evidence-card-title">Enabled Math Tools for Learner</span>
+// // //                         <div className="ab-evidence-grid">
+// // //                             <label className={`ab-evidence-row ${isDeployed ? "ab-disabled" : ""}`}>
+// // //                                 <input type="checkbox" checked={block.allowGraphing !== false} disabled={isDeployed} onChange={(e) => onUpdate(block.id, "allowGraphing", e.target.checked)} className="ab-checkbox" style={{ accentColor: '#ec4899' }} />
+// // //                                 <span>📈 Desmos Graphing Calculator</span>
+// // //                             </label>
+// // //                             <label className={`ab-evidence-row ${isDeployed ? "ab-disabled" : ""}`}>
+// // //                                 <input type="checkbox" checked={block.allowDrawing !== false} disabled={isDeployed} onChange={(e) => onUpdate(block.id, "allowDrawing", e.target.checked)} className="ab-checkbox" style={{ accentColor: '#ec4899' }} />
+// // //                                 <span>✏️ Freehand Drawing Canvas</span>
+// // //                             </label>
+// // //                             <label className="ab-evidence-row ab-disabled">
+// // //                                 <input type="checkbox" checked={true} disabled className="ab-checkbox" style={{ accentColor: '#ec4899' }} />
+// // //                                 <span>∑ MathLive Equation Editor (Required)</span>
+// // //                             </label>
+// // //                         </div>
+// // //                     </div>
+
+// // //                     {/* Allow Facilitator to define the Expected Answer and Model Solution */}
+// // //                     {/* Allow Facilitator to define the Expected Answer and Model Solution */}
+// // //                     {block.type === "mathpad" && (
+// // //                         <div className="ab-math-memo" style={{ marginTop: '1rem', padding: '1rem', background: '#fdf2f8', border: '1px solid #fbcfe8', borderRadius: '6px' }}>
+// // //                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#be185d', fontSize: '0.85rem', marginBottom: '12px', fontWeight: 'bold' }}>
+// // //                                 <Lock size={14} /> Assessor Memorandum (Hidden from Learner)
+// // //                             </div>
+
+// // //                             <div className="ab-form-group">
+// // //                                 <label className="ab-field-lbl" style={{ color: '#9d174d' }}>Expected Final Answer (Equation)</label>
+// // //                                 <MathpadInput
+// // //                                     value={block.correctAnswer || ""}
+// // //                                     onChange={(v) => onUpdate(block.id, "correctAnswer", v)}
+// // //                                     disabled={isDeployed}
+// // //                                 />
+// // //                             </div>
+
+// // //                             <div className="ab-form-group" style={{ marginTop: '12px' }}>
+// // //                                 <label className="ab-field-lbl" style={{ color: '#9d174d' }}>Step-by-Step Model Solution</label>
+// // //                                 <div className={`ab-quill-wrapper ${isDeployed ? "locked" : ""}`} style={{ background: '#fff' }} onClick={e => e.stopPropagation()}>
+// // //                                     <ReactQuill
+// // //                                         theme="snow"
+// // //                                         value={block.modelSolution || ""}
+// // //                                         onChange={(v) => onUpdate(block.id, "modelSolution", v)}
+// // //                                         readOnly={isDeployed}
+// // //                                         modules={quillModules}
+// // //                                         formats={quillFormats}
+// // //                                         placeholder="Provide the step-by-step working out to guide the assessor..."
+// // //                                     />
+// // //                                 </div>
+// // //                                 {debouncedModelSolution && (debouncedModelSolution.includes('$') || debouncedModelSolution.includes('\\(')) && (
+// // //                                     <div style={{ marginTop: '8px', padding: '10px 12px', background: '#fff', border: '1px dashed #fbcfe8', borderRadius: '6px', color: '#be185d', fontSize: '0.95rem' }}>
+// // //                                         <strong style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '8px', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+// // //                                             <Eye size={12} /> Live Render Preview
+// // //                                         </strong>
+// // //                                         <MathRenderedText text={debouncedModelSolution} className="quill-read-only-content" style={{ display: 'block' }} />
+// // //                                     </div>
+// // //                                 )}
+// // //                             </div>
+
+// // //                             {/* ollapsible Graphing Memorandum exclusively for Mathpad */}
+// // //                             {block.allowGraphing !== false && (
+// // //                                 <div className="ab-form-group" style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px dashed #fbcfe8' }}>
+// // //                                     <div
+// // //                                         style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', background: '#fce7f3', padding: '10px 12px', borderRadius: '6px', border: '1px solid #fbcfe8' }}
+// // //                                         onClick={(e) => { e.stopPropagation(); setShowGraphMemo(!showGraphMemo); }}
+// // //                                     >
+// // //                                         <div>
+// // //                                             <label style={{ color: '#9d174d', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', margin: 0, fontWeight: 'bold', fontSize: '0.85rem' }}>
+// // //                                                 <BarChart size={14} /> Expected Graph Solution (Optional)
+// // //                                             </label>
+// // //                                             <p style={{ fontSize: '0.75rem', color: '#be185d', margin: '4px 0 0 0' }}>
+// // //                                                 Click to {showGraphMemo ? 'collapse' : 'expand'} the Cartesian graphing workspace.
+// // //                                             </p>
+// // //                                         </div>
+// // //                                         <div style={{ color: '#9d174d', padding: '4px', background: '#fdf2f8', borderRadius: '4px' }}>
+// // //                                             {showGraphMemo ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+// // //                                         </div>
+// // //                                     </div>
+
+// // //                                     {/* The canvas only renders if the accordion is open */}
+// // //                                     {showGraphMemo && (
+// // //                                         <div
+// // //                                             onClick={e => e.stopPropagation()}
+// // //                                             style={{
+// // //                                                 position: 'relative',
+// // //                                                 width: '100%',
+// // //                                                 height: '500px',
+// // //                                                 background: '#fff',
+// // //                                                 borderRadius: '8px',
+// // //                                                 overflow: 'hidden',
+// // //                                                 border: '1px solid #fbcfe8',
+// // //                                                 marginTop: '12px',
+// // //                                                 animation: 'fadeIn 0.2s ease-out'
+// // //                                             }}
+// // //                                         >
+// // //                                             <AxisWorkspace
+// // //                                                 value={block.memoGraph || { points: [], shapes: [] }}
+// // //                                                 onChange={(val) => onUpdate(block.id, "memoGraph", val)}
+// // //                                                 readOnly={isDeployed}
+// // //                                             />
+// // //                                         </div>
+// // //                                     )}
+// // //                                 </div>
+// // //                             )}
+// // //                         </div>
 // // //                     )}
 
 // // //                     {block.type === "mcq" && (
@@ -10765,6 +11466,69 @@ export default AssessmentBuilder;
 // // //                             )}
 // // //                         </div>
 // // //                     )}
+// // //                 </div>
+// // //             )}
+
+// // //             {/* ── CARTESIAN GRAPH BLOCK ────────────────────────────────────────────────────────── */}
+// // //             {block.type === "graph" && (
+// // //                 <div className="ab-q-body">
+// // //                     <div className="ab-q-top">
+// // //                         <span className="ab-q-num" style={{ background: "rgba(20, 184, 166, 0.18)", color: "#0f766e" }}>PLOT</span>
+// // //                         <div className="ab-marks-stepper">
+// // //                             <button className="ab-step-btn" disabled={isDeployed} onClick={(e) => { e.stopPropagation(); onUpdate(block.id, "marks", Math.max(0, (block.marks || 0) - 1)); }}>−</button>
+// // //                             <span className="ab-step-val">{block.marks || 0}</span>
+// // //                             <button className="ab-step-btn" disabled={isDeployed} onClick={(e) => { e.stopPropagation(); onUpdate(block.id, "marks", (block.marks || 0) + 1); }}>+</button>
+// // //                         </div>
+// // //                         <div className="ab-topic-sel-wrap">
+// // //                             <select className="ab-topic-sel" value={block.linkedTopicId || ""} disabled={isDeployed} onChange={(e) => onUpdate(block.id, "linkedTopicId", e.target.value || undefined)}>
+// // //                                 <option value="">Link topic…</option>
+// // //                                 {topics.map((t: Topic) => <option key={t.id} value={t.id}>{t.code}</option>)}
+// // //                             </select>
+// // //                             {!isDeployed && <ChevronDown size={11} className="ab-topic-sel-arr" />}
+// // //                         </div>
+// // //                     </div>
+
+// // //                     <div className={`ab-quill-wrapper ${isDeployed ? "locked" : ""}`} style={{ marginBottom: '1rem', background: '#fff' }} onClick={(e) => e.stopPropagation()}>
+// // //                         <ReactQuill
+// // //                             theme="snow"
+// // //                             value={block.question || ""}
+// // //                             onChange={(v) => onUpdate(block.id, "question", v)}
+// // //                             readOnly={isDeployed}
+// // //                             modules={quillModules}
+// // //                             formats={quillFormats}
+// // //                             placeholder="Describe the coordinates or linear equations the learner needs to plot..."
+// // //                         />
+// // //                     </div>
+
+// // //                     {/* GRAPH MEMORANDUM FOR ASSESSORS */}
+// // //                     <div className="ab-math-memo" style={{ marginTop: '1rem', padding: '1rem', background: '#fdf2f8', border: '1px solid #fbcfe8', borderRadius: '6px' }}>
+// // //                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#be185d', fontSize: '0.85rem', marginBottom: '12px', fontWeight: 'bold' }}>
+// // //                             <Lock size={14} /> Assessor Memorandum (Graph Solution)
+// // //                         </div>
+// // //                         <p style={{ fontSize: '0.8rem', color: '#9d174d', marginBottom: '1rem' }}>
+// // //                             Plot the correct visual solution below. This graph will be hidden from the learner and only shown to the Assessor during grading.
+// // //                         </p>
+
+// // //                         {/* 🚀 FIXED: Added explicit layout dimensions to stop canvas height collapse */}
+// // //                         <div
+// // //                             onClick={e => e.stopPropagation()}
+// // //                             style={{
+// // //                                 position: 'relative',
+// // //                                 width: '100%',
+// // //                                 height: '500px', // Provides a non-zero structural box profile
+// // //                                 background: '#fff',
+// // //                                 borderRadius: '8px',
+// // //                                 overflow: 'hidden',
+// // //                                 border: '1px solid #fbcfe8'
+// // //                             }}
+// // //                         >
+// // //                             <AxisWorkspace
+// // //                                 value={block.memoGraph || { points: [], shapes: [] }}
+// // //                                 onChange={(val) => onUpdate(block.id, "memoGraph", val)}
+// // //                                 readOnly={isDeployed}
+// // //                             />
+// // //                         </div>
+// // //                     </div>
 // // //                 </div>
 // // //             )}
 
@@ -10945,7 +11709,7 @@ export default AssessmentBuilder;
 // // //                                 <div className="ab-criterion-header">
 // // //                                     <span className="ab-criterion-num">{i + 1}</span>
 // // //                                     <input type="text" className="ab-input ab-input--bold" value={criterion} disabled={isDeployed} onChange={(e) => updateCriterion(i, e.target.value)} placeholder="e.g. Open files and folders" />
-// // //                                     {!isDeployed && <button className="ab-btn-transform-danger" onClick={() => removeCriterion(i)}><X size={15} /></button>}
+// // //                                     {!isLockedStructure && <button className="ab-btn-transform-danger" onClick={() => removeCriterion(i)}><X size={15} /></button>}
 // // //                                 </div>
 // // //                                 <div className="ab-criterion-preview-stack">
 // // //                                     {block.requireEvidencePerCriterion !== false && (
@@ -10966,7 +11730,7 @@ export default AssessmentBuilder;
 // // //                                 </div>
 // // //                             </div>
 // // //                         ))}
-// // //                         {!isDeployed && <button className="ab-btn-text" onClick={addCriterion}><Plus size={13} /> Add Criterion</button>}
+// // //                         {!isLockedStructure && <button className="ab-btn-text" onClick={addCriterion}><Plus size={13} /> Add Criterion</button>}
 
 // // //                         <div className="ab-signoff-preview">
 // // //                             <span className="ab-signoff-title">Global Assessor / Mentor Sign-off Preview</span>
@@ -11023,7 +11787,7 @@ export default AssessmentBuilder;
 // // //                                     <div className="ab-wa-inputs">
 // // //                                         <input type="text" className="ab-input ab-w-80" value={wa.code} onChange={(e) => updateWA(wi, "code", e.target.value)} disabled={isDeployed} placeholder="WA0101" />
 // // //                                         <input type="text" className="ab-input ab-flex-1" value={wa.description} onChange={(e) => updateWA(wi, "description", e.target.value)} disabled={isDeployed} placeholder="Activity description…" />
-// // //                                         {!isDeployed && <button className="ab-btn-icon-danger" onClick={() => removeWA(wi)}><X size={15} /></button>}
+// // //                                         {!isLockedStructure && <button className="ab-btn-icon-danger" onClick={() => removeWA(wi)}><X size={15} /></button>}
 // // //                                     </div>
 // // //                                     <div className="ab-se-list">
 // // //                                         <span className="ab-se-title">Required Supporting Evidence (SE)</span>
@@ -11031,14 +11795,14 @@ export default AssessmentBuilder;
 // // //                                             <div key={se.id} className="ab-se-row">
 // // //                                                 <input type="text" className="ab-input sm ab-w-70" value={se.code} onChange={(e) => updateSE(wi, si, "code", e.target.value)} disabled={isDeployed} placeholder="SE0101" />
 // // //                                                 <input type="text" className="ab-input sm ab-flex-1" value={se.description} onChange={(e) => updateSE(wi, si, "description", e.target.value)} disabled={isDeployed} placeholder="Describe expected evidence…" />
-// // //                                                 {!isDeployed && <button className="ab-btn-icon-danger ab-btn-icon-sm" onClick={() => removeSE(wi, si)}><Trash2 size={11} /></button>}
+// // //                                                 {!isLockedStructure && <button className="ab-btn-icon-danger ab-btn-icon-sm" onClick={() => removeSE(wi, si)}><Trash2 size={11} /></button>}
 // // //                                             </div>
 // // //                                         ))}
-// // //                                         {!isDeployed && <button className="ab-btn-text ab-btn-text--sm ab-btn-text--rose" onClick={() => addSE(wi)}><Plus size={11} /> Add Evidence</button>}
+// // //                                         {!isLockedStructure && <button className="ab-btn-text ab-btn-text--sm ab-btn-text--rose" onClick={() => addSE(wi)}><Plus size={11} /> Add Evidence</button>}
 // // //                                     </div>
 // // //                                 </div>
 // // //                             ))}
-// // //                             {!isDeployed && <button className="ab-btn-text ab-btn-text--rose" onClick={addWA}><Plus size={13} /> Add Workplace Activity</button>}
+// // //                             {!isLockedStructure && <button className="ab-btn-text ab-btn-text--rose" onClick={addWA}><Plus size={13} /> Add Workplace Activity</button>}
 // // //                         </div>
 // // //                         <div className="ab-qcto-toggles">
 // // //                             <label className={`ab-qcto-toggle-row ${isDeployed ? "ab-disabled" : ""}`}>
@@ -11055,7 +11819,7 @@ export default AssessmentBuilder;
 // // //             )}
 
 // // //             {/* BLOCK IMAGE ATTACHMENT ZONE */}
-// // //             {["text", "mcq", "task", "info", "section", "code_sandbox"].includes(block.type) && (
+// // //             {["text", "mcq", "task", "info", "section", "code_sandbox", "mathpad", "graph"].includes(block.type) && (
 // // //                 <div style={{ padding: "0 20px 20px 20px" }}>
 // // //                     {!block.imageUrl && !isUploadingImage ? (
 // // //                         <label className="ab-image-toggle">
@@ -11069,7 +11833,7 @@ export default AssessmentBuilder;
 // // //                         </div>
 // // //                     ) : (
 // // //                         <div className="ab-image-upload-zone has-image" onClick={(e) => e.stopPropagation()}>
-// // //                             <img src={block.imageUrl} alt="Attached context" className="ab-image-preview" />
+// // //                             <img src={block.imageUrl} alt="Attached context" crossOrigin="anonymous" className="ab-image-preview" />
 // // //                             <div className="ab-image-meta">
 // // //                                 <input
 // // //                                     className="ab-caption-input"
