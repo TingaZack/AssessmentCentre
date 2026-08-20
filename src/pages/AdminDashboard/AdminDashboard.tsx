@@ -15,6 +15,8 @@ import { DashboardOverview } from '../../components/views/DashboardOverview/Dash
 import { AdminProfileView } from './AdminProfileView/AdminProfileView';
 import { SettingsPage } from '../SettingsPage/SettingsPage';
 import { AccessManager } from './AccessManager/AccessManager';
+import { SystemCrashesManager } from './SystemCrashesManager/SystemCrashesManager';
+import { SurveyManager } from './SurveyManager/SurveyManager';
 
 // --- ENTITY MANAGEMENT VIEWS ---
 import { StaffView } from '../../components/views/StaffView/StaffView';
@@ -42,13 +44,13 @@ import { AttendanceHistoryList } from '../FacilitatorDashboard/AttendanceRegiste
 import { EcosystemDashboard } from '../../components/admin/EcosystemDashboard/EcosystemDashboard';
 import { WorkplaceHub } from '../../components/views/WorkplaceHub/WorkplaceHub';
 import { CoachingScheduleView } from '../../components/views/CoachingScheduleView/CoachingScheduleView';
-
-import './AdminDashboard.css';
 import { CompanyInsightsView } from '../../components/admin/WorkplacesManager/CompanyInsightsView/CompanyInsightsView';
 
+import './AdminDashboard.css';
+
 type NavTabs = 'directory' | 'learners' | 'staff' | 'qualifications' | 'cohorts' |
-    'workplaces' | 'studio' | 'dashboard' | 'profile' | 'access' |
-    'assessments' | 'settings' | 'attendance' | 'ecosystem' | 'company-profile' | 'coaching';
+    'workplaces' | 'studio' | 'dashboard' | 'profile' | 'access' | 'crashes' |
+    'assessments' | 'settings' | 'attendance' | 'ecosystem' | 'company-profile' | 'coaching' | 'surveys';
 
 const AdminDashboard: React.FC = () => {
     const navigate = useNavigate();
@@ -60,7 +62,6 @@ const AdminDashboard: React.FC = () => {
     const [searchParams, setSearchParams] = useSearchParams();
     const currentNav = (searchParams.get('tab') as NavTabs) || 'dashboard';
 
-    // 🚀 NEW: Read the employer ID securely from the URL
     const employerIdParam = searchParams.get('employerId');
 
     const [isPending, startTransition] = useTransition();
@@ -76,7 +77,7 @@ const AdminDashboard: React.FC = () => {
                 }
                 params.delete('view');
                 if (tab !== 'company-profile') {
-                    params.delete('employerId'); // Clean up URL if leaving insights
+                    params.delete('employerId');
                 }
                 return params;
             }, { replace: true });
@@ -90,14 +91,12 @@ const AdminDashboard: React.FC = () => {
     const [selectedCompanyForInsights, setSelectedCompanyForInsights] = useState<Employer | null>(null);
     const [viewingStaffProfile, setViewingStaffProfile] = useState<StaffMember | null>(null);
 
-    // 🚀 MASTER FALLBACK RESOLUTION: Find the company if the page was refreshed
     const activeCompanyForInsights = selectedCompanyForInsights || store.employers.find((e: Employer) => e.id === employerIdParam);
 
     useEffect(() => {
         setIsMobileMenuOpen(false);
     }, [currentNav]);
 
-    // 🚀 UPDATED EVENT LISTENER: Safely pushes the employer ID into the URL query parameters
     useEffect(() => {
         const handleOpenInsights = (e: any) => {
             setSelectedCompanyForInsights(e.detail);
@@ -136,8 +135,7 @@ const AdminDashboard: React.FC = () => {
     const [cohortToDelete, setCohortToDelete] = useState<Cohort | null>(null);
     const [selectedCohort, setSelectedCohort] = useState<Cohort | null>(null);
 
-
-    // ─── 🚀 SMART DATA LOADER (Prevents Tab Lag) ───
+    // ─── SMART DATA LOADER ───
     useEffect(() => {
         const currentUser = user as any;
         const isSuper = currentUser?.isSuperAdmin === true;
@@ -172,7 +170,6 @@ const AdminDashboard: React.FC = () => {
             load(store.employers, store.fetchEmployers);
         }
 
-        // 🚀 Ensures employers are fetched if a URL directly references the company profile tab
         if ((currentNav === 'workplaces' || currentNav === 'company-profile') && (isSuper || privs.workplaces)) {
             load(store.employers, store.fetchEmployers);
         }
@@ -296,29 +293,39 @@ const AdminDashboard: React.FC = () => {
         }
     };
 
+    // 🚀 UNIFIED SUPER ADMIN & RBAC EVALUATOR
     const checkAccess = (tab: NavTabs) => {
         const currentUser = user as any;
-        if (currentUser?.isSuperAdmin) return true;
-        if (tab === 'dashboard' || tab === 'profile') return true;
-        if (tab === 'access') return false;
+        const activeRole = (currentUser?.role || '').toLowerCase();
 
-        if (currentUser?.role === 'admin' || currentUser?.role === 'assistant_admin') {
-            const privs = currentUser?.privileges || {};
+        const isSuperAdmin = currentUser?.isSuperAdmin === true ||
+            activeRole === 'super_admin' ||
+            activeRole === 'superadmin';
+
+        if (isSuperAdmin) return true;
+        if (tab === 'dashboard' || tab === 'profile') return true;
+        if (tab === 'access' || tab === 'crashes') return false;
+
+        const adminRoles = ['admin', 'assistant_admin', 'super_admin', 'superadmin'];
+        if (adminRoles.includes(activeRole)) {
+            const privs = currentUser?.privileges;
+            if (!privs || Object.keys(privs).length === 0) return true;
 
             const accessMap: Record<string, boolean> = {
-                'directory': !!privs.directory,
-                'learners': !!privs.learners,
-                'staff': !!privs.staff,
-                'attendance': !!privs.attendance,
-                'workplaces': !!privs.workplaces,
-                'company-profile': !!privs.workplaces,
-                'qualifications': !!privs.qualifications,
-                'assessments': !!privs.assessments,
-                'cohorts': !!privs.cohorts,
-                'ecosystem': !!privs.ecosystem,
-                'studio': !!privs.studio,
-                'settings': !!privs.settings,
-                'coaching': !!privs.cohorts
+                'directory': privs.directory !== false,
+                'learners': privs.learners !== false,
+                'staff': privs.staff !== false,
+                'attendance': privs.attendance !== false,
+                'workplaces': privs.workplaces !== false,
+                'company-profile': privs.workplaces !== false,
+                'qualifications': privs.qualifications !== false,
+                'assessments': privs.assessments !== false,
+                'surveys': privs.surveys !== false,
+                'cohorts': privs.cohorts !== false,
+                'ecosystem': privs.ecosystem !== false,
+                'studio': privs.studio !== false,
+                'settings': privs.settings !== false,
+                'coaching': privs.cohorts !== false
             };
             return accessMap[tab] === true;
         }
@@ -365,12 +372,14 @@ const AdminDashboard: React.FC = () => {
                             {currentNav === 'ecosystem' && 'Ecosystem & Event Check-ins'}
                             {currentNav === 'qualifications' && 'Qualification Templates'}
                             {currentNav === 'assessments' && 'Assessment Management'}
+                            {currentNav === 'surveys' && 'Surveys & Feedback Engine'}
                             {currentNav === 'staff' && 'Staff & Mentors'}
                             {currentNav === 'cohorts' && 'Cohort Management'}
                             {currentNav === 'workplaces' && 'Workplace Management'}
                             {currentNav === 'company-profile' && 'Corporate Partner Insights'}
                             {currentNav === 'profile' && 'My Administrator Profile'}
                             {currentNav === 'access' && 'Platform Access Control'}
+                            {currentNav === 'crashes' && 'System Crashlytics & Bug Tracker'}
                             {currentNav === 'settings' && 'Platform Settings'}
                             {currentNav === 'studio' && 'Certificate Studio'}
                             {currentNav === 'coaching' && 'Coaching & Support Schedule'}
@@ -383,12 +392,14 @@ const AdminDashboard: React.FC = () => {
                             {currentNav === 'ecosystem' && 'Manage public events, capacity gates, and external guest CRM ledger.'}
                             {currentNav === 'qualifications' && 'Create and manage curriculum blueprints and unit standards'}
                             {currentNav === 'assessments' && 'Create, distribute, and manage curriculum assessments and tasks'}
+                            {currentNav === 'surveys' && 'Build feedback templates, manage survey questions, and inspect response analytics'}
                             {currentNav === 'staff' && 'Manage facilitators, assessors, moderators, and support staff'}
                             {currentNav === 'cohorts' && 'Organize learners into training classes and assign educators'}
                             {currentNav === 'workplaces' && 'Manage employer partners and workplace mentor allocations'}
                             {currentNav === 'company-profile' && 'View compliance, placement ledgers, and operational analytics for this host company.'}
                             {currentNav === 'profile' && 'Manage your institutional compiler and contact details'}
                             {currentNav === 'access' && 'Manage Super Administrator access and permissions'}
+                            {currentNav === 'crashes' && 'Monitor client-side exceptions, unhandled rejections, and browser diagnostic logs.'}
                             {currentNav === 'settings' && 'Configure global system preferences and application settings'}
                             {currentNav === 'studio' && 'Design custom ad-hoc awards and manage document history.'}
                             {currentNav === 'coaching' && 'Manage upcoming Google Meet sessions and record your coaching notes.'}
@@ -448,6 +459,7 @@ const AdminDashboard: React.FC = () => {
                             )}
 
                             {currentNav === 'assessments' && <AssessmentManager />}
+                            {currentNav === 'surveys' && <SurveyManager />}
 
                             {currentNav === 'staff' && (
                                 viewingStaffProfile ? (
@@ -466,7 +478,6 @@ const AdminDashboard: React.FC = () => {
 
                             {currentNav === 'workplaces' && <WorkplaceHub />}
 
-                            {/* 🚀 THE FIX: Handles URL reloads smoothly and shows a loader if the store is still syncing */}
                             {currentNav === 'company-profile' && (
                                 activeCompanyForInsights ? (
                                     <CompanyInsightsView
@@ -496,12 +507,14 @@ const AdminDashboard: React.FC = () => {
                             {currentNav === 'settings' && <SettingsPage />}
 
                             {currentNav === 'access' && <AccessManager />}
+
+                            {currentNav === 'crashes' && <SystemCrashesManager />}
                         </>
                     )}
                 </div>
             </main>
 
-            {/* MODALS RENDERED BELOW */}
+            {/* MODALS */}
             {showAddLearnerModal && (
                 <LearnerFormModal learner={selectedLearner || undefined} title={selectedLearner ? 'Edit Enrollment' : 'Add New Enrollment'} programmes={store.programmes} cohorts={store.cohorts} onClose={() => { setShowAddLearnerModal(false); setSelectedLearner(null); }} onSave={async (l) => { try { if (selectedLearner) { await store.updateLearner(selectedLearner.id, l); toast.success("Learner updated successfully."); } else { await store.addLearner(l as any); toast.success("Learner added successfully."); } setShowAddLearnerModal(false); } catch (err: any) { toast.error(`Failed to save learner: ${err.message}`); } }} />
             )}
@@ -531,7 +544,7 @@ const AdminDashboard: React.FC = () => {
             )}
 
             {showCohortModal && (
-                <CohortFormModal cohort={selectedCohort || undefined} onClose={() => { setShowCohortModal(false); setSelectedCohort(null); }} onSave={async (c, reasons) => { try { const batch = writeBatch(db); const timestamp = new Date().toISOString(); const cohortId = selectedCohort?.id || doc(collection(db, 'cohorts')).id; const cohortRef = doc(db, 'cohorts', cohortId); const cleanLearnerIds = (c.learnerIds || []).filter((id: string) => id && !id.startsWith("Unassigned_")).map((id: string) => { const match = store.learners.find(l => l.id === id || l.idNumber === id); return match ? (match.idNumber || match.id) : id; }); const uniqueCleanIds = Array.from(new Set(cleanLearnerIds)); const cohortData = { ...c, learnerIds: uniqueCleanIds, id: cohortId, updatedAt: timestamp }; if (selectedCohort) { batch.update(cohortRef, cohortData); } else { batch.set(cohortRef, { ...cohortData, createdAt: timestamp }); } uniqueCleanIds.forEach((lId) => { const enrollmentId = `${cohortId}_${lId as string}`; const enrollRef = doc(db, 'enrollments', enrollmentId); batch.set(enrollRef, { id: enrollmentId, cohortId: cohortId, learnerId: lId, programmeId: c.programmeId || '', campusId: c.campusId || '', status: 'active', enrolledAt: timestamp, updatedAt: timestamp }, { merge: true }); batch.set(doc(db, 'learners', lId as string), { cohortId: cohortId, updatedAt: timestamp }, { merge: true }); }); if (selectedCohort) { const removedIds = (selectedCohort.learnerIds || []).filter((oldId: string) => !uniqueCleanIds.includes(oldId)); removedIds.forEach((rId: string) => { const lMatch = store.learners.find(l => l.id === rId || l.idNumber === rId); const finalRid = lMatch ? (lMatch.idNumber || lMatch.id) : rId; batch.set(doc(db, 'enrollments', `${cohortId}_${finalRid}`), { status: 'dropped', updatedAt: timestamp }, { merge: true }); batch.set(doc(db, 'learners', finalRid), { cohortId: "", updatedAt: timestamp }, { merge: true }); }); } await batch.commit(); await store.fetchCohorts(true); await store.fetchLearners(true); toast.success("Class Roster Saved Successfully!"); setShowCohortModal(false); } catch (err: any) { console.error("Database Save Failed:", err); toast.error(`Error: ${err.message}`); } }} />
+                <CohortFormModal cohort={selectedCohort || undefined} onClose={() => { setShowCohortModal(false); setSelectedCohort(null); }} onSave={async (c, reasons) => { try { const batch = writeBatch(db); const timestamp = new Date().toISOString(); const cohortId = selectedCohort?.id || doc(collection(db, 'cohorts')).id; const cohortRef = doc(db, 'cohorts', cohortId); const cleanLearnerIds = (c.learnerIds || []).filter((id: string) => id && !id.startsWith("Unassigned_")).map((id: string) => { const match = store.learners.find(l => l.id === id || l.idNumber === id); return match ? (match.idNumber || match.id) : id; }); const uniqueCleanIds = Array.from(new Set(cleanLearnerIds)); const cohortData = { ...c, learnerIds: uniqueCleanIds, id: cohortId, updatedAt: timestamp }; if (selectedCohort) { batch.update(cohortRef, cohortData); } else { batch.set(cohortRef, { ...cohortData, createdAt: timestamp }); } uniqueCleanIds.forEach((lId) => { const enrollmentId = `${cohortId}_${lId as string}`; const enrollRef = doc(db, 'enrollments', enrollmentId); batch.set(enrollRef, { id: enrollmentId, cohortId: cohortId, learnerId: lId, programmeId: c.programmeId || '', campusId: c.campusId || '', status: 'active', enrolledAt: timestamp, updatedAt: timestamp }, { merge: true }); batch.set(doc(db, 'learners', lId as string), { cohortId: cohortId, updatedAt: timestamp }, { merge: true }); }); if (selectedCohort) { const removedIds = (selectedCohort.learnerIds || []).filter((oldId: string) => !uniqueCleanIds.includes(oldId)); removedIds.forEach((rId: string) => { const lMatch = store.learners.find(l => l.id === rId || l.idNumber === rId); const finalRid = lMatch ? (lMatch.idNumber || lMatch.id) : rId; batch.set(doc(db, "enrollments", `${cohortId}_${finalRid}`), { status: 'dropped', updatedAt: timestamp }, { merge: true }); batch.set(doc(db, "learners", finalRid), { cohortId: "", updatedAt: timestamp }, { merge: true }); }); } await batch.commit(); await store.fetchCohorts(true); await store.fetchLearners(true); toast.success("Class Roster Saved Successfully!"); setShowCohortModal(false); } catch (err: any) { console.error("Database Save Failed:", err); toast.error(`Error: ${err.message}`); } }} />
             )}
 
             {cohortToDelete && (
@@ -550,4 +563,3 @@ const AdminDashboard: React.FC = () => {
 };
 
 export default AdminDashboard;
-

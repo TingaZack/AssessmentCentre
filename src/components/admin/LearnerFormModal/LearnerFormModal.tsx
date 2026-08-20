@@ -173,8 +173,6 @@ export const LearnerFormModal: React.FC<LearnerFormModalProps> = ({
     const [formData, setFormData] = useState<DashboardLearner>(() => {
         if (learner) {
             const d = learner.demographics || {};
-            // If the learner comes from the store but their cohortId says "Unassigned" (legacy data), 
-            // map it to "" so our strict validation understands it's empty.
             let validCohortId = learner.cohortId;
             if (validCohortId === "Unassigned") validCohortId = "";
 
@@ -617,63 +615,88 @@ export const LearnerFormModal: React.FC<LearnerFormModalProps> = ({
         });
     };
 
-
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
+    // 🚀 EXECUTE SAVE FUNCTION
+    const executeSave = async (cleanLearnerPayload: Partial<DashboardLearner>) => {
         setIsSaving(true);
         setErrorMessage(null);
-
         try {
-            const finalIssueDate = formData.issueDate || parseLocalToSA(new Date().toISOString());
-            let fName = formData.firstName, lName = formData.lastName;
-            if (formData.fullName && (!fName || !lName)) {
-                const parts = formData.fullName.trim().split(" ");
-                fName = parts[0] || ""; lName = parts.slice(1).join(" ") || "";
-            }
-
-            let finalVerificationCode = formData.verificationCode;
-            if (!finalVerificationCode || finalVerificationCode.startsWith("SOR-")) {
-                const sdpCode = formData.demographics?.sdpCode || GLOBAL_SDP_CODE;
-                finalVerificationCode = generateSorId(formData.fullName || "Unknown", finalIssueDate, sdpCode);
-            }
-
-            const updatedQual = { ...formData.qualification };
-            if (!updatedQual.dateAssessed) updatedQual.dateAssessed = finalIssueDate;
-
-            // Ensure we strictly pass empty string if no class is chosen
-            const rawCohortId = formData.cohortId || "";
-
-            const savedLearner: any = {
-                ...formData,
-                firstName: fName,
-                lastName: lName,
-                authStatus: formData.authStatus || "pending",
-                issueDate: finalIssueDate,
-                verificationCode: finalVerificationCode,
-                qualification: updatedQual,
-                cohortId: rawCohortId,
-                demographics: {
-                    ...formData.demographics,
-                    statssaAreaCode: formData.demographics?.statsaaAreaCode || "",
-                    flcStatementOfResultNumber: formData.demographics?.flcStatementOfResultNumber || (formData.demographics as any)?.flcResultNumber || ""
-                }
-            };
-
-            const cleanLearnerPayload = JSON.parse(JSON.stringify(savedLearner));
-
-            // Hand over the payload to the Store (updateLearner / addLearner)
-            // The store handles the complex 3-way synchronization
-            await onSave(cleanLearnerPayload as Partial<DashboardLearner>);
-
+            await onSave(cleanLearnerPayload);
             onClose();
         } catch (err: any) {
-            // Catch the system-defined error thrown by the store
             setErrorMessage(err.message || "A system error occurred while attempting to save.");
         } finally {
             setIsSaving(false);
         }
     };
 
+    // 🚀 HANDLES FORM SUBMISSION WITH OPTIONAL CONFIRMATION
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+
+        const finalIssueDate = formData.issueDate || parseLocalToSA(new Date().toISOString());
+        let fName = formData.firstName, lName = formData.lastName;
+        if (formData.fullName && (!fName || !lName)) {
+            const parts = formData.fullName.trim().split(" ");
+            fName = parts[0] || ""; lName = parts.slice(1).join(" ") || "";
+        }
+
+        let finalVerificationCode = formData.verificationCode;
+        if (!finalVerificationCode || finalVerificationCode.startsWith("SOR-")) {
+            const sdpCode = formData.demographics?.sdpCode || GLOBAL_SDP_CODE;
+            finalVerificationCode = generateSorId(formData.fullName || "Unknown", finalIssueDate, sdpCode);
+        }
+
+        const updatedQual = { ...formData.qualification };
+        if (!updatedQual.dateAssessed) updatedQual.dateAssessed = finalIssueDate;
+
+        const rawCohortId = formData.cohortId || "";
+
+        const savedLearner: any = {
+            ...formData,
+            firstName: fName,
+            lastName: lName,
+            authStatus: formData.authStatus || "pending",
+            issueDate: finalIssueDate,
+            verificationCode: finalVerificationCode,
+            qualification: updatedQual,
+            cohortId: rawCohortId,
+            demographics: {
+                ...formData.demographics,
+                statssaAreaCode: formData.demographics?.statsaaAreaCode || "",
+                flcStatementOfResultNumber: formData.demographics?.flcStatementOfResultNumber || (formData.demographics as any)?.flcResultNumber || ""
+            }
+        };
+
+        const cleanLearnerPayload = JSON.parse(JSON.stringify(savedLearner));
+
+        // 🚀 CHECK FOR INCOMPLETE COMPLIANCE & QUALIFICATION FIELDS
+        const missingFields: string[] = [];
+        if (!formData.fullName?.trim()) missingFields.push("Full Name");
+        if (!formData.idNumber?.trim()) missingFields.push("ID Number");
+        if (!formData.qualification?.name?.trim()) missingFields.push("Qualification Name");
+        if (!formData.qualification?.saqaId?.trim()) missingFields.push("SAQA ID");
+        if (!formData.qualification?.nqfLevel) missingFields.push("NQF Level");
+        if (!formData.qualification?.credits) missingFields.push("Total Credits");
+        if (!formData.demographics?.sdpCode?.trim()) missingFields.push("SDP Provider Code");
+
+        // 🚀 PROMPT USER IF FIELDS ARE INCOMPLETE INSTEAD OF HARD-BLOCKING
+        if (missingFields.length > 0) {
+            setStatusModal({
+                type: "warning",
+                title: "Incomplete Fields Detected",
+                message: `The following compliance/qualification field(s) are incomplete: ${missingFields.join(", ")}. Would you like to proceed and save changes anyway?`,
+                confirmText: "Proceed & Save",
+                onCancel: () => setStatusModal(null),
+                onClose: () => {
+                    setStatusModal(null);
+                    executeSave(cleanLearnerPayload);
+                }
+            });
+            return;
+        }
+
+        await executeSave(cleanLearnerPayload);
+    };
 
     useEffect(() => {
         if (formData.idNumber && formData.idNumber.length >= 6 && !formData.dateOfBirth) {
@@ -723,7 +746,8 @@ export const LearnerFormModal: React.FC<LearnerFormModalProps> = ({
                         <button className="lfm-close-btn" type="button" onClick={onClose} disabled={isSaving}><X size={20} /></button>
                     </div>
 
-                    <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", overflow: "hidden", flex: 1 }}>
+                    {/* 🚀 ADDED noValidate TO FORM TO ALLOW CUSTOM MODAL PROMPT */}
+                    <form onSubmit={handleSubmit} noValidate style={{ display: "flex", flexDirection: "column", overflow: "hidden", flex: 1 }}>
                         <div className="lfm-body">
                             {errorMessage && (
                                 <div className="lfm-error-banner"><AlertCircle size={16} /><span>{errorMessage}</span></div>
@@ -735,11 +759,11 @@ export const LearnerFormModal: React.FC<LearnerFormModalProps> = ({
                                 <div className="lfm-grid">
                                     <div className="lfm-fg lfm-fg--full">
                                         <label>Full Name *</label>
-                                        <input className="lfm-input" type="text" required value={formData.fullName} onChange={(e) => updateField("fullName", e.target.value)} />
+                                        <input className="lfm-input" type="text" value={formData.fullName} onChange={(e) => updateField("fullName", e.target.value)} />
                                     </div>
                                     <div className="lfm-fg">
                                         <label>ID Number *</label>
-                                        <input className="lfm-input" type="text" required value={formData.idNumber} onChange={(e) => updateField("idNumber", e.target.value)} />
+                                        <input className="lfm-input" type="text" value={formData.idNumber} onChange={(e) => updateField("idNumber", e.target.value)} />
                                     </div>
 
                                     {/* CLASS & CAMPUS */}
@@ -786,7 +810,7 @@ export const LearnerFormModal: React.FC<LearnerFormModalProps> = ({
                                     </div>
                                     <div className="lfm-fg">
                                         <label>SDP Provider Code *</label>
-                                        <input className="lfm-input" type="text" required value={formData.demographics?.sdpCode || ""} onChange={(e) => updateDemographics("sdpCode", e.target.value)} style={{ border: "1px solid #0ea5e9", backgroundColor: "#f0f9ff" }} />
+                                        <input className="lfm-input" type="text" value={formData.demographics?.sdpCode || ""} onChange={(e) => updateDemographics("sdpCode", e.target.value)} style={{ border: "1px solid #0ea5e9", backgroundColor: "#f0f9ff" }} />
                                     </div>
                                 </div>
                             </div>
@@ -831,19 +855,19 @@ export const LearnerFormModal: React.FC<LearnerFormModalProps> = ({
                                 <div className="lfm-grid">
                                     <div className="lfm-fg lfm-fg--full">
                                         <label>Qualification Name *</label>
-                                        <input className="lfm-input" type="text" required value={formData.qualification.name} onChange={(e) => updateQualification("name", e.target.value)} />
+                                        <input className="lfm-input" type="text" value={formData.qualification.name} onChange={(e) => updateQualification("name", e.target.value)} />
                                     </div>
                                     <div className="lfm-fg">
                                         <label>SAQA ID *</label>
-                                        <input className="lfm-input" type="text" required value={formData.qualification.saqaId} onChange={(e) => updateQualification("saqaId", e.target.value)} />
+                                        <input className="lfm-input" type="text" value={formData.qualification.saqaId} onChange={(e) => updateQualification("saqaId", e.target.value)} />
                                     </div>
                                     <div className="lfm-fg">
                                         <label>NQF Level *</label>
-                                        <input className="lfm-input" type="number" required value={formData.qualification.nqfLevel} onChange={(e) => updateQualification("nqfLevel", parseInt(e.target.value) || 0)} />
+                                        <input className="lfm-input" type="number" value={formData.qualification.nqfLevel} onChange={(e) => updateQualification("nqfLevel", parseInt(e.target.value) || 0)} />
                                     </div>
                                     <div className="lfm-fg">
                                         <label>Total Credits *</label>
-                                        <input className="lfm-input" type="number" required value={formData.qualification.credits} onChange={(e) => updateQualification("credits", parseInt(e.target.value) || 0)} />
+                                        <input className="lfm-input" type="number" value={formData.qualification.credits} onChange={(e) => updateQualification("credits", parseInt(e.target.value) || 0)} />
                                     </div>
                                     <div className="lfm-fg">
                                         <label>Date Assessed</label>
@@ -915,7 +939,7 @@ export const LearnerFormModal: React.FC<LearnerFormModalProps> = ({
                                             updateDemographics('sorIssueDate', newDate);
                                             if (newDate) updateDemographics('sorStatus', "01");
                                             else updateField('eisaAdmission', false);
-                                        }} disabled={(formData.demographics as any)?.sorStatus === "02"} required={(formData.demographics as any)?.sorStatus === "01"} />
+                                        }} disabled={(formData.demographics as any)?.sorStatus === "02"} />
                                     </div>
                                     <div className="lfm-fg">
                                         <label>FLC Status *</label>
@@ -1198,7 +1222,7 @@ export const LearnerFormModal: React.FC<LearnerFormModalProps> = ({
                 </div>
             </div>
 
-            {/* SHEET SELECTOR MODAL (TRIGGERS IF MULTIPLE SHEETS ARE FOUND AND ID DOES NOT MATCH) */}
+            {/* SHEET SELECTOR MODAL */}
             {sheetSelection && (
                 <div className="lfm-overlay" style={{ zIndex: 2000 }}>
                     <div className="lfm-modal mlab-modal--sm animate-fade-in" style={{ padding: 0 }}>
@@ -1256,3 +1280,5 @@ export const LearnerFormModal: React.FC<LearnerFormModalProps> = ({
         </>
     );
 };
+
+

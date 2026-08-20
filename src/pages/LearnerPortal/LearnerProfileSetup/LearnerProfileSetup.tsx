@@ -3,10 +3,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Autocomplete from "react-google-autocomplete";
+import { GoogleMap, Marker } from '@react-google-maps/api';
 import {
     User, Upload, FileText, CheckCircle,
-    Save, ChevronRight, ShieldCheck, MapPin, Loader2, Heart, Camera,
-    Briefcase, Globe, Lock, Plus, Trash2, Info
+    Save, ChevronRight, ShieldCheck, MapPin, Heart, Camera,
+    Briefcase, Globe, Lock, Plus, Trash2, Info, Search, X
 } from 'lucide-react';
 import { doc, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -24,7 +25,7 @@ import { fetchStatssaCodes } from '../../../services/qctoService';
 import Loader from '../../../components/common/Loader/Loader';
 
 // ════════════════════════════════════════════════════════════════════════════
-// QCTO DICTIONARIES (Strictly defined locally to prevent import errors)
+// QCTO DICTIONARIES
 // ════════════════════════════════════════════════════════════════════════════
 const QCTO_EQUITY = [
     { label: "Black African", value: "BA" }, { label: "Coloured", value: "BC" },
@@ -135,6 +136,8 @@ interface LearnerProfileData {
     provinceCode: string;
     postalCode: string;
     statssaAreaCode: string;
+    localMunicipality: string;
+    districtOrMetro: string;
     lat: number;
     lng: number;
     sameAsResidential: boolean;
@@ -148,13 +151,12 @@ interface LearnerProfileData {
     popiaConsent: boolean;
 }
 
-// Dynamic Document Interface
 export interface DynamicDocument {
     id: string;
     name: string;
     file: File | null;
     url: string;
-    isFixed: boolean; // Protects required documents from deletion
+    isFixed: boolean;
     isRequired: boolean;
 }
 
@@ -187,15 +189,33 @@ export const LearnerProfileSetup: React.FC = () => {
 
     const [allStatssaCodes, setAllStatssaCodes] = useState<any[]>([]);
 
+    // 🚀 MAP MODAL OVERLAY STATE
+    const [isMapModalOpen, setIsMapModalOpen] = useState(false);
+    const [tempCoords, setTempCoords] = useState({ lat: -26.2041, lng: 28.0473 });
+    const [mapSearchText, setMapSearchText] = useState("");
+    const [isGoogleReady, setIsGoogleReady] = useState(() => typeof window !== 'undefined' && Boolean((window as any).google?.maps?.places));
+
+    useEffect(() => {
+        if (isGoogleReady) return;
+        const checkGoogleInterval = setInterval(() => {
+            if (typeof window !== 'undefined' && (window as any).google?.maps?.places) {
+                setIsGoogleReady(true);
+                clearInterval(checkGoogleInterval);
+            }
+        }, 300);
+        return () => clearInterval(checkGoogleInterval);
+    }, [isGoogleReady]);
+
     const [formData, setFormData] = useState<Partial<LearnerProfileData>>({
         popiaConsent: false,
         disabilityCode: 'N',
         sameAsResidential: true,
         alternativeIdType: '533',
-        immigrantStatus: '03'
+        immigrantStatus: '03',
+        localMunicipality: '',
+        districtOrMetro: ''
     });
 
-    // Dynamic Documents Array State (Includes compulsory Proof of Address)
     const [docsList, setDocsList] = useState<DynamicDocument[]>([
         { id: 'id', name: 'Certified ID Copy', file: null, url: '', isFixed: true, isRequired: true },
         { id: 'poa', name: 'Proof of Address (Utility/Bank/Affidavit)', file: null, url: '', isFixed: true, isRequired: true },
@@ -265,6 +285,8 @@ export const LearnerProfileSetup: React.FC = () => {
                         immigrantStatus: d.immigrantStatus || '03',
                         alternativeIdType: d.alternativeIdType || '533',
                         statssaAreaCode: d.statssaAreaCode || d.statsaaAreaCode || '',
+                        localMunicipality: d.localMunicipality || '',
+                        districtOrMetro: d.districtOrMetro || '',
                         streetAddress: d.learnerHomeAddress1 || '',
                         city: d.learnerHomeAddress2 || '',
                         provinceCode: d.provinceCode || '',
@@ -292,7 +314,6 @@ export const LearnerProfileSetup: React.FC = () => {
 
                     if (learnerData.profilePhotoUrl) setPhotoPreview(learnerData.profilePhotoUrl);
 
-                    // HYDRATE DYNAMIC DOCUMENTS ARRAY FROM FIRESTORE
                     if (uploadedDocs && uploadedDocs.length > 0) {
                         setDocsList(prev => {
                             const updatedDocs = [...prev];
@@ -340,24 +361,23 @@ export const LearnerProfileSetup: React.FC = () => {
     };
 
     // ════════════════════════════════════════════════════════════════════════════
-    // ENHANCED GOOGLE PLACES PREPOPULATION (Extracts Town, Suburb, Muni & District)
+    // GOOGLE PLACES PREPOPULATION
     // ════════════════════════════════════════════════════════════════════════════
     const handlePlaceSelected = (place: any) => {
+        if (!place || !place.address_components) return;
         const addressComponents = place.address_components;
         const getComp = (type: string) => addressComponents?.find((c: any) => c.types.includes(type))?.long_name || "";
 
         const provString = getComp("administrative_area_level_1");
-        const matchedProv = QCTO_PROVINCES.find(p => provString.includes(p.label))?.value || '';
+        const matchedProv = QCTO_PROVINCES.find(p => provString.toLowerCase().includes(p.label.toLowerCase()))?.value || '';
 
-        // Extract deep location hierarchy
         const suburb = getComp("sublocality_level_1") || getComp("sublocality") || getComp("neighborhood");
         const townName = getComp("locality") || suburb;
-        const localMuni = getComp("administrative_area_level_3");
+        const localMuni = getComp("administrative_area_level_3") || getComp("locality");
         const districtMuni = getComp("administrative_area_level_2");
         const postal = getComp("postal_code");
         const formattedAddress = place.formatted_address || "";
 
-        // Multi-tiered search terms to accurately resolve STATS-SA Code
         const searchTerms = [suburb, townName, localMuni, districtMuni]
             .map(s => s.toLowerCase().trim())
             .filter(Boolean);
@@ -365,7 +385,6 @@ export const LearnerProfileSetup: React.FC = () => {
         let match = null;
 
         if (allStatssaCodes.length > 0 && searchTerms.length > 0) {
-            // Tier 1: Exact matches against town, area, or local_municipality
             match = allStatssaCodes.find(c => {
                 const cTown = (c.town || '').toLowerCase();
                 const cArea = (c.area || '').toLowerCase();
@@ -376,7 +395,6 @@ export const LearnerProfileSetup: React.FC = () => {
                 );
             });
 
-            // Tier 2: Partial/substring matches if no exact match was found
             if (!match) {
                 match = allStatssaCodes.find(c => {
                     const cTown = (c.town || '').toLowerCase();
@@ -390,6 +408,17 @@ export const LearnerProfileSetup: React.FC = () => {
             }
         }
 
+        const resolvedLocalMuni = localMuni || match?.local_municipality || match?.area || '';
+        const resolvedDistrict = districtMuni || match?.district_municipality || match?.district || '';
+
+        const resolvedLat = place.geometry?.location?.lat
+            ? (typeof place.geometry.location.lat === 'function' ? place.geometry.location.lat() : place.geometry.location.lat)
+            : (formData.lat || 0);
+
+        const resolvedLng = place.geometry?.location?.lng
+            ? (typeof place.geometry.location.lng === 'function' ? place.geometry.location.lng() : place.geometry.location.lng)
+            : (formData.lng || 0);
+
         setFormData(prev => ({
             ...prev,
             streetAddress: formattedAddress,
@@ -397,13 +426,58 @@ export const LearnerProfileSetup: React.FC = () => {
             provinceCode: matchedProv,
             postalCode: postal,
             statssaAreaCode: match ? match.statssa_area_code : prev.statssaAreaCode,
-            lat: place.geometry?.location?.lat() || 0,
-            lng: place.geometry?.location?.lng() || 0
+            localMunicipality: resolvedLocalMuni || prev.localMunicipality || '',
+            districtOrMetro: resolvedDistrict || prev.districtOrMetro || '',
+            lat: resolvedLat,
+            lng: resolvedLng
         }));
     };
 
+    // 🚀 MAP MODAL CONTROLS
+    const openMapModal = () => {
+        const initialLat = formData.lat && formData.lat !== 0 ? formData.lat : -26.2041;
+        const initialLng = formData.lng && formData.lng !== 0 ? formData.lng : 28.0473;
+        setTempCoords({ lat: initialLat, lng: initialLng });
+        setMapSearchText(formData.streetAddress || "");
+        setIsMapModalOpen(true);
+    };
+
+    const handleModalAddressSelected = (place: any) => {
+        if (place.geometry && place.geometry.location) {
+            const newLat = typeof place.geometry.location.lat === 'function' ? place.geometry.location.lat() : place.geometry.location.lat;
+            const newLng = typeof place.geometry.location.lng === 'function' ? place.geometry.location.lng() : place.geometry.location.lng;
+            setTempCoords({ lat: newLat, lng: newLng });
+            handlePlaceSelected(place);
+        }
+    };
+
+    const confirmMapCoordinates = () => {
+        setFormData(prev => ({
+            ...prev,
+            lat: tempCoords.lat,
+            lng: tempCoords.lng
+        }));
+        toast.success(`Exact coordinates pinned: ${tempCoords.lat.toFixed(6)}, ${tempCoords.lng.toFixed(6)}`);
+        setIsMapModalOpen(false);
+    };
+
     const handleChange = (field: keyof LearnerProfileData, value: string | boolean) => {
-        setFormData(prev => ({ ...prev, [field]: value }));
+        setFormData(prev => {
+            const next = { ...prev, [field]: value };
+
+            // Synchronize STATS-SA Code selection with Municipality & District text fields
+            if (field === 'statssaAreaCode') {
+                const match = allStatssaCodes.find(
+                    c => String(c.statssa_area_code).trim() === String(value).trim()
+                );
+                if (match) {
+                    next.localMunicipality = match.local_municipality || match.area || next.localMunicipality;
+                    next.districtOrMetro = match.district_municipality || match.district || next.districtOrMetro;
+                }
+            }
+
+            return next;
+        });
     };
 
     const handleFileUpload = async (file: File, path: string) => {
@@ -412,7 +486,6 @@ export const LearnerProfileSetup: React.FC = () => {
         return await getDownloadURL(snapshot.ref);
     };
 
-    // Dynamic Document Handlers
     const handleAddDocument = () => {
         setDocsList(prev => [
             ...prev,
@@ -455,7 +528,6 @@ export const LearnerProfileSetup: React.FC = () => {
                 finalPhotoUrl = await handleFileUpload(profilePhoto, `learners/${user.uid}/profile_${Date.now()}.${getExt(profilePhoto)}`);
             }
 
-            // PROCESS ALL DYNAMIC DOCUMENTS
             const finalUploadedDocs = [];
 
             for (const docItem of docsList) {
@@ -480,7 +552,6 @@ export const LearnerProfileSetup: React.FC = () => {
             const residentialZip = formatAsText(formData.postalCode, 4);
             const postalCodeFinal = formData.sameAsResidential ? residentialZip : formatAsText(formData.customPostalCode, 4);
 
-            // 🚀 RESOLVE STATS-SA RECORD & PROVINCE NAME FOR EXPLICIT DATABASE PERSISTENCE
             const statssaMatch = allStatssaCodes.find(
                 c => String(c.statssa_area_code).trim() === String(formData.statssaAreaCode).trim()
             );
@@ -513,11 +584,11 @@ export const LearnerProfileSetup: React.FC = () => {
                     provinceName: provinceMatch ? provinceMatch.label : '',
                     flcStatementOfResultNumber: formData.flcStatementOfResultNumber,
 
-                    // 🚀 STATS-SA CODE + EXPLICIT HUMAN-READABLE MUNICIPAL NAMES PERSISTED
+                    // STATS-SA CODE + EXPLICIT HUMAN-READABLE MUNICIPAL NAMES PERSISTED
                     statssaAreaCode: formData.statssaAreaCode,
                     statsaaAreaCode: formData.statssaAreaCode,
-                    localMunicipality: statssaMatch?.local_municipality || statssaMatch?.area || '',
-                    districtOrMetro: statssaMatch?.district_municipality || statssaMatch?.district || '',
+                    localMunicipality: formData.localMunicipality || statssaMatch?.local_municipality || statssaMatch?.area || '',
+                    districtOrMetro: formData.districtOrMetro || statssaMatch?.district_municipality || statssaMatch?.district || '',
 
                     learnerHomeAddress1: formData.streetAddress,
                     learnerHomeAddress2: formData.city,
@@ -576,6 +647,73 @@ export const LearnerProfileSetup: React.FC = () => {
     return (
         <>
             <ToastContainer toasts={toast.toasts} onClose={toast.closeToast} />
+
+            {/* 🚀 GOOGLE MAP MODAL OVERLAY */}
+            {isMapModalOpen && (
+                <div className="lfm-overlay" onClick={() => setIsMapModalOpen(false)} style={{ zIndex: 99999 }}>
+                    <div className="lfm-modal animate-fade-in" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '750px' }}>
+                        <div className="lfm-header">
+                            <h2 className="lfm-header__title">
+                                <MapPin size={16} /> Pinpoint Exact Residence Entrance
+                            </h2>
+                            <button className="lfm-close-btn" type="button" onClick={() => setIsMapModalOpen(false)}>
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <div className="lfm-body">
+                            <p style={{ margin: 0, color: '#64748b', fontSize: '0.88rem', lineHeight: 1.4 }}>
+                                Search for an area below, then click on the map or drag the red marker directly onto your exact building entrance for QCTO verification.
+                            </p>
+                            <div style={{ position: 'relative', marginBottom: '8px', marginTop: '8px' }}>
+                                <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--mlab-grey)', zIndex: 10 }} />
+                                {isGoogleReady ? (
+                                    <Autocomplete
+                                        key={`modal-search-learner`}
+                                        onPlaceSelected={handleModalAddressSelected}
+                                        options={{ types: [], componentRestrictions: { country: "za" } }}
+                                        className="lfm-input"
+                                        defaultValue={mapSearchText}
+                                        placeholder="Search building, suburb or street..."
+                                        style={{ paddingLeft: '38px', borderRadius: '8px', border: '1px solid var(--mlab-border)' }}
+                                    />
+                                ) : (
+                                    <input
+                                        type="text"
+                                        className="lfm-input"
+                                        defaultValue={mapSearchText}
+                                        placeholder="Search building, suburb or street..."
+                                        style={{ paddingLeft: '38px', borderRadius: '8px', border: '1px solid var(--mlab-border)' }}
+                                    />
+                                )}
+                            </div>
+                            <div style={{ width: '100%', height: '380px', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--mlab-border)', position: 'relative' }}>
+                                {isGoogleReady ? (
+                                    <GoogleMap
+                                        mapContainerStyle={{ width: '100%', height: '100%' }}
+                                        center={tempCoords}
+                                        zoom={17}
+                                        onClick={(e) => e.latLng && setTempCoords({ lat: e.latLng.lat(), lng: e.latLng.lng() })}
+                                        options={{ disableDefaultUI: false, zoomControl: true, streetViewControl: false, mapTypeControl: false }}
+                                    >
+                                        <Marker position={tempCoords} draggable={true} onDragEnd={(e) => e.latLng && setTempCoords({ lat: e.latLng.lat(), lng: e.latLng.lng() })} />
+                                    </GoogleMap>
+                                ) : (
+                                    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc' }}>
+                                        <Loader message="Loading Google Map..." fullScreen={false} />
+                                    </div>
+                                )}
+                            </div>
+                            <div style={{ fontSize: '0.82rem', color: '#64748b', fontFamily: 'monospace', background: 'var(--mlab-bg)', padding: '6px 12px', borderRadius: '4px', border: '1px solid var(--mlab-border)', width: 'max-content', marginTop: '6px' }}>
+                                Lat: {tempCoords.lat.toFixed(6)}, Lng: {tempCoords.lng.toFixed(6)}
+                            </div>
+                        </div>
+                        <div className="lfm-footer">
+                            <button type="button" className="lfm-btn lfm-btn--ghost" onClick={() => setIsMapModalOpen(false)}>Cancel</button>
+                            <button type="button" className="lfm-btn lfm-btn--primary" onClick={confirmMapCoordinates}><Save size={13} /> Save Pin Location</button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {showLegacyModal && (
                 <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.4)' }}>
@@ -644,9 +782,22 @@ export const LearnerProfileSetup: React.FC = () => {
                             <h3 className="lp-section-title"><MapPin size={16} /> Residential Address</h3>
 
                             <div style={{ marginBottom: '1.2rem', padding: '1rem', background: '#f0f9ff', border: '1px dashed #0ea5e9', borderRadius: '8px' }}>
-                                <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem', fontWeight: 600, color: 'var(--mlab-blue)', marginBottom: '6px' }}>
-                                    <Globe size={13} /> Secure Google Maps Search
-                                </label>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem', fontWeight: 600, color: 'var(--mlab-blue)' }}>
+                                        <Globe size={13} /> Secure Google Maps Search
+                                    </label>
+                                    <button
+                                        type="button"
+                                        onClick={openMapModal}
+                                        style={{
+                                            background: '#e0f2fe', color: '#0369a1', border: '1px solid #bae6fd',
+                                            padding: '4px 10px', borderRadius: '6px', fontSize: '0.78rem',
+                                            fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px'
+                                        }}
+                                    >
+                                        <MapPin size={13} /> Adjust Pin on Map
+                                    </button>
+                                </div>
                                 <Autocomplete
                                     apiKey={import.meta.env.VITE_GOOGLE_MAPS_API_KEY}
                                     onPlaceSelected={handlePlaceSelected}
@@ -662,6 +813,24 @@ export const LearnerProfileSetup: React.FC = () => {
                                 <FormSelect label="Province" value={formData.provinceCode || ""} options={QCTO_PROVINCES} onChange={v => handleChange('provinceCode', v)} isSearchable={false} />
                                 <FG label="Postal Code"><input className="lp-input" value={formData.postalCode || ''} onChange={e => handleChange('postalCode', e.target.value)} /></FG>
 
+                                {/* 🚀 EXPLICIT MUNICIPALITY & DISTRICT EDITABLE INPUTS */}
+                                <FG label="Local Municipality *">
+                                    <input
+                                        className="lp-input"
+                                        value={formData.localMunicipality || ''}
+                                        onChange={e => handleChange('localMunicipality', e.target.value)}
+                                        placeholder="e.g., City of Johannesburg, City of Tshwane..."
+                                    />
+                                </FG>
+                                <FG label="District / Metro">
+                                    <input
+                                        className="lp-input"
+                                        value={formData.districtOrMetro || ''}
+                                        onChange={e => handleChange('districtOrMetro', e.target.value)}
+                                        placeholder="e.g., Ekurhuleni, Sedibeng..."
+                                    />
+                                </FG>
+
                                 <div style={{ gridColumn: '1 / -1' }}>
                                     <FormSelect
                                         label="STATS-SA Area Code (Municipality) *"
@@ -673,7 +842,6 @@ export const LearnerProfileSetup: React.FC = () => {
                                 </div>
                             </div>
 
-                            {/* PROOF OF ADDRESS NOTICE BANNER */}
                             <div style={{ marginTop: '1.25rem', padding: '0.85rem 1rem', background: '#fefce8', border: '1px solid #fef08a', borderRadius: '8px', color: '#713f12', fontSize: '0.83rem', display: 'flex', alignItems: 'center', gap: '10px' }}>
                                 <Info size={18} color="#ca8a04" style={{ flexShrink: 0 }} />
                                 <span><strong>Proof of Address Requirement:</strong> You will be required to upload a valid Proof of Address document (e.g. utility bill, bank statement, or police affidavit) in Step 3 that reflects this exact residential address.</span>
@@ -727,7 +895,6 @@ export const LearnerProfileSetup: React.FC = () => {
                                 </button>
                             </div>
 
-                            {/* COMPLIANCE DOCUMENTS ADDRESS MATCHING NOTE BANNER */}
                             <div style={{ marginBottom: '1.25rem', padding: '0.85rem 1rem', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', color: '#1e40af', fontSize: '0.83rem', display: 'flex', alignItems: 'center', gap: '10px' }}>
                                 <Info size={18} color="#2563eb" style={{ flexShrink: 0 }} />
                                 <span><strong>Address Verification Note:</strong> Your mandatory <strong>Proof of Address</strong> document MUST display your name and the same residential address specified in Step 2 for QCTO verification.</span>

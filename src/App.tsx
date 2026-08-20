@@ -1,10 +1,13 @@
 // src/App.tsx
 
 import { useEffect, useState } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { getAnalytics, logEvent } from 'firebase/analytics';
+import { onCLS, onINP, onLCP, onFCP, onTTFB } from 'web-vitals';
 import { useStore } from './store/useStore';
+import { recordDailyActivityIfNeeded } from './lib/authAnalytics';
 
 // --- TYPES ---
 import type { UserProfile, UserRole } from './types/auth.types';
@@ -72,9 +75,102 @@ import { LiveAttendanceBoard } from './pages/FacilitatorDashboard/LiveAttendance
 import { EventKioskPage } from './components/admin/EcosystemDashboard/EventKioskPage';
 import { EventDetailsPage } from './components/admin/EcosystemDashboard/EventDetailsPage';
 import { EmployerApplicationForm } from './pages/LearnerPortal/public/EmployerApplicationForm/EmployerApplicationForm';
+import PublicSurveyPage from './pages/PublicSurvey/PublicSurvey';
 
+// ════════════════════════════════════════════════════════════════════════════
+// 🚀 GOOGLE WEB VITALS PERFORMANCE TRACKER
+// ════════════════════════════════════════════════════════════════════════════
+const sendVitalToAnalytics = ({ name, delta, value, id }: any) => {
+  try {
+    const analytics = getAnalytics();
+    logEvent(analytics, 'web_vitals', {
+      event_category: 'Web Vitals',
+      event_action: name,
+      event_label: id,
+      value: Math.round(name === 'CLS' ? delta * 1000 : delta),
+      numeric_value: Math.round(value),
+      non_interaction: true,
+    });
+  } catch (e) {
+    /* Analytics blocked */
+  }
+};
 
+// Register listeners once on app startup
+if (typeof window !== 'undefined') {
+  onCLS(sendVitalToAnalytics);
+  onINP(sendVitalToAnalytics);
+  onLCP(sendVitalToAnalytics);
+  onFCP(sendVitalToAnalytics);
+  onTTFB(sendVitalToAnalytics);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  GLOBAL UNHANDLED ERROR LISTENER (Catches Async/Network Errors)
+// ════════════════════════════════════════════════════════════════════════════
+const logGlobalError = async (type: string, message: string, stack?: string) => {
+  try {
+    const analytics = getAnalytics();
+    logEvent(analytics, 'exception', {
+      description: `[${type}] ${message}`.substring(0, 100),
+      fatal: false,
+    });
+  } catch (e) {
+    console.error("Analytics exception log blocked:", e);
+  }
+
+  try {
+    await addDoc(collection(db, 'system_crashes'), {
+      errorName: type,
+      errorMessage: message,
+      errorStack: stack || '',
+      componentStack: 'Global Window Event',
+      url: window.location.href,
+      userAgent: navigator.userAgent,
+      timestamp: serverTimestamp(),
+      createdAt: new Date().toISOString(),
+    });
+  } catch (dbErr) { /* Silent fail */ }
+};
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('error', (event) => {
+    logGlobalError('RuntimeError', event.message, event.error?.stack);
+  });
+  window.addEventListener('unhandledrejection', (event) => {
+    const reason = event.reason;
+    const message = typeof reason === 'string' ? reason : (reason?.message || JSON.stringify(reason));
+    logGlobalError('UnhandledPromiseRejection', message, reason?.stack);
+  });
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  FIREBASE ANALYTICS PAGE TRACKER
+// ════════════════════════════════════════════════════════════════════════════
+const GlobalAnalyticsTracker = () => {
+  const location = useLocation();
+  const user = useStore((state) => state.user);
+
+  useEffect(() => {
+    try {
+      const analytics = getAnalytics();
+      logEvent(analytics, 'page_view', {
+        page_path: location.pathname,
+        page_location: window.location.href,
+        user_role: user?.role || 'guest',
+        user_id: user?.uid || 'anonymous'
+      });
+    } catch (err) {
+      // Analytics might be blocked by ad-blockers
+    }
+  }, [location.pathname, user]);
+
+  return null;
+};
+
+// ════════════════════════════════════════════════════════════════════════════
 // --- TRAFFIC CONTROLLER ---
+// ════════════════════════════════════════════════════════════════════════════
 const RootRedirect = () => {
   const user = useStore((state) => state.user);
   const loading = useStore((state) => state.loading);
@@ -91,7 +187,7 @@ const RootRedirect = () => {
   const uploadedDocs = Array.isArray(rawUploadedDocs) ? rawUploadedDocs : [];
   const hasDoc = (docId: string) => uploadedDocs.some((doc: any) => doc.id === docId && typeof doc.url === 'string' && doc.url.trim() !== '');
 
-  // 1. Learner Strict Compliance Logic (Includes Proof of Address & Municipal Metadata)
+  // 1. Learner Strict Compliance Logic
   const isLearnerCompliant = () => {
     if (user.role !== 'learner') return true;
     const d = (user as any).demographics || {};
@@ -144,7 +240,7 @@ const RootRedirect = () => {
     return <Navigate to={`/setup-${user.role === 'assistant_facilitator' ? 'facilitator' : user.role === 'assistant_admin' ? 'admin' : user.role}`} replace />;
   }
 
-  // 4. FINAL TRAFFIC CONTROL (Fully Compliant Users)
+  // 4. FINAL TRAFFIC CONTROL
   switch (user.role) {
     case 'admin':
     case 'assistant_admin': return <Navigate to="/admin" replace />;
@@ -182,6 +278,7 @@ function App() {
           const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
           if (userDoc.exists()) {
             const data = userDoc.data();
+
             const userProfile = {
               uid: firebaseUser.uid,
               email: firebaseUser.email || data.email || '',
@@ -191,10 +288,12 @@ function App() {
               ...data,
               profileCompleted: data.profileCompleted === true,
             } as UserProfile;
+
             setUser(userProfile);
+            await recordDailyActivityIfNeeded(firebaseUser.uid);
           }
         } catch (e) {
-          console.error("Auth Sync Error:", e);
+          console.error(e);
         }
       } else {
         setUser(null);
@@ -203,6 +302,17 @@ function App() {
     });
     return () => unsubscribe();
   }, [setUser, setLoading]);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && auth.currentUser?.uid) {
+        recordDailyActivityIfNeeded(auth.currentUser.uid);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, []);
 
   return (
     <ErrorBoundary>
@@ -214,6 +324,8 @@ function App() {
       )}
 
       <Router>
+        <GlobalAnalyticsTracker />
+
         <div className="App">
           <Routes>
             {/* ================= PUBLIC ROUTES ================= */}
@@ -229,6 +341,8 @@ function App() {
             <Route path="/kiosk" element={<KioskPage />} />
             <Route path="/event-kiosk/:eventId" element={<EventKioskPage />} />
             <Route path="/app-scanner-required" element={<AppScannerRequired />} />
+
+            <Route path="/survey/:surveyId" element={<PublicSurveyPage />} />
 
             {/* LEGAL & COMPLIANCE ROUTES */}
             <Route path="/privacy-policy" element={<PrivacyPolicy />} />
@@ -279,6 +393,8 @@ function App() {
                 <AccessManager />
               </RoleProtectedRoute>
             } />
+            <Route path="/admin/crashes" element={<Navigate to="/admin?tab=crashes" replace />} />
+
             <Route path="/admin/ecosystem/event/:eventId" element={
               <RoleProtectedRoute allowedRoles={['admin', 'assistant_admin']}>
                 <EventDetailsPage />
@@ -365,7 +481,7 @@ function App() {
               </RoleProtectedRoute>
             } />
 
-            {/* ASSESSOR / MARKING SUITE (🚀 ALLOWS ADMINS & FACILITATORS WITH MARKING RIGHTS) */}
+            {/* ASSESSOR / MARKING SUITE */}
             <Route path="/marking/*" element={
               <RoleProtectedRoute allowedRoles={['assessor', 'admin', 'assistant_admin', 'facilitator', 'assistant_facilitator']}>
                 <AssessorDashboard />

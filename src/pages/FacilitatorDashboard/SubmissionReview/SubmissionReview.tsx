@@ -383,7 +383,6 @@ export const SubmissionReview: React.FC = () => {
     const canModerate = hasModeratorRights && currentStatus === 'graded';
     const canReturnToLearner = isMentor && ['submitted', 'in_progress'].includes(currentStatus);
 
-    // Lock "Add Time" if graded or past 48 hours
     const isPast48Hours = useMemo(() => {
         const refDate = submission?.submittedAt || submission?.startedAt;
         if (!refDate) return false;
@@ -393,167 +392,181 @@ export const SubmissionReview: React.FC = () => {
 
     const disableExtraTime = isAssDone || isPast48Hours;
 
-    // LISTEN TO LIVE PROCTOR SESSION DATA
+    // 🚀 PROCTOR SNAPSHOT LISTENER WITH ERROR HANDLER
     useEffect(() => {
         if (!submission) return;
         const targetLearnerUid = submission?.learnerDeclaration?.learnerAuthUid || submission?.authUid || submission?.learnerId;
         const activeAssessmentId = submission?.assessmentId || 'unassigned_assessment';
         const sessionDocId = `${activeAssessmentId}_${targetLearnerUid}`;
 
-        const unsubscribe = onSnapshot(doc(db, 'live_proctor_sessions', sessionDocId), (snap) => {
-            if (snap.exists()) {
-                setProctorSession(snap.data());
+        const unsubscribe = onSnapshot(
+            doc(db, 'live_proctor_sessions', sessionDocId),
+            (snap) => {
+                if (snap.exists()) {
+                    setProctorSession(snap.data());
+                }
+            },
+            (err) => {
+                console.warn("Live proctor session snapshot error caught:", err.message);
             }
-        });
+        );
         return () => unsubscribe();
     }, [submission?.assessmentId, submission?.authUid, submission?.learnerId, submission?.learnerDeclaration]);
 
+    // 🚀 MAIN SUBMISSION SNAPSHOT LISTENER WITH ERROR HANDLER
     useEffect(() => {
         if (!submissionId) return;
 
         let isInitialLoad = true;
 
-        const unsubscribe = onSnapshot(doc(db, 'learner_submissions', submissionId), async (subSnap) => {
-            try {
-                if (!subSnap.exists()) throw new Error("Submission not found");
-                const subData = subSnap.data();
+        const unsubscribe = onSnapshot(
+            doc(db, 'learner_submissions', submissionId),
+            async (subSnap) => {
+                try {
+                    if (!subSnap.exists()) throw new Error("Submission not found");
+                    const subData = subSnap.data();
 
-                setSubmission({ id: subSnap.id, ...subData });
+                    setSubmission({ id: subSnap.id, ...subData });
 
-                if (isInitialLoad) {
-                    const assRef = doc(db, 'assessments', subData.assessmentId);
-                    const assSnap = await getDoc(assRef);
-                    if (!assSnap.exists()) throw new Error("Assessment template missing");
-                    const assData = assSnap.data();
-                    setAssessment(assData);
+                    if (isInitialLoad) {
+                        const assRef = doc(db, 'assessments', subData.assessmentId);
+                        const assSnap = await getDoc(assRef);
+                        if (!assSnap.exists()) throw new Error("Assessment template missing");
+                        const assData = assSnap.data();
+                        setAssessment(assData);
 
-                    const targetLearnerUid = subData.learnerDeclaration?.learnerAuthUid || subData.authUid || subData.learnerId;
-                    const learnerRef = doc(db, 'learners', subData.learnerId || targetLearnerUid);
-                    const learnerSnap = await getDoc(learnerRef);
+                        const targetLearnerUid = subData.learnerDeclaration?.learnerAuthUid || subData.authUid || subData.learnerId;
+                        const learnerRef = doc(db, 'learners', subData.learnerId || targetLearnerUid);
+                        const learnerSnap = await getDoc(learnerRef);
 
-                    let lData = null;
-                    if (learnerSnap.exists()) {
-                        lData = learnerSnap.data();
-                    } else {
-                        const fallbackQ = query(collection(db, 'learners'), where('authUid', '==', targetLearnerUid));
-                        const fallbackSnap = await getDocs(fallbackQ);
-                        if (!fallbackSnap.empty) {
-                            lData = fallbackSnap.docs[0].data();
+                        let lData = null;
+                        if (learnerSnap.exists()) {
+                            lData = learnerSnap.data();
                         } else {
-                            const fallbackQ2 = query(collection(db, 'learners'), where('idNumber', '==', subData.learnerId));
-                            const fallbackSnap2 = await getDocs(fallbackQ2);
-                            if (!fallbackSnap2.empty) lData = fallbackSnap2.docs[0].data();
-                        }
-                    }
-
-                    if (lData) {
-                        setLearner(lData);
-                        setLearnerProfile(lData);
-                    }
-
-                    if (subData.grading?.gradedBy) {
-                        const assProfSnap = await getDoc(doc(db, 'users', subData.grading.gradedBy));
-                        if (assProfSnap.exists()) setAssessorProfile(assProfSnap.data());
-                    }
-
-                    if (subData.moderation?.moderatedBy) {
-                        const modProfSnap = await getDoc(doc(db, 'users', subData.moderation.moderatedBy));
-                        if (modProfSnap.exists()) setModeratorProfile(modProfSnap.data());
-                    }
-
-                    const facId = subData.latestCoachingLog?.facilitatorId || subData.grading?.facilitatorId;
-                    if (facId) {
-                        const facProfSnap = await getDoc(doc(db, 'users', facId));
-                        if (facProfSnap.exists()) setFacilitatorProfile(facProfSnap.data());
-                    }
-
-                    const historyRef = collection(db, 'learner_submissions', submissionId, 'history');
-                    const historySnapshotsRes = await getDocs(query(historyRef));
-                    const hData = historySnapshotsRes.docs.map(d => ({ id: d.id, ...d.data() } as any));
-                    hData.sort((a: any, b: any) => new Date(b.archivedAt).getTime() - new Date(a.archivedAt).getTime());
-                    setHistorySnapshots(hData);
-
-                    initialFacTimeRef.current = subData.grading?.facilitatorTimeSpent || 0;
-                    initialAssTimeRef.current = subData.grading?.assessorTimeSpent || 0;
-                    initialModTimeRef.current = subData.moderation?.timeSpent || 0;
-                    sessionStartRef.current = performance.now();
-
-                    let fBreakdown = subData.grading?.facilitatorBreakdown;
-                    let aBreakdown = subData.grading?.assessorBreakdown;
-                    let mBreakdown = subData.moderation?.breakdown;
-
-                    const dbStatus = String(subData.status || '').toLowerCase();
-
-                    const generateFreshBreakdown = (includeFeedback: boolean) => {
-                        const fresh: Record<string, GradeData> = {};
-                        assData.blocks?.forEach((block: any) => {
-                            if (block.type === 'mcq') {
-                                const isCorrect = subData.answers?.[block.id] === block.correctOption;
-                                fresh[block.id] = { score: isCorrect ? (block.marks || 0) : 0, feedback: includeFeedback ? (isCorrect ? 'Auto-graded: Correct' : 'Auto-graded: Incorrect') : '', isCorrect };
-                            } else if (block.type === 'text' || block.type === 'task' || block.type === 'code_sandbox') {
-                                fresh[block.id] = { score: 0, feedback: '', isCorrect: null };
-                            } else if (block.type === 'checklist') {
-                                const critInit = block.criteria?.map(() => ({ status: null, comment: '', startTime: '', endTime: '' })) || [];
-                                fresh[block.id] = { score: 0, feedback: '', isCorrect: null, criteriaResults: critInit, obsDate: '', obsStartTime: '', obsEndTime: '', obsDeclaration: false };
-                            } else if (block.type === 'logbook') {
-                                fresh[block.id] = { score: 0, feedback: '', isCorrect: null };
-                            } else if (block.type === 'qcto_workplace') {
-                                const actInit = block.workActivities?.map(() => ({ status: null, comment: '' })) || [];
-                                fresh[block.id] = { score: 0, feedback: '', isCorrect: null, activityResults: actInit, obsDate: '', obsStartTime: '', obsEndTime: '', obsDeclaration: false };
+                            const fallbackQ = query(collection(db, 'learners'), where('authUid', '==', targetLearnerUid));
+                            const fallbackSnap = await getDocs(fallbackQ);
+                            if (!fallbackSnap.empty) {
+                                lData = fallbackSnap.docs[0].data();
+                            } else {
+                                const fallbackQ2 = query(collection(db, 'learners'), where('idNumber', '==', subData.learnerId));
+                                const fallbackSnap2 = await getDocs(fallbackQ2);
+                                if (!fallbackSnap2.empty) lData = fallbackSnap2.docs[0].data();
                             }
-                        });
-                        return fresh;
-                    };
+                        }
 
-                    if (!fBreakdown || Object.keys(fBreakdown).length === 0) {
-                        if (subData.grading?.breakdown && Object.keys(subData.grading.breakdown).length > 0) fBreakdown = subData.grading.breakdown;
-                        else fBreakdown = generateFreshBreakdown(true);
-                    }
-                    setFacBreakdown(fBreakdown);
+                        if (lData) {
+                            setLearner(lData);
+                            setLearnerProfile(lData);
+                        }
 
-                    if (!aBreakdown || Object.keys(aBreakdown).length === 0) {
-                        if (['facilitator_reviewed', 'returned', 'graded', 'moderated', 'appealed'].includes(dbStatus)) {
-                            aBreakdown = generateFreshBreakdown(false);
-                            assData.blocks?.forEach((b: any) => {
-                                if ((b.type === 'checklist' || b.type === 'qcto_workplace') && fBreakdown[b.id]) {
-                                    aBreakdown[b.id] = { ...JSON.parse(JSON.stringify(fBreakdown[b.id])), score: 0, feedback: '', isCorrect: null };
+                        if (subData.grading?.gradedBy) {
+                            const assProfSnap = await getDoc(doc(db, 'users', subData.grading.gradedBy));
+                            if (assProfSnap.exists()) setAssessorProfile(assProfSnap.data());
+                        }
+
+                        if (subData.moderation?.moderatedBy) {
+                            const modProfSnap = await getDoc(doc(db, 'users', subData.moderation.moderatedBy));
+                            if (modProfSnap.exists()) setModeratorProfile(modProfSnap.data());
+                        }
+
+                        const facId = subData.latestCoachingLog?.facilitatorId || subData.grading?.facilitatorId;
+                        if (facId) {
+                            const facProfSnap = await getDoc(doc(db, 'users', facId));
+                            if (facProfSnap.exists()) setFacilitatorProfile(facProfSnap.data());
+                        }
+
+                        const historyRef = collection(db, 'learner_submissions', submissionId, 'history');
+                        const historySnapshotsRes = await getDocs(query(historyRef));
+                        const hData = historySnapshotsRes.docs.map(d => ({ id: d.id, ...d.data() } as any));
+                        hData.sort((a: any, b: any) => new Date(b.archivedAt).getTime() - new Date(a.archivedAt).getTime());
+                        setHistorySnapshots(hData);
+
+                        initialFacTimeRef.current = subData.grading?.facilitatorTimeSpent || 0;
+                        initialAssTimeRef.current = subData.grading?.assessorTimeSpent || 0;
+                        initialModTimeRef.current = subData.moderation?.timeSpent || 0;
+                        sessionStartRef.current = performance.now();
+
+                        let fBreakdown = subData.grading?.facilitatorBreakdown;
+                        let aBreakdown = subData.grading?.assessorBreakdown;
+                        let mBreakdown = subData.moderation?.breakdown;
+
+                        const dbStatus = String(subData.status || '').toLowerCase();
+
+                        const generateFreshBreakdown = (includeFeedback: boolean) => {
+                            const fresh: Record<string, GradeData> = {};
+                            assData.blocks?.forEach((block: any) => {
+                                if (block.type === 'mcq') {
+                                    const isCorrect = subData.answers?.[block.id] === block.correctOption;
+                                    fresh[block.id] = { score: isCorrect ? (block.marks || 0) : 0, feedback: includeFeedback ? (isCorrect ? 'Auto-graded: Correct' : 'Auto-graded: Incorrect') : '', isCorrect };
+                                } else if (block.type === 'text' || block.type === 'task' || block.type === 'code_sandbox') {
+                                    fresh[block.id] = { score: 0, feedback: '', isCorrect: null };
+                                } else if (block.type === 'checklist') {
+                                    const critInit = block.criteria?.map(() => ({ status: null, comment: '', startTime: '', endTime: '' })) || [];
+                                    fresh[block.id] = { score: 0, feedback: '', isCorrect: null, criteriaResults: critInit, obsDate: '', obsStartTime: '', obsEndTime: '', obsDeclaration: false };
+                                } else if (block.type === 'logbook') {
+                                    fresh[block.id] = { score: 0, feedback: '', isCorrect: null };
+                                } else if (block.type === 'qcto_workplace') {
+                                    const actInit = block.workActivities?.map(() => ({ status: null, comment: '' })) || [];
+                                    fresh[block.id] = { score: 0, feedback: '', isCorrect: null, activityResults: actInit, obsDate: '', obsStartTime: '', obsEndTime: '', obsDeclaration: false };
                                 }
                             });
-                        } else {
-                            aBreakdown = {};
+                            return fresh;
+                        };
+
+                        if (!fBreakdown || Object.keys(fBreakdown).length === 0) {
+                            if (subData.grading?.breakdown && Object.keys(subData.grading.breakdown).length > 0) fBreakdown = subData.grading.breakdown;
+                            else fBreakdown = generateFreshBreakdown(true);
                         }
-                    }
-                    setAssBreakdown(aBreakdown);
+                        setFacBreakdown(fBreakdown);
 
-                    if (!mBreakdown || Object.keys(mBreakdown).length === 0) {
-                        if (['graded', 'moderated', 'returned', 'appealed'].includes(dbStatus)) {
-                            mBreakdown = generateFreshBreakdown(false);
-                            assData.blocks?.forEach((b: any) => {
-                                if ((b.type === 'checklist' || b.type === 'qcto_workplace') && aBreakdown[b.id]) {
-                                    mBreakdown[b.id] = { ...JSON.parse(JSON.stringify(aBreakdown[b.id])), score: 0, feedback: '', isCorrect: null };
-                                }
-                            });
-                        } else {
-                            mBreakdown = {};
+                        if (!aBreakdown || Object.keys(aBreakdown).length === 0) {
+                            if (['facilitator_reviewed', 'returned', 'graded', 'moderated', 'appealed'].includes(dbStatus)) {
+                                aBreakdown = generateFreshBreakdown(false);
+                                assData.blocks?.forEach((b: any) => {
+                                    if ((b.type === 'checklist' || b.type === 'qcto_workplace') && fBreakdown[b.id]) {
+                                        aBreakdown[b.id] = { ...JSON.parse(JSON.stringify(fBreakdown[b.id])), score: 0, feedback: '', isCorrect: null };
+                                    }
+                                });
+                            } else {
+                                aBreakdown = {};
+                            }
                         }
+                        setAssBreakdown(aBreakdown);
+
+                        if (!mBreakdown || Object.keys(mBreakdown).length === 0) {
+                            if (['graded', 'moderated', 'returned', 'appealed'].includes(dbStatus)) {
+                                mBreakdown = generateFreshBreakdown(false);
+                                assData.blocks?.forEach((b: any) => {
+                                    if ((b.type === 'checklist' || b.type === 'qcto_workplace') && aBreakdown[b.id]) {
+                                        mBreakdown[b.id] = { ...JSON.parse(JSON.stringify(aBreakdown[b.id])), score: 0, feedback: '', isCorrect: null };
+                                    }
+                                });
+                            } else {
+                                mBreakdown = {};
+                            }
+                        }
+                        setModBreakdown(mBreakdown);
+
+                        setFacOverallFeedback(subData.grading?.facilitatorOverallFeedback || '');
+                        setAssOverallFeedback(subData.grading?.assessorOverallFeedback || subData.grading?.overallFeedback || '');
+                        setCompetency(subData.competency || null);
+                        setModFeedback(subData.moderation?.feedback || '');
+                        setModOutcome(subData.moderation?.outcome || null);
+                        setLearnerTimeOverride(subData.learnerDurationOverride || '');
+
+                        isInitialLoad = false;
                     }
-                    setModBreakdown(mBreakdown);
-
-                    setFacOverallFeedback(subData.grading?.facilitatorOverallFeedback || '');
-                    setAssOverallFeedback(subData.grading?.assessorOverallFeedback || subData.grading?.overallFeedback || '');
-                    setCompetency(subData.competency || null);
-                    setModFeedback(subData.moderation?.feedback || '');
-                    setModOutcome(subData.moderation?.outcome || null);
-                    setLearnerTimeOverride(subData.learnerDurationOverride || '');
-
-                    isInitialLoad = false;
+                } catch (err: any) {
+                    toast.error(err.message || "Failed to load data.");
+                } finally {
+                    setLoading(false);
                 }
-            } catch (err: any) {
-                toast.error(err.message || "Failed to load data.");
-            } finally {
+            },
+            (err) => {
+                console.warn("Submission review snapshot error caught:", err.message);
                 setLoading(false);
             }
-        });
+        );
 
         return () => unsubscribe();
     }, [submissionId]);
@@ -909,7 +922,6 @@ export const SubmissionReview: React.FC = () => {
                 setModalConfig(null);
                 setSaving(true);
                 try {
-                    // 🚀 RSA ID / SETA REGISTRATION FALLBACK
                     const fallbackAssessorReg =
                         (user as any)?.assessorRegNumber ||
                         (user as any)?.assessorRegistrationNumber ||
@@ -1516,7 +1528,6 @@ export const SubmissionReview: React.FC = () => {
             onConfirm: async () => {
                 setModalConfig(null); setSaving(true);
                 try {
-                    // 🚀 RSA ID / SETA REGISTRATION FALLBACK
                     const fallbackAssessorReg =
                         (user as any)?.assessorRegNumber ||
                         (user as any)?.assessorRegistrationNumber ||
@@ -1552,7 +1563,6 @@ export const SubmissionReview: React.FC = () => {
             onConfirm: async () => {
                 setModalConfig(null); setSaving(true);
                 try {
-                    // 🚀 RSA ID / SETA REGISTRATION FALLBACK
                     const fallbackModReg =
                         (user as any)?.moderatorRegNumber ||
                         (user as any)?.assessorRegNumber ||
