@@ -62,7 +62,7 @@ export const AdminInterviewStudioView: React.FC = () => {
 
                 // Expand first cohort by default on initial load
                 if (cohortList.length > 0) {
-                    setExpandedCohorts({ [cohortList[0].name || 'Unassigned Cohort']: true });
+                    setExpandedCohorts({ [(cohortList[0] as any).name || 'Unassigned Cohort']: true });
                 }
             } catch (err) {
                 console.error("Failed to fetch studio data:", err);

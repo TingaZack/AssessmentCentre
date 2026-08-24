@@ -70,7 +70,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, currentNav, setCurrentNa
 
                 const adminMenu = [
                     { id: 'dashboard', label: 'Overview', icon: LayoutDashboard, path: '/admin' },
-                    { id: 'interview-studio', label: 'AI Interview Studio', icon: Video, path: '/admin' },
                     hasPriv('directory') && { id: 'directory', label: 'Master Directory', icon: Users, path: '/admin' },
                     hasPriv('learners') && { id: 'learners', label: 'Course Enrollments', icon: GraduationCap, path: '/admin' },
                     hasPriv('attendance') && { id: 'attendance', label: 'Attendance Hub', icon: Calendar, path: '/admin' },
@@ -84,6 +83,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, currentNav, setCurrentNa
                     hasPriv('cohorts') && { id: 'cohorts', label: 'Cohorts (Classes)', icon: Layers, path: '/admin' },
                     hasPriv('cohorts') && { id: 'coaching', label: 'Coaching Schedule', icon: MessageSquare, path: '/admin' },
                     hasPriv('studio') && { id: 'studio', label: 'Certificate Studio', icon: Award, path: '/admin' },
+                    // { id: 'interview-studio', label: 'AI Interview Studio', icon: Video, path: '/admin' },
                     { id: 'profile', label: 'My Profile', icon: UserCircle, path: '/admin' },
                 ].filter(Boolean);
 
@@ -131,7 +131,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, currentNav, setCurrentNa
             case 'learner':
                 return [
                     { id: 'dashboard', label: 'My Classes', icon: LayoutDashboard, path: '/portal' },
-                    { id: 'interviews', label: 'AI Mock Interviews', icon: Video, path: '/portal' },
+                    // { id: 'interviews', label: 'AI Mock Interviews', icon: Video, path: '/portal' },
                     { id: 'attendance', label: 'Attendance Log', icon: CalendarCheck, path: '/portal' },
                     { id: 'profile', label: 'My Profile', icon: User, path: '/portal' },
                     { id: 'certificates', label: 'My Certificates', icon: Award, path: '/portal' },
