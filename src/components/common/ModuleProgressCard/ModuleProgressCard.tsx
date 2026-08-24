@@ -4,7 +4,8 @@ import React, { useState, useEffect } from 'react';
 import {
     Info, Scale, MonitorPlay, BookOpen, Layers,
     MapPin, GraduationCap, AlertTriangle, ShieldCheck,
-    Landmark, Wallet, Percent, User, Briefcase, CalendarCheck
+    Landmark, Wallet, Percent, User, Briefcase, CalendarCheck,
+    Video, Sparkles, Target, Award
 } from 'lucide-react';
 
 export type ModuleCardType =
@@ -14,7 +15,7 @@ export type ModuleCardType =
     | 'Active Appeals' | 'Live Classes' | 'Active Qualifications' | 'Active Cohorts'
     | 'Active Campuses' | 'EISA Readiness' | 'At-Risk Analytics' | 'Web3 Certificates'
     | 'ETI Tax Rebates' | 'Recognized Spend' | 'ACI Demographics' | 'Youth Representation'
-    | 'Gender Diversity' | 'Performance Risk';
+    | 'Gender Diversity' | 'Performance Risk' | 'Employability Score' | 'AI Mock Interviews';
 
 export interface ProgressSegment {
     label: string;
@@ -67,6 +68,16 @@ export const ModuleProgressCard: React.FC<ModuleProgressCardProps> = ({
     const isComplete = data.total > 0 && data.logged >= data.total;
 
     const config: Record<string, any> = {
+        'Employability Score': {
+            color: '#8b5cf6', bg: '#f3e8ff', title: 'Employability Score', unit: 'pts', label: 'AI Mock Interviews', bar1: 'Achieved', bar2: 'Target Gap',
+            description: 'Evaluates candidate job-readiness across technical accuracy, STAR behavioral structure, and communication confidence.',
+            icon: <Sparkles size={19} color="#8b5cf6" />
+        },
+        'AI Mock Interviews': {
+            color: '#3b82f6', bg: '#eff6ff', title: 'AI Mock Interviews', unit: 'sessions', label: 'Career Studio', bar1: 'Completed', bar2: 'Remaining',
+            description: 'Monitors practice interview sessions conducted with the AI multimodal interviewer.',
+            icon: <Video size={19} color="#3b82f6" />
+        },
         'Knowledge': {
             color: '#94c73d', bg: '#f0f7e1', title: 'Knowledge Modules', unit: 'topics', label: 'Module Type', bar1: 'Covered', bar2: 'Remaining',
             description: 'Tracks completed classroom topics vs remaining curriculum requirements across all Knowledge Modules.',

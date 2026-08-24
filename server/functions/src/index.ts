@@ -11987,3 +11987,738 @@ export const reinstateLearner = onCall(
     }
   },
 );
+
+// ============================================================================
+// AI MOCK INTERVIEW ENGINE
+// ============================================================================
+
+/**
+ * 1. DYNAMIC INTERVIEW TURN GENERATOR
+ * Generates time-aware, difficulty-adapted questions with off-topic redirection control.
+ */
+
+// -----------------------------------------------------------------------------
+// TYPES
+// -----------------------------------------------------------------------------
+
+export interface InterviewTurnPayload {
+  sessionId?: string;
+  targetRole: string;
+  difficulty?: "simple" | "mid" | "hard";
+  seniority?: string;
+  selectedSkillChips: string[];
+  currentStage: string;
+  timeRemainingSeconds?: number;
+  totalTimeLimitSeconds?: number;
+  conversationHistory: Array<{
+    role: "system" | "user" | "assistant";
+    content: string;
+  }>;
+  lastCandidateAnswer?: string;
+}
+
+// -----------------------------------------------------------------------------
+// 1. DYNAMIC INTERVIEW TURN GENERATOR
+// -----------------------------------------------------------------------------
+
+/**
+ * Generates evidence-based, time-aware, and stage-controlled interview turns.
+ * Operates as an objective assessor rather than a friendly coach.
+ */
+// export const generateInterviewTurn = onCall(
+//   {
+//     cors: true,
+//     region: "us-central1",
+//   },
+//   async (request) => {
+//     const auth = request.auth;
+
+//     if (!auth) {
+//       throw new HttpsError(
+//         "unauthenticated",
+//         "Authentication required to participate in mock interviews."
+//       );
+//     }
+
+//     const {
+//       sessionId,
+//       targetRole,
+//       difficulty = "simple",
+//       seniority,
+//       selectedSkillChips = [],
+//       currentStage = "Introduction & Warmup",
+//       timeRemainingSeconds,
+//       totalTimeLimitSeconds,
+//       conversationHistory = [],
+//       lastCandidateAnswer,
+//     } = request.data as InterviewTurnPayload;
+
+//     // -------------------------------------------------------------------------
+//     // 1. PAYLOAD VALIDATION
+//     // -------------------------------------------------------------------------
+
+//     if (!targetRole || typeof targetRole !== "string") {
+//       throw new HttpsError(
+//         "invalid-argument",
+//         "Target role is required."
+//       );
+//     }
+
+//     if (!Array.isArray(selectedSkillChips) || !Array.isArray(conversationHistory)) {
+//       throw new HttpsError(
+//         "invalid-argument",
+//         "Invalid interview payload. Arrays expected for selectedSkillChips and conversationHistory."
+//       );
+//     }
+
+//     // -------------------------------------------------------------------------
+//     // 2. PERSONA & RIGOR CUSTOMIZATION (ASSESSOR PHILOSOPHY)
+//     // -------------------------------------------------------------------------
+
+//     let personaRigor =
+//       "Professional and fair interviewer. Assess what the candidate can demonstrate independently. Do not coach, rescue, or give away answers during the interview.";
+
+//     if (difficulty === "mid") {
+//       personaRigor =
+//         "Professional industry interviewer. Expect independent reasoning, practical examples, appropriate technical depth, and clear explanation of decisions. Probe weaknesses rather than accepting vague answers.";
+//     }
+
+//     if (difficulty === "hard") {
+//       personaRigor =
+//         "Strict senior technical interviewer. Challenge assumptions, probe technical depth, trade-offs, edge cases, debugging ability, scalability, and practical decision-making. Surface weaknesses rather than helping the candidate reach an answer.";
+//     }
+
+//     // -------------------------------------------------------------------------
+//     // 3. TIME-AWARENESS INSTRUCTIONS
+//     // -------------------------------------------------------------------------
+
+//     let timeContextInstruction = "";
+
+//     if (typeof timeRemainingSeconds === "number") {
+//       if (timeRemainingSeconds <= 120) {
+//         timeContextInstruction =
+//           "CRITICAL TIME WARNING: Less than 2 minutes remain in this session. Explicitly acknowledge the time limit naturally, for example, 'As we are almost out of time...' or 'With our remaining two minutes...'. Ask one final focused closing question or prepare to wrap up.";
+//       } else if (timeRemainingSeconds <= 300) {
+//         timeContextInstruction =
+//           "TIME NOTICE: Less than 5 minutes remain. Keep your phrasing concise and focus on completing the most important outstanding technical or behavioural topic.";
+//       }
+//     }
+
+//     // -------------------------------------------------------------------------
+//     // 4. FULL EVIDENCE-BASED SYSTEM PROMPT
+//     // -------------------------------------------------------------------------
+
+//     const systemPrompt = `You are a professional industry interviewer conducting a structured mock interview for a ${targetRole} position.
+
+// This is an interview-readiness assessment. Your responsibility is NOT to make the candidate feel successful. Your responsibility is to accurately determine what the candidate can demonstrate independently and to expose areas where they are not yet ready.
+
+// DIFFICULTY LEVEL: ${difficulty.toUpperCase()}
+// CURRENT STAGE: ${currentStage}
+// CANDIDATE SENIORITY: ${seniority || "Not specified"}
+// FOCUS SKILLS: ${
+//       selectedSkillChips.length > 0
+//         ? selectedSkillChips.join(", ")
+//         : "General technical, behavioural and workplace skills"
+//     }
+
+// TOTAL SESSION TIME: ${
+//       typeof totalTimeLimitSeconds === "number"
+//         ? `${totalTimeLimitSeconds} seconds`
+//         : "Not specified"
+//     }
+// TIME REMAINING: ${
+//       typeof timeRemainingSeconds === "number"
+//         ? `${timeRemainingSeconds} seconds`
+//         : "Not specified"
+//     }
+
+// INTERVIEWER STANDARD:
+// ${personaRigor}
+
+// CORE ASSESSMENT PRINCIPLES:
+
+// 1. EVIDENCE OVER CLAIMS
+//    - Do not assume the candidate knows something merely because they say they have experience with it.
+//    - Give credit for demonstrated knowledge, reasoning, examples, decisions, and outcomes.
+//    - Statements such as "I know React", "I have worked with APIs", or "I understand Scrum" are not evidence by themselves.
+//    - If the candidate makes a technical claim, probe it when necessary to determine whether they genuinely understand it.
+
+// 2. DO NOT RESCUE THE CANDIDATE
+//    - Do not provide the answer.
+//    - Do not suggest the key concepts they should mention.
+//    - Do not complete their answer for them.
+//    - Do not turn a weak answer into a correct answer through excessive prompting.
+//    - If they cannot answer, allow that weakness to be recorded.
+//    - You may ask a concise clarification question where appropriate, but clarification must not become coaching.
+
+// 3. WEAK ANSWERS MUST REMAIN WEAK
+//    - Do not reinterpret vague, incomplete, incorrect or technically inaccurate answers as competent answers.
+//    - If an answer is fundamentally incorrect, treat it as incorrect.
+//    - If an answer demonstrates partial understanding, probe the missing part.
+//    - If the candidate continues to demonstrate insufficient understanding after probing, move on and allow the weakness to affect the final evaluation.
+
+// 4. DO NOT INFER COMPETENCE
+//    - Never award points for knowledge that is not demonstrated in the transcript.
+//    - Never assume that a candidate would have known the answer if they had more time.
+//    - Never compensate for a weak technical answer because the candidate communicates confidently.
+//    - Never compensate for weak behavioural evidence because the candidate sounds enthusiastic.
+
+// 5. ROLE APPROPRIATENESS
+//    - Evaluate the candidate against the expected competence of the specified ${targetRole} role and difficulty level.
+//    - Do not require senior-level knowledge from a junior candidate simply because the topic is technically advanced.
+//    - However, do not lower the standard merely because the candidate is a learner.
+//    - The purpose of this exercise is to determine whether the candidate is ready for an actual interview at this level.
+
+// 6. BEHAVIOURAL QUESTIONS
+//    - For behavioural questions, look for evidence of Situation, Task, Action and Result.
+//    - Do not award full marks when the candidate only describes what "we" did without explaining their own contribution.
+//    - Do not award full marks when there is no clear outcome or learning.
+//    - If the candidate cannot provide a real example, do not invent one for them.
+
+// 7. TECHNICAL QUESTIONS
+//    - Evaluate correctness, understanding, reasoning, practical application and ability to explain decisions.
+//    - Prefer practical understanding over memorised definitions.
+//    - If a candidate gives a technically questionable answer, probe the relevant concept before moving on.
+//    - Do not accept confident but technically incorrect explanations.
+
+// 8. COMMUNICATION
+//    - Assess clarity, relevance, structure, listening, ability to explain technical concepts and ability to answer the actual question.
+//    - Do not confuse verbosity with strong communication.
+//    - Do not penalise a candidate merely for having an accent, speaking style, or minor grammatical mistakes.
+//    - Penalise communication only where it materially affects the candidate's ability to communicate professionally and answer the question.
+
+// 9. ANSWER VALIDATION AND REDIRECTION
+//    - First determine whether the candidate answered the previous question.
+//    - If they answered adequately, continue with the interview.
+//    - If they partially answered, ask ONE focused follow-up question targeting the missing evidence.
+//    - If they gave an incorrect or irrelevant answer, ask ONE concise probing question where useful.
+//    - If they clearly do not know the answer, do not keep coaching them indefinitely. Move to the next appropriate question.
+//    - If they ask a meta-question such as "Can you hear me?", answer briefly and return to the pending interview question.
+//    - Never abandon an unanswered substantive question simply to make the conversation feel smooth.
+
+// 10. QUESTION CONTROL
+//    - Ask exactly ONE substantive question per turn.
+//    - Do not ask compound questions containing several unrelated questions.
+//    - Do not provide a list of things the candidate should answer.
+//    - Follow-up questions must target evidence missing from the previous answer.
+
+// 11. INTERVIEW FLOW
+//    - Respect the current interview stage.
+//    - Do not randomly jump between unrelated topics.
+//    - Increase or decrease probing based on the candidate's demonstrated competence.
+//    - A strong answer should allow the interview to progress.
+//    - A weak answer should trigger appropriate probing before progression.
+//    - Do not artificially increase scores by making questions easier after repeated failures.
+
+// 12. TIME MANAGEMENT
+//    ${timeContextInstruction}
+
+// 13. SPEECH SYNTHESIS
+//    - Ask exactly ONE clear question.
+//    - Keep responseText to no more than 3 concise sentences.
+//    - Use natural professional spoken language.
+//    - No markdown, tables, bullet points, numbered lists or special formatting.
+
+// 14. FIRST TURN HANDLING (WHEN CONVERSATION HISTORY IS EMPTY):
+//    - Introduce yourself briefly as the interviewer.
+//    - State the target role (${targetRole}).
+//    - Ask the first introductory or warmup question for the "${currentStage}" stage.
+
+// IMPORTANT:
+// You are an assessor, not a coach, during the live interview.
+// Accuracy is more important than encouragement.
+// Do not manufacture competence.
+// Do not sugar-coat weaknesses.
+// A candidate who performs poorly must be allowed to receive a poor result.
+
+// JSON OUTPUT REQUIREMENT:
+// You MUST output valid, raw JSON only. Do NOT wrap output in markdown syntax (\`\`\`json).
+
+// JSON SCHEMA:
+// {
+//   "responseText": "string (The exact spoken response and single question for the candidate)",
+//   "turnPurpose": "INITIAL_GREETING" | "PRIMARY_QUESTION" | "PROBE" | "CLARIFICATION" | "STAGE_WRAPUP",
+//   "answerAssessment": "SATISFACTORY" | "PARTIAL" | "INADEQUATE" | "OFF_TOPIC" | "NOT_APPLICABLE",
+//   "shouldAdvanceStage": boolean (True ONLY if the candidate has substantively answered the current topic and it is time to progress)
+// }`;
+
+//     // -------------------------------------------------------------------------
+//     // 5. BUILD MESSAGE HISTORY (PREVENT DUPLICATE LAST CANDIDATE ANSWER)
+//     // -------------------------------------------------------------------------
+
+//     const messages = [
+//       {
+//         role: "system" as const,
+//         content: systemPrompt,
+//       },
+//       ...conversationHistory,
+//     ];
+
+//     // Safely append lastCandidateAnswer ONLY if not already present as the last message
+//     if (lastCandidateAnswer?.trim()) {
+//       const lastMsgInHistory = conversationHistory[conversationHistory.length - 1];
+//       const isAlreadyAppended =
+//         lastMsgInHistory &&
+//         lastMsgInHistory.role === "user" &&
+//         lastMsgInHistory.content.trim() === lastCandidateAnswer.trim();
+
+//       if (!isAlreadyAppended) {
+//         messages.push({
+//           role: "user" as const,
+//           content: lastCandidateAnswer.trim(),
+//         });
+//       }
+//     }
+
+//     // -------------------------------------------------------------------------
+//     // 6. GENERATE AI RESPONSE VIA AI CLIENT GATEWAY
+//     // -------------------------------------------------------------------------
+
+//     try {
+//       const aiResult = await generateCompletion({
+//         messages,
+//         temperature: 0.2, // Low temperature for strict JSON adherence & prompt compliance
+//         maxTokens: 400,
+
+//         // Telemetry
+//         feature: "mock_interview_turn",
+//         userId: auth.uid,
+//         sessionId,
+//       });
+
+//       const rawText = aiResult.text?.trim() || "";
+
+//       if (!rawText) {
+//         throw new Error("AI provider returned an empty response.");
+//       }
+
+//       // Clean markdown code blocks if the provider outputs ```json
+//       const cleanJsonText = rawText
+//         .replace(/```json/gi, "")
+//         .replace(/```/g, "")
+//         .trim();
+
+//       let parsedData: {
+//         responseText: string;
+//         turnPurpose: "INITIAL_GREETING" | "PRIMARY_QUESTION" | "PROBE" | "CLARIFICATION" | "STAGE_WRAPUP";
+//         answerAssessment: "SATISFACTORY" | "PARTIAL" | "INADEQUATE" | "OFF_TOPIC" | "NOT_APPLICABLE";
+//         shouldAdvanceStage: boolean;
+//       };
+
+//       try {
+//         parsedData = JSON.parse(cleanJsonText);
+//       } catch (jsonErr) {
+//         logger.warn("AI response was not valid JSON, applying structured fallback parse:", {
+//           rawText,
+//           sessionId,
+//         });
+
+//         parsedData = {
+//           responseText: cleanJsonText,
+//           turnPurpose: "PRIMARY_QUESTION",
+//           answerAssessment: "SATISFACTORY",
+//           shouldAdvanceStage: false,
+//         };
+//       }
+
+//       // -----------------------------------------------------------------------
+//       // 7. RETURN STRUCTURED TURN DATA + AI TELEMETRY METADATA
+//       // -----------------------------------------------------------------------
+
+//       return {
+//         success: true,
+
+//         // Spoken turn payload for frontend Speech Synthesis
+//         responseText: parsedData.responseText,
+//         turnPurpose: parsedData.turnPurpose,
+//         answerAssessment: parsedData.answerAssessment,
+//         shouldAdvanceStage: Boolean(parsedData.shouldAdvanceStage),
+
+//         // AI Provenance & Telemetry
+//         provider: aiResult.provider,
+//         modelUsed: aiResult.modelUsed,
+//         fallbackUsed: aiResult.fallbackUsed,
+//         fallbackAttempts: aiResult.fallbackAttempts,
+//         durationMs: aiResult.durationMs,
+//       };
+//     } catch (error: any) {
+//       logger.error("Error generating interview turn:", {
+//         error: error?.message || error,
+//         userId: auth.uid,
+//         sessionId,
+//         targetRole,
+//         difficulty,
+//         currentStage,
+//       });
+
+//       throw new HttpsError(
+//         "internal",
+//         error?.message || "Failed to generate interview response."
+//       );
+//     }
+//   }
+// );
+
+// interface EvaluationPayload {
+//   sessionId?: string;
+//   learnerId?: string;
+//   targetRole: string;
+//   difficulty?: "simple" | "mid" | "hard";
+//   selectedSkillChips: string[];
+//   fullTranscript: Array<{ speaker: string; text: string; timestamp?: string }>;
+// }
+
+/**
+ * 2. POST-INTERVIEW EVALUATION & SCORECARD GENERATOR
+ * Analyzes full transcript and writes employability scores to Firestore.
+ */
+
+// interface EvaluationPayload {
+//   sessionId?: string;
+//   learnerId?: string;
+//   targetRole: string;
+//   difficulty?: "simple" | "mid" | "hard";
+//   selectedSkillChips: string[];
+//   fullTranscript: Array<{
+//     speaker: string;
+//     text: string;
+//     timestamp?: string;
+//   }>;
+// }
+
+/**
+ * POST-INTERVIEW EVIDENCE-BASED EVALUATOR & READINESS ENGINE
+ *
+ * Analyzes the complete transcript against strict evidence standards,
+ * separates Technical Knowledge from Interview Readiness, enforces
+ * technical hard gates, and produces a granular evidence-level audit.
+ */
+// export const evaluateMockInterview = onCall(
+//   {
+//     cors: true,
+//     timeoutSeconds: 300,
+//     memory: "512MiB",
+//     region: "us-central1",
+//   },
+//   async (request) => {
+//     const auth = request.auth;
+
+//     if (!auth) {
+//       throw new HttpsError(
+//         "unauthenticated",
+//         "Authentication required to evaluate mock interviews."
+//       );
+//     }
+
+//     const {
+//       sessionId,
+//       learnerId,
+//       targetRole,
+//       difficulty = "simple",
+//       selectedSkillChips = [],
+//       fullTranscript,
+//     } = request.data as EvaluationPayload;
+
+//     // -------------------------------------------------------------------------
+//     // 1. INPUT VALIDATION
+//     // -------------------------------------------------------------------------
+
+//     if (!targetRole || typeof targetRole !== "string") {
+//       throw new HttpsError(
+//         "invalid-argument",
+//         "Target role is required for assessment."
+//       );
+//     }
+
+//     if (
+//       !fullTranscript ||
+//       !Array.isArray(fullTranscript) ||
+//       fullTranscript.length === 0
+//     ) {
+//       throw new HttpsError(
+//         "invalid-argument",
+//         "Full transcript is required for evaluation."
+//       );
+//     }
+
+//     // -------------------------------------------------------------------------
+//     // 2. STRICT ASSESSOR SYSTEM PROMPT
+//     // -------------------------------------------------------------------------
+
+//     const systemPrompt = `You are an expert technical recruiter, workplace-readiness assessor, and educational assessment director at mLab Southern Africa.
+
+// You are evaluating a completed mock interview transcript for:
+
+// TARGET ROLE: ${targetRole}
+// DIFFICULTY LEVEL: ${difficulty.toUpperCase()}
+// FOCUS SKILLS: ${
+//       selectedSkillChips.length > 0
+//         ? selectedSkillChips.join(", ")
+//         : "General technical and workplace competencies"
+//     }
+
+// The purpose of this evaluation is to determine whether the candidate is genuinely prepared to participate successfully in a real job interview.
+
+// ASSESSMENT PHILOSOPHY:
+// - Be accurate, evidence-based, and appropriately rigorous.
+// - Do NOT inflate scores to encourage the candidate. A low score is an acceptable and useful result.
+// - If the candidate performed poorly, say so clearly.
+// - Do not reward effort, enthusiasm, confidence, length of answers, or participation unless these actually demonstrate the assessed competency.
+// - Do not infer knowledge that is not explicitly demonstrated in the transcript.
+// - Do not give credit because the candidate appears capable of learning the concept later.
+// - Describe the candidate's CURRENT demonstrated ability, not their potential.
+
+// SCORING STANDARD:
+// 90-100 = Interview Ready / Strong Independent Evidence
+//          The candidate consistently demonstrates required competence independently. Answers are accurate, relevant, structured, and supported by concrete examples.
+// 80-89  = Nearly Ready / Minor Gaps
+//          Demonstrates good competence but has identifiable weaknesses that could affect performance in a real interview.
+// 70-79  = Developing / Not Yet Consistently Ready
+//          Demonstrates some relevant competence but performance is inconsistent. Several answers require prompting or lack depth.
+// 60-69  = Significant Development Required
+//          Demonstrates limited readiness. Important technical, behavioral, or communication weaknesses are present.
+// 40-59  = Not Interview Ready
+//          Substantial gaps in competencies required for the target role. Additional preparation required.
+// 0-39   = Seriously Not Ready
+//          Unable to demonstrate the expected level of competence for the selected interview level.
+
+// IMPORTANT SCORING RULES:
+// - Do not use 80 as a default or "average" score. Earned points require concrete transcript evidence.
+// - A candidate who performs poorly MUST receive a low score.
+
+// KNOWLEDGE VS. INTERVIEW READINESS SEPARATION:
+// - "technicalKnowledgeScore": Evaluates raw correctness, conceptual understanding, and technical vocabulary.
+// - "interviewReadinessScore": Evaluates whether the candidate can structure their delivery, give concrete examples, explain decisions without rambling, and answer independently without excessive prompting.
+// - A candidate may know a concept (e.g. state management) but fail interview readiness because they ramble, miss the actual question, or fail to explain personal project contributions.
+
+// CATEGORY SCORING:
+// 1. TECHNICAL SCORE: Correctness, depth, debugging reasoning, practical application, role relevance.
+// 2. BEHAVIORAL SCORE: Relevance of examples, ownership of actions, STAR structure (Situation, Task, Action, Result), personal contribution vs team activity.
+// 3. COMMUNICATION SCORE: Directness to the question, structure, conciseness, technical explanation clarity (excluding accents/dialects).
+
+// CRITICAL ASSESSMENT RULES:
+// 1. A technically incorrect answer MUST NOT receive a high technical score merely because it is confidently delivered.
+// 2. A vague answer MUST NOT receive full marks.
+// 3. "I don't know" should be scored according to demonstrated competence. Do not punish honesty more than an incorrect answer.
+// 4. If the interviewer repeatedly prompted the candidate before obtaining a correct answer, lower the "interviewReadinessScore" and mark the evidence as PROMPTED.
+// 5. Do not invent experience, projects, or technologies not present in the transcript.
+// 6. TECHNICAL GATE RULE: If the candidate demonstrates a serious deficiency in technical competence (Technical Score < 80), the candidate CANNOT be classified as "READY" regardless of high communication or behavioral scores.
+
+// READINESS DECISION:
+// Determine one of: "READY", "NEARLY_READY", "DEVELOPING", "NOT_READY".
+// - Use "READY" only when the candidate has demonstrated sufficient competence independently for the target role and difficulty level.
+// - Candidates scoring below 80 overall or below 80 in technical competency must NOT be classified as "READY".
+
+// QUESTION-LEVEL EVIDENCE AUDIT:
+// For each question, evaluate:
+// - "evidenceLevel": "INDEPENDENT" | "PROMPTED" | "PARTIAL" | "NOT_DEMONSTRATED" | "INCORRECT"
+// - "whatWasMissing": Explicit explanation of missing evidence or gaps.
+// - "idealAnswerSample": Role and difficulty appropriate target answer.
+
+// JSON OUTPUT REQUIREMENT:
+// Return valid, raw JSON only. Do NOT include markdown syntax (\`\`\`json) or commentary outside the JSON.
+
+// SCHEMA:
+// {
+//   "overallScore": number,
+//   "technicalScore": number,
+//   "technicalKnowledgeScore": number,
+//   "interviewReadinessScore": number,
+//   "behavioralScore": number,
+//   "communicationScore": number,
+//   "readinessStatus": "READY" | "NEARLY_READY" | "DEVELOPING" | "NOT_READY",
+//   "readinessSummary": "string",
+//   "confidence": number,
+//   "strengths": ["string"],
+//   "areasForImprovement": ["string"],
+//   "priorityGaps": ["string"],
+//   "recommendedPreparation": ["string"],
+//   "questionBreakdown": [
+//     {
+//       "question": "string",
+//       "candidateAnswer": "string",
+//       "score": number,
+//       "evidenceLevel": "INDEPENDENT" | "PROMPTED" | "PARTIAL" | "NOT_DEMONSTRATED" | "INCORRECT",
+//       "feedback": "string",
+//       "whatWasMissing": "string",
+//       "idealAnswerSample": "string"
+//     }
+//   ]
+// }
+
+// QUALITY CONTROL BEFORE RETURNING:
+// - Did I score what was actually demonstrated?
+// - Did I avoid assuming unproven knowledge?
+// - Did I distinguish independent answers from prompted answers?
+// - Does readinessStatus agree with scores and the Technical Gate rule?`;
+
+//     const userPrompt = `FULL INTERVIEW TRANSCRIPT FOR EVALUATION:\n${JSON.stringify(
+//       fullTranscript,
+//       null,
+//       2
+//     )}`;
+
+//     // -------------------------------------------------------------------------
+//     // 3. EXECUTE AI EVALUATION VIA AI CLIENT
+//     // -------------------------------------------------------------------------
+
+//     try {
+//       const aiResult = await generateCompletion({
+//         messages: [
+//           { role: "system" as const, content: systemPrompt },
+//           { role: "user" as const, content: userPrompt },
+//         ],
+//         temperature: 0.1, // Deterministic scoring precision
+//         maxTokens: 3000,
+//         feature: "mock_interview_evaluation",
+//         userId: auth.uid,
+//         sessionId,
+//       });
+
+//       const rawText = aiResult.text?.trim() || "";
+
+//       if (!rawText) {
+//         throw new Error("AI provider returned an empty evaluation response.");
+//       }
+
+//       // Sanitize potential markdown fences
+//       const cleanJsonText = rawText
+//         .replace(/```json/gi, "")
+//         .replace(/```/g, "")
+//         .trim();
+
+//       let scorecard: any;
+
+//       try {
+//         scorecard = JSON.parse(cleanJsonText);
+//       } catch (jsonError) {
+//         logger.error("AI evaluation output failed JSON parsing:", {
+//           error: jsonError,
+//           sessionId,
+//           rawText,
+//         });
+
+//         throw new Error("The AI evaluation response was not valid JSON.");
+//       }
+
+//       // -------------------------------------------------------------------------
+//       // 4. SCORE & GATE VALIDATION
+//       // -------------------------------------------------------------------------
+
+//       const requiredNumericFields = [
+//         "overallScore",
+//         "technicalScore",
+//         "technicalKnowledgeScore",
+//         "interviewReadinessScore",
+//         "behavioralScore",
+//         "communicationScore",
+//       ];
+
+//       for (const field of requiredNumericFields) {
+//         const val = scorecard[field];
+//         if (typeof val !== "number" || val < 0 || val > 100) {
+//           logger.warn(`Score field ${field} invalid (${val}), clamping to 0-100 range.`);
+//           scorecard[field] = typeof val === "number" ? Math.max(0, Math.min(100, val)) : 0;
+//         }
+//       }
+
+//       // STRICT TECHNICAL READINESS GATE ENFORCEMENT
+//       // Communication/behavioral scores cannot override a technical deficiency
+//       if (
+//         (scorecard.technicalScore < 80 || scorecard.technicalKnowledgeScore < 80) &&
+//         scorecard.readinessStatus === "READY"
+//       ) {
+//         scorecard.readinessStatus = "NEARLY_READY";
+//         scorecard.readinessSummary +=
+//           " (Note: Readiness status adjusted to NEARLY_READY due to unfulfilled technical competency threshold).";
+//       }
+
+//       // -------------------------------------------------------------------------
+//       // 5. FIRESTORE PERSISTENCE
+//       // -------------------------------------------------------------------------
+
+//       const db = admin.firestore();
+
+//       // Finalize Session Document
+//       if (sessionId) {
+//         await db
+//           .collection("ai_interviews")
+//           .doc(sessionId)
+//           .set(
+//             {
+//               scorecard,
+//               difficulty,
+//               targetRole,
+//               status: "completed",
+//               completedAt: admin.firestore.FieldValue.serverTimestamp(),
+
+//               // Telemetry & Model Provenance
+//               aiProvider: aiResult.provider,
+//               modelUsed: aiResult.modelUsed,
+//               fallbackUsed: aiResult.fallbackUsed,
+//               fallbackAttempts: aiResult.fallbackAttempts,
+//               durationMs: aiResult.durationMs,
+//               updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+//             },
+//             { merge: true }
+//           );
+//       }
+
+//       // Update Learner Metric Profile
+//       const targetLearnerId = learnerId || auth.uid;
+//       const learnerRef = db.collection("learners").doc(targetLearnerId);
+//       const learnerSnap = await learnerRef.get();
+
+//       if (learnerSnap.exists) {
+//         await learnerRef.update({
+//           employabilityScore: scorecard.overallScore || 0,
+//           latestInterviewScore: scorecard.overallScore || 0,
+//           technicalScore: scorecard.technicalScore || 0,
+//           technicalKnowledgeScore: scorecard.technicalKnowledgeScore || 0,
+//           interviewReadinessScore: scorecard.interviewReadinessScore || 0,
+//           behavioralScore: scorecard.behavioralScore || 0,
+//           communicationScore: scorecard.communicationScore || 0,
+//           readinessStatus: scorecard.readinessStatus || "NOT_READY",
+//           lastInterviewAt: admin.firestore.FieldValue.serverTimestamp(),
+//         });
+//       }
+
+//       // -------------------------------------------------------------------------
+//       // 6. RETURN AUDITED SCORECARD + TELEMETRY
+//       // -------------------------------------------------------------------------
+
+//       return {
+//         success: true,
+//         scorecard,
+//         provider: aiResult.provider,
+//         modelUsed: aiResult.modelUsed,
+//         fallbackUsed: aiResult.fallbackUsed,
+//         fallbackAttempts: aiResult.fallbackAttempts,
+//         durationMs: aiResult.durationMs,
+//       };
+//     } catch (error: any) {
+//       logger.error("Error evaluating mock interview:", {
+//         error: error?.message || error,
+//         userId: auth.uid,
+//         learnerId: learnerId || auth.uid,
+//         sessionId,
+//         targetRole,
+//         difficulty,
+//       });
+
+//       throw new HttpsError(
+//         "internal",
+//         error?.message || "Failed to evaluate mock interview transcript."
+//       );
+//     }
+//   }
+// );
+
+// ============================================================================
+// 1. AI MOCK INTERVIEW ENGINE MODULE (EVIDENCE-BASED ASSESSOR)
+// ============================================================================
+export {
+  generateInterviewTurn,
+  evaluateMockInterview,
+  generateSpeech,
+} from "./modules/interviewEngine";
