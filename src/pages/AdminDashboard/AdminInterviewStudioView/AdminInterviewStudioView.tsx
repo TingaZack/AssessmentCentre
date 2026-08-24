@@ -40,7 +40,7 @@ export const AdminInterviewStudioView: React.FC = () => {
     const [selectedInterview, setSelectedInterview] = useState<any | null>(null);
     const [adminNotes, setAdminNotes] = useState('');
 
-    // 🚀 FIXED: Fetch once on mount to prevent toast reference triggers resetting expanded cohorts
+    // Fetch once on mount to prevent toast reference triggers resetting expanded cohorts
     useEffect(() => {
         let isMounted = true;
 
