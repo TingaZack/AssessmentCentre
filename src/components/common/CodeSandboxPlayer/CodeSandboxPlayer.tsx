@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
     Code, Maximize, Minimize, CheckCircle, Play, Loader2, Plus, X, Trash2, Pencil,
-    FilePlus, Download, Github, FolderArchive, RefreshCw, AlertTriangle, ScrollText, SquareTerminal
+    FilePlus, Download, Github, FolderArchive, RefreshCw, AlertTriangle, ScrollText, SquareTerminal, ShieldAlert
 } from 'lucide-react';
 import {
     SandpackProvider,
@@ -24,7 +24,7 @@ import { createPortal } from 'react-dom';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { getAnalytics, logEvent } from 'firebase/analytics';
 import { trace } from 'firebase/performance';
-import { getStorage, ref as fbStorageRef, getBytes } from 'firebase/storage';
+import { getStorage, ref as fbStorageRef, getBytes, uploadString } from 'firebase/storage';
 import { db, perf } from '../../../lib/firebase';
 
 export interface SandboxFileMap {
@@ -85,28 +85,18 @@ const reportSandboxCrash = async (errorName: string, errorMessage: string, error
     }
 };
 
-// ════════════════════════════════════════════════════════════════════════════
-// ⏱️ FIREBASE PERFORMANCE TRACING HELPER
-// ════════════════════════════════════════════════════════════════════════════
 const measurePerformance = async <T,>(
     traceName: string,
     asyncFn: () => Promise<T>,
     attributes?: Record<string, string>
 ): Promise<T> => {
-    if (!perf) {
-        return await asyncFn();
-    }
-
+    if (!perf) return await asyncFn();
     const customTrace = trace(perf, traceName);
-
     if (attributes) {
         Object.entries(attributes).forEach(([key, value]) => {
-            if (value !== undefined && value !== null) {
-                customTrace.putAttribute(key, String(value));
-            }
+            if (value !== undefined && value !== null) customTrace.putAttribute(key, String(value));
         });
     }
-
     customTrace.start();
     try {
         const result = await asyncFn();
@@ -124,6 +114,30 @@ const sanitizeBlockId = (id: string | undefined): string => {
     return clean || 'mlab-default';
 };
 
+const isSensitivePath = (relPath: string) => {
+    const fileName = relPath.split('/').filter(Boolean).pop() || '';
+    return fileName === '.env' || fileName.startsWith('.env.');
+};
+
+const envConsentKey = (blockId: string, path: string) => `mlab_env_consent_${blockId}_${path}`;
+const envContentKey = (blockId: string, path: string) => `mlab_env_local_${blockId}_${path}`;
+
+const loadLocalOnlyEnvFiles = (blockId: string): Record<string, string> => {
+    const out: Record<string, string> = {};
+    try {
+        const prefix = `mlab_env_local_${blockId}_`;
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i)!;
+            if (key.startsWith(prefix)) {
+                const path = key.slice(prefix.length);
+                const val = localStorage.getItem(key);
+                if (val !== null) out[path] = val;
+            }
+        }
+    } catch { }
+    return out;
+};
+
 const SYNC_IGNORE_SEGMENTS = ['node_modules', '.git', 'dist', '.bin', '.vite', '.cache', '.npm-cache', '__MACOSX'];
 const SYNC_IGNORE_FILES = ['package-lock.json', 'yarn.lock', 'pnpm-lock.yaml', '.DS_Store', 'Thumbs.db'];
 const SYNC_IGNORE_EXTS = ['.psd', '.ai', '.xd', '.sketch', '.fig', '.pdf', '.mp4', '.mov', '.zip', '.rar', '.tar', '.gz', '.7z'];
@@ -134,7 +148,6 @@ const shouldIgnorePath = (relPath: string) => {
     const fileName = parts[parts.length - 1] || '';
     if (fileName.startsWith('._')) return true;
     if (SYNC_IGNORE_FILES.includes(fileName)) return true;
-    if (fileName.endsWith('.log')) return true;
     if (SYNC_IGNORE_EXTS.some(ext => fileName.toLowerCase().endsWith(ext))) return true;
     return false;
 };
@@ -146,24 +159,19 @@ const makeWellFormed = (str: string): string => {
 
 export const sanitizeProjectFiles = (rawFiles: Record<string, string>): Record<string, string> => {
     if (!rawFiles || typeof rawFiles !== 'object') return {};
-
     const cleanMap: Record<string, string> = {};
     const validPaths: string[] = [];
 
     Object.keys(rawFiles).forEach((path) => {
-        const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+        const normalizedPath = '/' + path.replace(/^\/+/, '').replace(/\/+/g, '/');
         if (shouldIgnorePath(normalizedPath)) return;
-
         cleanMap[normalizedPath] = rawFiles[path];
         validPaths.push(normalizedPath);
     });
 
     if (validPaths.length === 0) return {};
 
-    const rootSegments = new Set(
-        validPaths.map((p) => p.split('/').filter(Boolean)[0])
-    );
-
+    const rootSegments = new Set(validPaths.map((p) => p.split('/').filter(Boolean)[0]));
     let prefixToStrip = '';
     if (rootSegments.size === 1) {
         const singleFolder = Array.from(rootSegments)[0];
@@ -171,7 +179,6 @@ export const sanitizeProjectFiles = (rawFiles: Record<string, string>): Record<s
             const parts = p.split('/').filter(Boolean);
             return parts.length > 1 && parts[0] === singleFolder;
         });
-
         if (allHaveSubpaths) {
             prefixToStrip = `/${singleFolder}`;
         }
@@ -183,19 +190,127 @@ export const sanitizeProjectFiles = (rawFiles: Record<string, string>): Record<s
         if (prefixToStrip && newPath.startsWith(prefixToStrip)) {
             newPath = newPath.slice(prefixToStrip.length);
         }
-        if (!newPath.startsWith('/')) {
-            newPath = `/${newPath}`;
-        }
+        newPath = '/' + newPath.replace(/^\/+/, '').replace(/\/+/g, '/');
         finalMap[newPath] = cleanMap[path];
     });
 
     return finalMap;
 };
 
-const createSafeSnapshot = (files: Record<string, string>, onDropped?: (path: string) => void) => {
+// ════════════════════════════════════════════════════════════════════════════
+// 🧠 DYNAMIC AST & FILESYSTEM RESOLVER HELPERS
+// ════════════════════════════════════════════════════════════════════════════
+const getRelativePath = (fromFile: string, toFile: string): string => {
+    const fromParts = fromFile.split('/').filter(Boolean).slice(0, -1);
+    const toParts = toFile.split('/').filter(Boolean);
+
+    while (fromParts.length > 0 && toParts.length > 0 && fromParts[0] === toParts[0]) {
+        fromParts.shift();
+        toParts.shift();
+    }
+
+    const up = fromParts.map(() => '..');
+    const rel = [...up, ...toParts].join('/');
+    return rel.startsWith('.') ? rel : `./${rel}`;
+};
+
+const discoverPackageDependencies = (files: Record<string, string>): Record<string, string> => {
+    const detected: Record<string, string> = {};
+    const importRegex = /(?:import|from|require)\s*\(?['"]([^'"\.\/][^'"]*)['"]\)?/g;
+
+    Object.entries(files).forEach(([path, code]) => {
+        if (path.includes('.config.') || path.includes('eslint') || path.includes('tailwind') || path.includes('postcss') || path.endsWith('.d.ts')) return;
+        if (!/\.(jsx?|tsx?|mjs)$/i.test(path)) return;
+
+        let match;
+        while ((match = importRegex.exec(code)) !== null) {
+            let pkg = match[1];
+            if (pkg.startsWith('@')) {
+                pkg = pkg.split('/').slice(0, 2).join('/');
+            } else {
+                pkg = pkg.split('/')[0];
+            }
+            if (pkg && !['fs', 'path', 'crypto', 'http', 'events', 'react', 'react-dom'].includes(pkg)) {
+                detected[pkg] = '*';
+            }
+        }
+    });
+
+    return detected;
+};
+
+const repairRelativeImports = (files: Record<string, string>): void => {
+    const fileKeys = Object.keys(files);
+
+    fileKeys.forEach((filePath) => {
+        if (!/\.(jsx?|tsx?|html|css)$/i.test(filePath)) return;
+        let code = files[filePath];
+        const importRegex = /(import\s+(?:[\s\S]*?\s+from\s+)?['"]|src=["'])(\.\/[^'"]+|\.\.\/[^'"]+)(['"])/g;
+
+        const updatedCode = code.replace(importRegex, (fullMatch, prefix, relPath, suffix) => {
+            const currentDirParts = filePath.split('/').filter(Boolean).slice(0, -1);
+            const relParts = relPath.split('/');
+            const resolvedParts = [...currentDirParts];
+
+            for (const part of relParts) {
+                if (part === '.') continue;
+                if (part === '..') resolvedParts.pop();
+                else resolvedParts.push(part);
+            }
+
+            const targetPath = '/' + resolvedParts.filter(Boolean).join('/');
+            if (files[targetPath]) return fullMatch;
+
+            const targetBasename = relPath.split('/').pop() || '';
+            const matchOnDisk = fileKeys.find(k => k.endsWith('/' + targetBasename) || k === '/' + targetBasename);
+
+            if (matchOnDisk) {
+                const correctedRelPath = getRelativePath(filePath, matchOnDisk);
+                return `${prefix}${correctedRelPath}${suffix}`;
+            }
+
+            return fullMatch;
+        });
+
+        files[filePath] = updatedCode;
+    });
+};
+
+const repairHtmlEntryPoint = (files: Record<string, string>): void => {
+    const htmlKey = Object.keys(files).find(p => p.toLowerCase().endsWith('/index.html') || p.toLowerCase() === '/index.html');
+    if (!htmlKey || !files[htmlKey]) return;
+
+    let html = files[htmlKey];
+    const scriptSrcMatch = html.match(/<script[^>]+src=["']([^"']+)["']/i);
+
+    if (scriptSrcMatch) {
+        const rawSrc = scriptSrcMatch[1];
+        const normalizedSrc = '/' + rawSrc.replace(/^\/+/, '');
+
+        if (!files[normalizedSrc]) {
+            const candidates = Object.keys(files).filter(p => /\.(jsx?|tsx?)$/i.test(p));
+            const bestMatch = candidates.find(p => {
+                const code = files[p] || '';
+                return code.includes('createRoot') || code.includes('ReactDOM') || code.includes('render(');
+            }) || candidates.find(p => p.includes('main') || p.includes('index')) || candidates[0];
+
+            if (bestMatch) {
+                const relSrc = getRelativePath(htmlKey, bestMatch);
+                files[htmlKey] = html.replace(rawSrc, relSrc);
+            }
+        }
+    }
+};
+
+const createSafeSnapshot = (
+    files: Record<string, string>,
+    consentMap: Record<string, 'saved' | 'local'> = {},
+    onDropped?: (path: string) => void
+) => {
     const safeFiles: Record<string, string> = {};
     for (const [path, content] of Object.entries(files)) {
         if (shouldIgnorePath(path)) continue;
+        if (isSensitivePath(path) && consentMap[path] !== 'saved') continue;
         if (content.length > 500000) {
             console.warn(`[IDE SNAPSHOT] File ${path} is too large. Excluding from auto-save.`);
             onDropped?.(path);
@@ -328,13 +443,40 @@ const resolveSandpackTemplate = (dbTemplateKey?: string): any => {
     return templateMap[dbTemplateKey] || dbTemplateKey;
 };
 
-const processProjectData = (rawFiles: Record<string, string>, targetPort: number, templateType: string, blockId: string) => {
+// ════════════════════════════════════════════════════════════════════════════
+// 🚀 DYNAMIC PROJECT PROCESSOR & AUTOMATIC VITE CONFIG GENERATION
+// ════════════════════════════════════════════════════════════════════════════
+const processProjectData = (
+    rawFiles: Record<string, string>,
+    targetPort: number,
+    templateType: string,
+    blockId: string
+): Record<string, string> => {
     const out = sanitizeProjectFiles(rawFiles);
-    const isReact = templateType === 'vite-react' || templateType === 'create-react-app' || templateType === 'vite-react-ts';
-    const isNode = templateType === 'node';
-    const isVanilla = !isReact && !isNode;
 
-    const hasUserFiles = Object.keys(out).some(p => !['/package.json', '/vite.config.js', '/vite.config.ts'].includes(p));
+    repairRelativeImports(out);
+    repairHtmlEntryPoint(out);
+
+    // 🚀 SMART REACT FIX: Force-inject `import React` to prevent "React is not defined" in learner code
+    Object.keys(out).forEach(filePath => {
+        if (/\.(jsx|tsx)$/i.test(filePath)) {
+            const content = out[filePath];
+            if (!content.includes("from 'react'") && !content.includes('from "react"')) {
+                out[filePath] = `import React from 'react';\n${content}`;
+            }
+        }
+    });
+
+    // SMART GHOST PURGE: If a /src app structure exists, purge confusing root-level duplicates
+    const hasSrcApp = Object.keys(out).some(p => p.startsWith('/src/App.') || p.startsWith('/src/main.') || p.startsWith('/src/index.'));
+    if (hasSrcApp) {
+        const rootGhosts = ['/App.js', '/App.jsx', '/App.ts', '/App.tsx', '/index.js', '/index.jsx', '/index.ts', '/index.tsx', '/styles.css', '/style.css'];
+        rootGhosts.forEach(g => {
+            if (out[g]) delete out[g];
+        });
+    }
+
+    const discoveredDeps = discoverPackageDependencies(out);
 
     if (!out['/package.json']) {
         out['/package.json'] = JSON.stringify({ name: "mlab-workspace-project", type: "module" }, null, 2);
@@ -347,96 +489,71 @@ const processProjectData = (rawFiles: Record<string, string>, targetPort: number
         pkg.devDependencies = pkg.devDependencies || {};
         pkg.scripts = pkg.scripts || {};
 
-        if (isNode) {
-            pkg.scripts.dev = pkg.scripts.dev || `node index.js`;
-        } else {
-            pkg.scripts.dev = `vite --port ${targetPort}`;
-            pkg.devDependencies['vite'] = pkg.devDependencies['vite'] || "^4.5.3";
+        Object.keys(discoveredDeps).forEach(dep => {
+            if (!pkg.dependencies[dep] && !pkg.devDependencies[dep]) {
+                pkg.dependencies[dep] = "*";
+            }
+        });
+
+        if (!pkg.scripts.dev && !pkg.scripts.start) {
+            const isNode = templateType === 'node';
+            if (isNode) {
+                pkg.scripts.dev = `node index.js`;
+            } else {
+                pkg.scripts.dev = `vite --port ${targetPort}`;
+                pkg.devDependencies['vite'] = pkg.devDependencies['vite'] || "^4.5.3";
+            }
+        } else if (pkg.scripts.dev && pkg.scripts.dev.includes('vite') && !pkg.scripts.dev.includes('--port')) {
+            pkg.scripts.dev = `${pkg.scripts.dev} --port ${targetPort}`;
         }
 
-        if (isVanilla) {
-            delete pkg.dependencies['react'];
-            delete pkg.dependencies['react-dom'];
-            delete pkg.devDependencies['@vitejs/plugin-react'];
+        const hasVite = pkg.devDependencies['vite'] || pkg.dependencies['vite'] || out['/vite.config.js'] || out['/vite.config.ts'];
+        const hasReact = pkg.dependencies['react'] || pkg.devDependencies['react'] || templateType.includes('react') || discoveredDeps['react'] || Object.keys(out).some(p => /\.(jsx|tsx)$/i.test(p));
+
+        if (hasVite && hasReact) {
+            pkg.dependencies['react'] = pkg.dependencies['react'] || "*";
+            pkg.dependencies['react-dom'] = pkg.dependencies['react-dom'] || "*";
+            pkg.devDependencies['@vitejs/plugin-react'] = pkg.devDependencies['@vitejs/plugin-react'] || "^4.2.1";
         }
 
         delete pkg.engines;
         delete pkg.packageManager;
         out['/package.json'] = JSON.stringify(pkg, null, 2);
-    } catch (e) { }
+    } catch (e) {
+        /* Ignore malformed package.json */
+    }
 
-    if (isReact) {
-        if (!out['/vite.config.js'] && !out['/vite.config.ts']) {
-            out['/vite.config.js'] = `import { defineConfig } from 'vite';\nimport react from '@vitejs/plugin-react';\n\nexport default defineConfig({\n  plugins: [react()],\n  server: {\n    port: ${targetPort},\n    hmr: {\n      clientPort: 443\n    }\n  }\n});\n`;
-        }
+    const hasExistingConfig = Object.keys(out).some(p =>
+        p.includes('.config.') || p.endsWith('rc') || p.endsWith('rc.js') || p.endsWith('rc.json')
+    );
 
-        if (!hasUserFiles) {
-            const isTSProject = Object.keys(out).some(p => p.endsWith('.tsx') || p.endsWith('.ts'));
-            const ext = isTSProject ? 'tsx' : 'jsx';
-
-            if (!out[`/src/App.${ext}`]) out[`/src/App.${ext}`] = 'export default function App() {\n  return <h1>Vite + React Canvas Online!</h1>;\n}';
-            if (!out[`/src/main.${ext}`]) {
-                out[`/src/main.${ext}`] = `import React from "react";\nimport ReactDOM from "react-dom/client";\nimport App from "./App.${ext}";\nimport "./index.css";\n\nReactDOM.createRoot(document.getElementById("root")).render(<App />);`;
-            }
-            if (!out['/src/index.css']) out['/src/index.css'] = `body { font-family: sans-serif; padding: 2rem; }`;
-        }
-
-        if (out['/App.js'] && !out['/src/App.jsx']) out['/src/App.jsx'] = out['/App.js'];
-        ['/index.js', '/index.jsx', '/index.ts', '/index.tsx', '/App.js', '/App.tsx'].forEach(g => delete out[g]);
-
-    } else if (isVanilla) {
-        const reactGhosts = [
-            '/App.jsx', '/App.tsx', '/App.js',
-            '/src/App.jsx', '/src/App.tsx', '/src/App.js',
-            '/src/main.jsx', '/src/main.tsx', '/src/main.js',
-            '/src/index.css', '/vite.config.js', '/vite.config.ts'
-        ];
-        reactGhosts.forEach(g => delete out[g]);
-
-        if (out['/index.js'] && out['/index.js'].includes('Hello Vanilla!')) {
-            delete out['/index.js'];
-        }
-        if (out['/index.html'] && out['/index.html'].includes('Vanilla App') && out['/index.html'].includes('<div id="app"></div>')) {
-            delete out['/index.html'];
-        }
-
-        if (!out['/vite.config.js'] && !out['/vite.config.ts']) {
+    if (!hasExistingConfig && (out['/package.json']?.includes('vite'))) {
+        const hasReact = out['/package.json']?.includes('react');
+        if (hasReact) {
+            out['/vite.config.js'] = `import { defineConfig } from 'vite';\nimport react from '@vitejs/plugin-react';\n\nexport default defineConfig({\n  plugins: [react()],\n  esbuild: {\n    jsx: 'automatic'\n  },\n  server: {\n    port: ${targetPort},\n    hmr: {\n      clientPort: 443\n    }\n  }\n});\n`;
+        } else {
             out['/vite.config.js'] = `import { defineConfig } from 'vite';\n\nexport default defineConfig({\n  server: {\n    port: ${targetPort},\n    hmr: {\n      clientPort: 443\n    }\n  }\n});\n`;
-        }
-
-        if (!out['/index.html']) {
-            const fallbackHtml = Object.keys(out).find(p => p.endsWith('.html') && p !== '/index.html');
-
-            if (fallbackHtml) {
-                out['/index.html'] = `<!DOCTYPE html><html><head><meta http-equiv="refresh" content="0; url=${fallbackHtml}" /></head><body>Redirecting to ${fallbackHtml}...</body></html>`;
-            } else {
-                out['/index.html'] = `<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8">\n<title>Vanilla App</title>\n</head>\n<body>\n  <div id="app"></div>\n  <script type="module" src="/index.js"></script>\n</body>\n</html>`;
-                if (!out['/index.js']) out['/index.js'] = `document.getElementById('app').innerHTML = '<h1>Hello Vanilla!</h1>';`;
-            }
         }
     }
 
     const consoleInterceptor = `\n<script>\n  (function() {\n    const orig = { ...console };\n    ['log', 'warn', 'error', 'info'].forEach(m => {\n      console[m] = (...args) => {\n        orig[m](...args);\n        try { window.parent.postMessage({ source: 'preview-console', blockId: '${blockId}', m, p: args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ') }, '*'); } catch(e) {}\n      };\n    });\n    window.addEventListener('error', e => window.parent.postMessage({ source: 'preview-console', blockId: '${blockId}', m: 'error', p: e.message }, '*'));\n  })();\n</script>\n`;
 
-    let htmlKey = out['/index.html'] ? '/index.html' : out['/public/index.html'] ? '/public/index.html' : null;
-    if (!htmlKey) htmlKey = Object.keys(out).find(p => p.endsWith('/index.html')) || null;
-
+    const htmlKey = Object.keys(out).find(p => p.toLowerCase().endsWith('/index.html') || p.toLowerCase() === '/index.html');
     if (htmlKey && out[htmlKey]) {
         let html = out[htmlKey];
-        if (!html.includes("source: 'preview-console'") && !html.includes("http-equiv=\"refresh\"")) {
-            if (html.includes('<head>')) {
-                html = html.replace('<head>', `<head>${consoleInterceptor}`);
-            } else if (html.includes('<html>')) {
-                html = html.replace('<html>', `<html><head>${consoleInterceptor}</head>`);
-            } else {
-                html = `${consoleInterceptor}${html}`;
-            }
+
+        // 🚀 SMART HTML FIX: If the user uploaded a broken index.html (like just an SVG), wrap it so Vite still boots
+        if (!html.includes('</body>') && !html.includes('</html>')) {
+            html = `<!DOCTYPE html>\n<html lang="en">\n<head>\n  <meta charset="UTF-8">\n  <title>App</title>\n</head>\n<body>\n  <div id="root">\n${html}\n  </div>\n</body>\n</html>`;
         }
-        out[htmlKey] = html;
-    } else if (isReact && !hasUserFiles && !out['/index.html']) {
-        const entryPoint = templateType === 'vite-react' ? '/src/main' : '/src/index';
-        const ext = out['/src/App.tsx'] ? 'tsx' : 'jsx';
-        out['/index.html'] = `<!DOCTYPE html>\n<html lang="en">\n<head>${consoleInterceptor}</head>\n<body>\n  <div id="root"></div>\n  <script type="module" src="${entryPoint}.${ext}"></script>\n</body>\n</html>`;
+
+        if (!html.includes("source: 'preview-console'")) {
+            out[htmlKey] = html.includes('<head>')
+                ? html.replace('<head>', `<head>${consoleInterceptor}`)
+                : `${consoleInterceptor}${html}`;
+        } else {
+            out[htmlKey] = html;
+        }
     }
 
     return out;
@@ -453,7 +570,13 @@ console.log("  • \\x1b[1;34mExport:\\x1b[0m Click \\x1b[1;32mDownload ZIP\\x1b
 const iconBtnStyle: React.CSSProperties = { background: 'transparent', border: 'none', color: '#858585', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '4px', borderRadius: '4px', transition: 'color 0.2s' };
 const FILE_ACTIONS_BAR_STYLE: React.CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#252526', padding: '6px 16px', borderBottom: '1px solid #333', flexShrink: 0, minHeight: '36px' };
 
-const SandpackFileActions: React.FC<{ readOnly: boolean, canonicalKeysRef: React.MutableRefObject<Set<string>>, wcInstance: WebContainer | null, blockId: string }> = ({ readOnly, canonicalKeysRef, wcInstance, blockId }) => {
+const SandpackFileActions: React.FC<{
+    readOnly: boolean,
+    canonicalKeysRef: React.MutableRefObject<Set<string>>,
+    wcInstance: WebContainer | null,
+    blockId: string,
+    onSensitiveFileDetected?: (path: string, content: string) => void
+}> = ({ readOnly, canonicalKeysRef, wcInstance, blockId, onSensitiveFileDetected }) => {
     const { sandpack } = useSandpack();
 
     const [action, setAction] = useState<'idle' | 'add' | 'rename'>('idle');
@@ -470,16 +593,21 @@ const SandpackFileActions: React.FC<{ readOnly: boolean, canonicalKeysRef: React
             if (!path.startsWith('/')) path = '/' + path;
             if (sandpack.files[path]) { window.alert("A file with this path already exists."); return; }
 
-            if (typeof sandpack.addFile === 'function') sandpack.addFile(path, "// New file\n");
-            else sandpack.updateFile(path, "// New file\n");
+            const defaultContent = "// New file\n";
+            if (typeof sandpack.addFile === 'function') sandpack.addFile(path, defaultContent);
+            else sandpack.updateFile(path, defaultContent);
             if (typeof sandpack.setActiveFile === 'function') sandpack.setActiveFile(path);
             canonicalKeysRef.current.add(path);
+
+            if (isSensitivePath(path)) {
+                onSensitiveFileDetected?.(path, defaultContent);
+            }
 
             if (wcInstance) {
                 try {
                     const parts = path.split('/').filter(Boolean);
                     if (parts.length > 1) await wcInstance.fs.mkdir(`${WORK_DIR}/` + parts.slice(0, -1).join('/'), { recursive: true });
-                    await wcInstance.fs.writeFile(`${WORK_DIR}${path}`, "// New file\n");
+                    await wcInstance.fs.writeFile(`${WORK_DIR}${path}`, defaultContent);
                 } catch { }
             }
         } else if (action === 'rename') {
@@ -497,6 +625,10 @@ const SandpackFileActions: React.FC<{ readOnly: boolean, canonicalKeysRef: React
                 }
                 canonicalKeysRef.current.add(newPath);
                 canonicalKeysRef.current.delete(oldPath);
+
+                if (isSensitivePath(newPath)) {
+                    onSensitiveFileDetected?.(newPath, content);
+                }
 
                 if (wcInstance) {
                     try {
@@ -541,7 +673,13 @@ const SandpackFileActions: React.FC<{ readOnly: boolean, canonicalKeysRef: React
     );
 };
 
-const WebContainerSyncBridge: React.FC<{ wcInstance: WebContainer | null, blockId: string, readOnly: boolean, canonicalKeysRef: React.MutableRefObject<Set<string>> }> = ({ wcInstance, blockId, readOnly, canonicalKeysRef }) => {
+const WebContainerSyncBridge: React.FC<{
+    wcInstance: WebContainer | null,
+    blockId: string,
+    readOnly: boolean,
+    canonicalKeysRef: React.MutableRefObject<Set<string>>,
+    onSensitiveFileDetected?: (path: string, content: string) => void
+}> = ({ wcInstance, blockId, readOnly, canonicalKeysRef, onSensitiveFileDetected }) => {
     const { sandpack } = useSandpack();
     const lastCodeRef = useRef<Record<string, string>>({});
     const isWritingRef = useRef<boolean>(false);
@@ -596,7 +734,7 @@ const WebContainerSyncBridge: React.FC<{ wcInstance: WebContainer | null, blockI
         let debounceTimer: ReturnType<typeof setTimeout> | null = null;
         let watcher: { close?: () => void } | null = null;
 
-        const walk = async (dir: string, relBase: string, acc: Record<string, string>) => {
+        const walk = async (dir: string, relBase: string, acc: Record<string, string>, seen: Set<string>) => {
             let entries: any[];
             try {
                 entries = await wcInstance.fs.readdir(dir, { withFileTypes: true } as any);
@@ -608,15 +746,26 @@ const WebContainerSyncBridge: React.FC<{ wcInstance: WebContainer | null, blockI
                 const relPath = `${relBase}/${name}`;
                 if (shouldIgnorePath(relPath)) continue;
 
+                seen.add(relPath);
+
                 if (isDir) {
-                    await walk(`${dir}/${name}`, relPath, acc);
+                    await walk(`${dir}/${name}`, relPath, acc, seen);
                 } else {
                     const isBinaryFile = ['.png', '.jpg', '.jpeg', '.gif', '.ico', '.webp', '.woff', '.woff2', '.ttf', '.otf', '.eot', '.mp3', '.mp4', '.pdf', '.zip', '.rar', '.tar', '.gz', '.7z'].some(ext => name.toLowerCase().endsWith(ext));
-                    if (isBinaryFile) continue;
 
                     try {
-                        const content = await wcInstance.fs.readFile(`${dir}/${name}`, 'utf-8');
-                        acc[relPath] = content;
+                        if (isBinaryFile) {
+                            const buffer = await wcInstance.fs.readFile(`${dir}/${name}`);
+                            const chunkSize = 0x8000;
+                            const chunks = [];
+                            for (let i = 0; i < buffer.length; i += chunkSize) {
+                                chunks.push(String.fromCharCode.apply(null, Array.from(buffer.subarray(i, i + chunkSize))));
+                            }
+                            acc[relPath] = `__mlab_base64__${btoa(chunks.join(''))}`;
+                        } else {
+                            const content = await wcInstance.fs.readFile(`${dir}/${name}`, 'utf-8');
+                            acc[relPath] = content;
+                        }
                     } catch { }
                 }
             }
@@ -627,7 +776,8 @@ const WebContainerSyncBridge: React.FC<{ wcInstance: WebContainer | null, blockI
             inFlight = true;
             try {
                 const diskFiles: Record<string, string> = {};
-                await walk(`/${blockId}`, '', diskFiles);
+                const seenPaths = new Set<string>();
+                await walk(`/${blockId}`, '', diskFiles, seenPaths);
 
                 for (const [relPath, content] of Object.entries(diskFiles)) {
                     if (!mounted) break;
@@ -635,10 +785,27 @@ const WebContainerSyncBridge: React.FC<{ wcInstance: WebContainer | null, blockI
                     if (content !== currentCode && content !== lastCodeRef.current[relPath]) {
                         lastCodeRef.current[relPath] = content;
                         canonicalKeysRef.current.add(relPath);
+
+                        if (isSensitivePath(relPath)) {
+                            onSensitiveFileDetected?.(relPath, content);
+                        }
+
                         if (sandpack.files[relPath] !== undefined) {
                             sandpack.updateFile(relPath, content);
                         } else if (typeof sandpack.addFile === 'function') {
                             sandpack.addFile(relPath, content);
+                        }
+                    }
+                }
+
+                // 🚀 ZERO-GHOST DELETION SYNC
+                for (const sandpackPath of Object.keys(sandpack.files)) {
+                    const cleanPath = sandpackPath.startsWith('/') ? sandpackPath : `/${sandpackPath}`;
+                    if (!seenPaths.has(cleanPath) && !shouldIgnorePath(cleanPath)) {
+                        delete lastCodeRef.current[cleanPath];
+                        canonicalKeysRef.current.delete(cleanPath);
+                        if (typeof sandpack.deleteFile === 'function') {
+                            sandpack.deleteFile(cleanPath);
                         }
                     }
                 }
@@ -669,7 +836,7 @@ const WebContainerSyncBridge: React.FC<{ wcInstance: WebContainer | null, blockI
             if (debounceTimer) clearTimeout(debounceTimer);
             if (watcher?.close) { try { watcher.close(); } catch { } }
         };
-    }, [wcInstance, blockId, sandpack, canonicalKeysRef, readOnly]);
+    }, [wcInstance, blockId, sandpack, canonicalKeysRef, onSensitiveFileDetected, readOnly]);
 
     return null;
 };
@@ -718,9 +885,53 @@ export const CodeSandboxPlayer: React.FC<CodeSandboxPlayerProps> = ({ block, lea
     const [githubUrl, setGithubUrl] = useState('');
     const [isFetchingGithub, setIsFetchingGithub] = useState(false);
 
+    // SENSITIVE (.ENV) FILE CONSENT QUEUE
+    const [pendingEnvQueue, setPendingEnvQueue] = useState<Array<{ path: string; content: string }>>([]);
+    const envConsentRef = useRef<Record<string, 'saved' | 'local'>>({});
+
     useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
 
     const safeBlockId = useMemo(() => sanitizeBlockId(block?.id), [block?.id]);
+
+    const queueEnvConsent = useCallback((path: string, content: string) => {
+        const cleanPath = path.startsWith('/') ? path : `/${path}`;
+        if (!isSensitivePath(cleanPath)) return;
+
+        if (envConsentRef.current[cleanPath]) return;
+
+        const storedConsent = localStorage.getItem(envConsentKey(safeBlockId, cleanPath)) as 'saved' | 'local' | null;
+        if (storedConsent === 'saved' || storedConsent === 'local') {
+            envConsentRef.current[cleanPath] = storedConsent;
+            return;
+        }
+
+        setPendingEnvQueue(prev => {
+            if (prev.some(item => item.path === cleanPath)) return prev;
+            return [...prev, { path: cleanPath, content }];
+        });
+    }, [safeBlockId]);
+
+    const resolveEnvConsent = useCallback((choice: 'saved' | 'local') => {
+        if (pendingEnvQueue.length === 0) return;
+        const currentItem = pendingEnvQueue[0];
+        const { path, content } = currentItem;
+
+        envConsentRef.current[path] = choice;
+
+        try {
+            localStorage.setItem(envConsentKey(safeBlockId, path), choice);
+            if (choice === 'local') {
+                localStorage.setItem(envContentKey(safeBlockId, path), content);
+            } else {
+                localStorage.removeItem(envContentKey(safeBlockId, path));
+            }
+        } catch (e) {
+            console.warn("localStorage quota or access error:", e);
+        }
+
+        setPendingEnvQueue(prev => prev.slice(1));
+        flushSaveRef.current(true);
+    }, [pendingEnvQueue, safeBlockId]);
 
     const assignedPort = useMemo(() => {
         let hash = 0;
@@ -742,6 +953,14 @@ export const CodeSandboxPlayer: React.FC<CodeSandboxPlayerProps> = ({ block, lea
         const rawFilesToLoad = (parsedFiles && Object.keys(parsedFiles).length > 0) ? parsedFiles : { ...(block?.initialFiles || {}) };
 
         const filesToLoad = sanitizeProjectFiles(rawFilesToLoad);
+
+        // Splice in local-only .env files from localStorage
+        const localEnvFiles = loadLocalOnlyEnvFiles(safeBlockId);
+        Object.entries(localEnvFiles).forEach(([path, content]) => {
+            filesToLoad[path] = content;
+            envConsentRef.current[path] = 'local';
+        });
+
         const tpl = getEffectiveTemplate(filesToLoad, block?.template);
 
         return {
@@ -759,7 +978,7 @@ export const CodeSandboxPlayer: React.FC<CodeSandboxPlayerProps> = ({ block, lea
 
     const [runId, setRunId] = useState(Date.now().toString());
 
-    // 🚀 MEASURED PROJECT LOAD SEQUENCE
+    // MEASURED PROJECT LOAD SEQUENCE
     useEffect(() => {
         let cancelled = false;
 
@@ -768,7 +987,7 @@ export const CodeSandboxPlayer: React.FC<CodeSandboxPlayerProps> = ({ block, lea
             const hasValidSnapshot = parsedFiles && Object.keys(parsedFiles).length > 0;
 
             if (hasValidSnapshot) {
-                const currentSerialized = createSafeSnapshot(latestFrontendFilesRef.current);
+                const currentSerialized = createSafeSnapshot(latestFrontendFilesRef.current, envConsentRef.current);
                 const incomingSerialized = JSON.stringify(parsedFiles);
 
                 if (currentSerialized === incomingSerialized || incomingSerialized === lastSavedSnapshotRef.current) {
@@ -780,7 +999,6 @@ export const CodeSandboxPlayer: React.FC<CodeSandboxPlayerProps> = ({ block, lea
 
             if (!hasValidSnapshot && Object.keys(rawFilesToLoad).length === 0 && block?.initialFilesStoragePath) {
                 try {
-                    // 🚀 PERFORMANCE TRACE: Storage Download Time
                     rawFilesToLoad = await measurePerformance(
                         'starter_code_storage_fetch',
                         async () => {
@@ -801,6 +1019,14 @@ export const CodeSandboxPlayer: React.FC<CodeSandboxPlayerProps> = ({ block, lea
             if (cancelled) return;
 
             const filesToLoad = sanitizeProjectFiles(rawFilesToLoad);
+
+            // Splice in local-only .env files from localStorage
+            const localEnvFiles = loadLocalOnlyEnvFiles(safeBlockId);
+            Object.entries(localEnvFiles).forEach(([path, content]) => {
+                filesToLoad[path] = content;
+                envConsentRef.current[path] = 'local';
+            });
+
             const tpl = getEffectiveTemplate(filesToLoad, block?.template);
             const processed = processProjectData(filesToLoad, assignedPort, tpl, safeBlockId);
 
@@ -848,13 +1074,19 @@ export const CodeSandboxPlayer: React.FC<CodeSandboxPlayerProps> = ({ block, lea
     const lastSavedSnapshotRef = useRef<string>('');
     const warnedDroppedFilesRef = useRef<Set<string>>(new Set());
 
-    // 🚀 MEASURED AUTO-SAVE DISPATCH
+    // MEASURED AUTO-SAVE DISPATCH WITH SENSITIVE FILE FILTER
     const flushSave = useCallback((isImmediate = false) => {
         if (!onChangeRef.current || readOnly) return;
 
         const filteredSnapshot: Record<string, string> = {};
         for (const [path, content] of Object.entries(latestFrontendFilesRef.current)) {
             filteredSnapshot[path] = content;
+
+            if (isSensitivePath(path) && envConsentRef.current[path] === 'local') {
+                try {
+                    localStorage.setItem(envContentKey(safeBlockId, path), content);
+                } catch { }
+            }
         }
 
         if (Object.keys(filteredSnapshot).length === 0) {
@@ -862,7 +1094,7 @@ export const CodeSandboxPlayer: React.FC<CodeSandboxPlayerProps> = ({ block, lea
             return;
         }
 
-        const serialized = createSafeSnapshot(filteredSnapshot, (path) => {
+        const serialized = createSafeSnapshot(filteredSnapshot, envConsentRef.current, (path) => {
             if (!warnedDroppedFilesRef.current.has(path)) {
                 warnedDroppedFilesRef.current.add(path);
                 toast?.error(`"${path}" is too large to save (max 500KB) and was left out of your saved project.`);
@@ -877,15 +1109,8 @@ export const CodeSandboxPlayer: React.FC<CodeSandboxPlayerProps> = ({ block, lea
             try { dependencies = JSON.parse(filteredSnapshot['/package.json']).dependencies || {}; } catch { }
         }
 
-        console.log(`💾 [IDE AUTO-SAVE TRIGGERED] Dispatching snapshot for block [${block?.id}] to parent component...`, {
-            isImmediate,
-            fileCount: Object.keys(filteredSnapshot).length,
-            filePaths: Object.keys(filteredSnapshot)
-        });
-
         const pendingSnapshot = serialized;
 
-        // 🚀 PERFORMANCE TRACE: Measure Snapshot Dispatch Execution
         measurePerformance(
             'ide_autosave_commit',
             async () => {
@@ -897,7 +1122,6 @@ export const CodeSandboxPlayer: React.FC<CodeSandboxPlayerProps> = ({ block, lea
             { blockId: safeBlockId, fileCount: String(Object.keys(filteredSnapshot).length) }
         ).then(() => {
             lastSavedSnapshotRef.current = pendingSnapshot;
-            console.log(`✅ [IDE AUTO-SAVE CONFIRMED] Code changes persisted for block [${block?.id}]`);
         }).catch((err: any) => {
             console.error('❌ [IDE AUTO-SAVE ERROR] Save rejected:', err);
             reportSandboxCrash('AutoSaveError', err.message || 'Firestore auto-save rejected', err.stack, { blockId: block?.id });
@@ -989,7 +1213,7 @@ export const CodeSandboxPlayer: React.FC<CodeSandboxPlayerProps> = ({ block, lea
         return () => observer.disconnect();
     }, [hasBeenVisible]);
 
-    // 🚀 WEBCONTAINER & TERMINAL BOOT SEQUENCE WITH PERFORMANCE TRACING
+    // WEBCONTAINER BOOT SEQUENCE
     useEffect(() => {
         if (!hasBeenVisible) return;
 
@@ -1036,9 +1260,6 @@ export const CodeSandboxPlayer: React.FC<CodeSandboxPlayerProps> = ({ block, lea
             const WORK_DIR = `/${safeBlockId}`;
 
             try {
-                console.log(`🚀 [IDE WEBCONTAINER] Booting WebContainer instance for block [${safeBlockId}]...`);
-
-                // 🚀 PERFORMANCE TRACE: WebContainer OS Boot & Mount Duration
                 const wc = await measurePerformance(
                     'webcontainer_boot_time',
                     async () => {
@@ -1068,9 +1289,7 @@ export const CodeSandboxPlayer: React.FC<CodeSandboxPlayerProps> = ({ block, lea
                 await wc.fs.writeFile(`${WORK_DIR}/.bin/git`, GIT_SHIM_SCRIPT);
 
                 debugTerm.writeln('\x1b[1;33m>> Queuing npm install...\x1b[0m');
-                let installFailed = false;
 
-                // 🚀 PERFORMANCE TRACE: Package Installation Time
                 await measurePerformance(
                     'npm_install_time',
                     async () => {
@@ -1080,7 +1299,8 @@ export const CodeSandboxPlayer: React.FC<CodeSandboxPlayerProps> = ({ block, lea
                                 let installProcess: any = null;
                                 try {
                                     debugTerm.writeln('\x1b[1;33m>> Running npm install...\x1b[0m');
-                                    installProcess = await wc.spawn('npm', ['install', '--no-package-lock'], { cwd: WORK_DIR });
+                                    // 🚀 USE --legacy-peer-deps AND --force TO BYPASS ERESOLVE / ETARGET PEER ERRORS
+                                    installProcess = await wc.spawn('npm', ['install', '--no-package-lock', '--legacy-peer-deps', '--force'], { cwd: WORK_DIR });
 
                                     installProcess.output.pipeTo(new WritableStream({
                                         write: data => { if (mounted) debugTerm.write(data); }
@@ -1090,9 +1310,11 @@ export const CodeSandboxPlayer: React.FC<CodeSandboxPlayerProps> = ({ block, lea
                                         installProcess.exit,
                                         new Promise<number>((_, reject) => setTimeout(() => reject(new Error('npm install timed out after 5 minutes')), 300000))
                                     ]);
-                                    if (exitCode !== 0) throw new Error("Installation process aborted.");
+
+                                    if (exitCode !== 0) {
+                                        debugTerm.writeln(`\r\n\x1b[1;33m>> Warning: npm install exited with code ${exitCode}. Attempting to start dev server anyway...\x1b[0m`);
+                                    }
                                 } catch (err: any) {
-                                    installFailed = true;
                                     if (mounted) debugTerm.writeln(`\x1b[1;31m>> NPM Error: ${err.message || err}\x1b[0m`);
                                     reportSandboxCrash('NpmInstallError', err.message || 'npm install failed', err.stack, { blockId: safeBlockId });
                                     try { installProcess?.kill(); } catch { }
@@ -1105,19 +1327,22 @@ export const CodeSandboxPlayer: React.FC<CodeSandboxPlayerProps> = ({ block, lea
                 );
 
                 if (!mounted) return;
-                if (installFailed) {
-                    setStatusText("Boot Failed");
-                    setBootFailed(true);
-                    return;
-                }
 
-                debugTerm.writeln('\n\x1b[1;36m>> Booting local Vite telemetry server...\x1b[0m');
+                debugTerm.writeln('\n\x1b[1;36m>> Booting local runtime server...\x1b[0m');
                 const devProcess = await wc.spawn('npm', ['run', 'dev'], { cwd: WORK_DIR });
                 devProcessRef.current = devProcess;
 
                 devProcess.output.pipeTo(new WritableStream({
                     write: data => { if (mounted) debugTerm.write(data); }
                 }), { signal: streamController.signal }).catch(() => { });
+
+                // 🚀 GRACEFUL ERROR HANDLING IF DEV SERVER EXITS EARLY
+                devProcess.exit.then((code) => {
+                    if (mounted && code !== 0 && !previewUrl) {
+                        setStatusText("Server Error (Check Shell)");
+                        debugTerm.writeln(`\r\n\x1b[1;31m>> Dev server exited with code ${code}. Check the Shell tab to debug.\x1b[0m`);
+                    }
+                });
 
                 const shellProcess = await wc.spawn('jsh', { terminal: { cols: shellTerm.cols || 80, rows: shellTerm.rows || 15 }, cwd: WORK_DIR });
                 shellProcessRef.current = shellProcess;
@@ -1270,7 +1495,7 @@ export const CodeSandboxPlayer: React.FC<CodeSandboxPlayerProps> = ({ block, lea
         e.target.value = '';
     };
 
-    // 🚀 MEASURED ZIP EXTRACTION & IMPORT
+    // MEASURED ZIP EXTRACTION & IMPORT (WITH HARD STATE PURGE)
     const processZipBlob = async (blob: Blob) => {
         try {
             await measurePerformance(
@@ -1278,6 +1503,11 @@ export const CodeSandboxPlayer: React.FC<CodeSandboxPlayerProps> = ({ block, lea
                 async () => {
                     const zip = new JSZip();
                     const contents = await zip.loadAsync(blob);
+
+                    // HARD-RESET ACTIVE STATE REFERENCES
+                    canonicalKeysRef.current.clear();
+                    latestFrontendFilesRef.current = {};
+                    lastSavedSnapshotRef.current = '';
 
                     const allPaths = Object.keys(contents.files).filter(p => {
                         const fileName = p.split('/').pop() || '';
@@ -1287,44 +1517,30 @@ export const CodeSandboxPlayer: React.FC<CodeSandboxPlayerProps> = ({ block, lea
                         return true;
                     });
 
-                    const expectedTemplate = (block?.template || 'javascript').toLowerCase();
-                    const isVanillaExpected = ['javascript', 'html', 'vanilla'].includes(expectedTemplate);
-
-                    let hasReactFiles = false;
-                    for (const p of allPaths) {
-                        if (p.endsWith('.jsx') || p.endsWith('.tsx')) hasReactFiles = true;
-                        if (p.endsWith('package.json')) {
-                            try {
-                                const pkgStr = await contents.files[p].async('string');
-                                if (pkgStr.includes('"react"')) hasReactFiles = true;
-                            } catch (e) { }
-                        }
-                    }
-
-                    if (isVanillaExpected && hasReactFiles) {
-                        toast?.error("Upload Blocked: This assignment requires a pure Vanilla JavaScript project. React projects are not allowed here.");
-                        return;
-                    }
-
                     const isBinaryFile = (path: string) => ['.png', '.jpg', '.jpeg', '.gif', '.ico', '.webp', '.woff', '.woff2', '.ttf', '.otf', '.eot', '.mp3', '.mp4', '.pdf', '.zip', '.rar', '.tar', '.gz', '.7z'].some(ext => path.toLowerCase().endsWith(ext));
 
                     const extractedMap: Record<string, string> = {};
                     for (const path of allPaths) {
-                        if (isBinaryFile(path)) {
-                            extractedMap[`/${path}`] = `__mlab_base64__${await contents.files[path].async('base64')}`;
+                        const cleanPath = '/' + path.replace(/^\/+/, '').replace(/\/+/g, '/');
+                        if (isBinaryFile(cleanPath)) {
+                            extractedMap[cleanPath] = `__mlab_base64__${await contents.files[path].async('base64')}`;
                         } else {
-                            extractedMap[`/${path}`] = await contents.files[path].async('string');
+                            const textContent = await contents.files[path].async('string');
+                            extractedMap[cleanPath] = textContent;
+
+                            if (isSensitivePath(cleanPath)) {
+                                queueEnvConsent(cleanPath, textContent);
+                            }
                         }
                     }
 
                     const newFiles = sanitizeProjectFiles(extractedMap);
-
                     const tempTpl = getEffectiveTemplate(newFiles, block?.template);
                     const cleanFiles = processProjectData(newFiles, assignedPort, tempTpl, block.id);
 
                     setTemplate(resolveSandpackTemplate(tempTpl));
                     setLockedFiles(cleanFiles);
-                    canonicalKeysRef.current = new Set(Object.keys(cleanFiles).map(p => p.startsWith('/') ? p : '/' + p));
+                    canonicalKeysRef.current = new Set(Object.keys(cleanFiles).map(p => '/' + p.replace(/^\/+/, '')));
 
                     latestFrontendFilesRef.current = cleanFiles;
                     setRunId(Date.now().toString());
@@ -1347,7 +1563,7 @@ export const CodeSandboxPlayer: React.FC<CodeSandboxPlayerProps> = ({ block, lea
         setPendingZipFile(null);
     };
 
-    // 🚀 MEASURED GITHUB REPO IMPORT
+    // MEASURED GITHUB REPO IMPORT
     const handleGithubImport = async () => {
         if (!githubUrl.trim()) return;
         try {
@@ -1381,7 +1597,7 @@ export const CodeSandboxPlayer: React.FC<CodeSandboxPlayerProps> = ({ block, lea
         }
     };
 
-    // 🚀 MEASURED ZIP EXPORT / DOWNLOAD
+    // MEASURED ZIP EXPORT / DOWNLOAD
     const handleDownloadZip = async () => {
         try {
             await measurePerformance(
@@ -1391,6 +1607,8 @@ export const CodeSandboxPlayer: React.FC<CodeSandboxPlayerProps> = ({ block, lea
                     const filesToZip = Object.keys(latestFrontendFilesRef.current).length > 0 ? latestFrontendFilesRef.current : lockedFiles;
 
                     Object.entries(filesToZip).forEach(([path, content]) => {
+                        if (isSensitivePath(path) && envConsentRef.current[path] === 'local') return;
+
                         if (canonicalKeysRef.current.has(path)) {
                             const cleanPath = path.startsWith('/') ? path.substring(1) : path;
                             if (typeof content === 'string' && content.startsWith('__mlab_base64__')) zip.file(cleanPath, content.substring(15), { base64: true });
@@ -1441,14 +1659,28 @@ export const CodeSandboxPlayer: React.FC<CodeSandboxPlayerProps> = ({ block, lea
                         <SandpackProvider key={runId} template={resolveSandpackTemplate(template)} files={lockedFiles} theme="dark">
                             <SandpackLayout style={{ flex: 1, height: '100%', border: 'none', borderRadius: 0, overflow: 'hidden', minHeight: 0 }}>
                                 <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', overflow: 'hidden', minWidth: 0 }}>
-                                    <SandpackFileActions readOnly={readOnly} canonicalKeysRef={canonicalKeysRef} wcInstance={wcInstance} blockId={block.id} />
+                                    <SandpackFileActions
+                                        readOnly={readOnly}
+                                        canonicalKeysRef={canonicalKeysRef}
+                                        wcInstance={wcInstance}
+                                        blockId={block.id}
+                                        onSensitiveFileDetected={queueEnvConsent}
+                                    />
                                     <div style={{ display: 'flex', flex: 1, overflow: 'hidden', minHeight: 0, minWidth: 0 }}>
                                         <div style={{ width: '160px', borderRight: '1px solid #334155', flexShrink: 0, overflowY: 'auto', overflowX: 'hidden' }}><SandpackFileExplorer style={{ height: '100%' }} /></div>
                                         <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}><SandpackCodeEditor showTabs closableTabs style={{ height: '100%' }} readOnly={readOnly} /></div>
                                     </div>
                                 </div>
                             </SandpackLayout>
-                            {!readOnly && wcReady && <WebContainerSyncBridge wcInstance={wcInstance} blockId={block.id} canonicalKeysRef={canonicalKeysRef} readOnly={readOnly} />}
+                            {!readOnly && wcReady && (
+                                <WebContainerSyncBridge
+                                    wcInstance={wcInstance}
+                                    blockId={block.id}
+                                    canonicalKeysRef={canonicalKeysRef}
+                                    onSensitiveFileDetected={queueEnvConsent}
+                                    readOnly={readOnly}
+                                />
+                            )}
                             {!readOnly && <StateHarvester readOnly={readOnly} onChange={handleFilesChange} />}
                         </SandpackProvider>
                     </Panel>
@@ -1486,6 +1718,50 @@ export const CodeSandboxPlayer: React.FC<CodeSandboxPlayerProps> = ({ block, lea
                     </Panel>
                 </Group>
             </div>
+
+            {/* SENSITIVE FILE (.ENV) CONSENT MODAL */}
+            {pendingEnvQueue.length > 0 && createPortal(
+                <div className="lfm-overlay" style={{ position: 'fixed', inset: 0, zIndex: 9999999, background: 'rgba(15, 23, 42, 0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div className="animate-fade-in" style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '8px', width: '100%', maxWidth: '480px', padding: '24px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
+                            <div style={{ background: '#fef3c7', padding: '8px', borderRadius: '6px' }}>
+                                <ShieldAlert size={22} color="#d97706" />
+                            </div>
+                            <h3 style={{ margin: 0, color: '#f8fafc', fontSize: '1.1rem', fontFamily: 'var(--font-heading)', textTransform: 'uppercase' }}>
+                                Sensitive File Detected
+                            </h3>
+                        </div>
+
+                        <p style={{ color: '#cbd5e1', fontSize: '0.88rem', lineHeight: 1.5, marginBottom: '1rem' }}>
+                            You created or imported <strong style={{ color: '#38bdf8' }}>"{pendingEnvQueue[0].path}"</strong>, which may contain sensitive API keys or credentials.
+                        </p>
+
+                        <div style={{ background: '#0f172a', padding: '12px', border: '1px solid #334155', borderRadius: '6px', marginBottom: '1.25rem', fontSize: '0.8rem', color: '#94a3b8', lineHeight: 1.5 }}>
+                            <div style={{ color: '#f8fafc', fontWeight: 'bold', marginBottom: '4px' }}>How should this file be saved?</div>
+                            <ul style={{ margin: '4px 0 0 16px', padding: 0 }}>
+                                <li><strong style={{ color: '#38bdf8' }}>Save to Database:</strong> Keeps file in Firestore. Required if assessors need to view your environment configuration.</li>
+                                <li><strong style={{ color: '#e2e8f0' }}>Keep Local Only:</strong> Saved in this browser's LocalStorage only. Will survive reloads on this device, but won't upload secrets to database backups.</li>
+                            </ul>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                            <button
+                                onClick={() => resolveEnvConsent('local')}
+                                style={{ padding: '8px 16px', background: 'transparent', color: '#94a3b8', border: '1px solid #475569', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem', borderRadius: '4px' }}
+                            >
+                                Keep Local Only
+                            </button>
+                            <button
+                                onClick={() => resolveEnvConsent('saved')}
+                                style={{ padding: '8px 16px', background: '#38bdf8', color: '#0f172a', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem', borderRadius: '4px' }}
+                            >
+                                Save to Database
+                            </button>
+                        </div>
+                    </div>
+                </div>,
+                portalTarget || document.body
+            )}
 
             {/* GITHUB IMPORT MODAL */}
             {showGithubModal && createPortal(

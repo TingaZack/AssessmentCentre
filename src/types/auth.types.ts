@@ -13,6 +13,14 @@ export interface UserProfile {
   email: string;
   fullName: string;
   role: UserRole;
+
+  // UPDATED SYSTEM & PERMISSION FIELDS
+  isSuperAdmin?: boolean;
+  secondaryRoles?: UserRole[]; // Or string[] depending on how UserRole is defined
+  canMarkAssessments?: boolean;
+  canFacilitateCohorts?: boolean;
+  assignedCohortIds?: string[]; // Ensures the scoping logic works perfectly
+
   signatureUrl?: string;
   profilePhotoUrl: string;
   cohortId?: string;
@@ -23,8 +31,9 @@ export interface UserProfile {
   companyName?: string;
   employerId: string;
 
-  // these Practitioner-specific fields:
+  // Practitioner-specific fields:
   assessorRegNumber?: string;
+  assessorRegistrationNumber?: string; // Added to support legacy code references
   bio?: string;
   primarySeta?: string;
   specializationScope?: string;

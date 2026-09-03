@@ -1,26 +1,44 @@
-// src/pages/FacilitatorDashboard/SubmissionReview/SubmissionReviewHelpers.tsx
 import React from 'react';
 import { CalendarRange, AlertTriangle } from 'lucide-react';
 
-// ─── LOGBOOK HOURS TALLY ──────────────────────────────────────────────────────
-export const LogbookHoursTally: React.FC<{ entries: any[]; requiredHours?: number }> = ({ entries, requiredHours }) => {
-    const totalHours = entries.reduce((acc, curr) => acc + (Number(curr.hours) || 0), 0);
+export interface LogbookEntry {
+    hours?: number | string;
+    [key: string]: any;
+}
+
+export interface LogbookHoursTallyProps {
+    entries?: LogbookEntry[];
+    requiredHours?: number;
+}
+
+export const LogbookHoursTally: React.FC<LogbookHoursTallyProps> = ({ entries = [], requiredHours }) => {
+    // Safely sum up total logged hours with support for strings/decimals
+    const totalHours = entries.reduce((acc, curr) => {
+        const parsed = parseFloat(String(curr.hours ?? 0));
+        return acc + (isNaN(parsed) ? 0 : parsed);
+    }, 0);
+
+    const formattedTotal = Number.isInteger(totalHours) ? totalHours : totalHours.toFixed(1);
     const isShort = requiredHours !== undefined && totalHours < requiredHours;
     const isMet = requiredHours !== undefined && totalHours >= requiredHours;
+    const hoursRemaining = requiredHours !== undefined ? Math.max(0, requiredHours - totalHours) : 0;
 
     return (
-        <div style={{
-            marginTop: '1rem',
-            padding: '1rem 1.25rem',
-            borderRadius: '8px',
-            border: `2px solid ${isShort ? '#fca5a5' : isMet ? '#86efac' : '#e2e8f0'}`,
-            background: isShort ? '#fef2f2' : isMet ? '#f0fdf4' : '#f8fafc',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: '12px'
-        }}>
+        <div
+            className="sr-logbook-tally ap-logbook-tally"
+            style={{
+                marginTop: '1rem',
+                padding: '1rem 1.25rem',
+                borderRadius: '8px',
+                border: `2px solid ${isShort ? '#fca5a5' : isMet ? '#86efac' : '#e2e8f0'}`,
+                background: isShort ? '#fef2f2' : isMet ? '#f0fdf4' : '#f8fafc',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '12px'
+            }}
+        >
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <CalendarRange size={20} color={isShort ? '#ef4444' : isMet ? '#22c55e' : '#64748b'} />
                 <div>
@@ -34,9 +52,10 @@ export const LogbookHoursTally: React.FC<{ entries: any[]; requiredHours?: numbe
                     )}
                 </div>
             </div>
+
             <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
                 <span style={{ fontSize: '2rem', fontWeight: 'bold', fontFamily: 'var(--font-heading)', color: isShort ? '#ef4444' : isMet ? '#16a34a' : '#073f4e' }}>
-                    {totalHours}
+                    {formattedTotal}
                 </span>
                 {requiredHours !== undefined && (
                     <span style={{ fontSize: '1rem', color: '#94a3b8', fontFamily: 'var(--font-heading)' }}>/ {requiredHours}h</span>
@@ -45,11 +64,12 @@ export const LogbookHoursTally: React.FC<{ entries: any[]; requiredHours?: numbe
                     <span style={{ fontSize: '0.85rem', color: '#94a3b8' }}>hrs</span>
                 )}
             </div>
+
             {isShort && (
                 <div style={{ width: '100%', background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: '6px', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <AlertTriangle size={16} color="#dc2626" />
+                    <AlertTriangle size={16} color="#dc2626" style={{ flexShrink: 0 }} />
                     <span style={{ fontSize: '0.8rem', color: '#b91c1c', fontWeight: 'bold' }}>
-                        Warning: {requiredHours! - totalHours}h short of the required minimum. Do not verify until the learner corrects their logbook.
+                        Warning: {Number.isInteger(hoursRemaining) ? hoursRemaining : hoursRemaining.toFixed(1)}h short of the required minimum. Do not verify until the learner corrects their logbook.
                     </span>
                 </div>
             )}
@@ -57,20 +77,81 @@ export const LogbookHoursTally: React.FC<{ entries: any[]; requiredHours?: numbe
     );
 };
 
-// ─── FORMAT TIME SPENT (SECONDS → "Xh Ym" OR "< 1m") ─────────────────────────
-export const formatTimeSpent = (seconds?: number) => {
-    if (seconds === undefined || seconds === null) return '—';
-    const m = Math.floor(seconds / 60);
-    if (m === 0) return '< 1m';
-    const h = Math.floor(m / 60);
-    if (h > 0) return `${h}h ${m % 60}m`;
-    return `${m}m`;
-};
 
-// ─── FORMAT CALENDAR SPREAD (START → END, RETURN HUMAN READABLE SPREAD) ──────
-export const formatCalendarSpread = (startStr?: string, endStr?: string) => {
-    if (!startStr || !endStr) return null;
-    const diffHours = (new Date(endStr).getTime() - new Date(startStr).getTime()) / (1000 * 60 * 60);
-    if (diffHours < 24) return diffHours < 1 ? '< 1 hr spread' : `${Math.floor(diffHours)} hr spread`;
-    return `${Math.floor(diffHours / 24)} day spread`;
-};
+
+// // src/pages/FacilitatorDashboard/SubmissionReview/SubmissionReviewHelpers.tsx
+// import React from 'react';
+// import { CalendarRange, AlertTriangle } from 'lucide-react';
+
+// // ─── LOGBOOK HOURS TALLY ──────────────────────────────────────────────────────
+// export const LogbookHoursTally: React.FC<{ entries: any[]; requiredHours?: number }> = ({ entries, requiredHours }) => {
+//     const totalHours = entries.reduce((acc, curr) => acc + (Number(curr.hours) || 0), 0);
+//     const isShort = requiredHours !== undefined && totalHours < requiredHours;
+//     const isMet = requiredHours !== undefined && totalHours >= requiredHours;
+
+//     return (
+//         <div style={{
+//             marginTop: '1rem',
+//             padding: '1rem 1.25rem',
+//             borderRadius: '8px',
+//             border: `2px solid ${isShort ? '#fca5a5' : isMet ? '#86efac' : '#e2e8f0'}`,
+//             background: isShort ? '#fef2f2' : isMet ? '#f0fdf4' : '#f8fafc',
+//             display: 'flex',
+//             alignItems: 'center',
+//             justifyContent: 'space-between',
+//             flexWrap: 'wrap',
+//             gap: '12px'
+//         }}>
+//             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+//                 <CalendarRange size={20} color={isShort ? '#ef4444' : isMet ? '#22c55e' : '#64748b'} />
+//                 <div>
+//                     <div style={{ fontSize: '0.75rem', fontWeight: 'bold', textTransform: 'uppercase', color: isShort ? '#b91c1c' : isMet ? '#166534' : '#475569', letterSpacing: '0.05em' }}>
+//                         Total Logged Hours
+//                     </div>
+//                     {requiredHours !== undefined && (
+//                         <div style={{ fontSize: '0.75rem', color: isShort ? '#ef4444' : isMet ? '#22c55e' : '#64748b', marginTop: '2px' }}>
+//                             {isMet ? `✓ Minimum ${requiredHours}h requirement met` : `Minimum ${requiredHours}h required`}
+//                         </div>
+//                     )}
+//                 </div>
+//             </div>
+//             <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
+//                 <span style={{ fontSize: '2rem', fontWeight: 'bold', fontFamily: 'var(--font-heading)', color: isShort ? '#ef4444' : isMet ? '#16a34a' : '#073f4e' }}>
+//                     {totalHours}
+//                 </span>
+//                 {requiredHours !== undefined && (
+//                     <span style={{ fontSize: '1rem', color: '#94a3b8', fontFamily: 'var(--font-heading)' }}>/ {requiredHours}h</span>
+//                 )}
+//                 {requiredHours === undefined && (
+//                     <span style={{ fontSize: '0.85rem', color: '#94a3b8' }}>hrs</span>
+//                 )}
+//             </div>
+//             {isShort && (
+//                 <div style={{ width: '100%', background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: '6px', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+//                     <AlertTriangle size={16} color="#dc2626" />
+//                     <span style={{ fontSize: '0.8rem', color: '#b91c1c', fontWeight: 'bold' }}>
+//                         Warning: {requiredHours! - totalHours}h short of the required minimum. Do not verify until the learner corrects their logbook.
+//                     </span>
+//                 </div>
+//             )}
+//         </div>
+//     );
+// };
+
+// // ─── FORMAT TIME SPENT (SECONDS → "Xh Ym" OR "< 1m") ─────────────────────────
+// export const formatTimeSpent = (seconds?: number) => {
+//     if (seconds === undefined || seconds === null) return '—';
+//     const m = Math.floor(seconds / 60);
+//     if (m === 0) return '< 1m';
+//     const h = Math.floor(m / 60);
+//     if (h > 0) return `${h}h ${m % 60}m`;
+//     return `${m}m`;
+// };
+
+// // ─── FORMAT CALENDAR SPREAD (START → END, RETURN HUMAN READABLE SPREAD) ──────
+// export const formatCalendarSpread = (startStr?: string, endStr?: string) => {
+//     if (!startStr || !endStr) return null;
+//     const diffHours = (new Date(endStr).getTime() - new Date(startStr).getTime()) / (1000 * 60 * 60);
+//     if (diffHours < 24) return diffHours < 1 ? '< 1 hr spread' : `${Math.floor(diffHours)} hr spread`;
+//     return `${Math.floor(diffHours / 24)} day spread`;
+// };

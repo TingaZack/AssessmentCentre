@@ -43,7 +43,7 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
     const [isSaving, setIsSaving] = useState(false);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-    // Evaluates if the event is in the past. If true, full lock down mode engages.
+    // Evaluates if the event is in the past. If true, core fields lock down.
     const isEventEnded = React.useMemo(() => {
         if (!event?.endDate) return false;
         return new Date(event.endDate).getTime() < Date.now();
@@ -101,7 +101,7 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
     }, [settings]);
 
     const addCustomField = () => {
-        if (isEventEnded) return;
+        // Unlocked to allow adding fields post-event
         const newField: GuestFormCustomField = {
             id: `field_${Date.now()}`,
             label: "",
@@ -113,12 +113,12 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
     };
 
     const updateCustomField = (id: string, key: keyof GuestFormCustomField, value: any) => {
-        if (isEventEnded) return;
+        // Unlocked to allow editing fields post-event
         setCustomFields(prev => prev.map(f => f.id === id ? { ...f, [key]: value } : f));
     };
 
     const removeCustomField = (id: string) => {
-        if (isEventEnded) return;
+        // Unlocked to allow removing fields post-event
         setCustomFields(prev => prev.filter(f => f.id !== id));
     };
 
@@ -317,7 +317,7 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
                         {isEventEnded && (
                             <div className="lfm-error-banner" style={{ background: '#fffbeb', border: '2px solid #f59e0b', borderLeft: '5px solid #f59e0b', color: '#b45309', marginBottom: '1rem' }}>
                                 <Lock size={16} style={{ color: '#f59e0b', flexShrink: 0 }} />
-                                <span><strong>DATA INTEGRITY ENGAGED:</strong> This ecosystem event has concluded. Records are cryptographically frozen to avoid altering demographic metrics. <strong>Note: Facilitator assignments can still be edited.</strong></span>
+                                <span><strong>DATA INTEGRITY ENGAGED:</strong> This ecosystem event has concluded. Core records are cryptographically frozen to avoid altering demographic metrics. <strong>Note: Facilitator assignments and Custom Questions can still be edited.</strong></span>
                             </div>
                         )}
 
@@ -662,7 +662,7 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
                             <div style={{ flex: '1 1 450px', background: '#f8fafc', padding: '1.25rem', borderRadius: '12px', border: '1px solid var(--mlab-border)', display: 'flex', flexDirection: 'column' }}>
                                 <div className="lfm-section-hdr" style={{ marginTop: 0 }}><ListPlus size={13} /> Custom Questions (Dynamic Form)</div>
                                 <p style={{ fontSize: '0.8rem', color: 'var(--mlab-grey)', marginBottom: '1rem' }}>
-                                    Add any extra questions you need for this specific event below. These will be asked to the guest after the locked base fields.
+                                    Add any extra questions you need for this specific event below. These will be asked to the guest after the locked base fields. <strong>You can add or modify these fields at any time.</strong>
                                 </p>
 
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', flex: 1, overflowY: 'auto', maxHeight: '500px', paddingRight: '0.5rem' }}>
@@ -674,21 +674,19 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
 
                                     {customFields.map((field, idx) => (
                                         <div key={field.id} style={{ background: 'white', border: '1px solid var(--mlab-border)', borderLeft: '4px solid var(--mlab-green)', padding: '1rem', position: 'relative', borderRadius: '6px', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
-                                            {!isEventEnded && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => removeCustomField(field.id)}
-                                                    style={{ position: 'absolute', top: '10px', right: '10px', background: 'none', border: 'none', color: 'var(--mlab-red)', cursor: 'pointer' }}
-                                                >
-                                                    <Trash2 size={16} />
-                                                </button>
-                                            )}
 
-                                            <div className="lfm-grid" style={{ gridTemplateColumns: '1fr', gap: '1rem', opacity: isEventEnded ? 0.6 : 1 }}>
+                                            <button
+                                                type="button"
+                                                onClick={() => removeCustomField(field.id)}
+                                                style={{ position: 'absolute', top: '10px', right: '10px', background: 'none', border: 'none', color: 'var(--mlab-red)', cursor: 'pointer' }}
+                                            >
+                                                <Trash2 size={16} />
+                                            </button>
+
+                                            <div className="lfm-grid" style={{ gridTemplateColumns: '1fr', gap: '1rem' }}>
                                                 <div className="lfm-fg lfm-fg--full">
                                                     <label>Question {idx + 1} Label</label>
                                                     <input
-                                                        disabled={isEventEnded}
                                                         className="lfm-input"
                                                         type="text"
                                                         placeholder="e.g. What is your GitHub URL?"
@@ -700,7 +698,6 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
                                                     <div className="lfm-fg">
                                                         <label>Input Type</label>
                                                         <select
-                                                            disabled={isEventEnded}
                                                             className="lfm-input lfm-select"
                                                             value={field.type}
                                                             onChange={(e) => updateCustomField(field.id, 'type', e.target.value)}
@@ -713,7 +710,6 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
                                                     <div className="lfm-fg" style={{ paddingBottom: '8px' }}>
                                                         <label className="lfm-checkbox-row" style={{ margin: 0 }}>
                                                             <input
-                                                                disabled={isEventEnded}
                                                                 type="checkbox"
                                                                 checked={field.required}
                                                                 onChange={(e) => updateCustomField(field.id, 'required', e.target.checked)}
@@ -727,7 +723,6 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
                                                     <div className="lfm-fg lfm-fg--full" style={{ marginTop: '0.5rem' }}>
                                                         <label>Dropdown Options (Comma Separated) *</label>
                                                         <input
-                                                            disabled={isEventEnded}
                                                             className="lfm-input"
                                                             type="text"
                                                             placeholder="e.g. T-Shirt Size S, M, L, XL"
@@ -744,16 +739,14 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
                                         </div>
                                     ))}
 
-                                    {!isEventEnded && (
-                                        <button
-                                            type="button"
-                                            className="lfm-btn lfm-btn--ghost"
-                                            onClick={addCustomField}
-                                            style={{ alignSelf: 'center', marginTop: '1rem' }}
-                                        >
-                                            <Plus size={14} /> Add Custom Question
-                                        </button>
-                                    )}
+                                    <button
+                                        type="button"
+                                        className="lfm-btn lfm-btn--ghost"
+                                        onClick={addCustomField}
+                                        style={{ alignSelf: 'center', marginTop: '1rem' }}
+                                    >
+                                        <Plus size={14} /> Add Custom Question
+                                    </button>
                                 </div>
                             </div>
 
@@ -773,3 +766,781 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
         </div>
     );
 };
+
+
+
+// // src/components/AdminPortal/EcosystemDashboard/EventBuilderModal.tsx
+
+// import React, { useState } from "react";
+// import {
+//     X, Save, Loader2, AlertCircle, Calendar,
+//     Settings, ListPlus, Plus, Trash2, Globe, Lock, Tag, Wifi, Target, Users
+// } from "lucide-react";
+// import Autocomplete from "react-google-autocomplete";
+// import { useToast } from "../../../components/common/Toast/Toast";
+// import { useStore } from "../../../store/useStore";
+// import type { ProgrammeTemplate } from "../../../types";
+// import type { EcosystemEvent, GuestFormCustomField, GuestIdRequirement } from "../../../types/ecosystem.types";
+
+// import "../../admin/LearnerFormModal/LearnerFormModal.css";
+
+// // ─── LOCAL DICTIONARY ───
+// const QCTO_PROVINCES = [
+//     { label: "Western Cape", value: "1" }, { label: "Eastern Cape", value: "2" },
+//     { label: "Northern Cape", value: "3" }, { label: "Free State", value: "4" },
+//     { label: "KwaZulu-Natal", value: "5" }, { label: "North West", value: "6" },
+//     { label: "Gauteng", value: "7" }, { label: "Mpumalanga", value: "8" },
+//     { label: "Limpopo", value: "9" }, { label: "SA National", value: "N" }, { label: "Outside SA", value: "X" }
+// ];
+
+// interface EventBuilderModalProps {
+//     event?: EcosystemEvent | null;
+//     programmes: ProgrammeTemplate[];
+//     availableTargets?: any[]; // Passed down from the dashboard
+//     onClose: () => void;
+//     onSave: (eventData: Partial<EcosystemEvent>) => Promise<void>;
+// }
+
+// export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
+//     event,
+//     programmes,
+//     availableTargets = [],
+//     onClose,
+//     onSave
+// }) => {
+//     const toast = useToast();
+//     const { settings, updateSettings } = useStore();
+
+//     const [isSaving, setIsSaving] = useState(false);
+//     const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+//     // Evaluates if the event is in the past. If true, full lock down mode engages.
+//     const isEventEnded = React.useMemo(() => {
+//         if (!event?.endDate) return false;
+//         return new Date(event.endDate).getTime() < Date.now();
+//     }, [event]);
+
+//     // ─── DYNAMIC EVENT TYPES LOGIC ───
+//     const defaultTypes = ["Hackathon", "Workshop", "Open Day", "Masterclass", "CodeTribe Bootcamp"];
+//     const savedTypes = (settings as any)?.ecosystem?.eventTypes || [];
+//     const availableEventTypes = Array.from(new Set([...defaultTypes, ...savedTypes]));
+
+//     const [eventType, setEventType] = useState((event as any)?.eventType || "");
+//     const [isOtherType, setIsOtherType] = useState(false);
+//     const [newEventType, setNewEventType] = useState("");
+
+//     const [wifiSsid, setWifiSsid] = useState((event?.settings as any)?.wifiSsid || "");
+//     const [wifiPassword, setWifiPassword] = useState((event?.settings as any)?.wifiPassword || "");
+
+//     // ─── CORE EVENT STATE ───
+//     const [eventName, setEventName] = useState(event?.eventName || "");
+
+//     const todayStr = new Date().toISOString().split("T")[0];
+//     const [startDate, setStartDate] = useState(event?.date ? event.date.split("T")[0] : todayStr);
+//     const [endDate, setEndDate] = useState((event as any)?.endDate ? (event as any).endDate.split("T")[0] : startDate);
+
+//     const [maxCapacity, setMaxCapacity] = useState<number>(event?.maxCapacity || 50);
+//     const [requireIdPassport, setRequireIdPassport] = useState<GuestIdRequirement>(event?.settings?.requireIdPassport || "optional");
+
+//     // TARGET LINKAGE STATE
+//     const [linkedTargets, setLinkedTargets] = useState<string[]>(event?.linkedTargets || []);
+
+//     // PERSONS RESPONSIBLE STATE
+//     const [responsiblePersons, setResponsiblePersons] = useState<string[]>((event as any)?.responsiblePersons || []);
+//     const [newPersonName, setNewPersonName] = useState("");
+
+//     // ─── ROBUST LOCATION STATE ───
+//     const [location, setLocation] = useState(event?.location || "");
+//     const [streetAddress, setStreetAddress] = useState((event as any)?.locationDetails?.streetAddress || "");
+//     const [city, setCity] = useState((event as any)?.locationDetails?.city || "");
+//     const [provinceCode, setProvinceCode] = useState((event as any)?.locationDetails?.provinceCode || "");
+//     const [postalCode, setPostalCode] = useState((event as any)?.locationDetails?.postalCode || "");
+//     const [lat, setLat] = useState<number>((event as any)?.locationDetails?.lat || 0);
+//     const [lng, setLng] = useState<number>((event as any)?.locationDetails?.lng || 0);
+
+//     // ─── CUSTOM FIELDS STATE ───
+//     const [customFields, setCustomFields] = useState<GuestFormCustomField[]>(event?.guestFormBlueprint || []);
+
+//     // DYNAMIC LOCKED FIELDS CALCULATOR
+//     const allLockedFields = React.useMemo(() => {
+//         const coreIdentity = ['First Name', 'Last Name', 'Email Address', 'Mobile Number', 'Programme / Event Type'];
+//         const globalDemos = ((settings as any)?.globalDemographicFields || ["gender", "race", "disability"])
+//             .map((f: string) => f.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())); // Format "highest_education" -> "Highest Education"
+//         const compliance = ['POPIA Consent', 'Marketing Opt-In'];
+
+//         return [...coreIdentity, ...globalDemos, ...compliance];
+//     }, [settings]);
+
+//     const addCustomField = () => {
+//         if (isEventEnded) return;
+//         const newField: GuestFormCustomField = {
+//             id: `field_${Date.now()}`,
+//             label: "",
+//             type: "text",
+//             required: false,
+//             options: []
+//         };
+//         setCustomFields([...customFields, newField]);
+//     };
+
+//     const updateCustomField = (id: string, key: keyof GuestFormCustomField, value: any) => {
+//         if (isEventEnded) return;
+//         setCustomFields(prev => prev.map(f => f.id === id ? { ...f, [key]: value } : f));
+//     };
+
+//     const removeCustomField = (id: string) => {
+//         if (isEventEnded) return;
+//         setCustomFields(prev => prev.filter(f => f.id !== id));
+//     };
+
+//     const toggleTarget = (targetId: string) => {
+//         if (isEventEnded) return;
+//         if (linkedTargets.includes(targetId)) {
+//             setLinkedTargets(prev => prev.filter(id => id !== targetId));
+//         } else {
+//             setLinkedTargets(prev => [...prev, targetId]);
+//         }
+//     };
+
+//     const handleAddPerson = () => {
+//         // EXCEPTION: Allowed to edit persons even if event ended
+//         if (newPersonName.trim() && !responsiblePersons.includes(newPersonName.trim())) {
+//             setResponsiblePersons([...responsiblePersons, newPersonName.trim()]);
+//             setNewPersonName("");
+//         }
+//     };
+
+//     const handleRemovePerson = (personToRemove: string) => {
+//         // EXCEPTION: Allowed to edit persons even if event ended
+//         setResponsiblePersons(prev => prev.filter(p => p !== personToRemove));
+//     };
+
+//     const handlePlaceSelected = (place: any) => {
+//         if (isEventEnded) return;
+//         if (place.geometry && place.geometry.location) {
+//             const newLat = typeof place.geometry.location.lat === 'function' ? place.geometry.location.lat() : place.geometry.location.lat;
+//             const newLng = typeof place.geometry.location.lng === 'function' ? place.geometry.location.lng() : place.geometry.location.lng;
+//             setLat(newLat);
+//             setLng(newLng);
+//         }
+
+//         const addressComponents = place.address_components;
+//         const getComp = (type: string) => addressComponents?.find((c: any) => c.types.includes(type))?.long_name || "";
+
+//         const provString = getComp("administrative_area_level_1");
+//         const matchedProv = QCTO_PROVINCES.find(p => provString.includes(p.label))?.value || '';
+//         const townName = getComp("locality") || getComp("sublocality_level_1");
+//         const postal = getComp("postal_code");
+//         const formatted = place.formatted_address || "";
+
+//         setStreetAddress(formatted);
+//         setCity(townName);
+//         setProvinceCode(matchedProv);
+//         setPostalCode(postal);
+
+//         const venueName = place.name || formatted.split(',')[0];
+//         setLocation(venueName);
+//     };
+
+//     const handleSubmit = async (e: React.FormEvent) => {
+//         e.preventDefault();
+//         setErrorMessage(null);
+
+//         if (!eventName.trim() || !location.trim() || !streetAddress.trim()) {
+//             setErrorMessage("Event Name, Venue Name, and Street Address are required.");
+//             return;
+//         }
+
+//         if (new Date(endDate) < new Date(startDate)) {
+//             setErrorMessage("The End Date cannot be before the Start Date.");
+//             return;
+//         }
+
+//         if (responsiblePersons.length === 0) {
+//             setErrorMessage("Please add at least one Person Responsible for the event.");
+//             return;
+//         }
+
+//         let finalEventType = eventType;
+//         if (isOtherType && newEventType.trim()) {
+//             finalEventType = newEventType.trim();
+
+//             if (updateSettings) {
+//                 const updatedTypes = Array.from(new Set([...savedTypes, finalEventType]));
+//                 updateSettings({
+//                     ecosystem: {
+//                         ...((settings as any)?.ecosystem || {}),
+//                         eventTypes: updatedTypes
+//                     }
+//                 }).catch(err => console.error("Failed to save new event type globally", err));
+//             }
+//         }
+
+//         if (!finalEventType) {
+//             setErrorMessage("Please select or enter an Event Programme / Type.");
+//             return;
+//         }
+
+//         const invalidDropdown = customFields.find(f => f.type === 'dropdown' && (!f.options || f.options.join('').trim() === ''));
+//         if (invalidDropdown) {
+//             setErrorMessage(`Please provide options for the dropdown question: "${invalidDropdown.label || 'Untitled'}"`);
+//             return;
+//         }
+
+//         const eventPayload: Partial<EcosystemEvent> = {
+//             eventName,
+//             location,
+//             date: new Date(startDate).toISOString(),
+//             endDate: new Date(endDate).toISOString(),
+//             maxCapacity,
+//             eventType: finalEventType,
+//             linkedTargets: linkedTargets,
+//             responsiblePersons: responsiblePersons,
+
+//             locationDetails: {
+//                 lat,
+//                 lng,
+//                 streetAddress,
+//                 city,
+//                 provinceCode,
+//                 postalCode
+//             } as any,
+
+//             settings: {
+//                 requireIdPassport,
+//                 wifiSsid,
+//                 wifiPassword,
+//                 allowedProgrammes: []
+//             } as any,
+
+//             guestFormBlueprint: customFields
+//                 .filter(f => f.label.trim() !== "")
+//                 .map(f => ({
+//                     ...f,
+//                     options: f.type === 'dropdown' && f.options
+//                         ? f.options.map(opt => opt.trim()).filter(opt => opt !== "")
+//                         : []
+//                 }))
+//         };
+
+//         // ─── DEEP COMPARISON NO-OP CHECK ───
+//         if (event) {
+//             const originalPayload: Partial<EcosystemEvent> = {
+//                 eventName: event.eventName || "",
+//                 location: event.location || "",
+//                 date: new Date(event.date ? event.date.split("T")[0] : todayStr).toISOString(),
+//                 endDate: new Date((event as any).endDate ? (event as any).endDate.split("T")[0] : (event.date ? event.date.split("T")[0] : todayStr)).toISOString(),
+//                 maxCapacity: event.maxCapacity || 50,
+//                 eventType: (event as any).eventType || "",
+//                 linkedTargets: event.linkedTargets || [],
+//                 responsiblePersons: (event as any).responsiblePersons || [],
+//                 locationDetails: {
+//                     lat: (event as any).locationDetails?.lat || 0,
+//                     lng: (event as any).locationDetails?.lng || 0,
+//                     streetAddress: (event as any).locationDetails?.streetAddress || "",
+//                     city: (event as any).locationDetails?.city || "",
+//                     provinceCode: (event as any).locationDetails?.provinceCode || "",
+//                     postalCode: (event as any).locationDetails?.postalCode || ""
+//                 } as any,
+//                 settings: {
+//                     requireIdPassport: event.settings?.requireIdPassport || "optional",
+//                     wifiSsid: (event.settings as any)?.wifiSsid || "",
+//                     wifiPassword: (event.settings as any)?.wifiPassword || "",
+//                     allowedProgrammes: []
+//                 } as any,
+//                 guestFormBlueprint: event.guestFormBlueprint || []
+//             };
+
+//             // If the stringified forms are exactly identical, close immediately without writing to DB
+//             if (JSON.stringify(eventPayload) === JSON.stringify(originalPayload)) {
+//                 onClose();
+//                 return;
+//             }
+//         }
+
+//         setIsSaving(true);
+//         try {
+//             await onSave(eventPayload);
+//         } catch (err: any) {
+//             setErrorMessage(err.message || "Failed to save event.");
+//             setIsSaving(false);
+//         }
+//     };
+
+//     return (
+//         <div className="lfm-overlay" onClick={onClose}>
+//             <div className="lfm-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: "1100px", width: "95vw" }}>
+
+//                 <div className="lfm-header">
+//                     <h2 className="lfm-header__title">
+//                         {isEventEnded ? <Lock size={16} /> : <Calendar size={18} />}
+//                         {isEventEnded ? " Concluded Event Ledger" : event ? " Edit Ecosystem Event" : " Create Ecosystem Event"}
+//                     </h2>
+//                     <button className="lfm-close-btn" type="button" onClick={onClose} disabled={isSaving}>
+//                         <X size={20} />
+//                     </button>
+//                 </div>
+
+//                 <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", overflow: "hidden", flex: 1 }}>
+//                     <div className="lfm-body" style={{ padding: "1.5rem" }}>
+
+//                         {/* HIGH VISIBILITY IMMUTABILITY BANNER */}
+//                         {isEventEnded && (
+//                             <div className="lfm-error-banner" style={{ background: '#fffbeb', border: '2px solid #f59e0b', borderLeft: '5px solid #f59e0b', color: '#b45309', marginBottom: '1rem' }}>
+//                                 <Lock size={16} style={{ color: '#f59e0b', flexShrink: 0 }} />
+//                                 <span><strong>DATA INTEGRITY ENGAGED:</strong> This ecosystem event has concluded. Records are cryptographically frozen to avoid altering demographic metrics. <strong>Note: Facilitator assignments can still be edited.</strong></span>
+//                             </div>
+//                         )}
+
+//                         {errorMessage && (
+//                             <div className="lfm-error-banner" style={{ marginBottom: "1rem" }}><AlertCircle size={16} /><span>{errorMessage}</span></div>
+//                         )}
+
+//                         <div style={{ display: 'flex', gap: '2rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+
+//                             {/* ─── LEFT COLUMN: CORE SETTINGS ─── */}
+//                             <div style={{ flex: '1 1 450px', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+
+//                                 <div>
+//                                     <div className="lfm-section-hdr"><Globe size={13} /> Event Core Details</div>
+//                                     <div className="lfm-grid">
+//                                         <div className="lfm-fg lfm-fg--full">
+//                                             <label>Event Name *</label>
+//                                             <input
+//                                                 disabled={isEventEnded}
+//                                                 className="lfm-input"
+//                                                 type="text"
+//                                                 required
+//                                                 placeholder="e.g. CodeTribe Hackathon 2026"
+//                                                 value={eventName}
+//                                                 onChange={(e) => setEventName(e.target.value)}
+//                                             />
+//                                         </div>
+
+//                                         {/* PERSONS RESPONSIBLE BUILDER - UNLOCKED */}
+//                                         <div className="lfm-fg lfm-fg--full">
+//                                             <label style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+//                                                 <Users size={12} /> Persons Responsible (Facilitators / Managers) *
+//                                             </label>
+//                                             <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+//                                                 <input
+//                                                     type="text"
+//                                                     className="mlab-input"
+//                                                     placeholder="e.g. John Doe, Sarah Smith"
+//                                                     value={newPersonName}
+//                                                     onChange={e => setNewPersonName(e.target.value)}
+//                                                     onKeyDown={(e) => {
+//                                                         if (e.key === 'Enter') {
+//                                                             e.preventDefault();
+//                                                             handleAddPerson();
+//                                                         }
+//                                                     }}
+//                                                     style={{ flex: 1 }}
+//                                                 />
+//                                                 <button disabled={!newPersonName.trim()} type="button" className="mlab-btn mlab-btn--outline-blue mlab-btn--sm" onClick={handleAddPerson}>
+//                                                     <Plus size={14} /> Add
+//                                                 </button>
+//                                             </div>
+//                                             {responsiblePersons.length > 0 && (
+//                                                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+//                                                     {responsiblePersons.map(person => (
+//                                                         <span key={person} style={{ background: 'var(--mlab-light-blue)', border: '1px solid var(--mlab-blue)', color: 'var(--mlab-blue)', fontSize: '0.75rem', padding: '4px 8px', borderRadius: '4px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
+//                                                             {person}
+//                                                             <button type="button" onClick={() => handleRemovePerson(person)} style={{ background: 'none', border: 'none', color: 'var(--mlab-red)', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' }}>
+//                                                                 <X size={12} />
+//                                                             </button>
+//                                                         </span>
+//                                                     ))}
+//                                                 </div>
+//                                             )}
+//                                         </div>
+
+//                                         <div className="lfm-fg lfm-fg--full">
+//                                             <label style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+//                                                 <Tag size={12} /> Programme / Event Type *
+//                                             </label>
+//                                             <div style={{ display: 'flex', gap: '0.5rem' }}>
+//                                                 <select
+//                                                     disabled={isEventEnded}
+//                                                     className="lfm-input lfm-select"
+//                                                     value={isOtherType ? "other" : eventType}
+//                                                     onChange={(e) => {
+//                                                         if (e.target.value === "other") {
+//                                                             setIsOtherType(true);
+//                                                             setEventType("");
+//                                                         } else {
+//                                                             setIsOtherType(false);
+//                                                             setEventType(e.target.value);
+//                                                         }
+//                                                     }}
+//                                                     style={{ flex: isOtherType ? 1 : 2 }}
+//                                                     required={!isOtherType}
+//                                                 >
+//                                                     <option value="">-- Select Programme --</option>
+//                                                     {availableEventTypes.map(t => (
+//                                                         <option key={t} value={t}>{t}</option>
+//                                                     ))}
+//                                                     <option value="other">Add Other (Save to List)...</option>
+//                                                 </select>
+
+//                                                 {isOtherType && (
+//                                                     <input
+//                                                         disabled={isEventEnded}
+//                                                         className="lfm-input"
+//                                                         type="text"
+//                                                         required
+//                                                         placeholder="Type new category..."
+//                                                         value={newEventType}
+//                                                         onChange={(e) => setNewEventType(e.target.value)}
+//                                                         style={{ flex: 2, border: '1px solid var(--mlab-green)', background: 'var(--mlab-green-bg)' }}
+//                                                     />
+//                                                 )}
+//                                             </div>
+//                                         </div>
+
+//                                         <div className="lfm-fg">
+//                                             <label>Start Date *</label>
+//                                             <input
+//                                                 disabled={isEventEnded}
+//                                                 className="lfm-input"
+//                                                 type="date"
+//                                                 required
+//                                                 value={startDate}
+//                                                 onChange={(e) => {
+//                                                     setStartDate(e.target.value);
+//                                                     if (new Date(endDate) < new Date(e.target.value)) {
+//                                                         setEndDate(e.target.value);
+//                                                     }
+//                                                 }}
+//                                             />
+//                                         </div>
+//                                         <div className="lfm-fg">
+//                                             <label>End Date *</label>
+//                                             <input
+//                                                 disabled={isEventEnded}
+//                                                 className="lfm-input"
+//                                                 type="date"
+//                                                 required
+//                                                 value={endDate}
+//                                                 min={startDate}
+//                                                 onChange={(e) => setEndDate(e.target.value)}
+//                                             />
+//                                         </div>
+//                                         <div className="lfm-fg">
+//                                             <label>Max Capacity *</label>
+//                                             <input
+//                                                 disabled={isEventEnded}
+//                                                 className="lfm-input"
+//                                                 type="number"
+//                                                 required
+//                                                 min={1}
+//                                                 value={maxCapacity}
+//                                                 onChange={(e) => setMaxCapacity(parseInt(e.target.value) || 50)}
+//                                             />
+//                                         </div>
+
+//                                         <div className="lfm-fg lfm-fg--full" style={{ padding: '1rem', background: '#f0f9ff', border: '1px dashed #0ea5e9', borderRadius: '8px', opacity: isEventEnded ? 0.6 : 1 }}>
+//                                             <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem', fontWeight: 600, color: 'var(--mlab-blue)', marginBottom: '6px' }}>
+//                                                 <Globe size={13} /> Secure Google Maps Search
+//                                             </label>
+//                                             <Autocomplete
+//                                                 disabled={isEventEnded}
+//                                                 apiKey={import.meta.env.VITE_GOOGLE_MAPS_API_KEY}
+//                                                 onPlaceSelected={handlePlaceSelected}
+//                                                 options={{ types: [], componentRestrictions: { country: "za" }, fields: ["address_components", "geometry", "formatted_address", "name"] }}
+//                                                 className="lfm-input"
+//                                                 placeholder={isEventEnded ? "Address mapping is locked" : "Search for venue to map coordinates and auto-fill..."}
+//                                             />
+//                                             {lat !== 0 && (
+//                                                 <div style={{ marginTop: '8px', fontSize: '0.7rem', color: '#10b981', display: 'flex', gap: '8px' }}>
+//                                                     <span><strong>Lat:</strong> {lat.toFixed(6)}</span>
+//                                                     <span><strong>Lng:</strong> {lng.toFixed(6)}</span>
+//                                                 </div>
+//                                             )}
+//                                         </div>
+
+//                                         <div className="lfm-fg lfm-fg--full">
+//                                             <label>Venue Name *</label>
+//                                             <input
+//                                                 disabled={isEventEnded}
+//                                                 className="lfm-input"
+//                                                 type="text"
+//                                                 required
+//                                                 placeholder="e.g. Pretoria Hub"
+//                                                 value={location}
+//                                                 onChange={(e) => setLocation(e.target.value)}
+//                                             />
+//                                         </div>
+//                                         <div className="lfm-fg lfm-fg--full">
+//                                             <label>Street Address *</label>
+//                                             <input
+//                                                 disabled={isEventEnded}
+//                                                 className="lfm-input"
+//                                                 type="text"
+//                                                 required
+//                                                 placeholder="e.g. 123 Innovation Drive..."
+//                                                 value={streetAddress}
+//                                                 onChange={(e) => setStreetAddress(e.target.value)}
+//                                             />
+//                                         </div>
+//                                         <div className="lfm-fg">
+//                                             <label>City / Town</label>
+//                                             <input
+//                                                 disabled={isEventEnded}
+//                                                 className="lfm-input"
+//                                                 type="text"
+//                                                 value={city}
+//                                                 onChange={(e) => setCity(e.target.value)}
+//                                             />
+//                                         </div>
+//                                         <div className="lfm-fg">
+//                                             <label>Province</label>
+//                                             <select
+//                                                 disabled={isEventEnded}
+//                                                 className="lfm-input lfm-select"
+//                                                 value={provinceCode}
+//                                                 onChange={(e) => setProvinceCode(e.target.value)}
+//                                             >
+//                                                 <option value="">Select Province...</option>
+//                                                 {QCTO_PROVINCES.map(p => (
+//                                                     <option key={p.value} value={p.value}>{p.label}</option>
+//                                                 ))}
+//                                             </select>
+//                                         </div>
+//                                         <div className="lfm-fg">
+//                                             <label>Postal Code</label>
+//                                             <input
+//                                                 disabled={isEventEnded}
+//                                                 className="lfm-input"
+//                                                 type="text"
+//                                                 value={postalCode}
+//                                                 onChange={(e) => setPostalCode(e.target.value)}
+//                                             />
+//                                         </div>
+//                                     </div>
+//                                 </div>
+
+//                                 {/* MULTI-SELECT KPI TARGET LINKAGE BLOCK */}
+//                                 <div>
+//                                     <div className="lfm-section-hdr"><Target size={13} /> KPI Target Linkage</div>
+//                                     <div style={{ background: 'white', padding: '1.25rem', borderRadius: '8px', border: '1px solid var(--mlab-border)', opacity: isEventEnded ? 0.6 : 1 }}>
+//                                         <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--mlab-midnight)', marginBottom: '6px', display: 'block' }}>
+//                                             Link to Specific Impact Targets
+//                                         </label>
+//                                         <p style={{ fontSize: '0.75rem', color: 'var(--mlab-grey)', marginBottom: '16px', lineHeight: 1.4 }}>
+//                                             If left unselected, this event will automatically count towards ALL active targets whose date ranges overlap with this event. Select specific targets below to restrict its impact.
+//                                         </p>
+
+//                                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+//                                             {availableTargets?.map(target => {
+//                                                 const isSelected = linkedTargets.includes(target.id);
+//                                                 return (
+//                                                     <button
+//                                                         disabled={isEventEnded}
+//                                                         key={target.id}
+//                                                         type="button"
+//                                                         onClick={() => toggleTarget(target.id)}
+//                                                         style={{
+//                                                             background: isSelected ? 'var(--mlab-blue)' : '#f8fafc',
+//                                                             color: isSelected ? 'white' : 'var(--mlab-grey)',
+//                                                             border: `1px solid ${isSelected ? 'var(--mlab-blue)' : '#cbd5e1'}`,
+//                                                             padding: '6px 14px',
+//                                                             borderRadius: '20px',
+//                                                             fontSize: '0.75rem',
+//                                                             fontWeight: 600,
+//                                                             cursor: isEventEnded ? 'not-allowed' : 'pointer',
+//                                                             transition: 'all 0.2s ease-in-out'
+//                                                         }}
+//                                                     >
+//                                                         {target.title}
+//                                                     </button>
+//                                                 );
+//                                             })}
+//                                             {(!availableTargets || availableTargets.length === 0) && (
+//                                                 <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontStyle: 'italic' }}>No active targets found. Create one on the dashboard first.</span>
+//                                             )}
+//                                         </div>
+//                                     </div>
+//                                 </div>
+
+//                                 <div>
+//                                     <div className="lfm-section-hdr"><Wifi size={13} /> Guest WiFi Credentials</div>
+//                                     <div className="lfm-grid">
+//                                         <div className="lfm-fg">
+//                                             <label>WiFi SSID</label>
+//                                             <input
+//                                                 disabled={isEventEnded}
+//                                                 className="lfm-input"
+//                                                 type="text"
+//                                                 placeholder="e.g. mLab_Guest"
+//                                                 value={wifiSsid}
+//                                                 onChange={(e) => setWifiSsid(e.target.value)}
+//                                             />
+//                                         </div>
+//                                         <div className="lfm-fg">
+//                                             <label>WiFi Password</label>
+//                                             <input
+//                                                 disabled={isEventEnded}
+//                                                 className="lfm-input"
+//                                                 type="text"
+//                                                 placeholder="Shared on success"
+//                                                 value={wifiPassword}
+//                                                 onChange={(e) => setWifiPassword(e.target.value)}
+//                                             />
+//                                         </div>
+//                                     </div>
+//                                 </div>
+
+//                                 <div>
+//                                     <div className="lfm-section-hdr"><Settings size={13} /> Check-In Requirements</div>
+//                                     <div className="lfm-flags-panel" style={{ opacity: isEventEnded ? 0.6 : 1 }}>
+//                                         <div className="lfm-fg">
+//                                             <label>ID / Passport Requirement</label>
+//                                             <select
+//                                                 disabled={isEventEnded}
+//                                                 className="lfm-input lfm-select"
+//                                                 value={requireIdPassport}
+//                                                 onChange={(e) => setRequireIdPassport(e.target.value as GuestIdRequirement)}
+//                                             >
+//                                                 <option value="hidden">Hidden (Do not ask for ID)</option>
+//                                                 <option value="optional">Optional (Ask, but allow skip)</option>
+//                                                 <option value="mandatory">Mandatory (Strict ID Verification)</option>
+//                                             </select>
+//                                         </div>
+//                                     </div>
+//                                 </div>
+
+//                                 {/* DYNAMIC LOCKED FIELDS RENDERER */}
+//                                 <div style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '1rem', opacity: isEventEnded ? 0.7 : 1 }}>
+//                                     <h4 style={{ display: 'flex', alignItems: 'center', gap: '6px', margin: '0 0 10px 0', fontSize: '0.85rem', color: 'var(--mlab-blue)' }}>
+//                                         <Lock size={14} /> Locked Base Fields
+//                                     </h4>
+//                                     <p style={{ fontSize: '0.75rem', color: 'var(--mlab-grey)', margin: '0 0 10px 0' }}>
+//                                         These fields (including your custom Global Demographics) are permanently required for CRM integrity and cannot be removed.
+//                                     </p>
+//                                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+//                                         {allLockedFields.map(f => (
+//                                             <span key={f} style={{ background: 'white', border: '1px solid #cbd5e1', color: '#475569', fontSize: '0.7rem', padding: '4px 8px', borderRadius: '4px', fontWeight: 600 }}>
+//                                                 {f}
+//                                             </span>
+//                                         ))}
+//                                     </div>
+//                                 </div>
+
+//                             </div>
+
+//                             {/* ─── RIGHT COLUMN: DYNAMIC CUSTOM FIELDS ─── */}
+//                             <div style={{ flex: '1 1 450px', background: '#f8fafc', padding: '1.25rem', borderRadius: '12px', border: '1px solid var(--mlab-border)', display: 'flex', flexDirection: 'column' }}>
+//                                 <div className="lfm-section-hdr" style={{ marginTop: 0 }}><ListPlus size={13} /> Custom Questions (Dynamic Form)</div>
+//                                 <p style={{ fontSize: '0.8rem', color: 'var(--mlab-grey)', marginBottom: '1rem' }}>
+//                                     Add any extra questions you need for this specific event below. These will be asked to the guest after the locked base fields.
+//                                 </p>
+
+//                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', flex: 1, overflowY: 'auto', maxHeight: '500px', paddingRight: '0.5rem' }}>
+//                                     {customFields.length === 0 && (
+//                                         <div style={{ padding: '2rem', textAlign: 'center', background: 'white', border: '1px dashed #cbd5e1', borderRadius: '8px', color: '#64748b', fontSize: '0.85rem' }}>
+//                                             No custom questions added.
+//                                         </div>
+//                                     )}
+
+//                                     {customFields.map((field, idx) => (
+//                                         <div key={field.id} style={{ background: 'white', border: '1px solid var(--mlab-border)', borderLeft: '4px solid var(--mlab-green)', padding: '1rem', position: 'relative', borderRadius: '6px', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
+//                                             {!isEventEnded && (
+//                                                 <button
+//                                                     type="button"
+//                                                     onClick={() => removeCustomField(field.id)}
+//                                                     style={{ position: 'absolute', top: '10px', right: '10px', background: 'none', border: 'none', color: 'var(--mlab-red)', cursor: 'pointer' }}
+//                                                 >
+//                                                     <Trash2 size={16} />
+//                                                 </button>
+//                                             )}
+
+//                                             <div className="lfm-grid" style={{ gridTemplateColumns: '1fr', gap: '1rem', opacity: isEventEnded ? 0.6 : 1 }}>
+//                                                 <div className="lfm-fg lfm-fg--full">
+//                                                     <label>Question {idx + 1} Label</label>
+//                                                     <input
+//                                                         disabled={isEventEnded}
+//                                                         className="lfm-input"
+//                                                         type="text"
+//                                                         placeholder="e.g. What is your GitHub URL?"
+//                                                         value={field.label}
+//                                                         onChange={(e) => updateCustomField(field.id, 'label', e.target.value)}
+//                                                     />
+//                                                 </div>
+//                                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', alignItems: 'end' }}>
+//                                                     <div className="lfm-fg">
+//                                                         <label>Input Type</label>
+//                                                         <select
+//                                                             disabled={isEventEnded}
+//                                                             className="lfm-input lfm-select"
+//                                                             value={field.type}
+//                                                             onChange={(e) => updateCustomField(field.id, 'type', e.target.value)}
+//                                                         >
+//                                                             <option value="text">Short Text</option>
+//                                                             <option value="dropdown">Dropdown Select</option>
+//                                                             <option value="checkbox">Yes / No Checkbox</option>
+//                                                         </select>
+//                                                     </div>
+//                                                     <div className="lfm-fg" style={{ paddingBottom: '8px' }}>
+//                                                         <label className="lfm-checkbox-row" style={{ margin: 0 }}>
+//                                                             <input
+//                                                                 disabled={isEventEnded}
+//                                                                 type="checkbox"
+//                                                                 checked={field.required}
+//                                                                 onChange={(e) => updateCustomField(field.id, 'required', e.target.checked)}
+//                                                             />
+//                                                             <span style={{ fontWeight: 600 }}>Required</span>
+//                                                         </label>
+//                                                     </div>
+//                                                 </div>
+
+//                                                 {field.type === 'dropdown' && (
+//                                                     <div className="lfm-fg lfm-fg--full" style={{ marginTop: '0.5rem' }}>
+//                                                         <label>Dropdown Options (Comma Separated) *</label>
+//                                                         <input
+//                                                             disabled={isEventEnded}
+//                                                             className="lfm-input"
+//                                                             type="text"
+//                                                             placeholder="e.g. T-Shirt Size S, M, L, XL"
+//                                                             value={field.options?.join(",") || ""}
+//                                                             onChange={(e) => updateCustomField(field.id, 'options', e.target.value.split(","))}
+//                                                         />
+//                                                         <span style={{ fontSize: '0.65rem', color: 'var(--mlab-grey)', marginTop: '4px' }}>
+//                                                             Separate options with a comma.
+//                                                         </span>
+//                                                     </div>
+//                                                 )}
+
+//                                             </div>
+//                                         </div>
+//                                     ))}
+
+//                                     {!isEventEnded && (
+//                                         <button
+//                                             type="button"
+//                                             className="lfm-btn lfm-btn--ghost"
+//                                             onClick={addCustomField}
+//                                             style={{ alignSelf: 'center', marginTop: '1rem' }}
+//                                         >
+//                                             <Plus size={14} /> Add Custom Question
+//                                         </button>
+//                                     )}
+//                                 </div>
+//                             </div>
+
+//                         </div>
+//                     </div>
+
+//                     <div className="lfm-footer">
+//                         <button type="button" className="lfm-btn lfm-btn--ghost" onClick={onClose} disabled={isSaving}>
+//                             Cancel
+//                         </button>
+//                         <button type="submit" className="lfm-btn lfm-btn--primary" disabled={isSaving}>
+//                             {isSaving ? <><Loader2 size={13} className="lfm-spin" /> Saving…</> : <><Save size={13} /> Save Event</>}
+//                         </button>
+//                     </div>
+//                 </form>
+//             </div>
+//         </div>
+//     );
+// };

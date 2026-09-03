@@ -1299,7 +1299,7 @@ export const AssessmentViolationScreen: React.FC<{
         return () => unsub();
     }, [assessment?.id, submission]);
 
-    // 🚀 MULTI-LAYER FALLBACK RESOLVER TO PREVENT 0 INCIDENTS DISPLAY
+    // MULTI-LAYER FALLBACK RESOLVER TO PREVENT 0 INCIDENTS DISPLAY
     const history = useMemo(() => {
         if (liveHistory.length > 0) return liveHistory;
         if (Array.isArray(submission?.violationHistory) && submission.violationHistory.length > 0) return submission.violationHistory;

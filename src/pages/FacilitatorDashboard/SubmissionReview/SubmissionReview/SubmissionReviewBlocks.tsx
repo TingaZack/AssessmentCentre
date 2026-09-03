@@ -7,8 +7,7 @@ import {
 } from 'lucide-react';
 import moment from 'moment';
 import { LogbookHoursTally } from './SubmissionReviewHelpers';
-import { FilePreview } from './SubmissionReviewPreviews';
-import { UrlPreview } from '../../../../components/common/UrlPreview';
+import { FilePreview, UrlPreview } from './SubmissionReviewPreviews';
 import '../SubmissionReview';
 import { CodeSandboxPlayer } from '../../../../components/common/CodeSandboxPlayer/CodeSandboxPlayer';
 

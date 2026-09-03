@@ -56,18 +56,42 @@ export interface EnrollmentRecord {
   exitReason?: string;
 }
 
+// export interface StaffMember {
+//   id: string;
+//   fullName: string;
+//   email: string;
+//   role:
+//     | "admin"
+//     | "facilitator"
+//     | "assessor"
+//     | "moderator"
+//     | "mentor"
+//     | "assistant_facilitator"
+//     | "support_facilitator";
+//   phone?: string;
+//   authUid: string;
+//   assessorRegNumber?: string;
+//   employerId?: string;
+//   status?: "active" | "archived";
+//   createdAt?: string;
+//   updatedAt?: string;
+// }
+// Define the roles once
+export type StaffRole =
+  | "admin"
+  | "facilitator"
+  | "assessor"
+  | "moderator"
+  | "mentor"
+  | "assistant_facilitator"
+  | "support_facilitator";
+
 export interface StaffMember {
   id: string;
   fullName: string;
   email: string;
-  role:
-    | "admin"
-    | "facilitator"
-    | "assessor"
-    | "moderator"
-    | "mentor"
-    | "assistant_facilitator"
-    | "support_facilitator";
+  role: StaffRole;
+  secondaryRoles?: StaffRole[];
   phone?: string;
   authUid: string;
   assessorRegNumber?: string;
@@ -809,8 +833,6 @@ export const useStore = create<StoreState>()(
         const state = get();
 
         // 🚀 FIX 1: Robust ID Matching
-        // Since `l.id` is often the composite Enrollment ID (e.g., Cohort_IDNumber),
-        // we must check all ID variations to find the correct local record.
         let existingRow = state.learners.find(
           (l) =>
             l.id === id ||
@@ -820,7 +842,6 @@ export const useStore = create<StoreState>()(
         );
 
         // 🚀 FIX 2: Database Fallback (For Learner Portal)
-        // If state.learners is empty (because a learner is editing their own profile), fetch directly from Firebase.
         if (!existingRow) {
           const docSnap = await getDoc(doc(db, "learners", id));
           if (docSnap.exists()) {
@@ -828,14 +849,14 @@ export const useStore = create<StoreState>()(
           }
         }
 
-        // STRICT VALIDATION: Reject update if record is totally missing.
+        // STRICT VALIDATION
         if (!existingRow) {
           throw new ReferenceError(
             `Update Failed: Learner record with ID ${id} not found in database or local state.`,
           );
         }
 
-        // DETERMINISTIC ANCHOR: Use the physical ID Number for collection targeting.
+        // DETERMINISTIC ANCHOR
         const learnerIdNumber = existingRow.idNumber || existingRow.id;
         const oldCohortId = existingRow.cohortId || "";
         const newCohortId = updates.cohortId;
@@ -855,7 +876,7 @@ export const useStore = create<StoreState>()(
           }
         });
 
-        // Physical write to 'learners' collection using idNumber as key
+        // Physical write to 'learners' collection
         batch.set(
           doc(db, "learners", learnerIdNumber),
           sanitizeForFirestore(profileUpdates),
@@ -893,7 +914,6 @@ export const useStore = create<StoreState>()(
               sanitizeForFirestore(newEnrollmentData),
               { merge: true },
             );
-
             batch.update(doc(db, "cohorts", newCohortId), {
               learnerIds: arrayUnion(learnerIdNumber),
             });
@@ -903,48 +923,74 @@ export const useStore = create<StoreState>()(
           if (oldCohortId && oldCohortId !== "") {
             const oldEnrollmentId = `${oldCohortId}_${learnerIdNumber}`;
             batch.delete(doc(db, "enrollments", oldEnrollmentId));
-
             batch.update(doc(db, "cohorts", oldCohortId), {
               learnerIds: arrayRemove(learnerIdNumber),
             });
           }
 
-          // GHOST PURGE: Delete any legacy "Unassigned" ledger docs for this human
+          // GHOST PURGE
           batch.delete(doc(db, "enrollments", `Unassigned_${learnerIdNumber}`));
         } else if (existingRow.enrollmentId) {
-          // ─── STANDARD LEDGER UPDATE (No Class Change) ───
-          const enrollmentUpdates: any = {
-            updatedAt: timestamp,
-            updatedBy: CURRENT_USER_ID,
-          };
+          // 🚀 ONLY UPDATE ENROLLMENTS IF ADMIN CHANGED SPECIFIC ENROLLMENT DATA
+          const enrollmentUpdates: any = {};
+          let hasEnrollmentChanges = false;
 
-          if (updates.status) enrollmentUpdates.status = updates.status;
-          if (updates.campusId) enrollmentUpdates.campusId = updates.campusId;
-          if (updates.qualification)
+          if (updates.status !== undefined) {
+            enrollmentUpdates.status = updates.status;
+            hasEnrollmentChanges = true;
+          }
+          if (updates.campusId !== undefined) {
+            enrollmentUpdates.campusId = updates.campusId;
+            hasEnrollmentChanges = true;
+          }
+          if (updates.qualification !== undefined) {
             enrollmentUpdates.qualification = updates.qualification;
-          if (updates.knowledgeModules)
+            hasEnrollmentChanges = true;
+          }
+          if (updates.knowledgeModules !== undefined) {
             enrollmentUpdates.knowledgeModules = updates.knowledgeModules;
-          if (updates.practicalModules)
+            hasEnrollmentChanges = true;
+          }
+          if (updates.practicalModules !== undefined) {
             enrollmentUpdates.practicalModules = updates.practicalModules;
-          if (updates.workExperienceModules)
+            hasEnrollmentChanges = true;
+          }
+          if (updates.workExperienceModules !== undefined) {
             enrollmentUpdates.workExperienceModules =
               updates.workExperienceModules;
-          if (updates.trainingStartDate)
+            hasEnrollmentChanges = true;
+          }
+          if (updates.trainingStartDate !== undefined) {
             enrollmentUpdates.trainingStartDate = updates.trainingStartDate;
-          if (updates.trainingEndDate)
+            hasEnrollmentChanges = true;
+          }
+          if (updates.trainingEndDate !== undefined) {
             enrollmentUpdates.trainingEndDate = updates.trainingEndDate;
-          if (updates.verificationCode)
+            hasEnrollmentChanges = true;
+          }
+          if (updates.verificationCode !== undefined) {
             enrollmentUpdates.verificationCode = updates.verificationCode;
-          if (updates.issueDate)
+            hasEnrollmentChanges = true;
+          }
+          if (updates.issueDate !== undefined) {
             enrollmentUpdates.issueDate = updates.issueDate;
-          if (updates.isOffline !== undefined)
+            hasEnrollmentChanges = true;
+          }
+          if (updates.isOffline !== undefined) {
             enrollmentUpdates.isOffline = updates.isOffline;
+            hasEnrollmentChanges = true;
+          }
 
-          batch.set(
-            doc(db, "enrollments", existingRow.enrollmentId),
-            sanitizeForFirestore(enrollmentUpdates),
-            { merge: true },
-          );
+          if (hasEnrollmentChanges) {
+            enrollmentUpdates.updatedAt = timestamp;
+            enrollmentUpdates.updatedBy = CURRENT_USER_ID;
+
+            batch.set(
+              doc(db, "enrollments", existingRow.enrollmentId),
+              sanitizeForFirestore(enrollmentUpdates),
+              { merge: true },
+            );
+          }
         }
 
         // ATOMIC COMMIT
@@ -979,7 +1025,7 @@ export const useStore = create<StoreState>()(
           }
         });
 
-        // 6. 🚿 FRESH RE-FETCH (Only if we are in the Admin panel where state.learners is used)
+        // FRESH RE-FETCH
         if (state.learners.length > 0) {
           await get().fetchLearners(true);
         }
@@ -989,6 +1035,195 @@ export const useStore = create<StoreState>()(
         throw systemError;
       }
     },
+
+    // updateLearner: async (id, updates) => {
+    //   const CURRENT_USER_ID = getAuth().currentUser?.uid || "System";
+    //   const timestamp = now();
+
+    //   try {
+    //     const state = get();
+
+    //     // 🚀 FIX 1: Robust ID Matching
+    //     // Since `l.id` is often the composite Enrollment ID (e.g., Cohort_IDNumber),
+    //     // we must check all ID variations to find the correct local record.
+    //     let existingRow = state.learners.find(
+    //       (l) =>
+    //         l.id === id ||
+    //         l.learnerId === id ||
+    //         l.idNumber === id ||
+    //         l.authUid === id,
+    //     );
+
+    //     // 🚀 FIX 2: Database Fallback (For Learner Portal)
+    //     // If state.learners is empty (because a learner is editing their own profile), fetch directly from Firebase.
+    //     if (!existingRow) {
+    //       const docSnap = await getDoc(doc(db, "learners", id));
+    //       if (docSnap.exists()) {
+    //         existingRow = { id: docSnap.id, ...docSnap.data() } as any;
+    //       }
+    //     }
+
+    //     // STRICT VALIDATION: Reject update if record is totally missing.
+    //     if (!existingRow) {
+    //       throw new ReferenceError(
+    //         `Update Failed: Learner record with ID ${id} not found in database or local state.`,
+    //       );
+    //     }
+
+    //     // DETERMINISTIC ANCHOR: Use the physical ID Number for collection targeting.
+    //     const learnerIdNumber = existingRow.idNumber || existingRow.id;
+    //     const oldCohortId = existingRow.cohortId || "";
+    //     const newCohortId = updates.cohortId;
+
+    //     const batch = writeBatch(db);
+
+    //     // PREPARE PROFILE UPDATES (Identity)
+    //     const profileUpdates: any = {
+    //       updatedAt: timestamp,
+    //       updatedBy: CURRENT_USER_ID,
+    //     };
+
+    //     // Map updates to profile keys
+    //     Object.keys(updates).forEach((key) => {
+    //       if (PROFILE_KEYS.includes(key)) {
+    //         profileUpdates[key] = (updates as any)[key];
+    //       }
+    //     });
+
+    //     // Physical write to 'learners' collection using idNumber as key
+    //     batch.set(
+    //       doc(db, "learners", learnerIdNumber),
+    //       sanitizeForFirestore(profileUpdates),
+    //       { merge: true },
+    //     );
+
+    //     // HANDLE RELATIONAL SYNC (The Ledger Logic)
+    //     const isCohortChanging =
+    //       newCohortId !== undefined && newCohortId !== oldCohortId;
+
+    //     if (isCohortChanging) {
+    //       // A. TRANSFER TO NEW CLASS (Create New Ledger)
+    //       if (newCohortId && newCohortId !== "") {
+    //         const newEnrollmentId = `${newCohortId}_${learnerIdNumber}`;
+    //         const studentId = generateStudentId(newCohortId, newEnrollmentId);
+
+    //         const newEnrollmentData = {
+    //           ...existingRow,
+    //           ...updates,
+    //           id: newEnrollmentId,
+    //           learnerId: learnerIdNumber,
+    //           cohortId: newCohortId,
+    //           verificationCode:
+    //             (updates as any).verificationCode ||
+    //             existingRow.verificationCode ||
+    //             studentId,
+    //           status: "active",
+    //           enrolledAt: existingRow.createdAt || timestamp,
+    //           updatedAt: timestamp,
+    //           isArchived: false,
+    //         };
+
+    //         batch.set(
+    //           doc(db, "enrollments", newEnrollmentId),
+    //           sanitizeForFirestore(newEnrollmentData),
+    //           { merge: true },
+    //         );
+
+    //         batch.update(doc(db, "cohorts", newCohortId), {
+    //           learnerIds: arrayUnion(learnerIdNumber),
+    //         });
+    //       }
+
+    //       // B. REMOVE FROM OLD CLASS (Ledger Deletion)
+    //       if (oldCohortId && oldCohortId !== "") {
+    //         const oldEnrollmentId = `${oldCohortId}_${learnerIdNumber}`;
+    //         batch.delete(doc(db, "enrollments", oldEnrollmentId));
+
+    //         batch.update(doc(db, "cohorts", oldCohortId), {
+    //           learnerIds: arrayRemove(learnerIdNumber),
+    //         });
+    //       }
+
+    //       // GHOST PURGE: Delete any legacy "Unassigned" ledger docs for this human
+    //       batch.delete(doc(db, "enrollments", `Unassigned_${learnerIdNumber}`));
+    //     } else if (existingRow.enrollmentId) {
+    //       // ─── STANDARD LEDGER UPDATE (No Class Change) ───
+    //       const enrollmentUpdates: any = {
+    //         updatedAt: timestamp,
+    //         updatedBy: CURRENT_USER_ID,
+    //       };
+
+    //       if (updates.status) enrollmentUpdates.status = updates.status;
+    //       if (updates.campusId) enrollmentUpdates.campusId = updates.campusId;
+    //       if (updates.qualification)
+    //         enrollmentUpdates.qualification = updates.qualification;
+    //       if (updates.knowledgeModules)
+    //         enrollmentUpdates.knowledgeModules = updates.knowledgeModules;
+    //       if (updates.practicalModules)
+    //         enrollmentUpdates.practicalModules = updates.practicalModules;
+    //       if (updates.workExperienceModules)
+    //         enrollmentUpdates.workExperienceModules =
+    //           updates.workExperienceModules;
+    //       if (updates.trainingStartDate)
+    //         enrollmentUpdates.trainingStartDate = updates.trainingStartDate;
+    //       if (updates.trainingEndDate)
+    //         enrollmentUpdates.trainingEndDate = updates.trainingEndDate;
+    //       if (updates.verificationCode)
+    //         enrollmentUpdates.verificationCode = updates.verificationCode;
+    //       if (updates.issueDate)
+    //         enrollmentUpdates.issueDate = updates.issueDate;
+    //       if (updates.isOffline !== undefined)
+    //         enrollmentUpdates.isOffline = updates.isOffline;
+
+    //       batch.set(
+    //         doc(db, "enrollments", existingRow.enrollmentId),
+    //         sanitizeForFirestore(enrollmentUpdates),
+    //         { merge: true },
+    //       );
+    //     }
+
+    //     // ATOMIC COMMIT
+    //     await batch.commit();
+
+    //     // LOCAL STATE SYNCHRONIZATION
+    //     set((state) => {
+    //       const index = state.learners.findIndex(
+    //         (l) =>
+    //           l.id === id ||
+    //           l.idNumber === id ||
+    //           l.learnerId === id ||
+    //           l.authUid === id,
+    //       );
+    //       if (index !== -1) {
+    //         state.learners[index] = {
+    //           ...state.learners[index],
+    //           ...updates,
+    //           enrollmentId:
+    //             isCohortChanging && newCohortId !== ""
+    //               ? `${newCohortId}_${learnerIdNumber}`
+    //               : state.learners[index].enrollmentId,
+    //         };
+    //       }
+    //       // Sync current user if they edited their own profile
+    //       if (
+    //         state.user &&
+    //         (state.user.uid === learnerIdNumber ||
+    //           state.user.uid === existingRow.authUid)
+    //       ) {
+    //         Object.assign(state.user, updates);
+    //       }
+    //     });
+
+    //     // 6. 🚿 FRESH RE-FETCH (Only if we are in the Admin panel where state.learners is used)
+    //     if (state.learners.length > 0) {
+    //       await get().fetchLearners(true);
+    //     }
+    //     if ((get() as any).fetchCohorts) await (get() as any).fetchCohorts();
+    //   } catch (systemError: any) {
+    //     console.error(" updateLearner Sync Failure:", systemError);
+    //     throw systemError;
+    //   }
+    // },
     // updateLearner: async (id, updates) => {
     //   const CURRENT_USER_ID = getAuth().currentUser?.uid || "UnknownUser";
     //   try {
