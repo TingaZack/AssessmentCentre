@@ -1,7 +1,7 @@
 // src/components/common/CohortMap/AdvancedMapFilters.tsx
 
 import React, { useMemo, useState } from 'react';
-import { X, SlidersHorizontal, MapPin, Users, Award, Activity, RefreshCw, ClipboardList, ChevronRight, ChevronDown, CheckCircle2 } from 'lucide-react';
+import { X, SlidersHorizontal, MapPin, Users, Award, Activity, RefreshCw, ClipboardList, ChevronRight, ChevronDown, CheckCircle2, UserCheck, UserMinus } from 'lucide-react';
 
 export interface AdvancedMapFilterState {
     genders: string[];
@@ -10,6 +10,7 @@ export interface AdvancedMapFilterState {
     minAge: number;
     maxAge: number;
     geoLevels: string[];
+    statuses: string[]; // 🚀 NEW: ['active', 'dropped']
     surveyId?: string;
     surveyStatus?: 'all' | 'completed' | 'pending';
     surveyQuestionId?: string;
@@ -26,7 +27,7 @@ interface Props {
     cohortSurveyResponses?: any[];
     filteredCount: number;
     locationCount: number;
-    geoTree?: Record<string, any>; // Made optional to prevent strict typing errors
+    geoTree?: Record<string, any>;
     selectedLocation: string | null;
     onSelectLocation: (loc: string | null) => void;
     onClose: () => void;
@@ -47,9 +48,16 @@ const GEO_LEVEL_OPTIONS = [
     { label: 'Cities & Towns', value: 'city' }
 ];
 
+const formatGeoLabel = (label: string): string => {
+    if (!label || label === 'Unspecified' || label === 'Not specified') {
+        return 'Unregistered';
+    }
+    return label;
+};
+
 export const AdvancedMapFilters: React.FC<Props> = ({
     filters, setFilters, activeFemaleCount, activeMaleCount, totalActive, availableSurveys = [], cohortSurveyResponses = [], filteredCount, locationCount,
-    geoTree = {}, // 🚀 FIXED: Added default empty object fallback
+    geoTree = {},
     selectedLocation, onSelectLocation, onClose
 }) => {
 
@@ -118,6 +126,8 @@ export const AdvancedMapFilters: React.FC<Props> = ({
         return { answerCounts: counts, dynamicOptions: Array.from(optionsSet).sort() };
     }, [cohortSurveyResponses, filters.surveyId, selectedQuestion]);
 
+    const isStatusSelected = (statusVal: string) => (filters.statuses || []).includes(statusVal);
+
     return (
         <div style={{
             width: '340px',
@@ -159,7 +169,61 @@ export const AdvancedMapFilters: React.FC<Props> = ({
 
             <div className="lfm-body" style={{ padding: '1.5rem', gap: '1.75rem', overflowY: 'auto' }}>
 
-                {/* 🚀 FIXED: Safe Geographic Drill-down Rendering */}
+                {/* 🚀 NEW: Active vs Inactive / Withdrawn Filter */}
+                <div>
+                    <div className="lfm-section-hdr"><UserCheck size={13} /> Enrollment Status</div>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                        <button
+                            onClick={() => toggleArrayValue('statuses', 'active')}
+                            style={{
+                                flex: 1,
+                                padding: '8px 10px',
+                                borderRadius: '0',
+                                border: `1px solid ${isStatusSelected('active') ? '#16a34a' : 'var(--mlab-border)'}`,
+                                background: isStatusSelected('active') ? '#f0fdf4' : 'var(--mlab-white)',
+                                color: isStatusSelected('active') ? '#15803d' : 'var(--mlab-grey)',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                justifyContent: 'center',
+                                fontFamily: 'var(--font-heading)',
+                                fontSize: '0.72rem',
+                                fontWeight: 700,
+                                textTransform: 'uppercase',
+                                transition: 'all 0.2s ease'
+                            }}
+                        >
+                            <UserCheck size={14} /> Active
+                        </button>
+
+                        <button
+                            onClick={() => toggleArrayValue('statuses', 'dropped')}
+                            style={{
+                                flex: 1,
+                                padding: '8px 10px',
+                                borderRadius: '0',
+                                border: `1px solid ${isStatusSelected('dropped') ? '#ef4444' : 'var(--mlab-border)'}`,
+                                background: isStatusSelected('dropped') ? '#fef2f2' : 'var(--mlab-white)',
+                                color: isStatusSelected('dropped') ? '#b91c1c' : 'var(--mlab-grey)',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                justifyContent: 'center',
+                                fontFamily: 'var(--font-heading)',
+                                fontSize: '0.72rem',
+                                fontWeight: 700,
+                                textTransform: 'uppercase',
+                                transition: 'all 0.2s ease'
+                            }}
+                        >
+                            <UserMinus size={14} /> Withdrawn
+                        </button>
+                    </div>
+                </div>
+
+                {/* Geographic Drill-down */}
                 <div>
                     <div className="lfm-section-hdr"><MapPin size={13} /> Geographic Drill-down</div>
                     <p style={{ fontFamily: 'var(--font-body)', fontSize: '0.75rem', color: 'var(--mlab-grey)', margin: '0 0 12px 0' }}>
@@ -174,17 +238,17 @@ export const AdvancedMapFilters: React.FC<Props> = ({
                             <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--mlab-blue)' }}>🌍 All Regions</span>
                         </div>
 
-                        {/* Safely fallback to Object.keys(geoTree || {}) */}
                         {Object.keys(geoTree || {}).sort().map(prov => {
                             const isProvExpanded = expandedProvs.has(prov);
                             const isProvSelected = selectedLocation === prov;
+                            const provLabel = formatGeoLabel(prov);
 
                             return (
                                 <div key={prov}>
                                     <div style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--mlab-border)', background: isProvSelected ? '#e0f2fe' : '#fff', cursor: 'pointer' }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1 }} onClick={() => toggleProv(prov)}>
                                             {isProvExpanded ? <ChevronDown size={14} color="var(--mlab-grey)" /> : <ChevronRight size={14} color="var(--mlab-grey)" />}
-                                            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--mlab-midnight)' }}>{prov}</span>
+                                            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: provLabel === 'Unregistered' ? '#ef4444' : 'var(--mlab-midnight)' }}>{provLabel}</span>
                                         </div>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                             <span style={{ fontSize: '0.7rem', color: 'var(--mlab-grey)', fontWeight: 600 }}>{geoTree[prov]?.count || 0}</span>
@@ -197,13 +261,14 @@ export const AdvancedMapFilters: React.FC<Props> = ({
                                             {Object.keys(geoTree[prov]?.districts || {}).sort().map(dist => {
                                                 const isDistExpanded = expandedDists.has(dist);
                                                 const isDistSelected = selectedLocation === dist;
+                                                const distLabel = formatGeoLabel(dist);
 
                                                 return (
                                                     <div key={dist}>
                                                         <div style={{ padding: '6px 12px 6px 32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--mlab-border)', background: isDistSelected ? '#e0f2fe' : 'transparent', cursor: 'pointer' }}>
                                                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1 }} onClick={() => toggleDist(dist)}>
                                                                 {isDistExpanded ? <ChevronDown size={12} color="var(--mlab-grey)" /> : <ChevronRight size={12} color="var(--mlab-grey)" />}
-                                                                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--mlab-blue)' }}>{dist}</span>
+                                                                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: distLabel === 'Unregistered' ? '#ef4444' : 'var(--mlab-blue)' }}>{distLabel}</span>
                                                             </div>
                                                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                                                 <span style={{ fontSize: '0.7rem', color: 'var(--mlab-grey)' }}>{geoTree[prov].districts[dist]?.count || 0}</span>
@@ -216,10 +281,11 @@ export const AdvancedMapFilters: React.FC<Props> = ({
                                                                 {Object.keys(geoTree[prov]?.districts?.[dist]?.municipalities || {}).sort().map(muni => {
                                                                     const count = geoTree[prov].districts[dist].municipalities[muni] || 0;
                                                                     const isMuniSelected = selectedLocation === muni;
+                                                                    const muniLabel = formatGeoLabel(muni);
 
                                                                     return (
                                                                         <div key={muni} onClick={() => onSelectLocation(muni)} style={{ padding: '6px 12px 6px 52px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #e2e8f0', background: isMuniSelected ? '#e0f2fe' : 'transparent', cursor: 'pointer' }} onMouseOver={e => e.currentTarget.style.background = isMuniSelected ? '#e0f2fe' : '#e2e8f0'} onMouseOut={e => e.currentTarget.style.background = isMuniSelected ? '#e0f2fe' : 'transparent'}>
-                                                                            <span style={{ fontSize: '0.75rem', color: '#475569' }}>{muni}</span>
+                                                                            <span style={{ fontSize: '0.75rem', color: muniLabel === 'Unregistered' ? '#ef4444' : '#475569' }}>{muniLabel}</span>
                                                                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                                                                 <span style={{ fontSize: '0.7rem', color: 'var(--mlab-grey)' }}>{count}</span>
                                                                                 <input type="radio" checked={isMuniSelected} readOnly style={{ accentColor: 'var(--mlab-green)', cursor: 'pointer' }} />
@@ -349,7 +415,7 @@ export const AdvancedMapFilters: React.FC<Props> = ({
 
             <div className="lfm-footer" style={{ justifyContent: 'center' }}>
                 <button onClick={() => {
-                    setFilters({ genders: [], equityGroups: [], performance: [], minAge: 16, maxAge: 65, geoLevels: ['province', 'district', 'municipality', 'city'], surveyId: '', surveyStatus: 'all', surveyQuestionId: '', surveyAnswerValues: [] });
+                    setFilters({ genders: [], equityGroups: [], performance: [], minAge: 16, maxAge: 65, geoLevels: ['province', 'district', 'municipality', 'city'], statuses: [], surveyId: '', surveyStatus: 'all', surveyQuestionId: '', surveyAnswerValues: [] });
                     onSelectLocation(null);
                 }} className="lfm-btn lfm-btn--ghost" style={{ width: '100%', justifyContent: 'center' }}><RefreshCw size={14} /> Reset Filters</button>
             </div>

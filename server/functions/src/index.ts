@@ -5727,6 +5727,100 @@ export const testMidnightPenalty = onRequest(async (req, res) => {
   }
 });
 
+// export const startAssessment = onCall(async (request) => {
+//   const auth = request.auth;
+//   if (!auth || auth.token.role !== "learner") {
+//     throw new HttpsError(
+//       "permission-denied",
+//       "Only learners can start assessments.",
+//     );
+//   }
+
+//   const { submissionId } = request.data;
+
+//   try {
+//     const subRef = admin
+//       .firestore()
+//       .collection("learner_submissions")
+//       .doc(submissionId);
+//     const subSnap = await subRef.get();
+
+//     if (!subSnap.exists) {
+//       throw new HttpsError("not-found", "Assessment not found.");
+//     }
+
+//     const subData = subSnap.data();
+
+//     //  QCTO COMPLIANCE GATE (Only runs if it's a Summative)
+//     if (subData?.type?.toLowerCase().includes("summative")) {
+//       const cohortId = subData.cohortId;
+//       const learnerId = subData.learnerId;
+//       const moduleCode = subData.moduleNumber;
+
+//       // Are there any pending curriculum topics for this module?
+//       const logsSnap = await admin
+//         .firestore()
+//         .collection("curriculum_logs")
+//         .where("cohortId", "==", cohortId)
+//         .where("moduleCode", "==", moduleCode)
+//         .get();
+
+//       const pendingLogs = logsSnap.docs.filter((doc) => {
+//         const log = doc.data();
+//         return (
+//           !log.acknowledgedBy?.includes(learnerId) &&
+//           new Date(log.deadlineAt) > new Date()
+//         );
+//       });
+
+//       if (pendingLogs.length > 0) {
+//         throw new HttpsError(
+//           "failed-precondition",
+//           "You must acknowledge all curriculum topics for this module before starting the Summative Assessment.",
+//         );
+//       }
+
+//       // Did they pass the Formative? (Checking history for a Competent Formative in this module)
+//       const formativeSnap = await admin
+//         .firestore()
+//         .collection("learner_submissions")
+//         .where("learnerId", "==", learnerId)
+//         .where("moduleNumber", "==", moduleCode)
+//         .where("status", "==", "moderated")
+//         .where("competency", "==", "C")
+//         .get();
+
+//       const hasFacilitatorOverride = subData.facilitatorOverride === true;
+
+//       // If they didn't pass the formative AND don't have an override, block them.
+//       if (formativeSnap.empty && !hasFacilitatorOverride) {
+//         throw new HttpsError(
+//           "failed-precondition",
+//           "You must achieve Competency on the Formative assessment before attempting the Summative.",
+//         );
+//       }
+//     }
+
+//     // Start the exam clock!
+//     const now = new Date().toISOString();
+//     await subRef.update({
+//       status: "in_progress",
+//       startedAt: now,
+//     });
+
+//     return { success: true, startedAt: now };
+//   } catch (error: any) {
+//     // Prevent our custom HTTP errors from being overwritten by generic internal errors
+//     if (error instanceof HttpsError) {
+//       throw error;
+//     }
+//     throw new HttpsError(
+//       "internal",
+//       error.message || "Failed to start assessment.",
+//     );
+//   }
+// });
+
 export const startAssessment = onCall(async (request) => {
   const auth = request.auth;
   if (!auth || auth.token.role !== "learner") {
@@ -5736,7 +5830,14 @@ export const startAssessment = onCall(async (request) => {
     );
   }
 
-  const { submissionId } = request.data;
+  const { submissionId, learnerId: passedLearnerId } = request.data;
+
+  if (!submissionId) {
+    throw new HttpsError(
+      "invalid-argument",
+      "Submission ID is required in the payload.",
+    );
+  }
 
   try {
     const subRef = admin
@@ -5751,13 +5852,22 @@ export const startAssessment = onCall(async (request) => {
 
     const subData = subSnap.data();
 
-    //  QCTO COMPLIANCE GATE (Only runs if it's a Summative)
+    // 🚀 QCTO COMPLIANCE GATE (Only runs if it's a Summative)
     if (subData?.type?.toLowerCase().includes("summative")) {
       const cohortId = subData.cohortId;
-      const learnerId = subData.learnerId;
+      const docLearnerId = subData.learnerId;
+      const authUid = subData.authUid;
       const moduleCode = subData.moduleNumber;
 
-      // Are there any pending curriculum topics for this module?
+      // Ensure we check ALL possible learner IDs (Profile ID vs Auth UID mismatch fix)
+      const possibleIds = [
+        passedLearnerId,
+        docLearnerId,
+        authUid,
+        auth.uid,
+      ].filter(Boolean);
+
+      // 1. Are there any pending curriculum topics for this module?
       const logsSnap = await admin
         .firestore()
         .collection("curriculum_logs")
@@ -5767,10 +5877,11 @@ export const startAssessment = onCall(async (request) => {
 
       const pendingLogs = logsSnap.docs.filter((doc) => {
         const log = doc.data();
-        return (
-          !log.acknowledgedBy?.includes(learnerId) &&
-          new Date(log.deadlineAt) > new Date()
+        // Check if ANY of the possible IDs have acknowledged it
+        const isAcknowledged = possibleIds.some((id) =>
+          log.acknowledgedBy?.includes(id),
         );
+        return !isAcknowledged && new Date(log.deadlineAt) > new Date();
       });
 
       if (pendingLogs.length > 0) {
@@ -5780,20 +5891,51 @@ export const startAssessment = onCall(async (request) => {
         );
       }
 
-      // Did they pass the Formative? (Checking history for a Competent Formative in this module)
+      // 2. Did they pass the Formative?
+      // We query by module, then filter in-memory to support multi-level SECAM & Graded statuses
       const formativeSnap = await admin
         .firestore()
         .collection("learner_submissions")
-        .where("learnerId", "==", learnerId)
+        .where("authUid", "==", auth.uid)
         .where("moduleNumber", "==", moduleCode)
-        .where("status", "==", "moderated")
-        .where("competency", "==", "C")
         .get();
+
+      // Fallback query if authUid query yields empty
+      let formDocs = formativeSnap.docs;
+      if (formDocs.length === 0 && docLearnerId && docLearnerId !== auth.uid) {
+        const fallbackSnap = await admin
+          .firestore()
+          .collection("learner_submissions")
+          .where("learnerId", "==", docLearnerId)
+          .where("moduleNumber", "==", moduleCode)
+          .get();
+        formDocs = fallbackSnap.docs;
+      }
+
+      const passedFormative = formDocs.some((doc) => {
+        const data = doc.data();
+        const status = String(data.status || "").toLowerCase();
+        const comp = String(
+          data.competency || data.overallCompetency || data.outcome || "",
+        ).toLowerCase();
+
+        // Accept any finalized grading state
+        const isCompletedStatus = ["graded", "moderated", "appealed"].includes(
+          status,
+        );
+
+        // Accept standard QCTO (C) or SECAM 4-Level Competency marks (HC, 3, 4)
+        const isCompetentScore = ["c", "competent", "hc", "3", "4"].includes(
+          comp,
+        );
+
+        return isCompletedStatus && isCompetentScore;
+      });
 
       const hasFacilitatorOverride = subData.facilitatorOverride === true;
 
       // If they didn't pass the formative AND don't have an override, block them.
-      if (formativeSnap.empty && !hasFacilitatorOverride) {
+      if (!passedFormative && !hasFacilitatorOverride) {
         throw new HttpsError(
           "failed-precondition",
           "You must achieve Competency on the Formative assessment before attempting the Summative.",
@@ -5810,7 +5952,6 @@ export const startAssessment = onCall(async (request) => {
 
     return { success: true, startedAt: now };
   } catch (error: any) {
-    // Prevent our custom HTTP errors from being overwritten by generic internal errors
     if (error instanceof HttpsError) {
       throw error;
     }
@@ -10396,15 +10537,158 @@ export const getCodeSnapshot = onCall(
   },
 );
 
+// // ============================================================================
+// // OFFICIAL COACHING & SUPPORT SCHEDULER (GOOGLE MEET API)
+// // ============================================================================
+// import * as path from "path";
+// import { google } from "googleapis";
+
+// export const scheduleCoachingSession = onCall(
+//   {
+//     secrets: [mailgunSecret], // Only Mailgun needed here now
+//     region: "us-central1",
+//     cors: true,
+//     invoker: "public",
+//   },
+//   async (request) => {
+//     logger.info("BACKEND: scheduleCoachingSession triggered.");
+//     const auth = request.auth;
+
+//     if (!auth)
+//       throw new HttpsError("unauthenticated", "You must be logged in.");
+
+//     const {
+//       learnerId,
+//       learnerEmail,
+//       learnerName,
+//       staffId,
+//       staffEmail,
+//       staffName,
+//       dateTime,
+//       topic,
+//       sessionCategory,
+//       assessmentId,
+//     } = request.data;
+
+//     const isLearnerInitiated = auth.token.role === "learner";
+//     const initiatorName = isLearnerInitiated ? learnerName : staffName;
+//     const recipientEmail = isLearnerInitiated ? staffEmail : learnerEmail;
+//     const recipientName = isLearnerInitiated ? staffName : learnerName;
+
+//     try {
+//       const startTime = new Date(dateTime);
+//       const endTime = new Date(startTime.getTime() + 60 * 60000);
+
+//       // 1. IMPERSONATE THE CENTRAL MLAB ACCOUNT USING THE PHYSICAL FILE
+//       const ORGANIZER_EMAIL = "codetribe@mlab.co.za"; // The official account
+//       const keyFilePath = path.resolve(__dirname, "../service-account1.json");
+
+//       const jwtClient = new google.auth.JWT({
+//         keyFile: keyFilePath,
+//         scopes: ["https://www.googleapis.com/auth/calendar"],
+//         subject: ORGANIZER_EMAIL,
+//       });
+
+//       const calendar = google.calendar({ version: "v3", auth: jwtClient });
+
+//       // 2. BUILD THE EVENT
+//       const event = {
+//         summary: `mLab Support [${sessionCategory}]: ${learnerName} & ${staffName}`,
+//         description: `This session was requested by ${initiatorName}.\n\nCategory: ${sessionCategory}\nTopic: ${topic}\n\nPlease join using the Google Meet link attached.`,
+//         start: {
+//           dateTime: startTime.toISOString(),
+//           timeZone: "Africa/Johannesburg",
+//         },
+//         end: {
+//           dateTime: endTime.toISOString(),
+//           timeZone: "Africa/Johannesburg",
+//         },
+
+//         // Add BOTH users as attendees so they both get invited
+//         attendees: [{ email: learnerEmail }, { email: staffEmail }],
+
+//         conferenceData: {
+//           createRequest: {
+//             requestId: `meet-${Date.now()}-${learnerId}`,
+//             conferenceSolutionKey: { type: "hangoutsMeet" },
+//           },
+//         },
+//       };
+
+//       // 3. CREATE EVENT ON CODETRIBE'S CALENDAR
+//       const calendarResponse = await calendar.events.insert({
+//         calendarId: "primary", // This is now codetribe@mlab.co.za's calendar
+//         conferenceDataVersion: 1,
+//         sendUpdates: "all", // Tells Google to email the `.ics` invites to the attendees
+//         requestBody: event,
+//       });
+
+//       const meetLink = calendarResponse.data.hangoutLink || "";
+
+//       // 4. SEND DYNAMIC MLAB EMAIL VIA MAILGUN
+//       const emailParams = {
+//         title: "Support Session Booked",
+//         subtitle: sessionCategory,
+//         recipientName: recipientName,
+//         bodyHtml: `
+//           <p><strong>${initiatorName}</strong> has scheduled a 1-on-1 session with you regarding: <em>${topic}</em>.</p>
+//           <div style="background-color: #f8fafc; padding: 15px; border-radius: 6px; border: 1px solid #dde4e8; border-left: 4px solid #0ea5e9; margin: 20px 0;">
+//               <p style="margin: 0; color: #073f4e; font-size: 13px;"><strong>Date & Time:</strong><br/>
+//               ${startTime.toLocaleString("en-ZA", { timeZone: "Africa/Johannesburg", dateStyle: "full", timeStyle: "short" })} (SAST)</p>
+//           </div>
+//           <p>An official calendar invite with the meeting link has been sent to your inbox from <strong>Codetribe</strong>. Please accept the invite to add it to your calendar.</p>
+//         `,
+//         ctaText: "Join Google Meet",
+//         ctaLink: meetLink,
+//         showStepIndicator: false,
+//       };
+
+//       await sendMailgunEmail({
+//         to: recipientEmail,
+//         subject: `📅 ${sessionCategory} Scheduled: ${initiatorName}`,
+//         text: buildMlabEmailPlainText(emailParams),
+//         html: buildMlabEmailHtml(emailParams),
+//       });
+
+//       // 5. SAVE TO FIRESTORE
+//       const db = admin.firestore();
+//       const sessionRef = db.collection("coaching_sessions").doc();
+
+//       await sessionRef.set({
+//         assessorId: staffId,
+//         assessorName: staffName,
+//         learnerId,
+//         learnerName,
+//         assessmentId: assessmentId || null,
+//         sessionCategory,
+//         topic,
+//         dateTime: startTime.toISOString(),
+//         meetLink,
+//         status: isLearnerInitiated ? "requested" : "pending_notes",
+//         initiatedBy: auth.uid,
+//         createdAt: admin.firestore.FieldValue.serverTimestamp(),
+//       });
+
+//       return { success: true, meetLink, sessionId: sessionRef.id };
+//     } catch (error) {
+//       logger.error("Failed to schedule session:", error);
+//       throw new HttpsError("internal", "Failed to schedule the meeting.");
+//     }
+//   },
+// );
+
 // ============================================================================
-// OFFICIAL COACHING & SUPPORT SCHEDULER (GOOGLE MEET API)
+// OFFICIAL COACHING & SUPPORT SCHEDULER (GOOGLE MEET API WITH FALLBACK)
 // ============================================================================
 import * as path from "path";
 import { google } from "googleapis";
 
+// Note: Ensure your Mailgun helpers are imported at the top of your file if not using global space
+// import { sendMailgunEmail, buildMlabEmailPlainText, buildMlabEmailHtml } from "./emailHelpers";
+
 export const scheduleCoachingSession = onCall(
   {
-    secrets: [mailgunSecret], // Only Mailgun needed here now
+    secrets: ["MAILGUN_API_KEY"],
     region: "us-central1",
     cors: true,
     invoker: "public",
@@ -10413,8 +10697,9 @@ export const scheduleCoachingSession = onCall(
     logger.info("BACKEND: scheduleCoachingSession triggered.");
     const auth = request.auth;
 
-    if (!auth)
+    if (!auth) {
       throw new HttpsError("unauthenticated", "You must be logged in.");
+    }
 
     const {
       learnerId,
@@ -10438,78 +10723,119 @@ export const scheduleCoachingSession = onCall(
       const startTime = new Date(dateTime);
       const endTime = new Date(startTime.getTime() + 60 * 60000);
 
-      // 1. IMPERSONATE THE CENTRAL MLAB ACCOUNT USING THE PHYSICAL FILE
-      const ORGANIZER_EMAIL = "codetribe@mlab.co.za"; // The official account
-      const keyFilePath = path.resolve(__dirname, "../service-account1.json");
+      let meetLink = "";
+      let calendarSuccess = false;
 
-      const jwtClient = new google.auth.JWT({
-        keyFile: keyFilePath,
-        scopes: ["https://www.googleapis.com/auth/calendar"],
-        subject: ORGANIZER_EMAIL,
-      });
+      // ─────────────────────────────────────────────────────────────────
+      // 1. ISOLATED GOOGLE CALENDAR API ATTEMPT
+      // ─────────────────────────────────────────────────────────────────
+      try {
+        const ORGANIZER_EMAIL = "codetribe@mlab.co.za";
+        const keyFilePath = path.resolve(__dirname, "../service-account1.json");
 
-      const calendar = google.calendar({ version: "v3", auth: jwtClient });
+        const jwtClient = new google.auth.JWT({
+          keyFile: keyFilePath,
+          scopes: ["https://www.googleapis.com/auth/calendar"],
+          subject: ORGANIZER_EMAIL,
+        });
 
-      // 2. BUILD THE EVENT
-      const event = {
-        summary: `mLab Support [${sessionCategory}]: ${learnerName} & ${staffName}`,
-        description: `This session was requested by ${initiatorName}.\n\nCategory: ${sessionCategory}\nTopic: ${topic}\n\nPlease join using the Google Meet link attached.`,
-        start: {
-          dateTime: startTime.toISOString(),
-          timeZone: "Africa/Johannesburg",
-        },
-        end: {
-          dateTime: endTime.toISOString(),
-          timeZone: "Africa/Johannesburg",
-        },
+        const calendar = google.calendar({ version: "v3", auth: jwtClient });
 
-        // Add BOTH users as attendees so they both get invited
-        attendees: [{ email: learnerEmail }, { email: staffEmail }],
+        // Filter out malformed emails to prevent 500 errors
+        const rawAttendees = [{ email: learnerEmail }, { email: staffEmail }];
+        const validAttendees = rawAttendees.filter(
+          (a) => a.email && a.email.includes("@"),
+        );
 
-        conferenceData: {
-          createRequest: {
-            requestId: `meet-${Date.now()}-${learnerId}`,
-            conferenceSolutionKey: { type: "hangoutsMeet" },
+        // If all else fails, invite the organizer so the API doesn't crash
+        if (validAttendees.length === 0) {
+          validAttendees.push({ email: ORGANIZER_EMAIL });
+        }
+
+        const event = {
+          summary: `mLab Support [${sessionCategory}]: ${learnerName} & ${staffName}`,
+          description: `This session was requested by ${initiatorName}.\n\nCategory: ${sessionCategory}\nTopic: ${topic}`,
+          start: {
+            dateTime: startTime.toISOString(),
+            timeZone: "Africa/Johannesburg",
           },
-        },
-      };
+          end: {
+            dateTime: endTime.toISOString(),
+            timeZone: "Africa/Johannesburg",
+          },
+          attendees: validAttendees,
+          conferenceData: {
+            createRequest: {
+              requestId: `meet-${Date.now()}-${learnerId}`,
+              conferenceSolutionKey: { type: "hangoutsMeet" },
+            },
+          },
+        };
 
-      // 3. CREATE EVENT ON CODETRIBE'S CALENDAR
-      const calendarResponse = await calendar.events.insert({
-        calendarId: "primary", // This is now codetribe@mlab.co.za's calendar
-        conferenceDataVersion: 1,
-        sendUpdates: "all", // Tells Google to email the `.ics` invites to the attendees
-        requestBody: event,
-      });
+        const calendarResponse = await calendar.events.insert({
+          calendarId: "primary",
+          conferenceDataVersion: 1,
+          sendUpdates: "all",
+          requestBody: event,
+        });
 
-      const meetLink = calendarResponse.data.hangoutLink || "";
+        meetLink = calendarResponse.data.hangoutLink || "";
+        calendarSuccess = true;
+        logger.info("Google Calendar API Success.");
+      } catch (calError: any) {
+        // WE CATCH AND SWALLOW THE ERROR SO THE DB WRITE STILL HAPPENS
+        logger.warn(
+          "Google Calendar API Failed. Proceeding with manual fallback.",
+          calError.message || calError,
+        );
+      }
 
-      // 4. SEND DYNAMIC MLAB EMAIL VIA MAILGUN
-      const emailParams = {
-        title: "Support Session Booked",
-        subtitle: sessionCategory,
-        recipientName: recipientName,
-        bodyHtml: `
-          <p><strong>${initiatorName}</strong> has scheduled a 1-on-1 session with you regarding: <em>${topic}</em>.</p>
-          <div style="background-color: #f8fafc; padding: 15px; border-radius: 6px; border: 1px solid #dde4e8; border-left: 4px solid #0ea5e9; margin: 20px 0;">
-              <p style="margin: 0; color: #073f4e; font-size: 13px;"><strong>Date & Time:</strong><br/>
-              ${startTime.toLocaleString("en-ZA", { timeZone: "Africa/Johannesburg", dateStyle: "full", timeStyle: "short" })} (SAST)</p>
-          </div>
-          <p>An official calendar invite with the meeting link has been sent to your inbox from <strong>Codetribe</strong>. Please accept the invite to add it to your calendar.</p>
-        `,
-        ctaText: "Join Google Meet",
-        ctaLink: meetLink,
-        showStepIndicator: false,
-      };
+      // ─────────────────────────────────────────────────────────────────
+      // 2. ISOLATED EMAIL NOTIFICATION ATTEMPT
+      // ─────────────────────────────────────────────────────────────────
+      try {
+        if (recipientEmail && recipientEmail.includes("@")) {
+          const emailBody = `
+              <p>Hi ${recipientName},</p>
+              <p><strong>${initiatorName}</strong> has scheduled a 1-on-1 session with you regarding: <em>${topic}</em>.</p>
+              <div style="background-color: #f8fafc; padding: 15px; border-radius: 6px; border: 1px solid #dde4e8; border-left: 4px solid #0ea5e9; margin: 20px 0;">
+                  <p style="margin: 0; color: #073f4e; font-size: 13px;"><strong>Date & Time:</strong><br/>
+                  ${startTime.toLocaleString("en-ZA", { timeZone: "Africa/Johannesburg", dateStyle: "full", timeStyle: "short" })} (SAST)</p>
+              </div>
+              ${
+                calendarSuccess
+                  ? `<p>An official calendar invite with the meeting link has been sent to your inbox.</p>`
+                  : `<p><strong>Action Required:</strong> A meeting link could not be auto-generated. Please log in to the dashboard to manually add a Google Meet or Zoom link to this session.</p>`
+              }
+            `;
 
-      await sendMailgunEmail({
-        to: recipientEmail,
-        subject: `📅 ${sessionCategory} Scheduled: ${initiatorName}`,
-        text: buildMlabEmailPlainText(emailParams),
-        html: buildMlabEmailHtml(emailParams),
-      });
+          // Replace this with your actual Mailgun helper invocation
+          if (typeof (global as any).sendMailgunEmail === "function") {
+            await (global as any).sendMailgunEmail({
+              to: recipientEmail,
+              subject: `📅 ${sessionCategory} Scheduled: ${initiatorName}`,
+              text: `Session scheduled: ${topic}`,
+              html: emailBody,
+            });
+          } else {
+            logger.info(
+              "Email generated, but sendMailgunEmail is not globally defined.",
+              emailBody,
+            );
+          }
+        } else {
+          logger.warn(
+            "Mailgun skipped: Recipient email is invalid or missing.",
+            recipientEmail,
+          );
+        }
+      } catch (emailError: any) {
+        logger.warn("Mailgun API Failed. Proceeding.", emailError.message);
+      }
 
-      // 5. SAVE TO FIRESTORE
+      // ─────────────────────────────────────────────────────────────────
+      // 3. CORE DATABASE WRITE (GUARANTEED TO RUN)
+      // ─────────────────────────────────────────────────────────────────
       const db = admin.firestore();
       const sessionRef = db.collection("coaching_sessions").doc();
 
@@ -10522,16 +10848,30 @@ export const scheduleCoachingSession = onCall(
         sessionCategory,
         topic,
         dateTime: startTime.toISOString(),
-        meetLink,
+        meetLink, // Will be empty string "" if Calendar API failed
+        requiresManualLink: !calendarSuccess, // Flag for the frontend to show an input box
         status: isLearnerInitiated ? "requested" : "pending_notes",
         initiatedBy: auth.uid,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        systemNote: calendarSuccess
+          ? ""
+          : "Google Calendar sync failed. Link must be added manually.",
       });
 
-      return { success: true, meetLink, sessionId: sessionRef.id };
-    } catch (error) {
-      logger.error("Failed to schedule session:", error);
-      throw new HttpsError("internal", "Failed to schedule the meeting.");
+      return {
+        success: true,
+        meetLink,
+        sessionId: sessionRef.id,
+        warning: calendarSuccess
+          ? null
+          : "Calendar sync bypassed. Session requested successfully.",
+      };
+    } catch (error: any) {
+      logger.error("Fatal error scheduling session:", error.message || error);
+      throw new HttpsError(
+        "internal",
+        "A critical error occurred while creating the session.",
+      );
     }
   },
 );
@@ -12713,6 +13053,164 @@ export interface InterviewTurnPayload {
 //     }
 //   }
 // );
+
+// // Helper to pause execution to respect Google Maps API rate limits
+// const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// export const backfillMunicipalities = runWith({
+//   timeoutSeconds: 540,
+//   memory: "1GB",
+// }) // Allow up to 9 mins to run
+//   .https.onRequest(async (req, res) => {
+//     // SECURITY: Add a simple secret key so the public can't run your script
+//     const secret = req.query.secret;
+//     if (secret !== "mlab-fix-2026") {
+//       res.status(403).send("Unauthorized");
+//       return;
+//     }
+
+//     // IMPORTANT: Set your Google Maps API Key here or in Firebase config
+//     const GOOGLE_MAPS_API_KEY =
+//       process.env.GOOGLE_MAPS_API_KEY || "YOUR_GOOGLE_MAPS_API_KEY_HERE";
+
+//     try {
+//       // 1. Fetch all learners
+//       const learnersSnapshot = await db.collection("learners").get();
+//       let updatedCount = 0;
+//       let skippedCount = 0;
+//       let errorCount = 0;
+
+//       console.log(`Starting backfill for ${learnersSnapshot.size} learners...`);
+
+//       // Use a batch to perform updates efficiently (max 500 operations per batch)
+//       let batch = db.batch();
+//       let batchOperationCount = 0;
+
+//       for (const doc of learnersSnapshot.docs) {
+//         const data = doc.data();
+//         const demos = data.demographics || {};
+
+//         const lat = demos.lat;
+//         const lng = demos.lng;
+
+//         // 2. Skip if no valid coordinates exist
+//         if (!lat || !lng || (lat === 0 && lng === 0)) {
+//           skippedCount++;
+//           continue;
+//         }
+
+//         // Optional: Skip if they already have a valid local municipality
+//         // If you want to overwrite EVERYTHING based on coords, comment this out:
+//         if (
+//           demos.localMunicipality &&
+//           demos.localMunicipality.toLowerCase() !== "johannesburg"
+//         ) {
+//           // skippedCount++;
+//           // continue;
+//         }
+
+//         try {
+//           // 3. Reverse Geocode the coordinates via Google Maps API
+//           const geocodeUrl = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&result_type=administrative_area_level_1|administrative_area_level_2|administrative_area_level_3|locality&key=${GOOGLE_MAPS_API_KEY}`;
+
+//           const response = await axios.get(geocodeUrl);
+
+//           if (
+//             response.data.status === "OK" &&
+//             response.data.results.length > 0
+//           ) {
+//             const addressComponents =
+//               response.data.results[0].address_components;
+
+//             // Google Maps Mapping for South Africa:
+//             // Level 1 = Province
+//             // Level 2 = District / Metro
+//             // Level 3 = Local Municipality
+//             // Locality = City / Town
+//             const extractComponent = (type: string) => {
+//               const comp = addressComponents.find((c: any) =>
+//                 c.types.includes(type),
+//               );
+//               return comp ? comp.long_name : "";
+//             };
+
+//             const localMuni = extractComponent("administrative_area_level_3");
+//             const districtMetro = extractComponent(
+//               "administrative_area_level_2",
+//             );
+//             const province = extractComponent("administrative_area_level_1");
+//             const cityTown = extractComponent("locality");
+
+//             // If it's a major Metro (like City of Johannesburg), Level 3 is often empty,
+//             // so we fallback to the Metro/Level 2 for the municipality.
+//             const finalLocalMuni = localMuni || districtMetro;
+
+//             // 4. Queue the update for the Learner Document
+//             batch.update(doc.ref, {
+//               "demographics.localMunicipality":
+//                 finalLocalMuni || demos.localMunicipality || "",
+//               "demographics.districtOrMetro":
+//                 districtMetro || demos.districtOrMetro || "",
+//               "demographics.provinceName": province || demos.provinceName || "",
+//               "demographics.learnerHomeAddress2":
+//                 cityTown || demos.learnerHomeAddress2 || demos.city || "",
+//               updatedAt: new Date().toISOString(),
+//             });
+
+//             // Also update the main 'users' collection if you duplicate demographics there
+//             const userRef = db.collection("users").doc(data.authUid || doc.id);
+//             batch.update(userRef, {
+//               "demographics.localMunicipality":
+//                 finalLocalMuni || demos.localMunicipality || "",
+//               "demographics.districtOrMetro":
+//                 districtMetro || demos.districtOrMetro || "",
+//               "demographics.provinceName": province || demos.provinceName || "",
+//               updatedAt: new Date().toISOString(),
+//             });
+
+//             batchOperationCount += 2;
+//             updatedCount++;
+
+//             // Commit the batch if we hit the limit
+//             if (batchOperationCount >= 490) {
+//               await batch.commit();
+//               batch = db.batch(); // Start a new batch
+//               batchOperationCount = 0;
+//             }
+//           } else {
+//             console.warn(
+//               `Geocoding failed for Learner ${doc.id}: ${response.data.status}`,
+//             );
+//             errorCount++;
+//           }
+
+//           // Sleep for 100ms to avoid overwhelming Google Maps API limits (max 50 req/sec typically)
+//           await sleep(100);
+//         } catch (apiError) {
+//           console.error(`API Error for Learner ${doc.id}:`, apiError);
+//           errorCount++;
+//         }
+//       }
+
+//       // Commit any remaining updates in the final batch
+//       if (batchOperationCount > 0) {
+//         await batch.commit();
+//       }
+
+//       res.status(200).send({
+//         message: "Backfill completed successfully.",
+//         stats: {
+//           totalChecked: learnersSnapshot.size,
+//           successfullyUpdated: updatedCount,
+//           skippedNoCoords: skippedCount,
+//           errors: errorCount,
+//         },
+//       });
+//     } catch (error: any) {
+//       console.error("Backfill Script Failed:", error);
+//       res.status(500).send(`Internal Server Error: ${error.message}`);
+//     }
+//   });
 
 // ============================================================================
 // 1. AI MOCK INTERVIEW ENGINE MODULE (EVIDENCE-BASED ASSESSOR)

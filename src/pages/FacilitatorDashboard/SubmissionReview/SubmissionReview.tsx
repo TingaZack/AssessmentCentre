@@ -6,7 +6,11 @@ import { doc, getDoc, updateDoc, collection, setDoc, deleteField, getDocs, query
 import { db } from '../../../lib/firebase';
 import { useStore } from '../../../store/useStore';
 import {
-    ArrowLeft, CheckCircle, AlertCircle, Clock, Award, ShieldCheck, Printer, Info, Lock, Loader2, Scale, Undo2, ShieldAlert, Unlock, Users, FileArchive, Timer, Video, Save, X, Check, Edit3, Globe, Github, Figma, Smartphone, ExternalLink, Link as LinkIcon, Layers, FileText, Mic, UploadCloud, Code, CalendarRange, Play, Square, Award as AwardIcon, BarChart, Sigma, ChevronDown, ChevronUp
+    ArrowLeft, CheckCircle, AlertCircle, Clock, Award, ShieldCheck, Printer, Info, Lock, Loader2, Scale, Undo2, ShieldAlert, Unlock, Users, FileArchive, Timer, Video, Save, X, Check, Edit3, Globe, Github, Figma, Smartphone, ExternalLink, Link as LinkIcon, Layers, FileText, Mic, UploadCloud, Code, CalendarRange, Play, Square, Award as AwardIcon, BarChart, Sigma, ChevronDown, ChevronUp,
+    RefreshCw,
+    Sparkles,
+    MessageSquare,
+    AlertTriangle
 } from 'lucide-react';
 import { ToastContainer, useToast } from '../../../components/common/Toast/Toast';
 import './SubmissionReview.css';
@@ -30,6 +34,7 @@ import "katex/dist/katex.min.css";
 import { CodeSandboxPlayer } from '../../../components/common/CodeSandboxPlayer/CodeSandboxPlayer';
 import { FilePreview, UrlPreview } from './SubmissionReview/SubmissionReviewPreviews';
 import { LogbookHoursTally } from './SubmissionReview/SubmissionReviewHelpers';
+import type { CompetencyStatus } from '../../Portfolio/ViewPortfolio';
 
 (window as any).katex = katex;
 
@@ -1920,7 +1925,8 @@ export const SubmissionReview: React.FC = () => {
 
     const [facOverallFeedback, setFacOverallFeedback] = useState('');
     const [assOverallFeedback, setAssOverallFeedback] = useState('');
-    const [competency, setCompetency] = useState<'C' | 'NYC' | null>(null);
+    // const [competency, setCompetency] = useState<'C' | 'NYC' | null>(null);
+    const [competency, setCompetency] = useState<CompetencyStatus>(null);
 
     const [modFeedback, setModFeedback] = useState('');
     const [modOutcome, setModOutcome] = useState<'Endorsed' | 'Returned' | null>(null);
@@ -1985,7 +1991,17 @@ export const SubmissionReview: React.FC = () => {
     const isAssDone = ['graded', 'moderated', 'returned', 'appealed'].includes(currentStatus);
     const isModDone = ['moderated', 'appealed'].includes(currentStatus);
 
-    // 🚀 STRICT QCTO & COHORT-SCOPED ROLE IDENTIFICATION
+    // DETECT SECAM / BOOTCAMP FRAMEWORK
+    const isSECAM = Boolean(
+        submission?.isBootcamp ||
+        assessment?.isBootcamp ||
+        assessment?.framework === 'secam' ||
+        learnerProfile?.isBootcamp
+    );
+
+    const isSummative = String(assessment?.type || '').toLowerCase().includes('summative');
+
+    // STRICT QCTO & COHORT-SCOPED ROLE IDENTIFICATION
     const isMentor = user?.role === 'mentor';
     const isFacilitator = user?.role === 'facilitator' || user?.role === 'assistant_facilitator';
     const isAssessor = user?.role === 'assessor';
@@ -2012,19 +2028,68 @@ export const SubmissionReview: React.FC = () => {
         submission?.grading?.assessorRegNumber
     );
 
-    // 3. Enforce Strict Rights:
-    const hasAssessorRights = (isCertifiedAssessor && hasAssessorReg && isAssignedToCurrentCohort) ||
-        (isSuperAdmin && isCertifiedAssessor && hasAssessorReg);
-
-    const hasFacilitatorRights = isSuperAdmin || (
-        (isFacilitator || Boolean(user?.canFacilitateCohorts) || secondaryRoles.includes('facilitator') || isMentor || isAdmin)
-        && isAssignedToCurrentCohort
+    // 3. Enforce Strict Rights (Bypasses SETA Registration number if SECAM / Bootcamp):
+    const hasAssessorRights = isSuperAdmin || isAdmin || (
+        isSECAM
+            ? (isCertifiedAssessor || isFacilitator || isMentor)
+            : (isCertifiedAssessor && hasAssessorReg)
     );
 
-    const hasModeratorRights = isSuperAdmin || (
-        (secondaryRoles.includes('moderator') || isModerator || isAdmin)
-        && isAssignedToCurrentCohort
-    );
+    // cskonst isAssDone = ['graded', 'moderated', 'returned', 'appealed'].includes(currentStatus00-);
+    // const isModDone = ['moderated', 'appealed'].includes(currentStatus);
+
+    // // 🚀 STRICT QCTO & COHORT-SCOPED ROLE IDENTIFICATION
+    // const isMentor = user?.role === 'mentor';
+    // const isFacilitator = user?.role === 'facilitator' || user?.role === 'assistant_facilitator';
+    // const isAssessor = user?.role === 'assessor';
+    // const isModerator = user?.role === 'moderator';
+    // const isAdmin = user?.role === 'admin' || user?.role === 'assistant_admin';
+    // const isSuperAdmin = Boolean(user?.isSuperAdmin);
+
+    // const secondaryRoles = Array.isArray(user?.secondaryRoles) ? user.secondaryRoles : [];
+    // const userAssignedCohorts = Array.isArray(user?.assignedCohortIds) ? user.assignedCohortIds : [];
+
+    // // 1. Verify if the user is explicitly assigned to this submission's cohort
+    // const isAssignedToCurrentCohort = Boolean(
+    //     submission?.cohortId && userAssignedCohorts.includes(submission.cohortId)
+    // );
+
+    // // // 2. Strict QCTO Assessor Accreditation Checks
+    // // const isCertifiedAssessor = isAssessor ||
+    // //     secondaryRoles.includes('assessor') ||
+    // //     Boolean(user?.canMarkAssessments);
+
+    // // const hasAssessorReg = Boolean(
+    // //     user?.assessorRegNumber ||
+    // //     user?.assessorRegistrationNumber ||
+    // //     submission?.grading?.assessorRegNumber
+    // // );
+
+    // // // 3. Enforce Strict Rights:
+    // // const hasAssessorRights = isSuperAdmin || isAdmin || (isCertifiedAssessor && hasAssessorReg);
+
+    // // 2. Strict QCTO Assessor Accreditation Checks
+    // const isCertifiedAssessor = isAssessor ||
+    //     secondaryRoles.includes('assessor') ||
+    //     Boolean(user?.canMarkAssessments);
+
+    // const hasAssessorReg = Boolean(
+    //     user?.assessorRegNumber ||
+    //     user?.assessorRegistrationNumber ||
+    //     submission?.grading?.assessorRegNumber
+    // );
+
+    // // 3. Enforce Strict Rights (Bypasses SETA Registration number if SECAM / Bootcamp):
+    // const hasAssessorRights = isSuperAdmin || isAdmin || (
+    //     isSECAM
+    //         ? (isCertifiedAssessor || isFacilitator || isMentor)
+    //         : (isCertifiedAssessor && hasAssessorReg)
+    // );
+
+    const hasFacilitatorRights = isSuperAdmin || isAdmin || isFacilitator || Boolean(user?.canFacilitateCohorts) || secondaryRoles.includes('facilitator') || isMentor;
+
+    // Bypassed isAssignedToCurrentCohort for Moderators and Admins
+    const hasModeratorRights = isSuperAdmin || isAdmin || isModerator || secondaryRoles.includes('moderator');
 
     const isAdminOrFacilitator = isSuperAdmin || ((isAdmin || isFacilitator || hasFacilitatorRights) && isAssignedToCurrentCohort);
 
@@ -2501,7 +2566,7 @@ export const SubmissionReview: React.FC = () => {
         triggerAutoSave(facBreakdown, assBreakdown, modBreakdown, facOverallFeedback, assOverallFeedback, val, competency, modOutcome);
     };
 
-    const handleCompetencySelect = (val: 'C' | 'NYC') => {
+    const handleCompetencySelect = (val: CompetencyStatus) => {
         if (!canGrade) return;
         setCompetency(val);
         triggerAutoSave(facBreakdown, assBreakdown, modBreakdown, facOverallFeedback, assOverallFeedback, modFeedback, val, modOutcome);
@@ -2992,6 +3057,151 @@ export const SubmissionReview: React.FC = () => {
         return getFacTime();
     };
 
+    // const executeQuickUnlock = async (reason: string) => {
+    //     setSaving(true);
+    //     try {
+    //         const timestampIso = new Date().toISOString();
+
+    //         // 1. Archive the failed attempt
+    //         const historyRef = doc(collection(db, 'learner_submissions', submission.id, 'history'));
+    //         await setDoc(historyRef, {
+    //             ...submission,
+    //             archivedAt: timestampIso,
+    //             snapshotReason: `Quick Unlock (Coaching Waived): ${reason}`
+    //         });
+
+    //         // 2. Reset the main submission and inject a system note
+    //         await updateDoc(doc(db, 'learner_submissions', submission.id), {
+    //             status: 'not_started',
+    //             startedAt: deleteField(),
+    //             competency: deleteField(),
+    //             grading: deleteField(),
+    //             moderation: deleteField(),
+    //             submittedAt: deleteField(),
+    //             learnerDeclaration: deleteField(),
+    //             attemptNumber: (submission.attemptNumber || 1) + 1,
+    //             lastStaffEditAt: timestampIso,
+    //             hasOverride: true, // 🚀 This tells the AssessmentGate to bypass the coaching check!
+    //             systemNote: `Coaching Waived. Quick-Unlocked by ${user?.fullName}: "${reason}"`
+    //         });
+
+    //         toast.success("Workbook quick-unlocked for the learner!");
+    //         setTimeout(() => window.location.reload(), 1500);
+    //     } catch (err) {
+    //         toast.error("Failed to quick-unlock workbook.");
+    //     } finally {
+    //         setSaving(false);
+    //     }
+    // };
+
+    // const executeQuickUnlock = async (reason: string) => {
+    //     setSaving(true);
+    //     try {
+    //         const timestampIso = new Date().toISOString();
+
+    //         // 1. Archive the failed attempt for the audit trail
+    //         const historyRef = doc(collection(db, 'learner_submissions', submission.id, 'history'));
+    //         await setDoc(historyRef, {
+    //             ...submission,
+    //             archivedAt: timestampIso,
+    //             snapshotReason: `Quick Unlock (Coaching Waived): ${reason}`,
+    //             // 🚀 FIX: Attach the coaching log to the history snapshot so the Archive UI displays it!
+    //             coachingLog: {
+    //                 date: timestampIso,
+    //                 notes: `Formative Fast-Tracked (Coaching Waived): ${reason}`,
+    //                 facilitatorId: user?.uid || 'system',
+    //                 facilitatorName: user?.fullName || 'Facilitator',
+    //                 acknowledged: true,
+    //                 acknowledgedAt: timestampIso
+    //             }
+    //         });
+
+    //         // 2. Reset the main submission and inject the "Fast-Tracked" coaching log
+    //         await updateDoc(doc(db, 'learner_submissions', submission.id), {
+    //             status: 'not_started',
+    //             startedAt: deleteField(),
+    //             competency: deleteField(),
+    //             grading: deleteField(),
+    //             moderation: deleteField(),
+    //             submittedAt: deleteField(),
+    //             learnerDeclaration: deleteField(),
+    //             attemptNumber: (submission.attemptNumber || 1) + 1,
+    //             lastStaffEditAt: timestampIso,
+    //             hasOverride: true,
+    //             latestCoachingLog: {
+    //                 date: timestampIso,
+    //                 notes: `Formative Fast-Tracked (Coaching Waived): ${reason}`,
+    //                 facilitatorId: user?.uid || 'system',
+    //                 facilitatorName: user?.fullName || 'Facilitator',
+    //                 acknowledged: true, // Auto-acknowledges so the Gate doesn't block them
+    //                 acknowledgedAt: timestampIso
+    //             }
+    //         });
+
+    //         toast.success("Workbook quick-unlocked for the learner!");
+    //         setTimeout(() => window.location.reload(), 1500);
+    //     } catch (err) {
+    //         toast.error("Failed to quick-unlock workbook.");
+    //     } finally {
+    //         setSaving(false);
+    //     }
+    // };
+
+    const executeQuickUnlock = async (reason: string) => {
+        setSaving(true);
+        try {
+            const timestampIso = new Date().toISOString();
+
+            // 1. Archive the failed attempt for the audit trail
+            const historyRef = doc(collection(db, 'learner_submissions', submission.id, 'history'));
+            await setDoc(historyRef, {
+                ...submission,
+                archivedAt: timestampIso,
+                snapshotReason: `Quick Unlock (Coaching Waived): ${reason}`,
+                // 🚀 FIX: Attach the coaching log to the history snapshot so the Archive UI displays it!
+                coachingLog: {
+                    date: timestampIso,
+                    notes: `Formative Fast-Tracked (Coaching Waived): ${reason}`,
+                    facilitatorId: user?.uid || 'system',
+                    facilitatorName: user?.fullName || 'Facilitator',
+                    acknowledged: true,
+                    acknowledgedAt: timestampIso
+                }
+            });
+
+            // 2. Reset the main submission and inject the "Fast-Tracked" coaching log
+            await updateDoc(doc(db, 'learner_submissions', submission.id), {
+                status: 'not_started',
+                startedAt: deleteField(),
+                competency: deleteField(),
+                grading: deleteField(),
+                moderation: deleteField(),
+                submittedAt: deleteField(),
+                learnerDeclaration: deleteField(),
+                coachingRequested: deleteField(),
+                coachingRequestedAt: deleteField(),
+                attemptNumber: (submission.attemptNumber || 1) + 1,
+                lastStaffEditAt: timestampIso,
+                hasOverride: true,
+                latestCoachingLog: {
+                    date: timestampIso,
+                    notes: `Formative Fast-Tracked (Coaching Waived): ${reason}`,
+                    facilitatorId: user?.uid || 'system',
+                    facilitatorName: user?.fullName || 'Facilitator',
+                    acknowledged: true, // Auto-acknowledges so the Gate doesn't block them
+                    acknowledgedAt: timestampIso
+                }
+            });
+
+            toast.success("Workbook quick-unlocked for the learner!");
+            setTimeout(() => window.location.reload(), 1500);
+        } catch (err) {
+            toast.error("Failed to quick-unlock workbook.");
+        } finally {
+            setSaving(false);
+        }
+    };
+
     const sectionTotals: Record<string, { total: number, awarded: number }> = {};
     let currentSectionId = '';
     if (assessment?.blocks) {
@@ -3256,9 +3466,67 @@ export const SubmissionReview: React.FC = () => {
         </div>
     );
 
-    if (!submission || !assessment) return <div className="sr-loading">Data unavailable.</div>;
+    // if (!submission || !assessment) return <div className="sr-loading">Data unavailable.</div>;
+    if (!submission || !assessment) {
+        return (
+            <div className="sr-root" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', padding: '2rem' }}>
+                <div
+                    className="animate-fade-in"
+                    style={{
+                        maxWidth: '460px',
+                        width: '100%',
+                        textAlign: 'center',
+                        padding: '2.5rem 2rem',
+                        background: 'white',
+                        border: '1px solid var(--mlab-border)',
+                        borderRadius: '8px',
+                        borderTop: '4px solid var(--mlab-red, #ef4444)',
+                        boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)'
+                    }}
+                >
+                    <div style={{ background: '#fef2f2', width: '56px', height: '56px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.25rem', border: '1px solid #fecaca' }}>
+                        <AlertTriangle size={28} color="var(--mlab-red, #ef4444)" />
+                    </div>
+                    <h2 style={{ fontFamily: 'var(--font-heading)', fontSize: '1.25rem', color: 'var(--mlab-blue)', textTransform: 'uppercase', margin: '0 0 0.5rem 0', letterSpacing: '0.05em' }}>
+                        Record Unavailable
+                    </h2>
+                    <p style={{ fontSize: '0.88rem', color: 'var(--mlab-grey)', margin: '0 0 1.5rem 0', lineHeight: 1.5 }}>
+                        The requested assessment submission or template record could not be retrieved from the database.
+                    </p>
+                    <button
+                        type="button"
+                        className="lfm-btn lfm-btn--ghost"
+                        onClick={() => navigate(-1)}
+                        style={{ margin: '0 auto', display: 'inline-flex', alignItems: 'center', gap: '8px' }}
+                    >
+                        <ArrowLeft size={14} /> Return to Portfolio
+                    </button>
+                </div>
+            </div>
+        );
+    }
 
-    const printOutcomeColor = submission.competency === 'C' ? 'green' : (submission.competency === 'NYC' ? 'red' : 'black');
+    // const printOutcomeColor = submission.competency === 'C' ? 'green' : (submission.competency === 'NYC' ? 'red' : 'black');
+    const printOutcomeColor = submission.competency === 'C' || submission.competency === 'HC' ? 'green' : (['NYC', 'DEV', '1', '2'].includes(String(submission.competency || '').toUpperCase()) ? 'red' : 'black');
+
+    const getCompetencyLabelText = (compStr: string) => {
+        switch (compStr.toUpperCase()) {
+            case 'HC':
+            case '4':
+                return 'Highly Competent (HC)';
+            case 'C':
+            case '3':
+                return 'Competent (C)';
+            case 'DEV':
+            case '2':
+                return 'Developing (DEV)';
+            case 'NYC':
+            case '1':
+                return 'Not Yet Competent (NYC)';
+            default:
+                return compStr;
+        }
+    };
     const printInkColor = isModDone ? 'green' : (isAssDone ? 'red' : 'blue');
     const canPrint = !['not_started', 'in_progress', 'missed', 'violation'].includes(currentStatus);
 
@@ -3366,7 +3634,23 @@ export const SubmissionReview: React.FC = () => {
                     <button className="sr-back-btn" onClick={() => navigate(-1)}><ArrowLeft size={13} /> Portfolio</button>
                     <div className="ap-player-topbar__separator" />
                     <h1 className="ap-player-topbar__title">
+                        {/* {assessment.title}
+                        {isSECAM && (
+                            <span style={{ marginLeft: '10px', fontSize: '0.72rem', background: 'var(--mlab-blue)', color: 'var(--mlab-green)', padding: '2px 8px', borderRadius: '12px', verticalAlign: 'middle', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                mLab Skills SECAM
+                            </span>
+                        )}
+                        {submission?.attemptNumber > 1 && (
+                            <span style={{ marginLeft: '10px', fontSize: '0.75rem', background: '#f59e0b', color: 'white', padding: '2px 8px', borderRadius: '12px', verticalAlign: 'middle' }}>
+                                Attempt {submission.attemptNumber}
+                            </span>
+                        )} */}
                         {assessment.title}
+                        {isSECAM && (
+                            <span style={{ marginLeft: '10px', fontSize: '0.72rem', background: 'var(--mlab-blue)', color: 'var(--mlab-green)', padding: '2px 8px', borderRadius: '12px', verticalAlign: 'middle', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                mLab Skills SECAM
+                            </span>
+                        )}
                         {submission?.attemptNumber > 1 && (
                             <span style={{ marginLeft: '10px', fontSize: '0.75rem', background: '#f59e0b', color: 'white', padding: '2px 8px', borderRadius: '12px', verticalAlign: 'middle' }}>
                                 Attempt {submission.attemptNumber}
@@ -3426,20 +3710,23 @@ export const SubmissionReview: React.FC = () => {
                 <div className="print-only-cover">
                     <div className="print-page">
                         <h1 style={{ textAlign: 'center', textTransform: 'uppercase', marginBottom: '10px' }}>
-                            {assessment?.moduleInfo?.moduleName || assessment?.title || 'MODULE ASSESSMENT'}, NQF LEVEL {assessment?.moduleInfo?.nqfLevel || 'N/A'}, CREDITS {assessment?.moduleInfo?.credits || 'N/A'}
+                            {isSECAM ? 'mLAB SKILLS SECAM EVALUATION REPORT' : `${assessment?.moduleInfo?.moduleName || assessment?.title || 'MODULE ASSESSMENT'}, NQF LEVEL ${assessment?.moduleInfo?.nqfLevel || 'N/A'}`}
                         </h1>
                         <h2 style={{ textAlign: 'center', marginBottom: '8mm', textDecoration: 'underline' }}>
-                            LEARNER WORKBOOK {submission?.attemptNumber > 1 ? `- ATTEMPT #${submission.attemptNumber}` : ''}
+                            {isSECAM ? 'PRACTICAL COMPETENCY ASSESSMENT' : `LEARNER WORKBOOK ${submission?.attemptNumber > 1 ? `- ATTEMPT #${submission.attemptNumber}` : ''}`}
                         </h2>
+
                         <table className="print-table" style={{ width: '100%', marginBottom: '8mm' }}>
                             <tbody>
-                                <tr><td style={{ width: '40%', fontWeight: 'bold' }}>Module #</td><td>{assessment?.moduleInfo?.moduleNumber || 'N/A'}</td></tr>
-                                <tr><td style={{ fontWeight: 'bold' }}>NQF Level</td><td>Level {assessment?.moduleInfo?.nqfLevel || 'N/A'}</td></tr>
-                                <tr><td style={{ fontWeight: 'bold' }}>Notional hours</td><td>{assessment?.moduleInfo?.notionalHours || 'N/A'}</td></tr>
-                                <tr><td style={{ fontWeight: 'bold' }}>Credit(s)</td><td>Cr {assessment?.moduleInfo?.credits || 'N/A'}</td></tr>
-                                <tr><td style={{ fontWeight: 'bold' }}>Occupational Code</td><td>{assessment?.moduleInfo?.occupationalCode || 'N/A'}</td></tr>
-                                <tr><td style={{ fontWeight: 'bold' }}>SAQA QUAL ID</td><td>{assessment?.moduleInfo?.saqaId || 'N/A'}</td></tr>
-                                <tr><td style={{ fontWeight: 'bold' }}>Qualification Title</td><td>{assessment?.moduleInfo?.qualificationTitle || 'N/A'}</td></tr>
+                                <tr><td style={{ width: '40%', fontWeight: 'bold' }}>Framework</td><td>{isSECAM ? 'mLab Skills SECAM' : 'QCTO / SETA Accredited'}</td></tr>
+                                <tr><td style={{ fontWeight: 'bold' }}>Program / Module</td><td>{assessment?.title || 'Bootcamp Module'}</td></tr>
+                                <tr><td style={{ fontWeight: 'bold' }}>Attempt Number</td><td>Attempt #{submission?.attemptNumber || 1}</td></tr>
+                                {!isSECAM && (
+                                    <>
+                                        <tr><td style={{ fontWeight: 'bold' }}>Occupational Code</td><td>{assessment?.moduleInfo?.occupationalCode || 'N/A'}</td></tr>
+                                        <tr><td style={{ fontWeight: 'bold' }}>SAQA QUAL ID</td><td>{assessment?.moduleInfo?.saqaId || 'N/A'}</td></tr>
+                                    </>
+                                )}
                             </tbody>
                         </table>
                         <h3>CONTACT INFORMATION:</h3>
@@ -3553,7 +3840,9 @@ export const SubmissionReview: React.FC = () => {
                             <div>
                                 <p><strong>Module:</strong> {assessment?.moduleInfo?.moduleNumber}</p>
                                 <p><strong>Score:</strong> <span style={{ color: isWorkplaceModule ? '#64748b' : (isFacDone ? printInkColor : '#94a3b8'), fontWeight: 'bold' }}>{isWorkplaceModule ? 'N/A (Competency Based)' : (isFacDone ? `${activeTotals.score} / ${activeTotals.max} (${activeTotals.pct}%)` : 'Pending Review')}</span></p>
-                                <p><strong>Outcome:</strong> <span style={{ color: isAssDone ? printOutcomeColor : '#94a3b8', fontWeight: 'bold' }}>{isAssDone ? (submission.competency === 'C' ? 'Competent (C)' : submission.competency === 'NYC' ? 'Not Yet Competent (NYC)' : 'Pending') : 'Pending Assessment'}</span></p>
+                                {/* <p><strong>Outcome:</strong> <span style={{ color: isAssDone ? printOutcomeColor : '#94a3b8', fontWeight: 'bold' }}>{isAssDone ? (submission.competency === 'C' ? 'Competent (C)' : submission.competency === 'NYC' ? 'Not Yet Competent (NYC)' : 'Pending') : 'Pending Assessment'}</span></p> */}
+                                <p><strong>Outcome:</strong> <span style={{ color: isAssDone ? printOutcomeColor : '#94a3b8', fontWeight: 'bold' }}>{isAssDone ? getCompetencyLabelText(submission.competency || 'Pending') : 'Pending Assessment'}</span></p>
+
                             </div>
                         </div>
                     </div>
@@ -3561,6 +3850,7 @@ export const SubmissionReview: React.FC = () => {
 
                 <div className="sr-blocks">
                     <RenderBlocks
+                        isSECAM={isSECAM}
                         assessment={assessment} submission={submission} facBreakdown={facBreakdown} assBreakdown={assBreakdown} modBreakdown={modBreakdown}
                         activeTabs={activeTabs} setActiveTabs={setActiveTabs} sectionTotals={sectionTotals} isPrintMode={true}
                         canFacilitatorMark={canFacilitatorMark} canGrade={canGrade} canModerate={canModerate}
@@ -3889,9 +4179,24 @@ export const SubmissionReview: React.FC = () => {
                                 <div className="sr-competency-section">
                                     <div className="sr-role-guide red"><Info size={16} /><div><strong>Summative Judgment</strong><br />Declare Competency. You must justify your marks.</div></div>
                                     <label className="sr-sidebar-label" style={{ color: 'red', marginTop: '1rem' }}>Final Competency</label>
-                                    <div className="sr-comp-toggles">
+                                    {/* <div className="sr-comp-toggles">
                                         <button className={`sr-comp-btn ${competency === 'C' ? 'active-c-red' : ''}`} onClick={() => handleCompetencySelect('C')}><Award size={16} /> Competent (C)</button>
                                         <button className={`sr-comp-btn ${competency === 'NYC' ? 'active-nyc-red' : ''}`} onClick={() => handleCompetencySelect('NYC')}><AlertCircle size={16} /> Not Yet Competent</button>
+                                    </div> */}
+                                    <div className="sr-comp-toggles" style={{ flexWrap: 'wrap', gap: '6px' }}>
+                                        {isSECAM ? (
+                                            <>
+                                                <button className={`sr-comp-btn ${competency === 'HC' ? 'active-c-red' : ''}`} onClick={() => handleCompetencySelect('HC')} style={{ fontSize: '0.75rem', padding: '6px 10px' }}><Sparkles size={14} /> L4: Highly Competent</button>
+                                                <button className={`sr-comp-btn ${competency === 'C' ? 'active-c-red' : ''}`} onClick={() => handleCompetencySelect('C')} style={{ fontSize: '0.75rem', padding: '6px 10px' }}><Award size={14} /> L3: Competent</button>
+                                                <button className={`sr-comp-btn ${competency === 'DEV' ? 'active-nyc-red' : ''}`} onClick={() => handleCompetencySelect('DEV')} style={{ fontSize: '0.75rem', padding: '6px 10px' }}><RefreshCw size={14} /> L2: Developing</button>
+                                                <button className={`sr-comp-btn ${competency === 'NYC' ? 'active-nyc-red' : ''}`} onClick={() => handleCompetencySelect('NYC')} style={{ fontSize: '0.75rem', padding: '6px 10px' }}><AlertCircle size={14} /> L1: NYC</button>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <button className={`sr-comp-btn ${competency === 'C' ? 'active-c-red' : ''}`} onClick={() => handleCompetencySelect('C')}><Award size={16} /> Competent (C)</button>
+                                                <button className={`sr-comp-btn ${competency === 'NYC' ? 'active-nyc-red' : ''}`} onClick={() => handleCompetencySelect('NYC')}><AlertCircle size={16} /> Not Yet Competent (NYC)</button>
+                                            </>
+                                        )}
                                     </div>
                                 </div>
                             )
@@ -3913,28 +4218,132 @@ export const SubmissionReview: React.FC = () => {
                         signatureMeta={`Outcome: ${submission.moderation?.outcome || modOutcome}`} signatureTagline="QA Sign-off Confirmed"
                         timeOverrideValue={modTimeOverride} onTimeOverrideChange={setModTimeOverride} autoTimeSeconds={getModTime()}
                         activeControls={
-                            (canModerate || isModDone) && (
-                                <>
-                                    <div className="sr-competency-section">
-                                        <label className="sr-sidebar-label" style={{ color: 'green' }}>Assessor's Declared Competency</label>
-                                        <div className="sr-comp-toggles">
-                                            <button className={`sr-comp-btn ${submission.competency === 'C' ? 'active-c-green' : ''}`} disabled style={{ opacity: submission.competency === 'C' ? 1 : 0.5, cursor: 'default' }}><Award size={16} /> Competent (C)</button>
-                                            <button className={`sr-comp-btn ${submission.competency === 'NYC' ? 'active-nyc-green' : ''}`} disabled style={{ opacity: submission.competency === 'NYC' ? 1 : 0.5, cursor: 'default' }}><AlertCircle size={16} /> Not Yet Competent</button>
-                                        </div>
+                            canGrade && !isMissed && !isViolation && (
+                                <div className="sr-competency-section">
+                                    <div className="sr-role-guide red"><Info size={16} /><div><strong>Summative Judgment</strong><br />Declare Competency. You must justify your marks.</div></div>
+                                    <label className="sr-sidebar-label" style={{ color: 'red', marginTop: '1rem' }}>Final Competency</label>
+
+                                    <div className="sr-comp-toggles" style={{ flexWrap: 'wrap', gap: '6px' }}>
+                                        {isSECAM ? (
+                                            <>
+                                                <button className={`sr-comp-btn ${competency === 'HC' ? 'active-c-red' : ''}`} onClick={() => handleCompetencySelect('HC')} style={{ fontSize: '0.75rem', padding: '6px 10px' }}><Sparkles size={14} /> L4: Highly Competent</button>
+                                                <button className={`sr-comp-btn ${competency === 'C' ? 'active-c-red' : ''}`} onClick={() => handleCompetencySelect('C')} style={{ fontSize: '0.75rem', padding: '6px 10px' }}><Award size={14} /> L3: Competent</button>
+                                                <button className={`sr-comp-btn ${competency === 'DEV' ? 'active-nyc-red' : ''}`} onClick={() => handleCompetencySelect('DEV')} style={{ fontSize: '0.75rem', padding: '6px 10px' }}><RefreshCw size={14} /> L2: Developing</button>
+                                                <button className={`sr-comp-btn ${competency === 'NYC' ? 'active-nyc-red' : ''}`} onClick={() => handleCompetencySelect('NYC')} style={{ fontSize: '0.75rem', padding: '6px 10px' }}><AlertCircle size={14} /> L1: NYC</button>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <button className={`sr-comp-btn ${competency === 'C' ? 'active-c-red' : ''}`} onClick={() => handleCompetencySelect('C')}><Award size={16} /> Competent (C)</button>
+                                                <button className={`sr-comp-btn ${competency === 'NYC' ? 'active-nyc-red' : ''}`} onClick={() => handleCompetencySelect('NYC')}><AlertCircle size={16} /> Not Yet Competent (NYC)</button>
+                                            </>
+                                        )}
                                     </div>
-                                    {canModerate && (
-                                        <div className="sr-competency-section" style={{ marginTop: '1.5rem' }}>
-                                            <label className="sr-sidebar-label" style={{ color: 'green' }}>Your Moderation Decision</label>
-                                            <div className="sr-comp-toggles">
-                                                <button className={`sr-comp-btn mod ${modOutcome === 'Endorsed' ? 'active-c-green' : ''}`} onClick={() => handleModOutcomeSelect('Endorsed')}><ShieldCheck size={16} /> Endorse Grade</button>
-                                                <button className={`sr-comp-btn mod ${modOutcome === 'Returned' ? 'active-nyc-green' : ''}`} onClick={() => handleModOutcomeSelect('Returned')}><AlertCircle size={16} /> Return to Assessor</button>
-                                            </div>
+
+                                    {/* 🚀 ADDED: REMEDIATION & QUICK UNLOCK CONTROLS */}
+                                    {isAssDone && ['NYC', 'DEV', '1', '2'].includes(String(submission?.competency || '').toUpperCase()) && !isAppealUpheld && (
+                                        <div style={{ marginTop: '1.5rem', paddingTop: '1rem', borderTop: '1px dashed #fca5a5', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                            <label className="sr-sidebar-label" style={{ color: '#b91c1c' }}>Re-assessment Actions</label>
+
+                                            <button
+                                                className="mlab-btn mlab-btn--warning mlab-btn--sm"
+                                                style={{ width: '100%', justifyContent: 'center' }}
+                                                onClick={() => setShowRemediationModal(true)}
+                                            >
+                                                <MessageSquare size={14} style={{ marginRight: '6px' }} /> Log Coaching & Unlock Attempt #{(submission?.attemptNumber || 1) + 1}
+                                            </button>
+
+                                            {/* Only show Quick Unlock for Formatives or Admins */}
+                                            {(!isSummative || isAdmin) && (
+                                                <button
+                                                    className="mlab-btn mlab-btn--outline mlab-btn--sm"
+                                                    style={{ width: '100%', justifyContent: 'center', borderColor: '#fca5a5', color: '#b91c1c' }}
+                                                    onClick={() => {
+                                                        const reason = window.prompt("Reason for waiving the coaching session (e.g., 'Wrong file uploaded'):");
+                                                        if (reason) {
+                                                            executeQuickUnlock(reason);
+                                                        }
+                                                    }}
+                                                >
+                                                    <Unlock size={14} style={{ marginRight: '6px' }} /> Quick Unlock (Waive Coaching)
+                                                </button>
+                                            )}
                                         </div>
                                     )}
-                                </>
+                                </div>
                             )
                         }
                     />
+
+                    {/* ACADEMIC BOARD ACTIONS PANEL */}
+                    {/* {(isAdmin || isSuperAdmin || isModerator) && (
+                        <div className="sr-panel" style={{ marginTop: '1.5rem', borderTop: '3px solid #fca5a5', background: '#fef2f2', padding: '1.5rem' }}> */}
+                    {/* ACADEMIC BOARD ACTIONS PANEL */}
+                    {(isAdmin || isSuperAdmin || isModerator) && (submission?.appeal?.status === 'pending' || ['graded', 'moderated', 'appealed', 'missed', 'violation'].includes(currentStatus)) && (
+                        <div className="sr-panel" style={{ marginTop: '1.5rem', border: '1px solid #fca5a5', background: '#fef2f2', padding: '1.5rem', borderRadius: '8px' }}>
+                            <h3 className="sr-panel-title" style={{ color: '#b91c1c', display: 'flex', alignItems: 'center', gap: '6px', margin: '0 0 10px 0' }}>
+                                <ShieldAlert size={16} /> Academic Board Actions
+                            </h3>
+                            <p style={{ fontSize: '0.8rem', color: '#991b1b', marginBottom: '1rem', lineHeight: 1.4 }}>
+                                As a Moderator or Admin, you have the authority to override system lockouts, uphold learner appeals, and grant special additional attempts.
+                            </p>
+
+                            {submission?.appeal?.status === 'pending' && (
+                                <div style={{ background: '#fff', border: '1px solid #fecaca', padding: '10px', borderRadius: '6px', marginBottom: '1rem' }}>
+                                    <strong style={{ fontSize: '0.75rem', color: '#dc2626', textTransform: 'uppercase' }}>Pending Learner Appeal:</strong>
+                                    <p style={{ fontSize: '0.85rem', color: '#475569', margin: '4px 0 0 0', fontStyle: 'italic' }}>
+                                        "{submission.appeal.reason}"
+                                    </p>
+                                </div>
+                            )}
+
+                            <button
+                                className="mlab-btn mlab-btn--warning "
+                                style={{ width: '100%', justifyContent: 'center', color: 'red' }}
+                                disabled={saving}
+                                onClick={() => {
+                                    const overrideReason = window.prompt("Enter the official reason for granting this override (Required for QCTO Auditing):");
+                                    if (overrideReason) {
+                                        setSaving(true);
+                                        const newAttemptNum = (submission.attemptNumber || 1) + 1;
+
+                                        // 1. Archive the old attempt
+                                        setDoc(doc(collection(db, 'learner_submissions', submission.id, 'history')), {
+                                            ...submission,
+                                            archivedAt: new Date().toISOString(),
+                                            archivedReason: 'Admin Override Granted'
+                                        }).then(() => {
+                                            // 2. Reset the main document and unlock
+                                            updateDoc(doc(db, 'learner_submissions', submission.id), {
+                                                status: 'not_started',
+                                                competency: deleteField(),
+                                                grading: deleteField(),
+                                                moderation: deleteField(),
+                                                submittedAt: deleteField(),
+                                                attemptNumber: newAttemptNum,
+                                                hasOverride: true,
+                                                'appeal.status': 'upheld',
+                                                'appeal.grantedBy': user?.uid || 'system',
+                                                'appeal.grantedReason': overrideReason,
+                                                'appeal.grantedAt': new Date().toISOString(),
+                                                lastStaffEditAt: new Date().toISOString()
+                                            }).then(() => {
+                                                toast.success(`Override granted. Attempt #${newAttemptNum} unlocked.`);
+                                                setTimeout(() => window.location.reload(), 1500);
+                                            });
+                                        }).catch(() => {
+                                            toast.error("Failed to grant override.");
+                                            setSaving(false);
+                                        });
+                                    }
+                                }}
+                            >
+                                {saving ? <Loader2 size={14} className="vp-spin" style={{ marginRight: '6px' }} /> : <Unlock size={14} style={{ marginRight: '6px' }} />}
+                                {submission?.appeal?.status === 'pending' ? 'Uphold Appeal & Unlock' : 'Grant Special Override'}
+                            </button>
+                        </div>
+                    )}
+                    {/* END ACADEMIC BOARD ACTIONS PANEL */}
+
                     <PastAttemptsArchive historySnapshots={historySnapshots} assessment={assessment} />
                 </aside>
             </div>
@@ -3943,6 +4352,9 @@ export const SubmissionReview: React.FC = () => {
 };
 
 export default SubmissionReview;
+
+
+
 
 // // src/pages/FacilitatorDashboard/SubmissionReview/SubmissionReview.tsx
 

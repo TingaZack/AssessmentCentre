@@ -1,7 +1,7 @@
 // src/pages/FacilitatorDashboard/SubmissionReview/GroupObservationMatrix.tsx
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Users, UserPlus, Check, X, Save, AlertCircle, Info, Loader2, CheckCircle2, ArrowLeft, Play, Square, Timer, Trash2, ListChecks } from 'lucide-react';
+import { Users, UserPlus, Save, AlertCircle, Info, Loader2, CheckCircle2, ArrowLeft, Play, Square, Timer, Trash2, ListChecks, X, Sparkles } from 'lucide-react';
 
 export interface Peer {
     id: string;
@@ -17,6 +17,7 @@ export interface ChecklistCriterion {
 }
 
 interface GroupObservationMatrixProps {
+    isSECAM?: boolean;
     currentLearner: Peer;
     availablePeers: Peer[];
     criteria: ChecklistCriterion[];
@@ -39,6 +40,7 @@ interface GroupObservationMatrixProps {
 }
 
 export const GroupObservationMatrix: React.FC<GroupObservationMatrixProps> = ({
+    isSECAM,
     currentLearner,
     availablePeers,
     criteria,
@@ -279,7 +281,7 @@ export const GroupObservationMatrix: React.FC<GroupObservationMatrixProps> = ({
         const start = new Date(startTime).getTime();
 
         const diffSecs = Math.floor((end - start) / 1000);
-        if (diffSecs < 0) return { text: 'Invalid Time', isNegative: true }; // 🚀 Smart Validation for manual overrides
+        if (diffSecs < 0) return { text: 'Invalid Time', isNegative: true };
 
         const m = Math.floor(diffSecs / 60);
         const s = diffSecs % 60;
@@ -294,7 +296,7 @@ export const GroupObservationMatrix: React.FC<GroupObservationMatrixProps> = ({
 
     const handleSave = async () => {
         if (!groupRemarks.trim()) {
-            alert("Please provide Overall Group Remarks before saving. This is required for QCTO compliance.");
+            alert("Please provide Overall Group Remarks before saving. This is required for audit and assessment compliance.");
             return;
         }
 
@@ -338,9 +340,14 @@ export const GroupObservationMatrix: React.FC<GroupObservationMatrixProps> = ({
 
                 {/* ── HEADER ── */}
                 <div className="lfm-header" style={{ flexShrink: 0 }}>
-                    <h2 className="lfm-header__title">
+                    <h2 className="lfm-header__title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <Users size={16} />
                         {showPeerSelector ? 'Group Observation Setup' : `Active Group Session: ${selectedGroup.length} Learners`}
+                        {isSECAM && (
+                            <span style={{ fontSize: '0.72rem', background: 'var(--mlab-blue)', color: 'var(--mlab-green)', padding: '2px 8px', borderRadius: '12px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                <Sparkles size={12} /> SECAM Group Evaluation
+                            </span>
+                        )}
                     </h2>
 
                     {!showPeerSelector && (
@@ -442,18 +449,18 @@ export const GroupObservationMatrix: React.FC<GroupObservationMatrixProps> = ({
                         <div style={{ padding: '1rem 1.5rem', background: 'var(--mlab-white)', borderBottom: '1px solid var(--mlab-border)', flexShrink: 0 }}>
                             <div className="lfm-error-banner" style={{ background: '#e0f2fe', borderColor: '#bae6fd', color: '#0369a1', margin: 0, padding: '10px 14px', borderRadius: '6px' }}>
                                 <Info size={18} color="#0ea5e9" style={{ flexShrink: 0 }} />
-                                <span><strong>Group Mode Active:</strong> You can minimize this window to review the portfolio without losing your timers. Saving applies marks to <strong>all {selectedGroup.length} learners</strong> simultaneously.</span>
+                                <span><strong>Group Mode Active:</strong> You can minimize this window to review individual work without losing active timers. Saving applies observation outcomes to <strong>all {selectedGroup.length} selected learners</strong> simultaneously.</span>
                             </div>
                         </div>
 
-                        {/* 🚀 STICKY MATRIX CONTAINER */}
+                        {/* STICKY MATRIX CONTAINER */}
                         <div style={{ overflow: 'auto', flex: 1, background: 'var(--mlab-bg)' }}>
                             <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, background: 'var(--mlab-white)', minWidth: '800px' }}>
                                 <thead>
                                     <tr>
                                         {/* Sticky Header + Sticky First Column */}
                                         <th className="sticky-col" style={{ position: 'sticky', top: 0, left: 0, zIndex: 20, background: 'var(--mlab-blue)', color: 'var(--mlab-white)', padding: '14px 16px', textAlign: 'left', fontFamily: 'var(--font-heading)', fontSize: '0.85rem', letterSpacing: '0.05em', textTransform: 'uppercase', minWidth: '350px', borderBottom: '2px solid #1e3a8a' }}>
-                                            Observation Criteria & Timers
+                                            Observation Criteria &amp; Timers
                                         </th>
 
                                         {/* Sticky Learner Headers */}
@@ -641,7 +648,7 @@ export const GroupObservationMatrix: React.FC<GroupObservationMatrixProps> = ({
                             <textarea
                                 className="lfm-input"
                                 rows={3}
-                                placeholder="E.g., The team successfully dismantled and reassembled the engine block with zero safety violations. Excellent communication demonstrated..."
+                                placeholder="E.g., The team successfully completed the technical task with zero safety violations. Excellent collaboration demonstrated..."
                                 value={groupRemarks}
                                 onChange={(e) => setGroupRemarks(e.target.value)}
                                 style={{ width: '100%', resize: 'vertical' }}
@@ -656,7 +663,7 @@ export const GroupObservationMatrix: React.FC<GroupObservationMatrixProps> = ({
                         <ArrowLeft size={14} /> Back to Selection
                     </button>
                     <button type="button" className="lfm-btn lfm-btn--primary" onClick={handleSave} disabled={isSaving || !groupRemarks.trim()}>
-                        {isSaving ? <><Loader2 size={14} className="lfm-spin" /> Committing Grades...</> : <><Save size={14} /> Submit Group Observation</>}
+                        {isSaving ? <><Loader2 size={14} className="lfm-spin" /> Committing Observation...</> : <><Save size={14} /> Submit Group Observation</>}
                     </button>
                 </div>
 

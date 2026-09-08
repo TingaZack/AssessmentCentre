@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
-    Award, Check, CheckCircle, X, Edit3, Info, Layers, FileText, Mic,
+    Check, CheckCircle, X, Edit3, Info, Layers, FileText, Mic,
     UploadCloud, Code, Link as LinkIcon, CalendarRange, Timer, Play, Square,
-    ShieldCheck, Award as AwardIcon, BarChart, AlertCircle, Sigma, Lock, Loader2, Maximize2,
+    ShieldCheck, Award as AwardIcon, BarChart, AlertCircle, Sigma, Lock, Loader2,
     ChevronDown, ChevronUp
 } from 'lucide-react';
 import moment from 'moment';
@@ -11,17 +11,11 @@ import { FilePreview, UrlPreview } from './SubmissionReviewPreviews';
 import '../SubmissionReview';
 import { CodeSandboxPlayer } from '../../../../components/common/CodeSandboxPlayer/CodeSandboxPlayer';
 
-// 🚀 Direct Firebase Storage Import for Real-Time Code Downloads
 import { getStorage, ref as fbStorageRef, getDownloadURL } from 'firebase/storage';
-
-// 🚀 Direct Firestore Import for Real-Time Unlocks
 import { getFirestore, doc, updateDoc, setDoc } from 'firebase/firestore';
-
-// 🚀 Core Charting Engine Registration
 import { CartesianPlane } from '@zakq/axisjs';
 import "mathlive";
 
-// 🚀 Math Support Configuration
 import katex from "katex";
 import "katex/dist/katex.min.css";
 
@@ -29,16 +23,21 @@ import "katex/dist/katex.min.css";
 
 const POINT_COLORS = ["#ef4444", "#2563eb", "#94c73d", "#f59e0b", "#a855f7", "#0891b2"];
 
-// ─── TYPES ───────────────────────────────────────────────────────────────────
+// ─── TYPES & SECAM EXTENSIONS ────────────────────────────────────────────────
+export type SECAMLevel = 1 | 2 | 3 | 4;
+export type CompetencyStatus = 'HC' | 'C' | 'DEV' | 'NYC' | '1' | '2' | '3' | '4' | null;
+
 export interface CriterionResult {
-    status: 'C' | 'NYC' | null;
+    status: CompetencyStatus;
+    level?: SECAMLevel | null;
     comment: string;
     startTime: string;
     endTime: string;
 }
 
 export interface WorkplaceActivityResult {
-    status: 'C' | 'NYC' | null;
+    status: CompetencyStatus;
+    level?: SECAMLevel | null;
     comment: string;
 }
 
@@ -56,6 +55,7 @@ export interface GradeData {
 
 // ─── PROPS INTERFACE ─────────────────────────────────────────────────────────
 interface RenderBlocksProps {
+    isSECAM?: boolean;
     assessment: any;
     submission: any;
     facBreakdown: Record<string, GradeData>;
@@ -83,7 +83,7 @@ interface RenderBlocksProps {
     handleScoreChange: (blockId: string, score: number, max: number) => void;
     handleFeedbackChange: (blockId: string, feedback: string) => void;
     handleCriterionChange: (blockId: string, index: number, field: keyof CriterionResult, value: any) => void;
-    handleActivityStatusChange: (blockId: string, index: number, status: 'C' | 'NYC') => void;
+    handleActivityStatusChange: (blockId: string, index: number, status: CompetencyStatus) => void;
     handleActivityCommentChange: (blockId: string, index: number, comment: string) => void;
     handleGlobalChecklistChange: (blockId: string, field: 'obsDate' | 'obsStartTime' | 'obsEndTime' | 'obsDeclaration', value: any) => void;
     handleSetToNow: (blockId: string, field: 'obsDate' | 'obsStartTime' | 'obsEndTime') => void;
@@ -267,7 +267,6 @@ const ReviewCodeSandbox: React.FC<{ block: any, learnerAns: any, submissionId: s
     const [isLoading, setIsLoading] = useState<boolean>(true);
     const [isBooted, setIsBooted] = useState<boolean>(false);
 
-    // Normalize code payload structure (handles direct answer object or nested codeData)
     const codePayload = useMemo(() => {
         if (!learnerAns) return null;
         if (typeof learnerAns === 'object' && learnerAns.codeData) return learnerAns.codeData;
@@ -284,16 +283,8 @@ const ReviewCodeSandbox: React.FC<{ block: any, learnerAns: any, submissionId: s
         let isMounted = true;
         setIsLoading(true);
 
-        console.log(`🔍 [FACILITATOR REVIEW CODE] Processing learner code update for block [${block.id}]...`, {
-            hasStoragePath: !!storagePath,
-            storagePath,
-            hasInlineSnapshot: !!inlineSnapshot,
-            lastSavedAt
-        });
-
         const loadLearnerCode = async () => {
             if (storagePath) {
-                console.log(`📥 [FACILITATOR REVIEW CODE] Fetching offloaded snapshot from Storage: ${storagePath}`);
                 try {
                     const storage = getStorage();
                     const jsonRef = fbStorageRef(storage, storagePath);
@@ -302,26 +293,21 @@ const ReviewCodeSandbox: React.FC<{ block: any, learnerAns: any, submissionId: s
                     if (res.ok) {
                         const files = await res.json();
                         if (isMounted) {
-                            console.log(`✅ [FACILITATOR REVIEW CODE] Loaded ${Object.keys(files || {}).length} files from Storage for block [${block.id}]!`);
                             setSnapshot(files);
                         }
-                    } else {
-                        console.error(`❌ [FACILITATOR REVIEW CODE] HTTP ${res.status} fetching storage snapshot for block [${block.id}]`);
                     }
                 } catch (err) {
-                    console.error(`❌ [FACILITATOR REVIEW CODE] Failed to download Storage snapshot for block [${block.id}]:`, err);
+                    console.error(`Failed to download Storage snapshot for block [${block.id}]:`, err);
                 } finally {
                     if (isMounted) setIsLoading(false);
                 }
             } else if (inlineSnapshot) {
-                console.log(`✅ [FACILITATOR REVIEW CODE] Using inline snapshot for block [${block.id}]`);
                 if (isMounted) {
                     const parsed = typeof inlineSnapshot === 'string' ? JSON.parse(inlineSnapshot) : inlineSnapshot;
                     setSnapshot(parsed);
                     setIsLoading(false);
                 }
             } else {
-                console.log(`⚠️ [FACILITATOR REVIEW CODE] No learner code found for block [${block.id}]. Rendering initial starter files.`);
                 if (isMounted) {
                     setSnapshot(null);
                     setIsLoading(false);
@@ -374,6 +360,7 @@ const ReviewCodeSandbox: React.FC<{ block: any, learnerAns: any, submissionId: s
 
 export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
     const {
+        isSECAM,
         assessment, submission, facBreakdown, assBreakdown, modBreakdown,
         activeTabs, setActiveTabs, sectionTotals,
         isPrintMode, canFacilitatorMark, canGrade, canModerate,
@@ -391,7 +378,6 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
         setExpandedGraphMemos(prev => ({ ...prev, [blockId]: !prev[blockId] }));
     };
 
-    // 🚀 FIXED: DOT NOTATION AND TIMESTAMP UPDATE FOR REAL-TIME SYNC
     const handleNetworkIDEToggle = async (blockId: string, currentState: boolean) => {
         if (!submission?.id) return;
         setTogglingIDE(blockId);
@@ -449,6 +435,23 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
                 </button>
             </div>
         );
+    };
+
+    // Helper for framework-agnostic status labels in the read-only view
+    const getStatusLabel = (status: CompetencyStatus, roleType: 'mentor' | 'facilitator' | 'assessor' | 'mod', isWP: boolean) => {
+        if (!status) return 'Not Reviewed';
+        const str = String(status).toUpperCase();
+        if (str === 'HC' || str === '4') return 'Highly Competent (HC)';
+        if (str === 'C' || str === '3') {
+            if (roleType === 'mentor') return isWP ? 'Verified ✓' : 'Observed ✓';
+            return 'Competent (C)';
+        }
+        if (str === 'DEV' || str === '2') return 'Developing (DEV)';
+        if (str === 'NYC' || str === '1') {
+            if (roleType === 'mentor') return isWP ? 'Not Verified ✗' : 'Not Observed ✗';
+            return 'Not Yet Competent (NYC)';
+        }
+        return status as string;
     };
 
     let qNum = 0;
@@ -874,7 +877,6 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
                                     {renderBlockImage(block)}
                                     {renderBlockFile(block)}
 
-                                    {/* 🚀 LIVE IDE REVIEW PLAYER WITH REAL-TIME STORAGE DOWNLOADS */}
                                     <ReviewCodeSandbox
                                         block={block}
                                         learnerAns={learnerAns}
@@ -1126,7 +1128,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1, minWidth: 0 }}>
                                             <RichMathText html={block.title} style={{ color: '#073f4e', fontWeight: 'bold', margin: 0 }} />
                                             <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                                                {isMentor ? 'Workplace observation checklist — verify each criterion.' : 'Assessor observation checklist.'}
+                                                {isMentor ? 'Workplace observation checklist — verify each criterion.' : isSECAM ? 'mLab SECAM practical skill checklist.' : 'Assessor observation checklist.'}
                                             </span>
                                         </div>
                                     </div>
@@ -1237,8 +1239,8 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
                                                             <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#1d4ed8', textTransform: 'uppercase', display: 'flex', gap: '5px' }}>
                                                                 <ShieldCheck size={12} /> {savedFacRole === 'mentor' ? 'Workplace Mentor Observation' : 'Facilitator Pre-Mark'}
                                                             </span>
-                                                            <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: mentorResult.status === 'C' ? '#166534' : mentorResult.status === 'NYC' ? '#991b1b' : '#64748b' }}>
-                                                                {mentorResult.status === 'C' ? (savedFacRole === 'mentor' ? 'Observed ✓' : 'Competent (C)') : mentorResult.status === 'NYC' ? (savedFacRole === 'mentor' ? 'Not Observed ✗' : 'NYC') : 'Not Reviewed'}
+                                                            <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: mentorResult.status === 'C' || mentorResult.status === 'HC' ? '#166534' : mentorResult.status === 'NYC' ? '#991b1b' : '#64748b' }}>
+                                                                {getStatusLabel(mentorResult.status, savedFacRole === 'mentor' ? 'mentor' : 'facilitator', false)}
                                                             </span>
                                                             {mentorResult.comment && <div style={{ fontSize: '0.82rem', color: '#1e40af', fontStyle: 'italic', marginTop: '4px' }}>{mentorResult.comment}</div>}
                                                         </div>
@@ -1249,8 +1251,8 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
                                                             <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#b91c1c', textTransform: 'uppercase', display: 'flex', gap: '5px' }}>
                                                                 <AwardIcon size={12} /> Assessor Grade
                                                             </span>
-                                                            <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: assessorResult.status === 'C' ? '#166534' : assessorResult.status === 'NYC' ? '#991b1b' : '#64748b' }}>
-                                                                {assessorResult.status === 'C' ? 'Competent (C)' : assessorResult.status === 'NYC' ? 'NYC' : 'Not Graded'}
+                                                            <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: assessorResult.status === 'C' || assessorResult.status === 'HC' ? '#166534' : assessorResult.status === 'NYC' ? '#991b1b' : '#64748b' }}>
+                                                                {getStatusLabel(assessorResult.status, 'assessor', false)}
                                                             </span>
                                                             {assessorResult.comment && <div style={{ fontSize: '0.82rem', color: '#991b1b', fontStyle: 'italic', marginTop: '4px' }}>{assessorResult.comment}</div>}
                                                         </div>
@@ -1262,8 +1264,8 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
                                                                 <ShieldCheck size={12} /> Moderator QA
                                                             </span>
                                                             {modResult.status && (
-                                                                <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: modResult.status === 'C' ? '#166534' : modResult.status === 'NYC' ? '#991b1b' : '#64748b' }}>
-                                                                    {modResult.status === 'C' ? 'Competent (C)' : modResult.status === 'NYC' ? 'NYC' : 'Not Graded'}
+                                                                <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: modResult.status === 'C' || modResult.status === 'HC' ? '#166534' : modResult.status === 'NYC' ? '#991b1b' : '#64748b' }}>
+                                                                    {getStatusLabel(modResult.status, 'mod', false)}
                                                                 </span>
                                                             )}
                                                             {modResult.comment && <div style={{ fontSize: '0.82rem', color: '#15803d', fontStyle: 'italic', marginTop: '4px' }}>{modResult.comment}</div>}
@@ -1301,15 +1303,38 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
                                                                     )}
                                                                 </div>
                                                             )}
-                                                            <div style={{ display: 'flex', gap: '10px' }}>
-                                                                <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.85rem', background: myResult.status === 'C' ? '#dcfce7' : '#f8fafc', padding: '8px 12px', borderRadius: '4px', border: myResult.status === 'C' ? '2px solid #22c55e' : '1px solid #cbd5e1', color: myResult.status === 'C' ? '#166534' : '#64748b', fontWeight: 'bold', cursor: canModerate ? 'not-allowed' : 'pointer' }}>
-                                                                    <input type="radio" disabled={canModerate} checked={myResult.status === 'C'} onChange={() => handleCriterionChange(block.id, i, 'status', 'C')} style={{ accentColor: '#22c55e' }} />
-                                                                    {isMentor ? 'Observed ✓' : 'Competent (C)'}
-                                                                </label>
-                                                                <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.85rem', background: myResult.status === 'NYC' ? '#fee2e2' : '#f8fafc', padding: '8px 12px', borderRadius: '4px', border: myResult.status === 'NYC' ? '2px solid #ef4444' : '1px solid #cbd5e1', color: myResult.status === 'NYC' ? '#991b1b' : '#64748b', fontWeight: 'bold', cursor: canModerate ? 'not-allowed' : 'pointer' }}>
-                                                                    <input type="radio" disabled={canModerate} checked={myResult.status === 'NYC'} onChange={() => handleCriterionChange(block.id, i, 'status', 'NYC')} style={{ accentColor: '#ef4444' }} />
-                                                                    {isMentor ? 'Not Observed ✗' : 'NYC'}
-                                                                </label>
+                                                            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                                                                {isSECAM ? (
+                                                                    <>
+                                                                        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem', background: myResult.status === 'HC' ? '#dcfce7' : '#f8fafc', padding: '6px 10px', borderRadius: '4px', border: myResult.status === 'HC' ? '2px solid #16a34a' : '1px solid #cbd5e1', color: myResult.status === 'HC' ? '#15803d' : '#64748b', fontWeight: 'bold', cursor: canModerate ? 'not-allowed' : 'pointer' }}>
+                                                                            <input type="radio" disabled={canModerate} checked={myResult.status === 'HC'} onChange={() => handleCriterionChange(block.id, i, 'status', 'HC')} style={{ accentColor: '#16a34a' }} />
+                                                                            L4: Highly Competent
+                                                                        </label>
+                                                                        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem', background: myResult.status === 'C' ? '#e0f2fe' : '#f8fafc', padding: '6px 10px', borderRadius: '4px', border: myResult.status === 'C' ? '2px solid #0284c7' : '1px solid #cbd5e1', color: myResult.status === 'C' ? '#0369a1' : '#64748b', fontWeight: 'bold', cursor: canModerate ? 'not-allowed' : 'pointer' }}>
+                                                                            <input type="radio" disabled={canModerate} checked={myResult.status === 'C'} onChange={() => handleCriterionChange(block.id, i, 'status', 'C')} style={{ accentColor: '#0284c7' }} />
+                                                                            L3: Competent
+                                                                        </label>
+                                                                        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem', background: myResult.status === 'DEV' ? '#fef3c7' : '#f8fafc', padding: '6px 10px', borderRadius: '4px', border: myResult.status === 'DEV' ? '2px solid #d97706' : '1px solid #cbd5e1', color: myResult.status === 'DEV' ? '#b45309' : '#64748b', fontWeight: 'bold', cursor: canModerate ? 'not-allowed' : 'pointer' }}>
+                                                                            <input type="radio" disabled={canModerate} checked={myResult.status === 'DEV'} onChange={() => handleCriterionChange(block.id, i, 'status', 'DEV')} style={{ accentColor: '#d97706' }} />
+                                                                            L2: Developing
+                                                                        </label>
+                                                                        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem', background: myResult.status === 'NYC' ? '#fee2e2' : '#f8fafc', padding: '6px 10px', borderRadius: '4px', border: myResult.status === 'NYC' ? '2px solid #ef4444' : '1px solid #cbd5e1', color: myResult.status === 'NYC' ? '#991b1b' : '#64748b', fontWeight: 'bold', cursor: canModerate ? 'not-allowed' : 'pointer' }}>
+                                                                            <input type="radio" disabled={canModerate} checked={myResult.status === 'NYC'} onChange={() => handleCriterionChange(block.id, i, 'status', 'NYC')} style={{ accentColor: '#ef4444' }} />
+                                                                            L1: NYC
+                                                                        </label>
+                                                                    </>
+                                                                ) : (
+                                                                    <>
+                                                                        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.85rem', background: myResult.status === 'C' ? '#dcfce7' : '#f8fafc', padding: '8px 12px', borderRadius: '4px', border: myResult.status === 'C' ? '2px solid #22c55e' : '1px solid #cbd5e1', color: myResult.status === 'C' ? '#166534' : '#64748b', fontWeight: 'bold', cursor: canModerate ? 'not-allowed' : 'pointer' }}>
+                                                                            <input type="radio" disabled={canModerate} checked={myResult.status === 'C'} onChange={() => handleCriterionChange(block.id, i, 'status', 'C')} style={{ accentColor: '#22c55e' }} />
+                                                                            {isMentor ? 'Observed ✓' : 'Competent (C)'}
+                                                                        </label>
+                                                                        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.85rem', background: myResult.status === 'NYC' ? '#fee2e2' : '#f8fafc', padding: '8px 12px', borderRadius: '4px', border: myResult.status === 'NYC' ? '2px solid #ef4444' : '1px solid #cbd5e1', color: myResult.status === 'NYC' ? '#991b1b' : '#64748b', fontWeight: 'bold', cursor: canModerate ? 'not-allowed' : 'pointer' }}>
+                                                                            <input type="radio" disabled={canModerate} checked={myResult.status === 'NYC'} onChange={() => handleCriterionChange(block.id, i, 'status', 'NYC')} style={{ accentColor: '#ef4444' }} />
+                                                                            {isMentor ? 'Not Observed ✗' : 'NYC'}
+                                                                        </label>
+                                                                    </>
+                                                                )}
                                                             </div>
                                                             <div style={{ flex: 1, minWidth: '250px' }}>
                                                                 <textarea className="ab-input" disabled={canModerate && !isWorkplaceModule && !myResult.comment} rows={2} placeholder={isMentor ? "Supervisor observation notes..." : canModerate ? "Assessor's comments" : "Assessor comments / reasoning..."} value={myResult.comment} onChange={e => handleCriterionChange(block.id, i, 'comment', e.target.value)} style={{ fontSize: '0.85rem', width: '100%', border: '1px solid #e2e8f0', resize: 'vertical', background: 'white' }} />
@@ -1329,7 +1354,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
                                             <div style={{ marginTop: '2rem', padding: '1.5rem', background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '8px', borderLeft: `4px solid ${activeInkColor}` }}>
                                                 <h4 style={{ fontSize: '0.9rem', color: '#0f172a', margin: '0 0 15px 0', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                     <ShieldCheck size={16} color={activeInkColor} />
-                                                    {isWorkplaceModule ? 'Mentor Verification Declaration' : 'Observation Declaration'}
+                                                    {isWorkplaceModule ? 'Mentor Verification Declaration' : isSECAM ? 'SECAM Evaluation Declaration' : 'Observation Declaration'}
                                                 </h4>
 
                                                 {block.requireTimeTracking !== false && (
@@ -1358,7 +1383,9 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
                                                     <input type="checkbox" disabled={!isDeclarationInteractive || isPrintMode} checked={decData.obsDeclaration || false} onChange={e => handleGlobalChecklistChange(block.id, 'obsDeclaration', e.target.checked)} style={{ width: '18px', height: '18px', accentColor: isDeclarationInteractive ? activeInkColor : '#64748b' }} />
                                                     {isWorkplaceModule
                                                         ? 'I confirm that I have directly observed this learner performing the above workplace activities in a real work environment, and that the evidence submitted is authentic.'
-                                                        : 'I officially declare that I have observed the learner performing these tasks and that the evidence was submitted by the learner.'}
+                                                        : isSECAM
+                                                            ? 'I officially declare that I have evaluated the learner performing these practical skills and verified their submission.'
+                                                            : 'I officially declare that I have observed the learner performing these tasks and that the evidence was submitted by the learner.'}
                                                 </label>
                                             </div>
                                         )}
@@ -1373,11 +1400,13 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
                             <div key={block.id} className="sr-q-card" style={{ borderTop: '4px solid black', marginBottom: '2rem' }}>
                                 <div className="sr-q-header">
                                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', width: '100%' }}>
-                                        <span className="sr-q-num" style={{ background: '#ffe4e6', color: '#e11d48', flexShrink: 0 }}>QCTO</span>
+                                        <span className="sr-q-num" style={{ background: isSECAM ? '#e0f2fe' : '#ffe4e6', color: isSECAM ? '#0369a1' : '#e11d48', flexShrink: 0 }}>
+                                            {isSECAM ? 'SECAM' : 'QCTO'}
+                                        </span>
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1, minWidth: 0 }}>
                                             <RichMathText html={`${block.weCode} – ${block.weTitle}`} style={{ color: '#073f4e', fontWeight: 'bold', margin: 0 }} />
                                             <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                                                {isMentor ? 'Workplace Experience — Mentor Verification' : 'Workplace Experience Checkpoint'}
+                                                {isMentor ? 'Workplace Experience — Mentor Verification' : isSECAM ? 'SECAM Practical Skill Evaluation' : 'Workplace Experience Checkpoint'}
                                             </span>
                                         </div>
                                     </div>
@@ -1401,7 +1430,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
                                         return (
                                             <div key={wa.id} style={{ marginBottom: '2rem', border: '1px solid #cbd5e1', borderRadius: '8px', background: isActiveRole ? 'white' : '#f8fafc' }}>
                                                 <div style={{ padding: '1rem', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                                                    <h4 style={{ margin: 0, color: '#073f4e' }}>{wa.code}: {wa.description}</h4>
+                                                    <h4 style={{ margin: '0 0 8px 0', color: '#073f4e' }}>{wa.code}: {wa.description}</h4>
                                                 </div>
                                                 <div style={{ padding: '1rem' }}>
                                                     <div style={{ marginBottom: '1.5rem' }}>
@@ -1444,8 +1473,8 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
                                                                 <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#1d4ed8', textTransform: 'uppercase', display: 'flex', gap: '5px' }}>
                                                                     <ShieldCheck size={12} /> {savedFacRole === 'mentor' ? 'Workplace Mentor Observation' : 'Facilitator Pre-Mark'}
                                                                 </span>
-                                                                <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: mentorResult.status === 'C' ? '#166534' : mentorResult.status === 'NYC' ? '#991b1b' : '#64748b' }}>
-                                                                    {mentorResult.status === 'C' ? (savedFacRole === 'mentor' ? 'Observed ✓' : 'Competent (C)') : mentorResult.status === 'NYC' ? (savedFacRole === 'mentor' ? 'Not Observed ✗' : 'NYC') : 'Not Reviewed'}
+                                                                <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: mentorResult.status === 'C' || mentorResult.status === 'HC' ? '#166534' : mentorResult.status === 'NYC' ? '#991b1b' : '#64748b' }}>
+                                                                    {getStatusLabel(mentorResult.status, savedFacRole === 'mentor' ? 'mentor' : 'facilitator', true)}
                                                                 </span>
                                                                 {mentorResult.comment && <div style={{ fontSize: '0.82rem', color: '#1e40af', fontStyle: 'italic', marginTop: '4px' }}>{mentorResult.comment}</div>}
                                                             </div>
@@ -1456,8 +1485,8 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
                                                                 <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#b91c1c', textTransform: 'uppercase', display: 'flex', gap: '5px' }}>
                                                                     <AwardIcon size={12} /> Assessor Grade
                                                                 </span>
-                                                                <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: assessorResult.status === 'C' ? '#166534' : assessorResult.status === 'NYC' ? '#991b1b' : '#64748b' }}>
-                                                                    {assessorResult.status === 'C' ? 'Competent (C)' : assessorResult.status === 'NYC' ? 'NYC' : 'Not Graded'}
+                                                                <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: assessorResult.status === 'C' || assessorResult.status === 'HC' ? '#166534' : assessorResult.status === 'NYC' ? '#991b1b' : '#64748b' }}>
+                                                                    {getStatusLabel(assessorResult.status, 'assessor', true)}
                                                                 </span>
                                                                 {assessorResult.comment && <div style={{ fontSize: '0.82rem', color: '#991b1b', fontStyle: 'italic', marginTop: '4px' }}>{assessorResult.comment}</div>}
                                                             </div>
@@ -1469,8 +1498,8 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
                                                                     <ShieldCheck size={12} /> Moderator QA
                                                                 </span>
                                                                 {modResult.status && (
-                                                                    <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: modResult.status === 'C' ? '#166534' : modResult.status === 'NYC' ? '#991b1b' : '#64748b' }}>
-                                                                        {modResult.status === 'C' ? 'Competent (C)' : modResult.status === 'NYC' ? 'NYC' : 'Not Graded'}
+                                                                    <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: modResult.status === 'C' || modResult.status === 'HC' ? '#166534' : modResult.status === 'NYC' ? '#991b1b' : '#64748b' }}>
+                                                                        {getStatusLabel(modResult.status, 'mod', true)}
                                                                     </span>
                                                                 )}
                                                                 {modResult.comment && <div style={{ fontSize: '0.82rem', color: '#15803d', fontStyle: 'italic', marginTop: '4px' }}>{modResult.comment}</div>}
@@ -1479,15 +1508,38 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 
                                                         {(!isPrintMode && isActiveRole) && (
                                                             <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', flexWrap: 'wrap', borderTop: '1px dashed #cbd5e1', paddingTop: '10px', marginTop: '10px' }}>
-                                                                <div style={{ display: 'flex', gap: '10px' }}>
-                                                                    <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.85rem', background: myResult.status === 'C' ? '#dcfce7' : '#f8fafc', padding: '8px 12px', borderRadius: '4px', border: myResult.status === 'C' ? '2px solid #22c55e' : '1px solid #cbd5e1', color: myResult.status === 'C' ? '#166534' : '#64748b', fontWeight: 'bold', cursor: canModerate ? 'not-allowed' : 'pointer' }}>
-                                                                        <input type="radio" disabled={canModerate} checked={myResult.status === 'C'} onChange={() => handleActivityStatusChange(block.id, actIdx, 'C')} style={{ accentColor: '#22c55e' }} />
-                                                                        {isMentor ? 'Verified ✓' : 'Competent (C)'}
-                                                                    </label>
-                                                                    <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.85rem', background: myResult.status === 'NYC' ? '#fee2e2' : '#f8fafc', padding: '8px 12px', borderRadius: '4px', border: myResult.status === 'NYC' ? '2px solid #ef4444' : '1px solid #cbd5e1', color: myResult.status === 'NYC' ? '#991b1b' : '#64748b', fontWeight: 'bold', cursor: canModerate ? 'not-allowed' : 'pointer' }}>
-                                                                        <input type="radio" disabled={canModerate} checked={myResult.status === 'NYC'} onChange={() => handleActivityStatusChange(block.id, actIdx, 'NYC')} style={{ accentColor: '#ef4444' }} />
-                                                                        {isMentor ? 'Not Verified ✗' : 'NYC'}
-                                                                    </label>
+                                                                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                                                                    {isSECAM ? (
+                                                                        <>
+                                                                            <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem', background: myResult.status === 'HC' ? '#dcfce7' : '#f8fafc', padding: '6px 10px', borderRadius: '4px', border: myResult.status === 'HC' ? '2px solid #16a34a' : '1px solid #cbd5e1', color: myResult.status === 'HC' ? '#15803d' : '#64748b', fontWeight: 'bold', cursor: canModerate ? 'not-allowed' : 'pointer' }}>
+                                                                                <input type="radio" disabled={canModerate} checked={myResult.status === 'HC'} onChange={() => handleActivityStatusChange(block.id, actIdx, 'HC')} style={{ accentColor: '#16a34a' }} />
+                                                                                L4: Highly Competent
+                                                                            </label>
+                                                                            <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem', background: myResult.status === 'C' ? '#e0f2fe' : '#f8fafc', padding: '6px 10px', borderRadius: '4px', border: myResult.status === 'C' ? '2px solid #0284c7' : '1px solid #cbd5e1', color: myResult.status === 'C' ? '#0369a1' : '#64748b', fontWeight: 'bold', cursor: canModerate ? 'not-allowed' : 'pointer' }}>
+                                                                                <input type="radio" disabled={canModerate} checked={myResult.status === 'C'} onChange={() => handleActivityStatusChange(block.id, actIdx, 'C')} style={{ accentColor: '#0284c7' }} />
+                                                                                L3: Competent
+                                                                            </label>
+                                                                            <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem', background: myResult.status === 'DEV' ? '#fef3c7' : '#f8fafc', padding: '6px 10px', borderRadius: '4px', border: myResult.status === 'DEV' ? '2px solid #d97706' : '1px solid #cbd5e1', color: myResult.status === 'DEV' ? '#b45309' : '#64748b', fontWeight: 'bold', cursor: canModerate ? 'not-allowed' : 'pointer' }}>
+                                                                                <input type="radio" disabled={canModerate} checked={myResult.status === 'DEV'} onChange={() => handleActivityStatusChange(block.id, actIdx, 'DEV')} style={{ accentColor: '#d97706' }} />
+                                                                                L2: Developing
+                                                                            </label>
+                                                                            <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem', background: myResult.status === 'NYC' ? '#fee2e2' : '#f8fafc', padding: '6px 10px', borderRadius: '4px', border: myResult.status === 'NYC' ? '2px solid #ef4444' : '1px solid #cbd5e1', color: myResult.status === 'NYC' ? '#991b1b' : '#64748b', fontWeight: 'bold', cursor: canModerate ? 'not-allowed' : 'pointer' }}>
+                                                                                <input type="radio" disabled={canModerate} checked={myResult.status === 'NYC'} onChange={() => handleActivityStatusChange(block.id, actIdx, 'NYC')} style={{ accentColor: '#ef4444' }} />
+                                                                                L1: NYC
+                                                                            </label>
+                                                                        </>
+                                                                    ) : (
+                                                                        <>
+                                                                            <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.85rem', background: myResult.status === 'C' ? '#dcfce7' : '#f8fafc', padding: '8px 12px', borderRadius: '4px', border: myResult.status === 'C' ? '2px solid #22c55e' : '1px solid #cbd5e1', color: myResult.status === 'C' ? '#166534' : '#64748b', fontWeight: 'bold', cursor: canModerate ? 'not-allowed' : 'pointer' }}>
+                                                                                <input type="radio" disabled={canModerate} checked={myResult.status === 'C'} onChange={() => handleActivityStatusChange(block.id, actIdx, 'C')} style={{ accentColor: '#22c55e' }} />
+                                                                                {isMentor ? 'Verified ✓' : 'Competent (C)'}
+                                                                            </label>
+                                                                            <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.85rem', background: myResult.status === 'NYC' ? '#fee2e2' : '#f8fafc', padding: '8px 12px', borderRadius: '4px', border: myResult.status === 'NYC' ? '2px solid #ef4444' : '1px solid #cbd5e1', color: myResult.status === 'NYC' ? '#991b1b' : '#64748b', fontWeight: 'bold', cursor: canModerate ? 'not-allowed' : 'pointer' }}>
+                                                                                <input type="radio" disabled={canModerate} checked={myResult.status === 'NYC'} onChange={() => handleActivityStatusChange(block.id, actIdx, 'NYC')} style={{ accentColor: '#ef4444' }} />
+                                                                                {isMentor ? 'Not Verified ✗' : 'NYC'}
+                                                                            </label>
+                                                                        </>
+                                                                    )}
                                                                 </div>
                                                                 <div style={{ flex: 1, minWidth: '250px' }}>
                                                                     <textarea className="ab-input" disabled={canModerate && !myResult.comment} rows={2} placeholder={isMentor ? "Supervisor verification notes..." : canModerate ? "Assessor's comments" : "Assessor comments / reasoning..."} value={myResult.comment} onChange={e => handleActivityCommentChange(block.id, actIdx, e.target.value)} style={{ fontSize: '0.85rem', width: '100%', border: '1px solid #e2e8f0', resize: 'vertical', background: 'white' }} />
@@ -1523,7 +1575,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
                                         <div style={{ marginTop: '2rem', padding: '1.5rem', background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '8px', borderLeft: `4px solid ${activeInkColor}` }}>
                                             <h4 style={{ fontSize: '0.9rem', color: '#0f172a', margin: '0 0 15px 0', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                 <ShieldCheck size={16} color={activeInkColor} />
-                                                {isWorkplaceModule ? 'Mentor Verification Declaration' : 'Observation Declaration'}
+                                                {isWorkplaceModule ? 'Mentor Verification Declaration' : isSECAM ? 'SECAM Evaluation Declaration' : 'Observation Declaration'}
                                             </h4>
 
                                             {block.requireTimeTracking !== false && (
@@ -1552,7 +1604,9 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
                                                 <input type="checkbox" disabled={!isDeclarationInteractive || isPrintMode} checked={decData.obsDeclaration || false} onChange={e => handleGlobalChecklistChange(block.id, 'obsDeclaration', e.target.checked)} style={{ width: '18px', height: '18px', accentColor: isDeclarationInteractive ? activeInkColor : '#64748b' }} />
                                                 {isWorkplaceModule
                                                     ? 'I confirm that I have directly observed this learner performing the above workplace activities in a real work environment, and that the evidence submitted is authentic.'
-                                                    : 'I officially declare that I have observed the learner performing these tasks and that the evidence was submitted by the learner.'}
+                                                    : isSECAM
+                                                        ? 'I officially declare that I have evaluated the learner performing these practical skills and verified their submission.'
+                                                        : 'I officially declare that I have observed the learner performing these tasks and that the evidence was submitted by the learner.'}
                                             </label>
                                         </div>
                                     )}
@@ -1568,9 +1622,8 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 };
 
 
-// // src/pages/FacilitatorDashboard/SubmissionReview/SubmissionReview/SubmissionReviewBlocks.tsx
 
-// import React, { useState, useEffect, useRef } from 'react';
+// import React, { useState, useEffect, useRef, useMemo } from 'react';
 // import {
 //     Award, Check, CheckCircle, X, Edit3, Info, Layers, FileText, Mic,
 //     UploadCloud, Code, Link as LinkIcon, CalendarRange, Timer, Play, Square,
@@ -1579,20 +1632,15 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // } from 'lucide-react';
 // import moment from 'moment';
 // import { LogbookHoursTally } from './SubmissionReviewHelpers';
-// import { FilePreview } from './SubmissionReviewPreviews';
-// import { UrlPreview } from '../../../../components/common/UrlPreview';
+// import { FilePreview, UrlPreview } from './SubmissionReviewPreviews';
 // import '../SubmissionReview';
 // import { CodeSandboxPlayer } from '../../../../components/common/CodeSandboxPlayer/CodeSandboxPlayer';
-// import { getFunctions, httpsCallable } from 'firebase/functions';
 
-// // 🚀 Direct Firestore Import for Real-Time Unlocks
+// import { getStorage, ref as fbStorageRef, getDownloadURL } from 'firebase/storage';
 // import { getFirestore, doc, updateDoc, setDoc } from 'firebase/firestore';
-
-// // 🚀 Core Charting Engine Registration
 // import { CartesianPlane } from '@zakq/axisjs';
 // import "mathlive";
 
-// // 🚀 Math Support Configuration
 // import katex from "katex";
 // import "katex/dist/katex.min.css";
 
@@ -1627,6 +1675,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 
 // // ─── PROPS INTERFACE ─────────────────────────────────────────────────────────
 // interface RenderBlocksProps {
+//     isSECAM?: boolean;
 //     assessment: any;
 //     submission: any;
 //     facBreakdown: Record<string, GradeData>;
@@ -1832,50 +1881,74 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 //     );
 // };
 
+// // 🚀 REAL-TIME CODE SANDBOX REVIEW COMPONENT WITH DIRECT STORAGE FETCHING
 // const ReviewCodeSandbox: React.FC<{ block: any, learnerAns: any, submissionId: string }> = ({ block, learnerAns, submissionId }) => {
-//     const [snapshot, setSnapshot] = useState<any>(learnerAns?.snapshot || null);
-//     const [isLoading, setIsLoading] = useState<boolean>(!!learnerAns?.storagePath && !learnerAns?.snapshot);
+//     const [snapshot, setSnapshot] = useState<any>(null);
+//     const [isLoading, setIsLoading] = useState<boolean>(true);
 //     const [isBooted, setIsBooted] = useState<boolean>(false);
+
+//     // Normalize code payload structure (handles direct answer object or nested codeData)
+//     const codePayload = useMemo(() => {
+//         if (!learnerAns) return null;
+//         if (typeof learnerAns === 'object' && learnerAns.codeData) return learnerAns.codeData;
+//         return learnerAns;
+//     }, [learnerAns]);
+
+//     const storagePath = codePayload?.storagePath;
+//     const inlineSnapshot = codePayload?.snapshot;
+//     const lastSavedAt = codePayload?.lastSavedAt;
 
 //     useEffect(() => {
 //         if (!isBooted) return;
 
 //         let isMounted = true;
+//         setIsLoading(true);
 
-//         // 🚀 DEBOUNCE FETCH: Prevent spamming Cloud Functions if learner is typing rapidly
-//         const debounceTimer = setTimeout(() => {
-//             if (learnerAns?.storagePath && !learnerAns?.snapshot) {
-//                 const functions = getFunctions();
-//                 const fetchSnapshot = httpsCallable(functions, 'getCodeSnapshot');
-//                 fetchSnapshot({ submissionId, blockId: block.id })
-//                     .then((res: any) => {
+//         const loadLearnerCode = async () => {
+//             if (storagePath) {
+//                 try {
+//                     const storage = getStorage();
+//                     const jsonRef = fbStorageRef(storage, storagePath);
+//                     const downloadUrl = await getDownloadURL(jsonRef);
+//                     const res = await fetch(downloadUrl);
+//                     if (res.ok) {
+//                         const files = await res.json();
 //                         if (isMounted) {
-//                             setSnapshot(res.data.files);
-//                             setIsLoading(false);
+//                             setSnapshot(files);
 //                         }
-//                     })
-//                     .catch((err) => {
-//                         console.error(`Failed to fetch code snapshot for block ${block.id}:`, err);
-//                         if (isMounted) setIsLoading(false);
-//                     });
+//                     }
+//                 } catch (err) {
+//                     console.error(`Failed to download Storage snapshot for block [${block.id}]:`, err);
+//                 } finally {
+//                     if (isMounted) setIsLoading(false);
+//                 }
+//             } else if (inlineSnapshot) {
+//                 if (isMounted) {
+//                     const parsed = typeof inlineSnapshot === 'string' ? JSON.parse(inlineSnapshot) : inlineSnapshot;
+//                     setSnapshot(parsed);
+//                     setIsLoading(false);
+//                 }
 //             } else {
-//                 setSnapshot(learnerAns?.snapshot || null);
-//                 setIsLoading(false);
+//                 if (isMounted) {
+//                     setSnapshot(null);
+//                     setIsLoading(false);
+//                 }
 //             }
-//         }, 1500);
+//         };
+
+//         loadLearnerCode();
 
 //         return () => {
 //             isMounted = false;
-//             clearTimeout(debounceTimer);
 //         };
-//     }, [learnerAns, submissionId, block.id, isBooted]);
+//     }, [block.id, storagePath, inlineSnapshot, lastSavedAt, isBooted]);
 
 //     if (!isBooted) {
 //         return (
 //             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '3rem', background: '#f8fafc', border: '1px dashed #cbd5e1', borderRadius: '8px', color: '#64748b', gap: '10px' }}>
 //                 <Code size={32} color="#94a3b8" />
 //                 <p style={{ margin: 0, fontSize: '0.9rem', fontWeight: 'bold', color: '#334155' }}>Facilitator Code Preview is Paused</p>
-//                 <p style={{ margin: '0 0 10px 0', fontSize: '0.8rem', textAlign: 'center', maxWidth: '400px' }}>This button only boots the IDE on <strong>YOUR</strong> screen to conserve memory. Use the Network Control switch above to unlock the Learner's screen.</p>
+//                 <p style={{ margin: '0 0 10px 0', fontSize: '0.8rem', textAlign: 'center', maxWidth: '400px' }}>This button boots the IDE on <strong>YOUR</strong> screen to inspect learner code. Use the Network Control switch above to unlock the Learner's screen in real-time.</p>
 //                 <button
 //                     onClick={() => setIsBooted(true)}
 //                     style={{ background: '#3b82f6', color: 'white', padding: '8px 16px', borderRadius: '6px', border: 'none', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem', boxShadow: '0 2px 4px rgba(59,130,246,0.3)' }}
@@ -1899,83 +1972,16 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 //         <div style={{ height: '600px', width: '100%', border: '1px solid #cbd5e1', borderRadius: '6px', overflow: 'hidden' }}>
 //             <CodeSandboxPlayer
 //                 block={block}
-//                 learnerAns={{ ...(learnerAns || {}), snapshot }}
+//                 learnerAns={{ ...(codePayload || {}), snapshot }}
 //                 readOnly={true}
 //             />
 //         </div>
 //     );
 // };
 
-// // const ReviewCodeSandbox: React.FC<{ block: any, learnerAns: any, submissionId: string }> = ({ block, learnerAns, submissionId }) => {
-// //     const [snapshot, setSnapshot] = useState<any>(learnerAns?.snapshot || null);
-// //     const [isLoading, setIsLoading] = useState<boolean>(!!learnerAns?.storagePath && !learnerAns?.snapshot);
-// //     const [isBooted, setIsBooted] = useState<boolean>(false);
-
-// //     useEffect(() => {
-// //         if (!isBooted) return;
-
-// //         let isMounted = true;
-
-// //         if (learnerAns?.storagePath && !learnerAns?.snapshot) {
-// //             const functions = getFunctions();
-// //             const fetchSnapshot = httpsCallable(functions, 'getCodeSnapshot');
-// //             fetchSnapshot({ submissionId, blockId: block.id })
-// //                 .then((res: any) => {
-// //                     if (isMounted) {
-// //                         setSnapshot(res.data.files);
-// //                         setIsLoading(false);
-// //                     }
-// //                 })
-// //                 .catch((err) => {
-// //                     console.error(`Failed to fetch code snapshot for block ${block.id}:`, err);
-// //                     if (isMounted) setIsLoading(false);
-// //                 });
-// //         } else {
-// //             setSnapshot(learnerAns?.snapshot || null);
-// //             setIsLoading(false);
-// //         }
-
-// //         return () => { isMounted = false; };
-// //     }, [learnerAns, submissionId, block.id, isBooted]);
-
-// //     if (!isBooted) {
-// //         return (
-// //             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '3rem', background: '#f8fafc', border: '1px dashed #cbd5e1', borderRadius: '8px', color: '#64748b', gap: '10px' }}>
-// //                 <Code size={32} color="#94a3b8" />
-// //                 <p style={{ margin: 0, fontSize: '0.9rem', fontWeight: 'bold', color: '#334155' }}>Facilitator Code Preview is Paused</p>
-// //                 <p style={{ margin: '0 0 10px 0', fontSize: '0.8rem', textAlign: 'center', maxWidth: '400px' }}>This button only boots the IDE on <strong>YOUR</strong> screen to conserve memory. Use the Network Control switch above to unlock the Learner's screen.</p>
-// //                 <button
-// //                     onClick={() => setIsBooted(true)}
-// //                     style={{ background: '#3b82f6', color: 'white', padding: '8px 16px', borderRadius: '6px', border: 'none', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem', boxShadow: '0 2px 4px rgba(59,130,246,0.3)' }}
-// //                 >
-// //                     <Play size={14} /> Boot Facilitator Preview (Local)
-// //                 </button>
-// //             </div>
-// //         );
-// //     }
-
-// //     if (isLoading) {
-// //         return (
-// //             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '3rem', background: '#1e293b', borderRadius: '8px', color: '#94a3b8', gap: '10px' }}>
-// //                 <Loader2 size={24} className="animate-spin" />
-// //                 <p style={{ margin: 0, fontSize: '0.85rem' }}>Retrieving learner's code snapshot from cloud storage...</p>
-// //             </div>
-// //         );
-// //     }
-
-// //     return (
-// //         <div style={{ height: '600px', width: '100%', border: '1px solid #cbd5e1', borderRadius: '6px', overflow: 'hidden' }}>
-// //             <CodeSandboxPlayer
-// //                 block={block}
-// //                 learnerAns={{ ...(learnerAns || {}), snapshot }}
-// //                 readOnly={true}
-// //             />
-// //         </div>
-// //     );
-// // };
-
 // export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 //     const {
+//         isSECAM,
 //         assessment, submission, facBreakdown, assBreakdown, modBreakdown,
 //         activeTabs, setActiveTabs, sectionTotals,
 //         isPrintMode, canFacilitatorMark, canGrade, canModerate,
@@ -1993,7 +1999,6 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 //         setExpandedGraphMemos(prev => ({ ...prev, [blockId]: !prev[blockId] }));
 //     };
 
-//     // 🚀 FIXED: DOT NOTATION AND TIMESTAMP UPDATE FOR REAL-TIME SYNC
 //     const handleNetworkIDEToggle = async (blockId: string, currentState: boolean) => {
 //         if (!submission?.id) return;
 //         setTogglingIDE(blockId);
@@ -2007,7 +2012,6 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 //                 lastStaffEditAt: new Date().toISOString()
 //             });
 //         } catch (err: any) {
-//             // Fallback: Use setDoc with merge if document field map needs initialization
 //             try {
 //                 const dbInstance = getFirestore();
 //                 const subRef = doc(dbInstance, 'learner_submissions', submission.id);
@@ -2477,6 +2481,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 //                                     {renderBlockImage(block)}
 //                                     {renderBlockFile(block)}
 
+//                                     {/* 🚀 LIVE IDE REVIEW PLAYER WITH REAL-TIME STORAGE DOWNLOADS */}
 //                                     <ReviewCodeSandbox
 //                                         block={block}
 //                                         learnerAns={learnerAns}
@@ -2568,7 +2573,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 //                             { id: 'audio', icon: <Mic size={14} />, label: 'Audio', val: safeLearnerAns.audioUrl },
 //                             { id: 'url', icon: <LinkIcon size={14} />, label: 'Link', val: safeLearnerAns.url },
 //                             { id: 'upload', icon: <UploadCloud size={14} />, label: 'File Upload', val: safeLearnerAns.uploadUrl },
-//                             { id: 'code', icon: <Code size={14} />, label: 'Code', val: safeLearnerAns.code }
+//                             { id: 'code', icon: <Code size={14} />, label: 'Code IDE', val: safeLearnerAns.codeData || safeLearnerAns.code }
 //                         ].filter(t => !!t.val);
 
 //                         const activeTabId = activeTabs[block.id] || taskTabs[0]?.id;
@@ -2594,7 +2599,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 //                                     <div className="sr-answer-box">
 //                                         <div className="sr-answer-label" style={{ color: 'black', display: 'flex', alignItems: 'center', gap: '6px' }}><Layers size={14} /> Learner Evidence Submitted:</div>
 
-//                                         {(!safeLearnerAns || Object.keys(safeLearnerAns).length === 0 || (!safeLearnerAns.text && !safeLearnerAns.audioUrl && !safeLearnerAns.url && !safeLearnerAns.uploadUrl && !safeLearnerAns.code)) ? (
+//                                         {(!safeLearnerAns || Object.keys(safeLearnerAns).length === 0 || (!safeLearnerAns.text && !safeLearnerAns.audioUrl && !safeLearnerAns.url && !safeLearnerAns.uploadUrl && !safeLearnerAns.code && !safeLearnerAns.codeData)) ? (
 //                                             <span style={{ color: '#64748b', fontStyle: 'italic', display: 'block', padding: '10px' }}>No evidence uploaded by learner.</span>
 //                                         ) : isPrintMode ? (
 //                                             <div style={{ border: '1px solid #cbd5e1', borderRadius: '6px', padding: '10px', background: 'white' }}>
@@ -2602,7 +2607,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 //                                                 {safeLearnerAns.audioUrl && <div style={{ marginBottom: '10px' }}><strong style={{ fontSize: '0.75rem', color: '#475569' }}>Audio Recording:</strong><div>URL: {safeLearnerAns.audioUrl}</div></div>}
 //                                                 {safeLearnerAns.url && <div style={{ marginBottom: '10px' }}><strong style={{ fontSize: '0.75rem', color: '#475569' }}>Link:</strong><div><a href={safeLearnerAns.url} target="_blank" rel="noreferrer">{safeLearnerAns.url}</a></div></div>}
 //                                                 {safeLearnerAns.uploadUrl && <div style={{ marginBottom: '10px' }}><strong style={{ fontSize: '0.75rem', color: '#475569' }}>Uploaded File:</strong><FilePreview url={safeLearnerAns.uploadUrl} /></div>}
-//                                                 {safeLearnerAns.code && <div><strong style={{ fontSize: '0.75rem', color: '#475569' }}>Code:</strong><pre style={{ background: '#f1f5f9', padding: '8px', borderRadius: '4px', overflowX: 'auto', fontSize: '0.8rem', fontFamily: 'monospace' }}>{safeLearnerAns.code}</pre></div>}
+//                                                 {(safeLearnerAns.codeData || safeLearnerAns.code) && <div><strong style={{ fontSize: '0.75rem', color: '#475569' }}>Code:</strong><pre style={{ background: '#f1f5f9', padding: '8px', borderRadius: '4px', overflowX: 'auto', fontSize: '0.8rem', fontFamily: 'monospace' }}>{typeof safeLearnerAns.code === 'string' ? safeLearnerAns.code : '[Interactive IDE Snapshot]'}</pre></div>}
 //                                             </div>
 //                                         ) : taskTabs.length === 0 ? (
 //                                             <span style={{ color: '#64748b', fontStyle: 'italic' }}>No evidence provided.</span>
@@ -2620,7 +2625,13 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 //                                                     {activeTabId === 'audio' && <audio controls src={safeLearnerAns.audioUrl} style={{ width: '100%', height: '40px' }} />}
 //                                                     {activeTabId === 'url' && <UrlPreview url={safeLearnerAns.url} />}
 //                                                     {activeTabId === 'upload' && <FilePreview url={safeLearnerAns.uploadUrl} />}
-//                                                     {activeTabId === 'code' && <pre style={{ margin: 0, overflowX: 'auto', fontSize: '0.85rem', fontFamily: 'monospace', background: '#1e293b', color: '#f8fafc', padding: '15px', borderRadius: '4px' }}><code>{safeLearnerAns.code}</code></pre>}
+//                                                     {activeTabId === 'code' && (
+//                                                         <ReviewCodeSandbox
+//                                                             block={{ id: `${block.id}_task`, title: `Live IDE Evidence`, template: 'vanilla' }}
+//                                                             learnerAns={safeLearnerAns.codeData || safeLearnerAns}
+//                                                             submissionId={submission.id}
+//                                                         />
+//                                                     )}
 //                                                 </div>
 //                                             </div>
 //                                         )}
@@ -2722,7 +2733,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 //                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1, minWidth: 0 }}>
 //                                             <RichMathText html={block.title} style={{ color: '#073f4e', fontWeight: 'bold', margin: 0 }} />
 //                                             <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
-//                                                 {isMentor ? 'Workplace observation checklist — verify each criterion.' : 'Assessor observation checklist.'}
+//                                                 {isMentor ? 'Workplace observation checklist — verify each criterion.' : isSECAM ? 'mLab SECAM practical skill checklist.' : 'Assessor observation checklist.'}
 //                                             </span>
 //                                         </div>
 //                                     </div>
@@ -2762,7 +2773,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 //                                                         const allTabs = [
 //                                                             { id: 'upload', icon: <UploadCloud size={13} />, label: 'File Artifact', val: critEvidence.uploadUrl, render: () => <FilePreview url={critEvidence.uploadUrl} /> },
 //                                                             { id: 'url', icon: <LinkIcon size={13} />, label: 'Web Link', val: critEvidence.url, render: () => <UrlPreview url={critEvidence.url} /> },
-//                                                             { id: 'code', icon: <Code size={13} />, label: 'Source Code', val: critEvidence.code, render: () => <pre style={{ background: '#1e293b', color: '#f8fafc', padding: '0.5rem', borderRadius: '4px', overflowX: 'auto', margin: 0, fontFamily: 'monospace', fontSize: '0.82rem' }}><code>{critEvidence.code}</code></pre> },
+//                                                             { id: 'code', icon: <Code size={13} />, label: 'Source Code', val: critEvidence.codeData || critEvidence.code, render: () => <ReviewCodeSandbox block={{ id: `${block.id}_ev_${i}`, title: `Criterion ${i + 1} Code Evidence`, template: 'vanilla' }} learnerAns={critEvidence.codeData || critEvidence} submissionId={submission.id} /> },
 //                                                             { id: 'text', icon: <FileText size={13} />, label: 'Learner Notes', val: isTextTrulyEmpty ? null : critEvidence.text, render: () => <RichMathText html={critEvidence.text} /> }
 //                                                         ];
 
@@ -2867,7 +2878,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 //                                                     )}
 
 //                                                     {(!isPrintMode && isActiveRole) && (
-//                                                         <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', flexWrap: 'wrap', borderTop: '1px dashed #cbd5e1', paddingTop: '15px', marginTop: '5px' }}>
+//                                                         <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', flexWrap: 'wrap', borderTop: '1px dashed #cbd5e1', paddingTop: '10px', marginTop: '10px' }}>
 //                                                             {block.requirePerCriterionTiming !== false && !canModerate && (
 //                                                                 <div style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px', background: '#f1f5f9', padding: '8px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', flexWrap: 'wrap' }}>
 //                                                                     <Timer size={16} color="#64748b" style={{ flexShrink: 0 }} />
@@ -2925,7 +2936,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 //                                             <div style={{ marginTop: '2rem', padding: '1.5rem', background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '8px', borderLeft: `4px solid ${activeInkColor}` }}>
 //                                                 <h4 style={{ fontSize: '0.9rem', color: '#0f172a', margin: '0 0 15px 0', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '6px' }}>
 //                                                     <ShieldCheck size={16} color={activeInkColor} />
-//                                                     {isWorkplaceModule ? 'Mentor Verification Declaration' : 'Observation Declaration'}
+//                                                     {isWorkplaceModule ? 'Mentor Verification Declaration' : isSECAM ? 'SECAM Skill Evaluation Declaration' : 'Observation Declaration'}
 //                                                 </h4>
 
 //                                                 {block.requireTimeTracking !== false && (
@@ -2954,7 +2965,9 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 //                                                     <input type="checkbox" disabled={!isDeclarationInteractive || isPrintMode} checked={decData.obsDeclaration || false} onChange={e => handleGlobalChecklistChange(block.id, 'obsDeclaration', e.target.checked)} style={{ width: '18px', height: '18px', accentColor: isDeclarationInteractive ? activeInkColor : '#64748b' }} />
 //                                                     {isWorkplaceModule
 //                                                         ? 'I confirm that I have directly observed this learner performing the above workplace activities in a real work environment, and that the evidence submitted is authentic.'
-//                                                         : 'I officially declare that I have observed the learner performing these tasks and that the evidence was submitted by the learner.'}
+//                                                         : isSECAM
+//                                                             ? 'I officially declare that I have evaluated the learner performing these practical skills and verified their submission.'
+//                                                             : 'I officially declare that I have observed the learner performing these tasks and that the evidence was submitted by the learner.'}
 //                                                 </label>
 //                                             </div>
 //                                         )}
@@ -2969,11 +2982,13 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 //                             <div key={block.id} className="sr-q-card" style={{ borderTop: '4px solid black', marginBottom: '2rem' }}>
 //                                 <div className="sr-q-header">
 //                                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', width: '100%' }}>
-//                                         <span className="sr-q-num" style={{ background: '#ffe4e6', color: '#e11d48', flexShrink: 0 }}>QCTO</span>
+//                                         <span className="sr-q-num" style={{ background: isSECAM ? '#e0f2fe' : '#ffe4e6', color: isSECAM ? '#0369a1' : '#e11d48', flexShrink: 0 }}>
+//                                             {isSECAM ? 'SECAM' : 'QCTO'}
+//                                         </span>
 //                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1, minWidth: 0 }}>
 //                                             <RichMathText html={`${block.weCode} – ${block.weTitle}`} style={{ color: '#073f4e', fontWeight: 'bold', margin: 0 }} />
 //                                             <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
-//                                                 {isMentor ? 'Workplace Experience — Mentor Verification' : 'Workplace Experience Checkpoint'}
+//                                                 {isMentor ? 'Workplace Experience — Mentor Verification' : isSECAM ? 'SECAM Practical Skill Evaluation' : 'Workplace Experience Checkpoint'}
 //                                             </span>
 //                                         </div>
 //                                     </div>
@@ -3018,9 +3033,17 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 //                                                                     </span>
 //                                                                     {seData.uploadUrl && <div style={{ marginBottom: '10px' }}><FilePreview url={seData.uploadUrl} /></div>}
 //                                                                     {seData.url && <div style={{ marginBottom: '10px' }}><UrlPreview url={seData.url} /></div>}
-//                                                                     {seData.code && <pre style={{ background: '#1e293b', color: '#f8fafc', padding: '0.75rem', borderRadius: '4px', overflowX: 'auto', marginBottom: '10px' }}><code>{seData.code}</code></pre>}
+//                                                                     {(seData.codeData || seData.code) && (
+//                                                                         <div style={{ marginBottom: '10px' }}>
+//                                                                             <ReviewCodeSandbox
+//                                                                                 block={{ id: `${block.id}_se_${evItem.id}`, title: `Evidence: ${evItem.code}`, template: 'vanilla' }}
+//                                                                                 learnerAns={seData.codeData || seData}
+//                                                                                 submissionId={submission.id}
+//                                                                             />
+//                                                                         </div>
+//                                                                     )}
 //                                                                     {seData.text && <RichMathText html={seData.text} />}
-//                                                                     {(!seData.uploadUrl && !seData.url && !seData.code && !seData.text) && <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontStyle: 'italic' }}>No evidence attached for this item.</span>}
+//                                                                     {(!seData.uploadUrl && !seData.url && !seData.code && !seData.codeData && !seData.text) && <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontStyle: 'italic' }}>No evidence attached for this item.</span>}
 //                                                                 </div>
 //                                                             );
 //                                                         })}
@@ -3111,7 +3134,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 //                                         <div style={{ marginTop: '2rem', padding: '1.5rem', background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '8px', borderLeft: `4px solid ${activeInkColor}` }}>
 //                                             <h4 style={{ fontSize: '0.9rem', color: '#0f172a', margin: '0 0 15px 0', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '6px' }}>
 //                                                 <ShieldCheck size={16} color={activeInkColor} />
-//                                                 {isWorkplaceModule ? 'Mentor Verification Declaration' : 'Observation Declaration'}
+//                                                 {isWorkplaceModule ? 'Mentor Verification Declaration' : isSECAM ? 'SECAM Evaluation Declaration' : 'Observation Declaration'}
 //                                             </h4>
 
 //                                             {block.requireTimeTracking !== false && (
@@ -3140,7 +3163,9 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 //                                                 <input type="checkbox" disabled={!isDeclarationInteractive || isPrintMode} checked={decData.obsDeclaration || false} onChange={e => handleGlobalChecklistChange(block.id, 'obsDeclaration', e.target.checked)} style={{ width: '18px', height: '18px', accentColor: isDeclarationInteractive ? activeInkColor : '#64748b' }} />
 //                                                 {isWorkplaceModule
 //                                                     ? 'I confirm that I have directly observed this learner performing the above workplace activities in a real work environment, and that the evidence submitted is authentic.'
-//                                                     : 'I officially declare that I have observed the learner performing these tasks and that the evidence was submitted by the learner.'}
+//                                                     : isSECAM
+//                                                         ? 'I officially declare that I have evaluated the learner performing these practical skills and verified their submission.'
+//                                                         : 'I officially declare that I have observed the learner performing these tasks and that the evidence was submitted by the learner.'}
 //                                             </label>
 //                                         </div>
 //                                     )}
@@ -3156,9 +3181,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // };
 
 
-// // // src/pages/FacilitatorDashboard/SubmissionReview/SubmissionReview/SubmissionReviewBlocks.tsx
-
-// // import React, { useState, useEffect, useRef } from 'react';
+// // import React, { useState, useEffect, useRef, useMemo } from 'react';
 // // import {
 // //     Award, Check, CheckCircle, X, Edit3, Info, Layers, FileText, Mic,
 // //     UploadCloud, Code, Link as LinkIcon, CalendarRange, Timer, Play, Square,
@@ -3167,20 +3190,15 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // } from 'lucide-react';
 // // import moment from 'moment';
 // // import { LogbookHoursTally } from './SubmissionReviewHelpers';
-// // import { FilePreview } from './SubmissionReviewPreviews';
-// // import { UrlPreview } from '../../../../components/common/UrlPreview';
+// // import { FilePreview, UrlPreview } from './SubmissionReviewPreviews';
 // // import '../SubmissionReview';
 // // import { CodeSandboxPlayer } from '../../../../components/common/CodeSandboxPlayer/CodeSandboxPlayer';
-// // import { getFunctions, httpsCallable } from 'firebase/functions';
 
-// // // 🚀 Direct Firestore Import for Real-Time Unlocks
-// // import { getFirestore, doc, setDoc } from 'firebase/firestore';
-
-// // // 🚀 Core Charting Engine Registration
+// // import { getStorage, ref as fbStorageRef, getDownloadURL } from 'firebase/storage';
+// // import { getFirestore, doc, updateDoc, setDoc } from 'firebase/firestore';
 // // import { CartesianPlane } from '@zakq/axisjs';
 // // import "mathlive";
 
-// // // 🚀 Math Support Configuration
 // // import katex from "katex";
 // // import "katex/dist/katex.min.css";
 
@@ -3248,7 +3266,6 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // //     handleSetToNow: (blockId: string, field: 'obsDate' | 'obsStartTime' | 'obsEndTime') => void;
 // // }
 
-// // // ─── SAFE STRING EXTRACTOR HELPER ───────────────────────────────────────────
 // // const getAnswerString = (ans: any): string => {
 // //     if (ans === null || ans === undefined) return '';
 // //     if (typeof ans === 'string') return ans;
@@ -3259,14 +3276,12 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // //     return '';
 // // };
 
-// // // ─── HELPER: CLEAN RICH TEXT ─────────────────────────────────────────────────
 // // const cleanRichText = (html?: any): string => {
 // //     const str = getAnswerString(html);
 // //     if (!str) return '';
 // //     return str.replace(/&nbsp;/g, ' ');
 // // };
 
-// // // ─── HELPER: MATH & RICH TEXT CONTAINER ─────────────────────────────────────
 // // const RichMathText: React.FC<{ html?: any; className?: string; style?: React.CSSProperties }> = ({ html, className, style }) => {
 // //     const containerRef = useRef<HTMLDivElement>(null);
 // //     const safeHtml = cleanRichText(html);
@@ -3300,7 +3315,6 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // //     );
 // // };
 
-// // // ─── HELPER: RENDER ATTACHED IMAGES ──────────────────────────────────────────
 // // const renderBlockImage = (block: any) => {
 // //     if (!block.imageUrl) return null;
 // //     return (
@@ -3319,7 +3333,6 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // //     );
 // // };
 
-// // // ─── HELPER: RENDER ATTACHED STARTER FILES ──────────────────────────────────
 // // const renderBlockFile = (block: any) => {
 // //     if (!block.fileUrl) return null;
 // //     return (
@@ -3340,7 +3353,6 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // //     );
 // // };
 
-// // // ─── AXISJS GRAPH SNAPSHOT VISUALIZER ────────────────────────────────────────
 // // const ReviewAxisGraph: React.FC<{ block: any; learnerAns: any }> = ({ block, learnerAns }) => {
 // //     const containerRef = useRef<HTMLDivElement>(null);
 // //     const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -3426,45 +3438,87 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // //     );
 // // };
 
-// // // ─── CODE SANDBOX PLAYER ─────────────────────────────────────────────────────
+// // // 🚀 REAL-TIME CODE SANDBOX REVIEW COMPONENT WITH DIRECT STORAGE FETCHING
 // // const ReviewCodeSandbox: React.FC<{ block: any, learnerAns: any, submissionId: string }> = ({ block, learnerAns, submissionId }) => {
-// //     const [snapshot, setSnapshot] = useState<any>(learnerAns?.snapshot || null);
-// //     const [isLoading, setIsLoading] = useState<boolean>(!!learnerAns?.storagePath && !learnerAns?.snapshot);
+// //     const [snapshot, setSnapshot] = useState<any>(null);
+// //     const [isLoading, setIsLoading] = useState<boolean>(true);
 // //     const [isBooted, setIsBooted] = useState<boolean>(false);
+
+// //     // Normalize code payload structure (handles direct answer object or nested codeData)
+// //     const codePayload = useMemo(() => {
+// //         if (!learnerAns) return null;
+// //         if (typeof learnerAns === 'object' && learnerAns.codeData) return learnerAns.codeData;
+// //         return learnerAns;
+// //     }, [learnerAns]);
+
+// //     const storagePath = codePayload?.storagePath;
+// //     const inlineSnapshot = codePayload?.snapshot;
+// //     const lastSavedAt = codePayload?.lastSavedAt;
 
 // //     useEffect(() => {
 // //         if (!isBooted) return;
 
 // //         let isMounted = true;
+// //         setIsLoading(true);
 
-// //         if (learnerAns?.storagePath && !learnerAns?.snapshot) {
-// //             const functions = getFunctions();
-// //             const fetchSnapshot = httpsCallable(functions, 'getCodeSnapshot');
-// //             fetchSnapshot({ submissionId, blockId: block.id })
-// //                 .then((res: any) => {
-// //                     if (isMounted) {
-// //                         setSnapshot(res.data.files);
-// //                         setIsLoading(false);
+// //         console.log(`🔍 [FACILITATOR REVIEW CODE] Processing learner code update for block [${block.id}]...`, {
+// //             hasStoragePath: !!storagePath,
+// //             storagePath,
+// //             hasInlineSnapshot: !!inlineSnapshot,
+// //             lastSavedAt
+// //         });
+
+// //         const loadLearnerCode = async () => {
+// //             if (storagePath) {
+// //                 console.log(`📥 [FACILITATOR REVIEW CODE] Fetching offloaded snapshot from Storage: ${storagePath}`);
+// //                 try {
+// //                     const storage = getStorage();
+// //                     const jsonRef = fbStorageRef(storage, storagePath);
+// //                     const downloadUrl = await getDownloadURL(jsonRef);
+// //                     const res = await fetch(downloadUrl);
+// //                     if (res.ok) {
+// //                         const files = await res.json();
+// //                         if (isMounted) {
+// //                             console.log(`✅ [FACILITATOR REVIEW CODE] Loaded ${Object.keys(files || {}).length} files from Storage for block [${block.id}]!`);
+// //                             setSnapshot(files);
+// //                         }
+// //                     } else {
+// //                         console.error(`❌ [FACILITATOR REVIEW CODE] HTTP ${res.status} fetching storage snapshot for block [${block.id}]`);
 // //                     }
-// //                 })
-// //                 .catch((err) => {
-// //                     console.error(`Failed to fetch code snapshot for block ${block.id}:`, err);
+// //                 } catch (err) {
+// //                     console.error(`❌ [FACILITATOR REVIEW CODE] Failed to download Storage snapshot for block [${block.id}]:`, err);
+// //                 } finally {
 // //                     if (isMounted) setIsLoading(false);
-// //                 });
-// //         } else {
-// //             setSnapshot(learnerAns?.snapshot || null);
-// //             setIsLoading(false);
-// //         }
+// //                 }
+// //             } else if (inlineSnapshot) {
+// //                 console.log(`✅ [FACILITATOR REVIEW CODE] Using inline snapshot for block [${block.id}]`);
+// //                 if (isMounted) {
+// //                     const parsed = typeof inlineSnapshot === 'string' ? JSON.parse(inlineSnapshot) : inlineSnapshot;
+// //                     setSnapshot(parsed);
+// //                     setIsLoading(false);
+// //                 }
+// //             } else {
+// //                 console.log(`⚠️ [FACILITATOR REVIEW CODE] No learner code found for block [${block.id}]. Rendering initial starter files.`);
+// //                 if (isMounted) {
+// //                     setSnapshot(null);
+// //                     setIsLoading(false);
+// //                 }
+// //             }
+// //         };
 
-// //         return () => { isMounted = false; };
-// //     }, [learnerAns, submissionId, block.id, isBooted]);
+// //         loadLearnerCode();
+
+// //         return () => {
+// //             isMounted = false;
+// //         };
+// //     }, [block.id, storagePath, inlineSnapshot, lastSavedAt, isBooted]);
 
 // //     if (!isBooted) {
 // //         return (
 // //             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '3rem', background: '#f8fafc', border: '1px dashed #cbd5e1', borderRadius: '8px', color: '#64748b', gap: '10px' }}>
 // //                 <Code size={32} color="#94a3b8" />
 // //                 <p style={{ margin: 0, fontSize: '0.9rem', fontWeight: 'bold', color: '#334155' }}>Facilitator Code Preview is Paused</p>
-// //                 <p style={{ margin: '0 0 10px 0', fontSize: '0.8rem', textAlign: 'center', maxWidth: '400px' }}>This button only boots the IDE on <strong>YOUR</strong> screen to conserve memory. Use the Network Control switch above to unlock the Learner's screen.</p>
+// //                 <p style={{ margin: '0 0 10px 0', fontSize: '0.8rem', textAlign: 'center', maxWidth: '400px' }}>This button boots the IDE on <strong>YOUR</strong> screen to inspect learner code. Use the Network Control switch above to unlock the Learner's screen in real-time.</p>
 // //                 <button
 // //                     onClick={() => setIsBooted(true)}
 // //                     style={{ background: '#3b82f6', color: 'white', padding: '8px 16px', borderRadius: '6px', border: 'none', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem', boxShadow: '0 2px 4px rgba(59,130,246,0.3)' }}
@@ -3488,14 +3542,13 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // //         <div style={{ height: '600px', width: '100%', border: '1px solid #cbd5e1', borderRadius: '6px', overflow: 'hidden' }}>
 // //             <CodeSandboxPlayer
 // //                 block={block}
-// //                 learnerAns={{ ...(learnerAns || {}), snapshot }}
+// //                 learnerAns={{ ...(codePayload || {}), snapshot }}
 // //                 readOnly={true}
 // //             />
 // //         </div>
 // //     );
 // // };
 
-// // // ─── MAIN RENDER COMPONENT ───────────────────────────────────────────────────
 // // export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // //     const {
 // //         assessment, submission, facBreakdown, assBreakdown, modBreakdown,
@@ -3515,15 +3568,30 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // //         setExpandedGraphMemos(prev => ({ ...prev, [blockId]: !prev[blockId] }));
 // //     };
 
+// //     // 🚀 FIXED: DOT NOTATION AND TIMESTAMP UPDATE FOR REAL-TIME SYNC
 // //     const handleNetworkIDEToggle = async (blockId: string, currentState: boolean) => {
 // //         if (!submission?.id) return;
 // //         setTogglingIDE(blockId);
 // //         try {
-// //             const db = getFirestore();
-// //             const subRef = doc(db, 'learner_submissions', submission.id);
-// //             await setDoc(subRef, { ideUnlocks: { [blockId]: !currentState } }, { merge: true });
-// //         } catch (err) {
-// //             console.error("Failed to toggle IDE network access:", err);
+// //             const dbInstance = getFirestore();
+// //             const subRef = doc(dbInstance, 'learner_submissions', submission.id);
+// //             const nextState = !currentState;
+
+// //             await updateDoc(subRef, {
+// //                 [`ideUnlocks.${blockId}`]: nextState,
+// //                 lastStaffEditAt: new Date().toISOString()
+// //             });
+// //         } catch (err: any) {
+// //             try {
+// //                 const dbInstance = getFirestore();
+// //                 const subRef = doc(dbInstance, 'learner_submissions', submission.id);
+// //                 await setDoc(subRef, {
+// //                     ideUnlocks: { [blockId]: !currentState },
+// //                     lastStaffEditAt: new Date().toISOString()
+// //                 }, { merge: true });
+// //             } catch (e) {
+// //                 console.error("Failed to toggle IDE network access:", e);
+// //             }
 // //         } finally {
 // //             setTogglingIDE(null);
 // //         }
@@ -3567,7 +3635,6 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // //     return (
 // //         <>
 // //             {assessment.blocks.map((block: any) => {
-// //                 // ── SECTION ──────────────────────────────────────────────────────────────
 // //                 if (block.type === 'section') {
 // //                     const totals = sectionTotals[block.id];
 // //                     return (
@@ -3589,7 +3656,6 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // //                     );
 // //                 }
 
-// //                 // ── INFO / READING BLOCK ──────────────────────────────────────────────────
 // //                 if (block.type === 'info') {
 // //                     return (
 // //                         <div key={(isPrintMode ? 'print-' : '') + block.id} className="sr-q-card" style={{ borderLeft: '4px solid #0ea5e9', background: '#f0f9ff', padding: '1.25rem', marginBottom: '1.5rem', borderRadius: '6px' }}>
@@ -3605,11 +3671,9 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // //                     );
 // //                 }
 
-// //                 // ── QUESTION EVALUATION CARD SELECTOR ROUTINE ───────────────────────────
 // //                 if (['mcq', 'text', 'task', 'checklist', 'logbook', 'qcto_workplace', 'code_sandbox', 'mathpad', 'graph'].includes(block.type)) {
 // //                     qNum++;
 
-// //                     // AUTO-RECOVERY HEURISTIC FOR ORPHANED ANSWERS
 // //                     let learnerAns = submission.answers?.[block.id];
 
 // //                     if (learnerAns === undefined && submission.answers && Object.keys(submission.answers).length > 0) {
@@ -3623,7 +3687,6 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // //                         if (currentBlockIndex >= 0 && currentBlockIndex < answerKeys.length) {
 // //                             const recoveredKey = answerKeys[currentBlockIndex];
 // //                             learnerAns = submission.answers[recoveredKey];
-// //                             // console.log(`🩹 [AUTO-RECOVERY] Rescued orphaned answer from [${recoveredKey}] into block [${block.id}]`);
 // //                         }
 // //                     }
 
@@ -3767,7 +3830,6 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // //                         );
 // //                     };
 
-// //                     // ── GRAPH PLOT INTERACTIVE BLOCK ───────────────────────────────
 // //                     if (block.type === 'graph') {
 // //                         return (
 // //                             <div key={block.id} className="sr-q-card" style={{ borderTop: '4px solid black', marginBottom: '2rem' }}>
@@ -3812,7 +3874,6 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // //                         );
 // //                     }
 
-// //                     // ── MATHPAD ──────────────────────────────────────────────────────────
 // //                     if (block.type === 'mathpad') {
 // //                         const safeLearnerAns = typeof learnerAns === 'object' && learnerAns !== null ? learnerAns : { equation: getAnswerString(learnerAns) };
 
@@ -3957,7 +4018,6 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // //                         );
 // //                     }
 
-// //                     // ── CODE SANDBOX ──────────────────────────────────────────────────
 // //                     if (block.type === 'code_sandbox') {
 // //                         return (
 // //                             <div key={block.id} className="sr-q-card" style={{ borderTop: '4px solid black', marginBottom: '2rem' }}>
@@ -3991,6 +4051,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // //                                     {renderBlockImage(block)}
 // //                                     {renderBlockFile(block)}
 
+// //                                     {/* 🚀 LIVE IDE REVIEW PLAYER WITH REAL-TIME STORAGE DOWNLOADS */}
 // //                                     <ReviewCodeSandbox
 // //                                         block={block}
 // //                                         learnerAns={learnerAns}
@@ -4006,7 +4067,6 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // //                         );
 // //                     }
 
-// //                     // ── MCQ ────────────────────────────────────────────────────────────────
 // //                     if (block.type === 'mcq') {
 // //                         return (
 // //                             <div key={block.id} className="sr-q-card" style={{ borderTop: '4px solid black', marginBottom: '2rem' }}>
@@ -4042,7 +4102,6 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // //                         );
 // //                     }
 
-// //                     // ── TEXT ────────────────────────────────────────────────
 // //                     if (block.type === 'text') {
 // //                         return (
 // //                             <div key={block.id} className="sr-q-card" style={{ borderTop: '4px solid black', marginBottom: '2rem' }}>
@@ -4076,7 +4135,6 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // //                         );
 // //                     }
 
-// //                     // ── TASK ────────────────────────────────────────────────
 // //                     if (block.type === 'task') {
 // //                         const safeLearnerAns = typeof learnerAns === 'object' && learnerAns !== null ? learnerAns : { text: getAnswerString(learnerAns) };
 
@@ -4085,7 +4143,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // //                             { id: 'audio', icon: <Mic size={14} />, label: 'Audio', val: safeLearnerAns.audioUrl },
 // //                             { id: 'url', icon: <LinkIcon size={14} />, label: 'Link', val: safeLearnerAns.url },
 // //                             { id: 'upload', icon: <UploadCloud size={14} />, label: 'File Upload', val: safeLearnerAns.uploadUrl },
-// //                             { id: 'code', icon: <Code size={14} />, label: 'Code', val: safeLearnerAns.code }
+// //                             { id: 'code', icon: <Code size={14} />, label: 'Code IDE', val: safeLearnerAns.codeData || safeLearnerAns.code }
 // //                         ].filter(t => !!t.val);
 
 // //                         const activeTabId = activeTabs[block.id] || taskTabs[0]?.id;
@@ -4111,7 +4169,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // //                                     <div className="sr-answer-box">
 // //                                         <div className="sr-answer-label" style={{ color: 'black', display: 'flex', alignItems: 'center', gap: '6px' }}><Layers size={14} /> Learner Evidence Submitted:</div>
 
-// //                                         {(!safeLearnerAns || Object.keys(safeLearnerAns).length === 0 || (!safeLearnerAns.text && !safeLearnerAns.audioUrl && !safeLearnerAns.url && !safeLearnerAns.uploadUrl && !safeLearnerAns.code)) ? (
+// //                                         {(!safeLearnerAns || Object.keys(safeLearnerAns).length === 0 || (!safeLearnerAns.text && !safeLearnerAns.audioUrl && !safeLearnerAns.url && !safeLearnerAns.uploadUrl && !safeLearnerAns.code && !safeLearnerAns.codeData)) ? (
 // //                                             <span style={{ color: '#64748b', fontStyle: 'italic', display: 'block', padding: '10px' }}>No evidence uploaded by learner.</span>
 // //                                         ) : isPrintMode ? (
 // //                                             <div style={{ border: '1px solid #cbd5e1', borderRadius: '6px', padding: '10px', background: 'white' }}>
@@ -4119,7 +4177,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // //                                                 {safeLearnerAns.audioUrl && <div style={{ marginBottom: '10px' }}><strong style={{ fontSize: '0.75rem', color: '#475569' }}>Audio Recording:</strong><div>URL: {safeLearnerAns.audioUrl}</div></div>}
 // //                                                 {safeLearnerAns.url && <div style={{ marginBottom: '10px' }}><strong style={{ fontSize: '0.75rem', color: '#475569' }}>Link:</strong><div><a href={safeLearnerAns.url} target="_blank" rel="noreferrer">{safeLearnerAns.url}</a></div></div>}
 // //                                                 {safeLearnerAns.uploadUrl && <div style={{ marginBottom: '10px' }}><strong style={{ fontSize: '0.75rem', color: '#475569' }}>Uploaded File:</strong><FilePreview url={safeLearnerAns.uploadUrl} /></div>}
-// //                                                 {safeLearnerAns.code && <div><strong style={{ fontSize: '0.75rem', color: '#475569' }}>Code:</strong><pre style={{ background: '#f1f5f9', padding: '8px', borderRadius: '4px', overflowX: 'auto', fontSize: '0.8rem', fontFamily: 'monospace' }}>{safeLearnerAns.code}</pre></div>}
+// //                                                 {(safeLearnerAns.codeData || safeLearnerAns.code) && <div><strong style={{ fontSize: '0.75rem', color: '#475569' }}>Code:</strong><pre style={{ background: '#f1f5f9', padding: '8px', borderRadius: '4px', overflowX: 'auto', fontSize: '0.8rem', fontFamily: 'monospace' }}>{typeof safeLearnerAns.code === 'string' ? safeLearnerAns.code : '[Interactive IDE Snapshot]'}</pre></div>}
 // //                                             </div>
 // //                                         ) : taskTabs.length === 0 ? (
 // //                                             <span style={{ color: '#64748b', fontStyle: 'italic' }}>No evidence provided.</span>
@@ -4137,7 +4195,13 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // //                                                     {activeTabId === 'audio' && <audio controls src={safeLearnerAns.audioUrl} style={{ width: '100%', height: '40px' }} />}
 // //                                                     {activeTabId === 'url' && <UrlPreview url={safeLearnerAns.url} />}
 // //                                                     {activeTabId === 'upload' && <FilePreview url={safeLearnerAns.uploadUrl} />}
-// //                                                     {activeTabId === 'code' && <pre style={{ margin: 0, overflowX: 'auto', fontSize: '0.85rem', fontFamily: 'monospace', background: '#1e293b', color: '#f8fafc', padding: '15px', borderRadius: '4px' }}><code>{safeLearnerAns.code}</code></pre>}
+// //                                                     {activeTabId === 'code' && (
+// //                                                         <ReviewCodeSandbox
+// //                                                             block={{ id: `${block.id}_task`, title: `Live IDE Evidence`, template: 'vanilla' }}
+// //                                                             learnerAns={safeLearnerAns.codeData || safeLearnerAns}
+// //                                                             submissionId={submission.id}
+// //                                                         />
+// //                                                     )}
 // //                                                 </div>
 // //                                             </div>
 // //                                         )}
@@ -4151,7 +4215,6 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // //                         );
 // //                     }
 
-// //                     // ── LOGBOOK ────────────────────────────────────────────────
 // //                     if (block.type === 'logbook') {
 // //                         const entries = Array.isArray(learnerAns) ? learnerAns : [];
 // //                         const totalHours = entries.reduce((acc: number, curr: any) => acc + (Number(curr.hours) || 0), 0);
@@ -4231,7 +4294,6 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // //                         );
 // //                     }
 
-// //                     // ── CHECKLIST ──────────────────────────────────────────────
 // //                     if (block.type === 'checklist') {
 // //                         return (
 // //                             <div key={block.id} className="sr-q-card" style={{ borderTop: '4px solid black', marginBottom: '2rem' }}>
@@ -4281,7 +4343,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // //                                                         const allTabs = [
 // //                                                             { id: 'upload', icon: <UploadCloud size={13} />, label: 'File Artifact', val: critEvidence.uploadUrl, render: () => <FilePreview url={critEvidence.uploadUrl} /> },
 // //                                                             { id: 'url', icon: <LinkIcon size={13} />, label: 'Web Link', val: critEvidence.url, render: () => <UrlPreview url={critEvidence.url} /> },
-// //                                                             { id: 'code', icon: <Code size={13} />, label: 'Source Code', val: critEvidence.code, render: () => <pre style={{ background: '#1e293b', color: '#f8fafc', padding: '0.5rem', borderRadius: '4px', overflowX: 'auto', margin: 0, fontFamily: 'monospace', fontSize: '0.82rem' }}><code>{critEvidence.code}</code></pre> },
+// //                                                             { id: 'code', icon: <Code size={13} />, label: 'Source Code', val: critEvidence.codeData || critEvidence.code, render: () => <ReviewCodeSandbox block={{ id: `${block.id}_ev_${i}`, title: `Criterion ${i + 1} Code Evidence`, template: 'vanilla' }} learnerAns={critEvidence.codeData || critEvidence} submissionId={submission.id} /> },
 // //                                                             { id: 'text', icon: <FileText size={13} />, label: 'Learner Notes', val: isTextTrulyEmpty ? null : critEvidence.text, render: () => <RichMathText html={critEvidence.text} /> }
 // //                                                         ];
 
@@ -4347,7 +4409,6 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // //                                                         );
 // //                                                     })()}
 
-// //                                                     {/* READ ONLY BACKDOWN LAYERS */}
 // //                                                     {(isFacDone || mentorResult.status) && (!canFacilitatorMark || isPrintMode) && (
 // //                                                         <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '6px', padding: '10px', marginBottom: '10px' }}>
 // //                                                             <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#1d4ed8', textTransform: 'uppercase', display: 'flex', gap: '5px' }}>
@@ -4386,9 +4447,8 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // //                                                         </div>
 // //                                                     )}
 
-// //                                                     {/* EVALUATION INTERACTIVE INTERFACE CONTROLS */}
 // //                                                     {(!isPrintMode && isActiveRole) && (
-// //                                                         <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', flexWrap: 'wrap', borderTop: '1px dashed #cbd5e1', paddingTop: '15px', marginTop: '5px' }}>
+// //                                                         <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', flexWrap: 'wrap', borderTop: '1px dashed #cbd5e1', paddingTop: '10px', marginTop: '10px' }}>
 // //                                                             {block.requirePerCriterionTiming !== false && !canModerate && (
 // //                                                                 <div style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px', background: '#f1f5f9', padding: '8px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', flexWrap: 'wrap' }}>
 // //                                                                     <Timer size={16} color="#64748b" style={{ flexShrink: 0 }} />
@@ -4485,7 +4545,6 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // //                         );
 // //                     }
 
-// //                     // ── QCTO WORKPLACE ─────────────────────────────────────────
 // //                     if (block.type === 'qcto_workplace') {
 // //                         return (
 // //                             <div key={block.id} className="sr-q-card" style={{ borderTop: '4px solid black', marginBottom: '2rem' }}>
@@ -4540,9 +4599,17 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // //                                                                     </span>
 // //                                                                     {seData.uploadUrl && <div style={{ marginBottom: '10px' }}><FilePreview url={seData.uploadUrl} /></div>}
 // //                                                                     {seData.url && <div style={{ marginBottom: '10px' }}><UrlPreview url={seData.url} /></div>}
-// //                                                                     {seData.code && <pre style={{ background: '#1e293b', color: '#f8fafc', padding: '0.75rem', borderRadius: '4px', overflowX: 'auto', marginBottom: '10px' }}><code>{seData.code}</code></pre>}
+// //                                                                     {(seData.codeData || seData.code) && (
+// //                                                                         <div style={{ marginBottom: '10px' }}>
+// //                                                                             <ReviewCodeSandbox
+// //                                                                                 block={{ id: `${block.id}_se_${evItem.id}`, title: `Evidence: ${evItem.code}`, template: 'vanilla' }}
+// //                                                                                 learnerAns={seData.codeData || seData}
+// //                                                                                 submissionId={submission.id}
+// //                                                                             />
+// //                                                                         </div>
+// //                                                                     )}
 // //                                                                     {seData.text && <RichMathText html={seData.text} />}
-// //                                                                     {(!seData.uploadUrl && !seData.url && !seData.code && !seData.text) && <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontStyle: 'italic' }}>No evidence attached for this item.</span>}
+// //                                                                     {(!seData.uploadUrl && !seData.url && !seData.code && !seData.codeData && !seData.text) && <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontStyle: 'italic' }}>No evidence attached for this item.</span>}
 // //                                                                 </div>
 // //                                                             );
 // //                                                         })}
@@ -4587,7 +4654,6 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // //                                                             </div>
 // //                                                         )}
 
-// //                                                         {/* EVALUATION INTERACTIVE INTERFACE CONTROLS */}
 // //                                                         {(!isPrintMode && isActiveRole) && (
 // //                                                             <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', flexWrap: 'wrap', borderTop: '1px dashed #cbd5e1', paddingTop: '10px', marginTop: '10px' }}>
 // //                                                                 <div style={{ display: 'flex', gap: '10px' }}>
@@ -4679,8 +4745,6 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // };
 
 
-
-
 // // // // src/pages/FacilitatorDashboard/SubmissionReview/SubmissionReview/SubmissionReviewBlocks.tsx
 
 // // // import React, { useState, useEffect, useRef } from 'react';
@@ -4699,7 +4763,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // import { getFunctions, httpsCallable } from 'firebase/functions';
 
 // // // // 🚀 Direct Firestore Import for Real-Time Unlocks
-// // // import { getFirestore, doc, setDoc } from 'firebase/firestore';
+// // // import { getFirestore, doc, updateDoc, setDoc } from 'firebase/firestore';
 
 // // // // 🚀 Core Charting Engine Registration
 // // // import { CartesianPlane } from '@zakq/axisjs';
@@ -4773,18 +4837,28 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // //     handleSetToNow: (blockId: string, field: 'obsDate' | 'obsStartTime' | 'obsEndTime') => void;
 // // // }
 
-// // // // ─── HELPER: CLEAN RICH TEXT ─────────────────────────────────────────────────
-// // // const cleanRichText = (html?: string) => {
-// // //     if (!html) return '';
-// // //     return html.replace(/&nbsp;/g, ' ');
+// // // const getAnswerString = (ans: any): string => {
+// // //     if (ans === null || ans === undefined) return '';
+// // //     if (typeof ans === 'string') return ans;
+// // //     if (typeof ans === 'number' || typeof ans === 'boolean') return String(ans);
+// // //     if (typeof ans === 'object') {
+// // //         return ans.text || ans.equation || ans.value || ans.content || ans.html || ans.url || ans.uploadUrl || ans.code || '';
+// // //     }
+// // //     return '';
 // // // };
 
-// // // // ─── HELPER: MATH & RICH TEXT CONTAINER ─────────────────────────────────────
-// // // const RichMathText: React.FC<{ html?: string; className?: string; style?: React.CSSProperties }> = ({ html, className, style }) => {
+// // // const cleanRichText = (html?: any): string => {
+// // //     const str = getAnswerString(html);
+// // //     if (!str) return '';
+// // //     return str.replace(/&nbsp;/g, ' ');
+// // // };
+
+// // // const RichMathText: React.FC<{ html?: any; className?: string; style?: React.CSSProperties }> = ({ html, className, style }) => {
 // // //     const containerRef = useRef<HTMLDivElement>(null);
+// // //     const safeHtml = cleanRichText(html);
 
 // // //     useEffect(() => {
-// // //         if (!containerRef.current || !html) return;
+// // //         if (!containerRef.current || !safeHtml) return;
 
 // // //         // @ts-ignore
 // // //         import('katex/dist/contrib/auto-render.mjs').then((module) => {
@@ -4800,19 +4874,18 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // //                 });
 // // //             }
 // // //         }).catch(err => console.error("Failed to load KaTeX auto-render:", err));
-// // //     }, [html]);
+// // //     }, [safeHtml]);
 
 // // //     return (
 // // //         <div
 // // //             ref={containerRef}
 // // //             className={`quill-read-only-content ${className || ''}`}
 // // //             style={{ wordBreak: 'normal', overflowWrap: 'break-word', lineHeight: 1.6, ...style }}
-// // //             dangerouslySetInnerHTML={{ __html: cleanRichText(html) }}
+// // //             dangerouslySetInnerHTML={{ __html: safeHtml }}
 // // //         />
 // // //     );
 // // // };
 
-// // // // ─── HELPER: RENDER ATTACHED IMAGES ──────────────────────────────────────────
 // // // const renderBlockImage = (block: any) => {
 // // //     if (!block.imageUrl) return null;
 // // //     return (
@@ -4831,7 +4904,6 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // //     );
 // // // };
 
-// // // // ─── HELPER: RENDER ATTACHED STARTER FILES ──────────────────────────────────
 // // // const renderBlockFile = (block: any) => {
 // // //     if (!block.fileUrl) return null;
 // // //     return (
@@ -4852,7 +4924,6 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // //     );
 // // // };
 
-// // // // ─── AXISJS GRAPH SNAPSHOT VISUALIZER ────────────────────────────────────────
 // // // const ReviewAxisGraph: React.FC<{ block: any; learnerAns: any }> = ({ block, learnerAns }) => {
 // // //     const containerRef = useRef<HTMLDivElement>(null);
 // // //     const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -4938,7 +5009,6 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // //     );
 // // // };
 
-// // // // ─── CODE SANDBOX PLAYER ─────────────────────────────────────────────────────
 // // // const ReviewCodeSandbox: React.FC<{ block: any, learnerAns: any, submissionId: string }> = ({ block, learnerAns, submissionId }) => {
 // // //     const [snapshot, setSnapshot] = useState<any>(learnerAns?.snapshot || null);
 // // //     const [isLoading, setIsLoading] = useState<boolean>(!!learnerAns?.storagePath && !learnerAns?.snapshot);
@@ -4949,26 +5019,32 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 
 // // //         let isMounted = true;
 
-// // //         if (learnerAns?.storagePath && !learnerAns?.snapshot) {
-// // //             const functions = getFunctions();
-// // //             const fetchSnapshot = httpsCallable(functions, 'getCodeSnapshot');
-// // //             fetchSnapshot({ submissionId, blockId: block.id })
-// // //                 .then((res: any) => {
-// // //                     if (isMounted) {
-// // //                         setSnapshot(res.data.files);
-// // //                         setIsLoading(false);
-// // //                     }
-// // //                 })
-// // //                 .catch((err) => {
-// // //                     console.error(`Failed to fetch code snapshot for block ${block.id}:`, err);
-// // //                     if (isMounted) setIsLoading(false);
-// // //                 });
-// // //         } else {
-// // //             setSnapshot(learnerAns?.snapshot || null);
-// // //             setIsLoading(false);
-// // //         }
+// // //         // 🚀 DEBOUNCE FETCH: Prevent spamming Cloud Functions if learner is typing rapidly
+// // //         const debounceTimer = setTimeout(() => {
+// // //             if (learnerAns?.storagePath && !learnerAns?.snapshot) {
+// // //                 const functions = getFunctions();
+// // //                 const fetchSnapshot = httpsCallable(functions, 'getCodeSnapshot');
+// // //                 fetchSnapshot({ submissionId, blockId: block.id })
+// // //                     .then((res: any) => {
+// // //                         if (isMounted) {
+// // //                             setSnapshot(res.data.files);
+// // //                             setIsLoading(false);
+// // //                         }
+// // //                     })
+// // //                     .catch((err) => {
+// // //                         console.error(`Failed to fetch code snapshot for block ${block.id}:`, err);
+// // //                         if (isMounted) setIsLoading(false);
+// // //                     });
+// // //             } else {
+// // //                 setSnapshot(learnerAns?.snapshot || null);
+// // //                 setIsLoading(false);
+// // //             }
+// // //         }, 1500);
 
-// // //         return () => { isMounted = false; };
+// // //         return () => {
+// // //             isMounted = false;
+// // //             clearTimeout(debounceTimer);
+// // //         };
 // // //     }, [learnerAns, submissionId, block.id, isBooted]);
 
 // // //     if (!isBooted) {
@@ -5007,7 +5083,74 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // //     );
 // // // };
 
-// // // // ─── MAIN RENDER COMPONENT ───────────────────────────────────────────────────
+// // // // const ReviewCodeSandbox: React.FC<{ block: any, learnerAns: any, submissionId: string }> = ({ block, learnerAns, submissionId }) => {
+// // // //     const [snapshot, setSnapshot] = useState<any>(learnerAns?.snapshot || null);
+// // // //     const [isLoading, setIsLoading] = useState<boolean>(!!learnerAns?.storagePath && !learnerAns?.snapshot);
+// // // //     const [isBooted, setIsBooted] = useState<boolean>(false);
+
+// // // //     useEffect(() => {
+// // // //         if (!isBooted) return;
+
+// // // //         let isMounted = true;
+
+// // // //         if (learnerAns?.storagePath && !learnerAns?.snapshot) {
+// // // //             const functions = getFunctions();
+// // // //             const fetchSnapshot = httpsCallable(functions, 'getCodeSnapshot');
+// // // //             fetchSnapshot({ submissionId, blockId: block.id })
+// // // //                 .then((res: any) => {
+// // // //                     if (isMounted) {
+// // // //                         setSnapshot(res.data.files);
+// // // //                         setIsLoading(false);
+// // // //                     }
+// // // //                 })
+// // // //                 .catch((err) => {
+// // // //                     console.error(`Failed to fetch code snapshot for block ${block.id}:`, err);
+// // // //                     if (isMounted) setIsLoading(false);
+// // // //                 });
+// // // //         } else {
+// // // //             setSnapshot(learnerAns?.snapshot || null);
+// // // //             setIsLoading(false);
+// // // //         }
+
+// // // //         return () => { isMounted = false; };
+// // // //     }, [learnerAns, submissionId, block.id, isBooted]);
+
+// // // //     if (!isBooted) {
+// // // //         return (
+// // // //             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '3rem', background: '#f8fafc', border: '1px dashed #cbd5e1', borderRadius: '8px', color: '#64748b', gap: '10px' }}>
+// // // //                 <Code size={32} color="#94a3b8" />
+// // // //                 <p style={{ margin: 0, fontSize: '0.9rem', fontWeight: 'bold', color: '#334155' }}>Facilitator Code Preview is Paused</p>
+// // // //                 <p style={{ margin: '0 0 10px 0', fontSize: '0.8rem', textAlign: 'center', maxWidth: '400px' }}>This button only boots the IDE on <strong>YOUR</strong> screen to conserve memory. Use the Network Control switch above to unlock the Learner's screen.</p>
+// // // //                 <button
+// // // //                     onClick={() => setIsBooted(true)}
+// // // //                     style={{ background: '#3b82f6', color: 'white', padding: '8px 16px', borderRadius: '6px', border: 'none', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem', boxShadow: '0 2px 4px rgba(59,130,246,0.3)' }}
+// // // //                 >
+// // // //                     <Play size={14} /> Boot Facilitator Preview (Local)
+// // // //                 </button>
+// // // //             </div>
+// // // //         );
+// // // //     }
+
+// // // //     if (isLoading) {
+// // // //         return (
+// // // //             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '3rem', background: '#1e293b', borderRadius: '8px', color: '#94a3b8', gap: '10px' }}>
+// // // //                 <Loader2 size={24} className="animate-spin" />
+// // // //                 <p style={{ margin: 0, fontSize: '0.85rem' }}>Retrieving learner's code snapshot from cloud storage...</p>
+// // // //             </div>
+// // // //         );
+// // // //     }
+
+// // // //     return (
+// // // //         <div style={{ height: '600px', width: '100%', border: '1px solid #cbd5e1', borderRadius: '6px', overflow: 'hidden' }}>
+// // // //             <CodeSandboxPlayer
+// // // //                 block={block}
+// // // //                 learnerAns={{ ...(learnerAns || {}), snapshot }}
+// // // //                 readOnly={true}
+// // // //             />
+// // // //         </div>
+// // // //     );
+// // // // };
+
 // // // export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // //     const {
 // // //         assessment, submission, facBreakdown, assBreakdown, modBreakdown,
@@ -5027,15 +5170,31 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // //         setExpandedGraphMemos(prev => ({ ...prev, [blockId]: !prev[blockId] }));
 // // //     };
 
+// // //     // 🚀 FIXED: DOT NOTATION AND TIMESTAMP UPDATE FOR REAL-TIME SYNC
 // // //     const handleNetworkIDEToggle = async (blockId: string, currentState: boolean) => {
 // // //         if (!submission?.id) return;
 // // //         setTogglingIDE(blockId);
 // // //         try {
-// // //             const db = getFirestore();
-// // //             const subRef = doc(db, 'learner_submissions', submission.id);
-// // //             await setDoc(subRef, { ideUnlocks: { [blockId]: !currentState } }, { merge: true });
-// // //         } catch (err) {
-// // //             console.error("Failed to toggle IDE network access:", err);
+// // //             const dbInstance = getFirestore();
+// // //             const subRef = doc(dbInstance, 'learner_submissions', submission.id);
+// // //             const nextState = !currentState;
+
+// // //             await updateDoc(subRef, {
+// // //                 [`ideUnlocks.${blockId}`]: nextState,
+// // //                 lastStaffEditAt: new Date().toISOString()
+// // //             });
+// // //         } catch (err: any) {
+// // //             // Fallback: Use setDoc with merge if document field map needs initialization
+// // //             try {
+// // //                 const dbInstance = getFirestore();
+// // //                 const subRef = doc(dbInstance, 'learner_submissions', submission.id);
+// // //                 await setDoc(subRef, {
+// // //                     ideUnlocks: { [blockId]: !currentState },
+// // //                     lastStaffEditAt: new Date().toISOString()
+// // //                 }, { merge: true });
+// // //             } catch (e) {
+// // //                 console.error("Failed to toggle IDE network access:", e);
+// // //             }
 // // //         } finally {
 // // //             setTogglingIDE(null);
 // // //         }
@@ -5079,7 +5238,6 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // //     return (
 // // //         <>
 // // //             {assessment.blocks.map((block: any) => {
-// // //                 // ── SECTION ──────────────────────────────────────────────────────────────
 // // //                 if (block.type === 'section') {
 // // //                     const totals = sectionTotals[block.id];
 // // //                     return (
@@ -5101,7 +5259,6 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // //                     );
 // // //                 }
 
-// // //                 // ── INFO / READING BLOCK ──────────────────────────────────────────────────
 // // //                 if (block.type === 'info') {
 // // //                     return (
 // // //                         <div key={(isPrintMode ? 'print-' : '') + block.id} className="sr-q-card" style={{ borderLeft: '4px solid #0ea5e9', background: '#f0f9ff', padding: '1.25rem', marginBottom: '1.5rem', borderRadius: '6px' }}>
@@ -5117,11 +5274,9 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // //                     );
 // // //                 }
 
-// // //                 // ── QUESTION EVALUATION CARD SELECTOR ROUTINE ───────────────────────────
 // // //                 if (['mcq', 'text', 'task', 'checklist', 'logbook', 'qcto_workplace', 'code_sandbox', 'mathpad', 'graph'].includes(block.type)) {
 // // //                     qNum++;
 
-// // //                     // AUTO-RECOVERY HEURISTIC FOR ORPHANED ANSWERS
 // // //                     let learnerAns = submission.answers?.[block.id];
 
 // // //                     if (learnerAns === undefined && submission.answers && Object.keys(submission.answers).length > 0) {
@@ -5135,7 +5290,6 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // //                         if (currentBlockIndex >= 0 && currentBlockIndex < answerKeys.length) {
 // // //                             const recoveredKey = answerKeys[currentBlockIndex];
 // // //                             learnerAns = submission.answers[recoveredKey];
-// // //                             console.log(`🩹 [AUTO-RECOVERY] Rescued orphaned answer from [${recoveredKey}] into block [${block.id}]`);
 // // //                         }
 // // //                     }
 
@@ -5279,7 +5433,6 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // //                         );
 // // //                     };
 
-// // //                     // ── GRAPH PLOT INTERACTIVE BLOCK ───────────────────────────────
 // // //                     if (block.type === 'graph') {
 // // //                         return (
 // // //                             <div key={block.id} className="sr-q-card" style={{ borderTop: '4px solid black', marginBottom: '2rem' }}>
@@ -5324,9 +5477,8 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // //                         );
 // // //                     }
 
-// // //                     // ── MATHPAD ──────────────────────────────────────────────────────────
 // // //                     if (block.type === 'mathpad') {
-// // //                         const safeLearnerAns = typeof learnerAns === 'object' && learnerAns !== null ? learnerAns : { equation: learnerAns };
+// // //                         const safeLearnerAns = typeof learnerAns === 'object' && learnerAns !== null ? learnerAns : { equation: getAnswerString(learnerAns) };
 
 // // //                         const mathTabs = [
 // // //                             { id: 'equation', icon: <Sigma size={13} />, label: 'Equation Editor', val: safeLearnerAns.equation !== undefined ? safeLearnerAns.equation : null, theme: { text: '#be185d', bg: '#fdf2f8', border: '#fbcfe8', activeBg: '#fce7f3' } },
@@ -5469,7 +5621,6 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // //                         );
 // // //                     }
 
-// // //                     // ── CODE SANDBOX ──────────────────────────────────────────────────
 // // //                     if (block.type === 'code_sandbox') {
 // // //                         return (
 // // //                             <div key={block.id} className="sr-q-card" style={{ borderTop: '4px solid black', marginBottom: '2rem' }}>
@@ -5518,7 +5669,6 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // //                         );
 // // //                     }
 
-// // //                     // ── MCQ ────────────────────────────────────────────────────────────────
 // // //                     if (block.type === 'mcq') {
 // // //                         return (
 // // //                             <div key={block.id} className="sr-q-card" style={{ borderTop: '4px solid black', marginBottom: '2rem' }}>
@@ -5540,10 +5690,10 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // //                                     <div className="sr-answer-box">
 // // //                                         <div className="sr-answer-label" style={{ color: 'black' }}>Learner's Response:</div>
 // // //                                         <div className={`sr-mcq-ans ${learnerAns === block.correctOption ? 'correct' : 'wrong'}`}>
-// // //                                             <span style={{ color: 'black', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{learnerAns !== undefined ? `${String.fromCharCode(65 + learnerAns)}. ${block.options?.[learnerAns]}` : 'No answer provided.'}</span>
+// // //                                             <span style={{ color: 'black', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{learnerAns !== undefined ? `${String.fromCharCode(65 + Number(learnerAns))}. ${block.options?.[learnerAns] || ''}` : 'No answer provided.'}</span>
 // // //                                             {learnerAns === block.correctOption && <CheckCircle size={14} color="black" />}
 // // //                                         </div>
-// // //                                         <div className="sr-mcq-correct-hint" style={{ color: 'black' }}>Correct Answer: <strong>{String.fromCharCode(65 + block.correctOption)}. {block.options?.[block.correctOption]}</strong></div>
+// // //                                         <div className="sr-mcq-correct-hint" style={{ color: 'black' }}>Correct Answer: <strong>{String.fromCharCode(65 + Number(block.correctOption))}. {block.options?.[block.correctOption]}</strong></div>
 // // //                                     </div>
 // // //                                     <div className="sr-grade-box" style={{ borderLeft: `4px solid ${activeInkColor}`, marginTop: '1rem', padding: '1rem', background: 'white', borderRadius: '6px' }}>
 // // //                                         {renderReadOnlyLayers()}
@@ -5554,7 +5704,6 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // //                         );
 // // //                     }
 
-// // //                     // ── TEXT ────────────────────────────────────────────────
 // // //                     if (block.type === 'text') {
 // // //                         return (
 // // //                             <div key={block.id} className="sr-q-card" style={{ borderTop: '4px solid black', marginBottom: '2rem' }}>
@@ -5576,7 +5725,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // //                                     <div className="sr-answer-box">
 // // //                                         <div className="sr-answer-label" style={{ color: 'black' }}>Learner's Response:</div>
 // // //                                         <div className="sr-text-ans">
-// // //                                             {learnerAns ? <RichMathText html={learnerAns} style={{ color: 'black' }} /> : <span style={{ color: 'black', fontStyle: 'italic' }}>No answer provided.</span>}
+// // //                                             {learnerAns ? <RichMathText html={getAnswerString(learnerAns)} style={{ color: 'black' }} /> : <span style={{ color: 'black', fontStyle: 'italic' }}>No answer provided.</span>}
 // // //                                         </div>
 // // //                                     </div>
 // // //                                     <div className="sr-grade-box" style={{ borderLeft: `4px solid ${activeInkColor}`, marginTop: '1rem', padding: '1rem', background: 'white', borderRadius: '6px' }}>
@@ -5588,9 +5737,8 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // //                         );
 // // //                     }
 
-// // //                     // ── TASK ────────────────────────────────────────────────
 // // //                     if (block.type === 'task') {
-// // //                         const safeLearnerAns = typeof learnerAns === 'object' && learnerAns !== null ? learnerAns : { text: learnerAns };
+// // //                         const safeLearnerAns = typeof learnerAns === 'object' && learnerAns !== null ? learnerAns : { text: getAnswerString(learnerAns) };
 
 // // //                         const taskTabs = [
 // // //                             { id: 'text', icon: <FileText size={14} />, label: 'Rich Text', val: safeLearnerAns.text },
@@ -5663,7 +5811,6 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // //                         );
 // // //                     }
 
-// // //                     // ── LOGBOOK ────────────────────────────────────────────────
 // // //                     if (block.type === 'logbook') {
 // // //                         const entries = Array.isArray(learnerAns) ? learnerAns : [];
 // // //                         const totalHours = entries.reduce((acc: number, curr: any) => acc + (Number(curr.hours) || 0), 0);
@@ -5743,7 +5890,6 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // //                         );
 // // //                     }
 
-// // //                     // ── CHECKLIST ──────────────────────────────────────────────
 // // //                     if (block.type === 'checklist') {
 // // //                         return (
 // // //                             <div key={block.id} className="sr-q-card" style={{ borderTop: '4px solid black', marginBottom: '2rem' }}>
@@ -5785,10 +5931,9 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 
 // // //                                                     {block.requireEvidencePerCriterion !== false && (() => {
 // // //                                                         const rawEv = learnerAns?.[`evidence_${i}`];
-
 // // //                                                         const critEvidence = typeof rawEv === 'string' ? { text: rawEv } : (rawEv || {});
-
-// // //                                                         const cleanTextCheck = critEvidence.text ? critEvidence.text.replace(/<[^>]*>/g, '').trim() : '';
+// // //                                                         const safeText = getAnswerString(critEvidence.text);
+// // //                                                         const cleanTextCheck = safeText ? safeText.replace(/<[^>]*>/g, '').trim() : '';
 // // //                                                         const isTextTrulyEmpty = cleanTextCheck.length === 0;
 
 // // //                                                         const allTabs = [
@@ -5860,7 +6005,6 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // //                                                         );
 // // //                                                     })()}
 
-// // //                                                     {/* READ ONLY BACKDOWN LAYERS */}
 // // //                                                     {(isFacDone || mentorResult.status) && (!canFacilitatorMark || isPrintMode) && (
 // // //                                                         <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '6px', padding: '10px', marginBottom: '10px' }}>
 // // //                                                             <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#1d4ed8', textTransform: 'uppercase', display: 'flex', gap: '5px' }}>
@@ -5899,7 +6043,6 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // //                                                         </div>
 // // //                                                     )}
 
-// // //                                                     {/* EVALUATION INTERACTIVE INTERFACE CONTROLS */}
 // // //                                                     {(!isPrintMode && isActiveRole) && (
 // // //                                                         <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', flexWrap: 'wrap', borderTop: '1px dashed #cbd5e1', paddingTop: '15px', marginTop: '5px' }}>
 // // //                                                             {block.requirePerCriterionTiming !== false && !canModerate && (
@@ -5998,7 +6141,6 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // //                         );
 // // //                     }
 
-// // //                     // ── QCTO WORKPLACE ─────────────────────────────────────────
 // // //                     if (block.type === 'qcto_workplace') {
 // // //                         return (
 // // //                             <div key={block.id} className="sr-q-card" style={{ borderTop: '4px solid black', marginBottom: '2rem' }}>
@@ -6100,7 +6242,6 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // //                                                             </div>
 // // //                                                         )}
 
-// // //                                                         {/* EVALUATION INTERACTIVE INTERFACE CONTROLS */}
 // // //                                                         {(!isPrintMode && isActiveRole) && (
 // // //                                                             <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', flexWrap: 'wrap', borderTop: '1px dashed #cbd5e1', paddingTop: '10px', marginTop: '10px' }}>
 // // //                                                                 <div style={{ display: 'flex', gap: '10px' }}>
@@ -6192,8 +6333,8 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // };
 
 
-
 // // // // // src/pages/FacilitatorDashboard/SubmissionReview/SubmissionReview/SubmissionReviewBlocks.tsx
+
 // // // // import React, { useState, useEffect, useRef } from 'react';
 // // // // import {
 // // // //     Award, Check, CheckCircle, X, Edit3, Info, Layers, FileText, Mic,
@@ -6215,6 +6356,12 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // // // 🚀 Core Charting Engine Registration
 // // // // import { CartesianPlane } from '@zakq/axisjs';
 // // // // import "mathlive";
+
+// // // // // 🚀 Math Support Configuration
+// // // // import katex from "katex";
+// // // // import "katex/dist/katex.min.css";
+
+// // // // (window as any).katex = katex;
 
 // // // // const POINT_COLORS = ["#ef4444", "#2563eb", "#94c73d", "#f59e0b", "#a855f7", "#0891b2"];
 
@@ -6278,10 +6425,56 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // //     handleSetToNow: (blockId: string, field: 'obsDate' | 'obsStartTime' | 'obsEndTime') => void;
 // // // // }
 
+// // // // // ─── SAFE STRING EXTRACTOR HELPER ───────────────────────────────────────────
+// // // // const getAnswerString = (ans: any): string => {
+// // // //     if (ans === null || ans === undefined) return '';
+// // // //     if (typeof ans === 'string') return ans;
+// // // //     if (typeof ans === 'number' || typeof ans === 'boolean') return String(ans);
+// // // //     if (typeof ans === 'object') {
+// // // //         return ans.text || ans.equation || ans.value || ans.content || ans.html || ans.url || ans.uploadUrl || ans.code || '';
+// // // //     }
+// // // //     return '';
+// // // // };
+
 // // // // // ─── HELPER: CLEAN RICH TEXT ─────────────────────────────────────────────────
-// // // // const cleanRichText = (html?: string) => {
-// // // //     if (!html) return '';
-// // // //     return html.replace(/&nbsp;/g, ' ');
+// // // // const cleanRichText = (html?: any): string => {
+// // // //     const str = getAnswerString(html);
+// // // //     if (!str) return '';
+// // // //     return str.replace(/&nbsp;/g, ' ');
+// // // // };
+
+// // // // // ─── HELPER: MATH & RICH TEXT CONTAINER ─────────────────────────────────────
+// // // // const RichMathText: React.FC<{ html?: any; className?: string; style?: React.CSSProperties }> = ({ html, className, style }) => {
+// // // //     const containerRef = useRef<HTMLDivElement>(null);
+// // // //     const safeHtml = cleanRichText(html);
+
+// // // //     useEffect(() => {
+// // // //         if (!containerRef.current || !safeHtml) return;
+
+// // // //         // @ts-ignore
+// // // //         import('katex/dist/contrib/auto-render.mjs').then((module) => {
+// // // //             if (containerRef.current) {
+// // // //                 module.default(containerRef.current, {
+// // // //                     delimiters: [
+// // // //                         { left: '$$', right: '$$', display: true },
+// // // //                         { left: '$', right: '$', display: false },
+// // // //                         { left: '\\(', right: '\\)', display: false },
+// // // //                         { left: '\\[', right: '\\]', display: true }
+// // // //                     ],
+// // // //                     throwOnError: false
+// // // //                 });
+// // // //             }
+// // // //         }).catch(err => console.error("Failed to load KaTeX auto-render:", err));
+// // // //     }, [safeHtml]);
+
+// // // //     return (
+// // // //         <div
+// // // //             ref={containerRef}
+// // // //             className={`quill-read-only-content ${className || ''}`}
+// // // //             style={{ wordBreak: 'normal', overflowWrap: 'break-word', lineHeight: 1.6, ...style }}
+// // // //             dangerouslySetInnerHTML={{ __html: safeHtml }}
+// // // //         />
+// // // //     );
 // // // // };
 
 // // // // // ─── HELPER: RENDER ATTACHED IMAGES ──────────────────────────────────────────
@@ -6299,6 +6492,27 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // //                     {block.imageCaption}
 // // // //                 </p>
 // // // //             )}
+// // // //         </div>
+// // // //     );
+// // // // };
+
+// // // // // ─── HELPER: RENDER ATTACHED STARTER FILES ──────────────────────────────────
+// // // // const renderBlockFile = (block: any) => {
+// // // //     if (!block.fileUrl) return null;
+// // // //     return (
+// // // //         <div className="no-print" style={{ margin: '1rem 0', padding: '12px 16px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+// // // //             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', overflow: 'hidden' }}>
+// // // //                 <FileText size={20} color="#166534" />
+// // // //                 <div style={{ overflow: 'hidden' }}>
+// // // //                     <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: '#14532d', display: 'block', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+// // // //                         {block.fileName || "Download Starter File"}
+// // // //                     </span>
+// // // //                     <span style={{ fontSize: '0.75rem', color: '#15803d' }}>Resource / Template provided for this task</span>
+// // // //                 </div>
+// // // //             </div>
+// // // //             <a href={block.fileUrl} download target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', padding: '6px 14px', background: '#166534', color: 'white', borderRadius: '4px', flexShrink: 0, fontWeight: 'bold' }}>
+// // // //                 <UploadCloud size={14} style={{ transform: 'rotate(180deg)' }} /> Download File
+// // // //             </a>
 // // // //         </div>
 // // // //     );
 // // // // };
@@ -6544,20 +6758,26 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // //                                 )}
 // // // //                             </div>
 // // // //                             {block.content && (
-// // // //                                 <div className="quill-read-only-content" style={{ color: '#334155', fontSize: '0.95rem', wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.content) }} />
+// // // //                                 <RichMathText html={block.content} style={{ color: '#334155', fontSize: '0.95rem' }} />
 // // // //                             )}
 // // // //                             {renderBlockImage(block)}
+// // // //                             {renderBlockFile(block)}
 // // // //                         </div>
 // // // //                     );
 // // // //                 }
 
-// // // //                 // ── INFO BLOCK ──────────────────────────────────────────────────────────
+// // // //                 // ── INFO / READING BLOCK ──────────────────────────────────────────────────
 // // // //                 if (block.type === 'info') {
 // // // //                     return (
-// // // //                         <div key={(isPrintMode ? 'print-' : '') + block.id} className="sr-q-card" style={{ borderLeft: '4px solid #0ea5e9', background: '#f0f9ff', padding: '1rem', marginBottom: '1.5rem' }}>
-// // // //                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#0284c7', fontWeight: 'bold', marginBottom: '8px' }}><Info size={16} /> Reading Material</div>
-// // // //                             <div className="quill-read-only-content" style={{ margin: 0, color: '#0c4a6e', wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.content) }} />
+// // // //                         <div key={(isPrintMode ? 'print-' : '') + block.id} className="sr-q-card" style={{ borderLeft: '4px solid #0ea5e9', background: '#f0f9ff', padding: '1.25rem', marginBottom: '1.5rem', borderRadius: '6px' }}>
+// // // //                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#0284c7', fontWeight: 'bold', marginBottom: '10px', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+// // // //                                 <Info size={16} /> {block.title || 'Reading Material'}
+// // // //                             </div>
+// // // //                             {block.content && (
+// // // //                                 <RichMathText html={block.content} style={{ color: '#0c4a6e', fontSize: '0.92rem' }} />
+// // // //                             )}
 // // // //                             {renderBlockImage(block)}
+// // // //                             {renderBlockFile(block)}
 // // // //                         </div>
 // // // //                     );
 // // // //                 }
@@ -6566,7 +6786,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // //                 if (['mcq', 'text', 'task', 'checklist', 'logbook', 'qcto_workplace', 'code_sandbox', 'mathpad', 'graph'].includes(block.type)) {
 // // // //                     qNum++;
 
-// // // //                     // 🚀 AUTO-RECOVERY HEURISTIC FOR ORPHANED ANSWERS
+// // // //                     // AUTO-RECOVERY HEURISTIC FOR ORPHANED ANSWERS
 // // // //                     let learnerAns = submission.answers?.[block.id];
 
 // // // //                     if (learnerAns === undefined && submission.answers && Object.keys(submission.answers).length > 0) {
@@ -6580,7 +6800,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // //                         if (currentBlockIndex >= 0 && currentBlockIndex < answerKeys.length) {
 // // // //                             const recoveredKey = answerKeys[currentBlockIndex];
 // // // //                             learnerAns = submission.answers[recoveredKey];
-// // // //                             console.log(`🩹 [AUTO-RECOVERY] Rescued orphaned answer from [${recoveredKey}] into block [${block.id}]`);
+// // // //                             // console.log(`🩹 [AUTO-RECOVERY] Rescued orphaned answer from [${recoveredKey}] into block [${block.id}]`);
 // // // //                         }
 // // // //                     }
 
@@ -6724,14 +6944,14 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // //                         );
 // // // //                     };
 
-// // // //                     // ── GRAPH PLOT INTERACTIVE BLOCK (NEW) ───────────────────────────────
+// // // //                     // ── GRAPH PLOT INTERACTIVE BLOCK ───────────────────────────────
 // // // //                     if (block.type === 'graph') {
 // // // //                         return (
 // // // //                             <div key={block.id} className="sr-q-card" style={{ borderTop: '4px solid black', marginBottom: '2rem' }}>
 // // // //                                 <div className="sr-q-header">
 // // // //                                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', width: '100%' }}>
 // // // //                                         <span className="sr-q-num" style={{ background: '#ccfbf1', color: '#0f766e', flexShrink: 0 }}>PLOT</span>
-// // // //                                         <div className="sr-q-text quill-read-only-content" style={{ color: '#073f4e', fontWeight: 'bold', margin: 0, flex: 1, minWidth: 0, wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.question) }} />
+// // // //                                         <RichMathText html={block.question} style={{ color: '#073f4e', fontWeight: 'bold', margin: 0, flex: 1, minWidth: 0 }} />
 // // // //                                     </div>
 // // // //                                     {!isPrintMode && isActiveRole && !isMentor && !(canModerate && isWorkplaceModule) && (
 // // // //                                         <div className="sr-visual-mark" style={{ flexShrink: 0, marginLeft: '10px' }}>
@@ -6742,6 +6962,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // //                                 </div>
 // // // //                                 <div className="sr-q-body">
 // // // //                                     {renderBlockImage(block)}
+// // // //                                     {renderBlockFile(block)}
 
 // // // //                                     <div className="sr-answer-box">
 // // // //                                         <div className="sr-answer-label" style={{ color: 'black', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -6770,7 +6991,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 
 // // // //                     // ── MATHPAD ──────────────────────────────────────────────────────────
 // // // //                     if (block.type === 'mathpad') {
-// // // //                         const safeLearnerAns = typeof learnerAns === 'object' && learnerAns !== null ? learnerAns : { equation: learnerAns };
+// // // //                         const safeLearnerAns = typeof learnerAns === 'object' && learnerAns !== null ? learnerAns : { equation: getAnswerString(learnerAns) };
 
 // // // //                         const mathTabs = [
 // // // //                             { id: 'equation', icon: <Sigma size={13} />, label: 'Equation Editor', val: safeLearnerAns.equation !== undefined ? safeLearnerAns.equation : null, theme: { text: '#be185d', bg: '#fdf2f8', border: '#fbcfe8', activeBg: '#fce7f3' } },
@@ -6785,7 +7006,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // //                                 <div className="sr-q-header">
 // // // //                                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', width: '100%' }}>
 // // // //                                         <span className="sr-q-num" style={{ background: '#fce7f3', color: '#db2777', flexShrink: 0 }}>MATH</span>
-// // // //                                         <div className="sr-q-text quill-read-only-content" style={{ color: '#073f4e', fontWeight: 'bold', margin: 0, flex: 1, minWidth: 0, wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.question) }} />
+// // // //                                         <RichMathText html={block.question} style={{ color: '#073f4e', fontWeight: 'bold', margin: 0, flex: 1, minWidth: 0 }} />
 // // // //                                     </div>
 // // // //                                     {!isPrintMode && isActiveRole && !isMentor && !(canModerate && isWorkplaceModule) && (
 // // // //                                         <div className="sr-visual-mark" style={{ flexShrink: 0, marginLeft: '10px' }}>
@@ -6796,6 +7017,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // //                                 </div>
 // // // //                                 <div className="sr-q-body">
 // // // //                                     {renderBlockImage(block)}
+// // // //                                     {renderBlockFile(block)}
 
 // // // //                                     <div className="sr-answer-box">
 // // // //                                         <div className="sr-answer-label" style={{ color: 'black', marginBottom: '8px' }}>
@@ -6870,7 +7092,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // //                                                 {block.modelSolution && (
 // // // //                                                     <div style={{ marginBottom: '12px' }}>
 // // // //                                                         <div style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#9d174d', marginBottom: '4px', textTransform: 'uppercase' }}>Step-by-Step Solution</div>
-// // // //                                                         <div className="quill-read-only-content" style={{ background: 'white', padding: '10px', borderRadius: '4px', border: '1px dashed #fbcfe8', fontSize: '0.9rem', color: '#334155' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.modelSolution) }} />
+// // // //                                                         <RichMathText html={block.modelSolution} style={{ background: 'white', padding: '10px', borderRadius: '4px', border: '1px dashed #fbcfe8', fontSize: '0.9rem', color: '#334155' }} />
 // // // //                                                     </div>
 // // // //                                                 )}
 
@@ -6927,7 +7149,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // //                                                     </h3>
 // // // //                                                 )}
 // // // //                                                 {block.question && (
-// // // //                                                     <div className="quill-read-only-content" style={{ wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap', color: '#334155' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.question) }} />
+// // // //                                                     <RichMathText html={block.question} style={{ color: '#334155' }} />
 // // // //                                                 )}
 // // // //                                             </div>
 // // // //                                         </div>
@@ -6944,6 +7166,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // //                                 <div className="sr-q-body">
 // // // //                                     {renderNetworkIDEToggleUI(block)}
 // // // //                                     {renderBlockImage(block)}
+// // // //                                     {renderBlockFile(block)}
 
 // // // //                                     <ReviewCodeSandbox
 // // // //                                         block={block}
@@ -6967,7 +7190,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // //                                 <div className="sr-q-header">
 // // // //                                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', width: '100%' }}>
 // // // //                                         <span className="sr-q-num" style={{ background: '#f1f5f9', color: '#073f4e', flexShrink: 0 }}>Q{qNum}</span>
-// // // //                                         <div className="sr-q-text quill-read-only-content" style={{ color: '#073f4e', fontWeight: 'bold', margin: 0, flex: 1, minWidth: 0, wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.question) }} />
+// // // //                                         <RichMathText html={block.question} style={{ color: '#073f4e', fontWeight: 'bold', margin: 0, flex: 1, minWidth: 0 }} />
 // // // //                                     </div>
 // // // //                                     {!isPrintMode && isActiveRole && !isMentor && !(canModerate && isWorkplaceModule) && (
 // // // //                                         <div className="sr-visual-mark" style={{ flexShrink: 0, marginLeft: '10px' }}>
@@ -6978,13 +7201,14 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // //                                 </div>
 // // // //                                 <div className="sr-q-body">
 // // // //                                     {renderBlockImage(block)}
+// // // //                                     {renderBlockFile(block)}
 // // // //                                     <div className="sr-answer-box">
 // // // //                                         <div className="sr-answer-label" style={{ color: 'black' }}>Learner's Response:</div>
 // // // //                                         <div className={`sr-mcq-ans ${learnerAns === block.correctOption ? 'correct' : 'wrong'}`}>
-// // // //                                             <span style={{ color: 'black', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{learnerAns !== undefined ? `${String.fromCharCode(65 + learnerAns)}. ${block.options?.[learnerAns]}` : 'No answer provided.'}</span>
+// // // //                                             <span style={{ color: 'black', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{learnerAns !== undefined ? `${String.fromCharCode(65 + Number(learnerAns))}. ${block.options?.[learnerAns] || ''}` : 'No answer provided.'}</span>
 // // // //                                             {learnerAns === block.correctOption && <CheckCircle size={14} color="black" />}
 // // // //                                         </div>
-// // // //                                         <div className="sr-mcq-correct-hint" style={{ color: 'black' }}>Correct Answer: <strong>{String.fromCharCode(65 + block.correctOption)}. {block.options?.[block.correctOption]}</strong></div>
+// // // //                                         <div className="sr-mcq-correct-hint" style={{ color: 'black' }}>Correct Answer: <strong>{String.fromCharCode(65 + Number(block.correctOption))}. {block.options?.[block.correctOption]}</strong></div>
 // // // //                                     </div>
 // // // //                                     <div className="sr-grade-box" style={{ borderLeft: `4px solid ${activeInkColor}`, marginTop: '1rem', padding: '1rem', background: 'white', borderRadius: '6px' }}>
 // // // //                                         {renderReadOnlyLayers()}
@@ -7002,7 +7226,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // //                                 <div className="sr-q-header">
 // // // //                                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', width: '100%' }}>
 // // // //                                         <span className="sr-q-num" style={{ background: '#f1f5f9', color: '#073f4e', flexShrink: 0 }}>Q{qNum}</span>
-// // // //                                         <div className="sr-q-text quill-read-only-content" style={{ color: '#073f4e', fontWeight: 'bold', margin: 0, flex: 1, minWidth: 0, wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.question) }} />
+// // // //                                         <RichMathText html={block.question} style={{ color: '#073f4e', fontWeight: 'bold', margin: 0, flex: 1, minWidth: 0 }} />
 // // // //                                     </div>
 // // // //                                     {!isPrintMode && isActiveRole && !isMentor && !(canModerate && isWorkplaceModule) && (
 // // // //                                         <div className="sr-visual-mark" style={{ flexShrink: 0, marginLeft: '10px' }}>
@@ -7013,10 +7237,11 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // //                                 </div>
 // // // //                                 <div className="sr-q-body">
 // // // //                                     {renderBlockImage(block)}
+// // // //                                     {renderBlockFile(block)}
 // // // //                                     <div className="sr-answer-box">
 // // // //                                         <div className="sr-answer-label" style={{ color: 'black' }}>Learner's Response:</div>
 // // // //                                         <div className="sr-text-ans">
-// // // //                                             {learnerAns ? <div className="quill-read-only-content" style={{ color: 'black', wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(learnerAns) }} /> : <span style={{ color: 'black', fontStyle: 'italic' }}>No answer provided.</span>}
+// // // //                                             {learnerAns ? <RichMathText html={getAnswerString(learnerAns)} style={{ color: 'black' }} /> : <span style={{ color: 'black', fontStyle: 'italic' }}>No answer provided.</span>}
 // // // //                                         </div>
 // // // //                                     </div>
 // // // //                                     <div className="sr-grade-box" style={{ borderLeft: `4px solid ${activeInkColor}`, marginTop: '1rem', padding: '1rem', background: 'white', borderRadius: '6px' }}>
@@ -7030,7 +7255,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 
 // // // //                     // ── TASK ────────────────────────────────────────────────
 // // // //                     if (block.type === 'task') {
-// // // //                         const safeLearnerAns = typeof learnerAns === 'object' && learnerAns !== null ? learnerAns : { text: learnerAns };
+// // // //                         const safeLearnerAns = typeof learnerAns === 'object' && learnerAns !== null ? learnerAns : { text: getAnswerString(learnerAns) };
 
 // // // //                         const taskTabs = [
 // // // //                             { id: 'text', icon: <FileText size={14} />, label: 'Rich Text', val: safeLearnerAns.text },
@@ -7047,7 +7272,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // //                                 <div className="sr-q-header">
 // // // //                                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', width: '100%' }}>
 // // // //                                         <span className="sr-q-num" style={{ background: '#ede9fe', color: '#8b5cf6', flexShrink: 0 }}>Q{qNum}</span>
-// // // //                                         <div className="sr-q-text quill-read-only-content" style={{ color: '#073f4e', fontWeight: 'bold', margin: 0, flex: 1, minWidth: 0, wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.question) }} />
+// // // //                                         <RichMathText html={block.question} style={{ color: '#073f4e', fontWeight: 'bold', margin: 0, flex: 1, minWidth: 0 }} />
 // // // //                                     </div>
 // // // //                                     {!isPrintMode && isActiveRole && !isMentor && !(canModerate && isWorkplaceModule) && (
 // // // //                                         <div className="sr-visual-mark" style={{ flexShrink: 0, marginLeft: '10px' }}>
@@ -7059,6 +7284,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // //                                 <div className="sr-q-body">
 // // // //                                     {renderNetworkIDEToggleUI(block)}
 // // // //                                     {renderBlockImage(block)}
+// // // //                                     {renderBlockFile(block)}
 // // // //                                     <div className="sr-answer-box">
 // // // //                                         <div className="sr-answer-label" style={{ color: 'black', display: 'flex', alignItems: 'center', gap: '6px' }}><Layers size={14} /> Learner Evidence Submitted:</div>
 
@@ -7066,7 +7292,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // //                                             <span style={{ color: '#64748b', fontStyle: 'italic', display: 'block', padding: '10px' }}>No evidence uploaded by learner.</span>
 // // // //                                         ) : isPrintMode ? (
 // // // //                                             <div style={{ border: '1px solid #cbd5e1', borderRadius: '6px', padding: '10px', background: 'white' }}>
-// // // //                                                 {safeLearnerAns.text && <div style={{ marginBottom: '10px' }}><strong style={{ fontSize: '0.75rem', color: '#475569' }}>Rich Text Response:</strong><div className="quill-read-only-content" style={{ wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(safeLearnerAns.text) }} /></div>}
+// // // //                                                 {safeLearnerAns.text && <div style={{ marginBottom: '10px' }}><strong style={{ fontSize: '0.75rem', color: '#475569' }}>Rich Text Response:</strong><RichMathText html={safeLearnerAns.text} /></div>}
 // // // //                                                 {safeLearnerAns.audioUrl && <div style={{ marginBottom: '10px' }}><strong style={{ fontSize: '0.75rem', color: '#475569' }}>Audio Recording:</strong><div>URL: {safeLearnerAns.audioUrl}</div></div>}
 // // // //                                                 {safeLearnerAns.url && <div style={{ marginBottom: '10px' }}><strong style={{ fontSize: '0.75rem', color: '#475569' }}>Link:</strong><div><a href={safeLearnerAns.url} target="_blank" rel="noreferrer">{safeLearnerAns.url}</a></div></div>}
 // // // //                                                 {safeLearnerAns.uploadUrl && <div style={{ marginBottom: '10px' }}><strong style={{ fontSize: '0.75rem', color: '#475569' }}>Uploaded File:</strong><FilePreview url={safeLearnerAns.uploadUrl} /></div>}
@@ -7084,7 +7310,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // //                                                     ))}
 // // // //                                                 </div>
 // // // //                                                 <div style={{ padding: '15px' }}>
-// // // //                                                     {activeTabId === 'text' && <div className="quill-read-only-content" style={{ wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(safeLearnerAns.text) }} />}
+// // // //                                                     {activeTabId === 'text' && <RichMathText html={safeLearnerAns.text} />}
 // // // //                                                     {activeTabId === 'audio' && <audio controls src={safeLearnerAns.audioUrl} style={{ width: '100%', height: '40px' }} />}
 // // // //                                                     {activeTabId === 'url' && <UrlPreview url={safeLearnerAns.url} />}
 // // // //                                                     {activeTabId === 'upload' && <FilePreview url={safeLearnerAns.uploadUrl} />}
@@ -7112,11 +7338,12 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // //                                 <div className="sr-q-header">
 // // // //                                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', width: '100%' }}>
 // // // //                                         <span className="sr-q-num" style={{ background: '#ffedd5', color: '#ea580c', flexShrink: 0 }}>LOG</span>
-// // // //                                         <div className="sr-q-text quill-read-only-content" style={{ color: '#073f4e', fontWeight: 'bold', margin: 0, flex: 1, minWidth: 0, wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.title) }} />
+// // // //                                         <RichMathText html={block.title} style={{ color: '#073f4e', fontWeight: 'bold', margin: 0, flex: 1, minWidth: 0 }} />
 // // // //                                     </div>
 // // // //                                 </div>
 // // // //                                 <div className="sr-q-body">
 // // // //                                     {renderBlockImage(block)}
+// // // //                                     {renderBlockFile(block)}
 // // // //                                     <div className="sr-answer-box">
 // // // //                                         <div className="sr-answer-label" style={{ color: 'black', display: 'flex', alignItems: 'center', gap: '6px' }}><CalendarRange size={14} /> Workplace Hours Logged:</div>
 // // // //                                         {entries.length === 0 ? (
@@ -7139,7 +7366,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // //                                                                 <tr key={i} style={{ borderBottom: '1px solid #f1f5f9', background: 'white', verticalAlign: 'top' }}>
 // // // //                                                                     <td style={{ padding: '10px', color: '#0f172a', fontWeight: 'bold' }}>{entry.date}</td>
 // // // //                                                                     <td style={{ padding: '10px', color: '#334155' }}>
-// // // //                                                                         <div className="quill-read-only-content" style={{ fontSize: '0.85rem', wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(entry.task) || '<em>No task description provided.</em>' }} />
+// // // //                                                                         <RichMathText html={entry.task || '<em>No task description provided.</em>'} style={{ fontSize: '0.85rem' }} />
 // // // //                                                                         {entry.uploadUrl && <div style={{ marginTop: '10px' }}><FilePreview url={entry.uploadUrl} /></div>}
 // // // //                                                                         {entry.url && <div style={{ marginTop: '10px' }}><UrlPreview url={entry.url} /></div>}
 // // // //                                                                     </td>
@@ -7189,7 +7416,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // //                                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', width: '100%' }}>
 // // // //                                         <span className="sr-q-num" style={{ background: '#ccfbf1', color: '#0d9488', flexShrink: 0 }}>CHK</span>
 // // // //                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1, minWidth: 0 }}>
-// // // //                                             <div className="sr-q-text quill-read-only-content" style={{ color: '#073f4e', fontWeight: 'bold', margin: 0, wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.title) }} />
+// // // //                                             <RichMathText html={block.title} style={{ color: '#073f4e', fontWeight: 'bold', margin: 0 }} />
 // // // //                                             <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
 // // // //                                                 {isMentor ? 'Workplace observation checklist — verify each criterion.' : 'Assessor observation checklist.'}
 // // // //                                             </span>
@@ -7199,6 +7426,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // //                                 <div className="sr-q-body">
 // // // //                                     {renderNetworkIDEToggleUI(block)}
 // // // //                                     {renderBlockImage(block)}
+// // // //                                     {renderBlockFile(block)}
 // // // //                                     <div style={{ marginTop: '1rem' }}>
 // // // //                                         {block.criteria?.map((crit: string, i: number) => {
 // // // //                                             const mentorResult = fData.criteriaResults?.[i] || { status: null, comment: '' };
@@ -7222,17 +7450,16 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 
 // // // //                                                     {block.requireEvidencePerCriterion !== false && (() => {
 // // // //                                                         const rawEv = learnerAns?.[`evidence_${i}`];
-
 // // // //                                                         const critEvidence = typeof rawEv === 'string' ? { text: rawEv } : (rawEv || {});
-
-// // // //                                                         const cleanTextCheck = critEvidence.text ? critEvidence.text.replace(/<[^>]*>/g, '').trim() : '';
+// // // //                                                         const safeText = getAnswerString(critEvidence.text);
+// // // //                                                         const cleanTextCheck = safeText ? safeText.replace(/<[^>]*>/g, '').trim() : '';
 // // // //                                                         const isTextTrulyEmpty = cleanTextCheck.length === 0;
 
 // // // //                                                         const allTabs = [
 // // // //                                                             { id: 'upload', icon: <UploadCloud size={13} />, label: 'File Artifact', val: critEvidence.uploadUrl, render: () => <FilePreview url={critEvidence.uploadUrl} /> },
 // // // //                                                             { id: 'url', icon: <LinkIcon size={13} />, label: 'Web Link', val: critEvidence.url, render: () => <UrlPreview url={critEvidence.url} /> },
 // // // //                                                             { id: 'code', icon: <Code size={13} />, label: 'Source Code', val: critEvidence.code, render: () => <pre style={{ background: '#1e293b', color: '#f8fafc', padding: '0.5rem', borderRadius: '4px', overflowX: 'auto', margin: 0, fontFamily: 'monospace', fontSize: '0.82rem' }}><code>{critEvidence.code}</code></pre> },
-// // // //                                                             { id: 'text', icon: <FileText size={13} />, label: 'Learner Notes', val: isTextTrulyEmpty ? null : critEvidence.text, render: () => <div className="quill-read-only-content" dangerouslySetInnerHTML={{ __html: cleanRichText(critEvidence.text) }} /> }
+// // // //                                                             { id: 'text', icon: <FileText size={13} />, label: 'Learner Notes', val: isTextTrulyEmpty ? null : critEvidence.text, render: () => <RichMathText html={critEvidence.text} /> }
 // // // //                                                         ];
 
 // // // //                                                         const activeEvidenceTabs = allTabs.filter(t => !!t.val);
@@ -7443,7 +7670,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // //                                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', width: '100%' }}>
 // // // //                                         <span className="sr-q-num" style={{ background: '#ffe4e6', color: '#e11d48', flexShrink: 0 }}>QCTO</span>
 // // // //                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1, minWidth: 0 }}>
-// // // //                                             <div className="sr-q-text quill-read-only-content" style={{ color: '#073f4e', fontWeight: 'bold', margin: 0, wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(`${block.weCode} – ${block.weTitle}`) }} />
+// // // //                                             <RichMathText html={`${block.weCode} – ${block.weTitle}`} style={{ color: '#073f4e', fontWeight: 'bold', margin: 0 }} />
 // // // //                                             <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
 // // // //                                                 {isMentor ? 'Workplace Experience — Mentor Verification' : 'Workplace Experience Checkpoint'}
 // // // //                                             </span>
@@ -7454,6 +7681,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // //                                 <div className="sr-q-body">
 // // // //                                     {renderNetworkIDEToggleUI(block)}
 // // // //                                     {renderBlockImage(block)}
+// // // //                                     {renderBlockFile(block)}
 // // // //                                     {block.workActivities?.map((wa: any, actIdx: number) => {
 // // // //                                         const taskKey = `wa_${wa.id}_task`;
 // // // //                                         const dateKey = `wa_${wa.id}_date`;
@@ -7473,14 +7701,12 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // //                                                 <div style={{ padding: '1rem' }}>
 // // // //                                                     <div style={{ marginBottom: '1.5rem' }}>
 // // // //                                                         <div style={{ display: 'flex', gap: '20px', marginBottom: '15px', flexWrap: 'wrap' }}>
-// // // //                                                             {task && <div style={{ flex: 1, minWidth: '250px' }}><strong style={{ fontSize: '0.75rem', color: '#64748b' }}>Task Performed:</strong><div className="quill-read-only-content" style={{ wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap', marginTop: '6px' }} dangerouslySetInnerHTML={{ __html: cleanRichText(task) }} /></div>}
+// // // //                                                             {task && <div style={{ flex: 1, minWidth: '250px' }}><strong style={{ fontSize: '0.75rem', color: '#64748b' }}>Task Performed:</strong><RichMathText html={task} style={{ marginTop: '6px' }} /></div>}
 // // // //                                                             {date && <div style={{ minWidth: '120px' }}><strong style={{ fontSize: '0.75rem', color: '#64748b' }}>Date:</strong><div style={{ marginTop: '6px' }}>{new Date(date).toLocaleDateString()}</div></div>}
 // // // //                                                         </div>
 
 // // // //                                                         {wa.evidenceItems?.map((evItem: any) => {
 // // // //                                                             const seKey = `se_${evItem.id}`;
-
-// // // //                                                             // 🚀 FIX: Safely parse legacy string sub-evidence objects
 // // // //                                                             const rawSe = learnerAns?.[seKey];
 // // // //                                                             const seData = typeof rawSe === 'string' ? { text: rawSe } : (rawSe || {});
 
@@ -7492,7 +7718,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // //                                                                     {seData.uploadUrl && <div style={{ marginBottom: '10px' }}><FilePreview url={seData.uploadUrl} /></div>}
 // // // //                                                                     {seData.url && <div style={{ marginBottom: '10px' }}><UrlPreview url={seData.url} /></div>}
 // // // //                                                                     {seData.code && <pre style={{ background: '#1e293b', color: '#f8fafc', padding: '0.75rem', borderRadius: '4px', overflowX: 'auto', marginBottom: '10px' }}><code>{seData.code}</code></pre>}
-// // // //                                                                     {seData.text && <div className="quill-read-only-content" dangerouslySetInnerHTML={{ __html: cleanRichText(seData.text) }} />}
+// // // //                                                                     {seData.text && <RichMathText html={seData.text} />}
 // // // //                                                                     {(!seData.uploadUrl && !seData.url && !seData.code && !seData.text) && <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontStyle: 'italic' }}>No evidence attached for this item.</span>}
 // // // //                                                                 </div>
 // // // //                                                             );
@@ -7630,7 +7856,10 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // // };
 
 
+
+
 // // // // // // src/pages/FacilitatorDashboard/SubmissionReview/SubmissionReview/SubmissionReviewBlocks.tsx
+
 // // // // // import React, { useState, useEffect, useRef } from 'react';
 // // // // // import {
 // // // // //     Award, Check, CheckCircle, X, Edit3, Info, Layers, FileText, Mic,
@@ -7652,6 +7881,12 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // // // // 🚀 Core Charting Engine Registration
 // // // // // import { CartesianPlane } from '@zakq/axisjs';
 // // // // // import "mathlive";
+
+// // // // // // 🚀 Math Support Configuration
+// // // // // import katex from "katex";
+// // // // // import "katex/dist/katex.min.css";
+
+// // // // // (window as any).katex = katex;
 
 // // // // // const POINT_COLORS = ["#ef4444", "#2563eb", "#94c73d", "#f59e0b", "#a855f7", "#0891b2"];
 
@@ -7721,6 +7956,39 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // // //     return html.replace(/&nbsp;/g, ' ');
 // // // // // };
 
+// // // // // // ─── HELPER: MATH & RICH TEXT CONTAINER ─────────────────────────────────────
+// // // // // const RichMathText: React.FC<{ html?: string; className?: string; style?: React.CSSProperties }> = ({ html, className, style }) => {
+// // // // //     const containerRef = useRef<HTMLDivElement>(null);
+
+// // // // //     useEffect(() => {
+// // // // //         if (!containerRef.current || !html) return;
+
+// // // // //         // @ts-ignore
+// // // // //         import('katex/dist/contrib/auto-render.mjs').then((module) => {
+// // // // //             if (containerRef.current) {
+// // // // //                 module.default(containerRef.current, {
+// // // // //                     delimiters: [
+// // // // //                         { left: '$$', right: '$$', display: true },
+// // // // //                         { left: '$', right: '$', display: false },
+// // // // //                         { left: '\\(', right: '\\)', display: false },
+// // // // //                         { left: '\\[', right: '\\]', display: true }
+// // // // //                     ],
+// // // // //                     throwOnError: false
+// // // // //                 });
+// // // // //             }
+// // // // //         }).catch(err => console.error("Failed to load KaTeX auto-render:", err));
+// // // // //     }, [html]);
+
+// // // // //     return (
+// // // // //         <div
+// // // // //             ref={containerRef}
+// // // // //             className={`quill-read-only-content ${className || ''}`}
+// // // // //             style={{ wordBreak: 'normal', overflowWrap: 'break-word', lineHeight: 1.6, ...style }}
+// // // // //             dangerouslySetInnerHTML={{ __html: cleanRichText(html) }}
+// // // // //         />
+// // // // //     );
+// // // // // };
+
 // // // // // // ─── HELPER: RENDER ATTACHED IMAGES ──────────────────────────────────────────
 // // // // // const renderBlockImage = (block: any) => {
 // // // // //     if (!block.imageUrl) return null;
@@ -7736,6 +8004,27 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // // //                     {block.imageCaption}
 // // // // //                 </p>
 // // // // //             )}
+// // // // //         </div>
+// // // // //     );
+// // // // // };
+
+// // // // // // ─── HELPER: RENDER ATTACHED STARTER FILES ──────────────────────────────────
+// // // // // const renderBlockFile = (block: any) => {
+// // // // //     if (!block.fileUrl) return null;
+// // // // //     return (
+// // // // //         <div className="no-print" style={{ margin: '1rem 0', padding: '12px 16px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+// // // // //             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', overflow: 'hidden' }}>
+// // // // //                 <FileText size={20} color="#166534" />
+// // // // //                 <div style={{ overflow: 'hidden' }}>
+// // // // //                     <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: '#14532d', display: 'block', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+// // // // //                         {block.fileName || "Download Starter File"}
+// // // // //                     </span>
+// // // // //                     <span style={{ fontSize: '0.75rem', color: '#15803d' }}>Resource / Template provided for this task</span>
+// // // // //                 </div>
+// // // // //             </div>
+// // // // //             <a href={block.fileUrl} download target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', padding: '6px 14px', background: '#166534', color: 'white', borderRadius: '4px', flexShrink: 0, fontWeight: 'bold' }}>
+// // // // //                 <UploadCloud size={14} style={{ transform: 'rotate(180deg)' }} /> Download File
+// // // // //             </a>
 // // // // //         </div>
 // // // // //     );
 // // // // // };
@@ -7921,11 +8210,9 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // // //         try {
 // // // // //             const db = getFirestore();
 // // // // //             const subRef = doc(db, 'learner_submissions', submission.id);
-// // // // //             // Using setDoc with merge creates the nested map safely without overwriting other properties
 // // // // //             await setDoc(subRef, { ideUnlocks: { [blockId]: !currentState } }, { merge: true });
 // // // // //         } catch (err) {
 // // // // //             console.error("Failed to toggle IDE network access:", err);
-// // // // //             // Optional: You can toast the error if you pass toast as a prop, but logging is fine for now
 // // // // //         } finally {
 // // // // //             setTogglingIDE(null);
 // // // // //         }
@@ -7983,20 +8270,26 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // // //                                 )}
 // // // // //                             </div>
 // // // // //                             {block.content && (
-// // // // //                                 <div className="quill-read-only-content" style={{ color: '#334155', fontSize: '0.95rem', wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.content) }} />
+// // // // //                                 <RichMathText html={block.content} style={{ color: '#334155', fontSize: '0.95rem' }} />
 // // // // //                             )}
 // // // // //                             {renderBlockImage(block)}
+// // // // //                             {renderBlockFile(block)}
 // // // // //                         </div>
 // // // // //                     );
 // // // // //                 }
 
-// // // // //                 // ── INFO BLOCK ──────────────────────────────────────────────────────────
+// // // // //                 // ── INFO / READING BLOCK ──────────────────────────────────────────────────
 // // // // //                 if (block.type === 'info') {
 // // // // //                     return (
-// // // // //                         <div key={(isPrintMode ? 'print-' : '') + block.id} className="sr-q-card" style={{ borderLeft: '4px solid #0ea5e9', background: '#f0f9ff', padding: '1rem', marginBottom: '1.5rem' }}>
-// // // // //                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#0284c7', fontWeight: 'bold', marginBottom: '8px' }}><Info size={16} /> Reading Material</div>
-// // // // //                             <div className="quill-read-only-content" style={{ margin: 0, color: '#0c4a6e', wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.content) }} />
+// // // // //                         <div key={(isPrintMode ? 'print-' : '') + block.id} className="sr-q-card" style={{ borderLeft: '4px solid #0ea5e9', background: '#f0f9ff', padding: '1.25rem', marginBottom: '1.5rem', borderRadius: '6px' }}>
+// // // // //                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#0284c7', fontWeight: 'bold', marginBottom: '10px', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+// // // // //                                 <Info size={16} /> {block.title || 'Reading Material'}
+// // // // //                             </div>
+// // // // //                             {block.content && (
+// // // // //                                 <RichMathText html={block.content} style={{ color: '#0c4a6e', fontSize: '0.92rem' }} />
+// // // // //                             )}
 // // // // //                             {renderBlockImage(block)}
+// // // // //                             {renderBlockFile(block)}
 // // // // //                         </div>
 // // // // //                     );
 // // // // //                 }
@@ -8004,7 +8297,25 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // // //                 // ── QUESTION EVALUATION CARD SELECTOR ROUTINE ───────────────────────────
 // // // // //                 if (['mcq', 'text', 'task', 'checklist', 'logbook', 'qcto_workplace', 'code_sandbox', 'mathpad', 'graph'].includes(block.type)) {
 // // // // //                     qNum++;
-// // // // //                     const learnerAns = submission.answers?.[block.id];
+
+// // // // //                     // AUTO-RECOVERY HEURISTIC FOR ORPHANED ANSWERS
+// // // // //                     let learnerAns = submission.answers?.[block.id];
+
+// // // // //                     if (learnerAns === undefined && submission.answers && Object.keys(submission.answers).length > 0) {
+// // // // //                         const answerKeys = Object.keys(submission.answers);
+// // // // //                         const scorableBlocks = assessment.blocks.filter((b: any) =>
+// // // // //                             ['mcq', 'text', 'task', 'checklist', 'logbook', 'qcto_workplace', 'code_sandbox', 'mathpad', 'graph'].includes(b.type)
+// // // // //                         );
+
+// // // // //                         const currentBlockIndex = scorableBlocks.findIndex((b: any) => b.id === block.id);
+
+// // // // //                         if (currentBlockIndex >= 0 && currentBlockIndex < answerKeys.length) {
+// // // // //                             const recoveredKey = answerKeys[currentBlockIndex];
+// // // // //                             learnerAns = submission.answers[recoveredKey];
+// // // // //                             console.log(`🩹 [AUTO-RECOVERY] Rescued orphaned answer from [${recoveredKey}] into block [${block.id}]`);
+// // // // //                         }
+// // // // //                     }
+
 // // // // //                     const maxM = block.marks || 0;
 
 // // // // //                     const fData = facBreakdown[block.id] || { score: 0, feedback: '', isCorrect: null, criteriaResults: [], activityResults: [] };
@@ -8145,14 +8456,14 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // // //                         );
 // // // // //                     };
 
-// // // // //                     // ── GRAPH PLOT INTERACTIVE BLOCK (NEW) ───────────────────────────────
+// // // // //                     // ── GRAPH PLOT INTERACTIVE BLOCK ───────────────────────────────
 // // // // //                     if (block.type === 'graph') {
 // // // // //                         return (
 // // // // //                             <div key={block.id} className="sr-q-card" style={{ borderTop: '4px solid black', marginBottom: '2rem' }}>
 // // // // //                                 <div className="sr-q-header">
 // // // // //                                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', width: '100%' }}>
 // // // // //                                         <span className="sr-q-num" style={{ background: '#ccfbf1', color: '#0f766e', flexShrink: 0 }}>PLOT</span>
-// // // // //                                         <div className="sr-q-text quill-read-only-content" style={{ color: '#073f4e', fontWeight: 'bold', margin: 0, flex: 1, minWidth: 0, wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.question) }} />
+// // // // //                                         <RichMathText html={block.question} style={{ color: '#073f4e', fontWeight: 'bold', margin: 0, flex: 1, minWidth: 0 }} />
 // // // // //                                     </div>
 // // // // //                                     {!isPrintMode && isActiveRole && !isMentor && !(canModerate && isWorkplaceModule) && (
 // // // // //                                         <div className="sr-visual-mark" style={{ flexShrink: 0, marginLeft: '10px' }}>
@@ -8163,6 +8474,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // // //                                 </div>
 // // // // //                                 <div className="sr-q-body">
 // // // // //                                     {renderBlockImage(block)}
+// // // // //                                     {renderBlockFile(block)}
 
 // // // // //                                     <div className="sr-answer-box">
 // // // // //                                         <div className="sr-answer-label" style={{ color: 'black', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -8206,7 +8518,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // // //                                 <div className="sr-q-header">
 // // // // //                                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', width: '100%' }}>
 // // // // //                                         <span className="sr-q-num" style={{ background: '#fce7f3', color: '#db2777', flexShrink: 0 }}>MATH</span>
-// // // // //                                         <div className="sr-q-text quill-read-only-content" style={{ color: '#073f4e', fontWeight: 'bold', margin: 0, flex: 1, minWidth: 0, wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.question) }} />
+// // // // //                                         <RichMathText html={block.question} style={{ color: '#073f4e', fontWeight: 'bold', margin: 0, flex: 1, minWidth: 0 }} />
 // // // // //                                     </div>
 // // // // //                                     {!isPrintMode && isActiveRole && !isMentor && !(canModerate && isWorkplaceModule) && (
 // // // // //                                         <div className="sr-visual-mark" style={{ flexShrink: 0, marginLeft: '10px' }}>
@@ -8217,6 +8529,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // // //                                 </div>
 // // // // //                                 <div className="sr-q-body">
 // // // // //                                     {renderBlockImage(block)}
+// // // // //                                     {renderBlockFile(block)}
 
 // // // // //                                     <div className="sr-answer-box">
 // // // // //                                         <div className="sr-answer-label" style={{ color: 'black', marginBottom: '8px' }}>
@@ -8291,7 +8604,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // // //                                                 {block.modelSolution && (
 // // // // //                                                     <div style={{ marginBottom: '12px' }}>
 // // // // //                                                         <div style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#9d174d', marginBottom: '4px', textTransform: 'uppercase' }}>Step-by-Step Solution</div>
-// // // // //                                                         <div className="quill-read-only-content" style={{ background: 'white', padding: '10px', borderRadius: '4px', border: '1px dashed #fbcfe8', fontSize: '0.9rem', color: '#334155' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.modelSolution) }} />
+// // // // //                                                         <RichMathText html={block.modelSolution} style={{ background: 'white', padding: '10px', borderRadius: '4px', border: '1px dashed #fbcfe8', fontSize: '0.9rem', color: '#334155' }} />
 // // // // //                                                     </div>
 // // // // //                                                 )}
 
@@ -8324,7 +8637,6 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // // //                                             </div>
 // // // // //                                         )}
 // // // // //                                     </div>
-
 // // // // //                                     <div className="sr-grade-box" style={{ borderLeft: `4px solid ${activeInkColor}`, marginTop: '1rem', padding: '1rem', background: 'white', borderRadius: '6px' }}>
 // // // // //                                         {renderReadOnlyLayers()}
 // // // // //                                         {(!isPrintMode && isActiveRole) && renderActiveGradeControls(block.id)}
@@ -8349,7 +8661,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // // //                                                     </h3>
 // // // // //                                                 )}
 // // // // //                                                 {block.question && (
-// // // // //                                                     <div className="quill-read-only-content" style={{ wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap', color: '#334155' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.question) }} />
+// // // // //                                                     <RichMathText html={block.question} style={{ color: '#334155' }} />
 // // // // //                                                 )}
 // // // // //                                             </div>
 // // // // //                                         </div>
@@ -8366,6 +8678,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // // //                                 <div className="sr-q-body">
 // // // // //                                     {renderNetworkIDEToggleUI(block)}
 // // // // //                                     {renderBlockImage(block)}
+// // // // //                                     {renderBlockFile(block)}
 
 // // // // //                                     <ReviewCodeSandbox
 // // // // //                                         block={block}
@@ -8389,7 +8702,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // // //                                 <div className="sr-q-header">
 // // // // //                                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', width: '100%' }}>
 // // // // //                                         <span className="sr-q-num" style={{ background: '#f1f5f9', color: '#073f4e', flexShrink: 0 }}>Q{qNum}</span>
-// // // // //                                         <div className="sr-q-text quill-read-only-content" style={{ color: '#073f4e', fontWeight: 'bold', margin: 0, flex: 1, minWidth: 0, wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.question) }} />
+// // // // //                                         <RichMathText html={block.question} style={{ color: '#073f4e', fontWeight: 'bold', margin: 0, flex: 1, minWidth: 0 }} />
 // // // // //                                     </div>
 // // // // //                                     {!isPrintMode && isActiveRole && !isMentor && !(canModerate && isWorkplaceModule) && (
 // // // // //                                         <div className="sr-visual-mark" style={{ flexShrink: 0, marginLeft: '10px' }}>
@@ -8400,6 +8713,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // // //                                 </div>
 // // // // //                                 <div className="sr-q-body">
 // // // // //                                     {renderBlockImage(block)}
+// // // // //                                     {renderBlockFile(block)}
 // // // // //                                     <div className="sr-answer-box">
 // // // // //                                         <div className="sr-answer-label" style={{ color: 'black' }}>Learner's Response:</div>
 // // // // //                                         <div className={`sr-mcq-ans ${learnerAns === block.correctOption ? 'correct' : 'wrong'}`}>
@@ -8424,7 +8738,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // // //                                 <div className="sr-q-header">
 // // // // //                                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', width: '100%' }}>
 // // // // //                                         <span className="sr-q-num" style={{ background: '#f1f5f9', color: '#073f4e', flexShrink: 0 }}>Q{qNum}</span>
-// // // // //                                         <div className="sr-q-text quill-read-only-content" style={{ color: '#073f4e', fontWeight: 'bold', margin: 0, flex: 1, minWidth: 0, wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.question) }} />
+// // // // //                                         <RichMathText html={block.question} style={{ color: '#073f4e', fontWeight: 'bold', margin: 0, flex: 1, minWidth: 0 }} />
 // // // // //                                     </div>
 // // // // //                                     {!isPrintMode && isActiveRole && !isMentor && !(canModerate && isWorkplaceModule) && (
 // // // // //                                         <div className="sr-visual-mark" style={{ flexShrink: 0, marginLeft: '10px' }}>
@@ -8435,10 +8749,11 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // // //                                 </div>
 // // // // //                                 <div className="sr-q-body">
 // // // // //                                     {renderBlockImage(block)}
+// // // // //                                     {renderBlockFile(block)}
 // // // // //                                     <div className="sr-answer-box">
 // // // // //                                         <div className="sr-answer-label" style={{ color: 'black' }}>Learner's Response:</div>
 // // // // //                                         <div className="sr-text-ans">
-// // // // //                                             {learnerAns ? <div className="quill-read-only-content" style={{ color: 'black', wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(learnerAns) }} /> : <span style={{ color: 'black', fontStyle: 'italic' }}>No answer provided.</span>}
+// // // // //                                             {learnerAns ? <RichMathText html={learnerAns} style={{ color: 'black' }} /> : <span style={{ color: 'black', fontStyle: 'italic' }}>No answer provided.</span>}
 // // // // //                                         </div>
 // // // // //                                     </div>
 // // // // //                                     <div className="sr-grade-box" style={{ borderLeft: `4px solid ${activeInkColor}`, marginTop: '1rem', padding: '1rem', background: 'white', borderRadius: '6px' }}>
@@ -8452,7 +8767,8 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 
 // // // // //                     // ── TASK ────────────────────────────────────────────────
 // // // // //                     if (block.type === 'task') {
-// // // // //                         const safeLearnerAns = learnerAns || {};
+// // // // //                         const safeLearnerAns = typeof learnerAns === 'object' && learnerAns !== null ? learnerAns : { text: learnerAns };
+
 // // // // //                         const taskTabs = [
 // // // // //                             { id: 'text', icon: <FileText size={14} />, label: 'Rich Text', val: safeLearnerAns.text },
 // // // // //                             { id: 'audio', icon: <Mic size={14} />, label: 'Audio', val: safeLearnerAns.audioUrl },
@@ -8468,7 +8784,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // // //                                 <div className="sr-q-header">
 // // // // //                                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', width: '100%' }}>
 // // // // //                                         <span className="sr-q-num" style={{ background: '#ede9fe', color: '#8b5cf6', flexShrink: 0 }}>Q{qNum}</span>
-// // // // //                                         <div className="sr-q-text quill-read-only-content" style={{ color: '#073f4e', fontWeight: 'bold', margin: 0, flex: 1, minWidth: 0, wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.question) }} />
+// // // // //                                         <RichMathText html={block.question} style={{ color: '#073f4e', fontWeight: 'bold', margin: 0, flex: 1, minWidth: 0 }} />
 // // // // //                                     </div>
 // // // // //                                     {!isPrintMode && isActiveRole && !isMentor && !(canModerate && isWorkplaceModule) && (
 // // // // //                                         <div className="sr-visual-mark" style={{ flexShrink: 0, marginLeft: '10px' }}>
@@ -8480,14 +8796,15 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // // //                                 <div className="sr-q-body">
 // // // // //                                     {renderNetworkIDEToggleUI(block)}
 // // // // //                                     {renderBlockImage(block)}
+// // // // //                                     {renderBlockFile(block)}
 // // // // //                                     <div className="sr-answer-box">
 // // // // //                                         <div className="sr-answer-label" style={{ color: 'black', display: 'flex', alignItems: 'center', gap: '6px' }}><Layers size={14} /> Learner Evidence Submitted:</div>
 
-// // // // //                                         {(!learnerAns || Object.keys(learnerAns).length === 0) ? (
+// // // // //                                         {(!safeLearnerAns || Object.keys(safeLearnerAns).length === 0 || (!safeLearnerAns.text && !safeLearnerAns.audioUrl && !safeLearnerAns.url && !safeLearnerAns.uploadUrl && !safeLearnerAns.code)) ? (
 // // // // //                                             <span style={{ color: '#64748b', fontStyle: 'italic', display: 'block', padding: '10px' }}>No evidence uploaded by learner.</span>
 // // // // //                                         ) : isPrintMode ? (
 // // // // //                                             <div style={{ border: '1px solid #cbd5e1', borderRadius: '6px', padding: '10px', background: 'white' }}>
-// // // // //                                                 {safeLearnerAns.text && <div style={{ marginBottom: '10px' }}><strong style={{ fontSize: '0.75rem', color: '#475569' }}>Rich Text Response:</strong><div className="quill-read-only-content" style={{ wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(safeLearnerAns.text) }} /></div>}
+// // // // //                                                 {safeLearnerAns.text && <div style={{ marginBottom: '10px' }}><strong style={{ fontSize: '0.75rem', color: '#475569' }}>Rich Text Response:</strong><RichMathText html={safeLearnerAns.text} /></div>}
 // // // // //                                                 {safeLearnerAns.audioUrl && <div style={{ marginBottom: '10px' }}><strong style={{ fontSize: '0.75rem', color: '#475569' }}>Audio Recording:</strong><div>URL: {safeLearnerAns.audioUrl}</div></div>}
 // // // // //                                                 {safeLearnerAns.url && <div style={{ marginBottom: '10px' }}><strong style={{ fontSize: '0.75rem', color: '#475569' }}>Link:</strong><div><a href={safeLearnerAns.url} target="_blank" rel="noreferrer">{safeLearnerAns.url}</a></div></div>}
 // // // // //                                                 {safeLearnerAns.uploadUrl && <div style={{ marginBottom: '10px' }}><strong style={{ fontSize: '0.75rem', color: '#475569' }}>Uploaded File:</strong><FilePreview url={safeLearnerAns.uploadUrl} /></div>}
@@ -8505,7 +8822,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // // //                                                     ))}
 // // // // //                                                 </div>
 // // // // //                                                 <div style={{ padding: '15px' }}>
-// // // // //                                                     {activeTabId === 'text' && <div className="quill-read-only-content" style={{ wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(safeLearnerAns.text) }} />}
+// // // // //                                                     {activeTabId === 'text' && <RichMathText html={safeLearnerAns.text} />}
 // // // // //                                                     {activeTabId === 'audio' && <audio controls src={safeLearnerAns.audioUrl} style={{ width: '100%', height: '40px' }} />}
 // // // // //                                                     {activeTabId === 'url' && <UrlPreview url={safeLearnerAns.url} />}
 // // // // //                                                     {activeTabId === 'upload' && <FilePreview url={safeLearnerAns.uploadUrl} />}
@@ -8533,11 +8850,12 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // // //                                 <div className="sr-q-header">
 // // // // //                                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', width: '100%' }}>
 // // // // //                                         <span className="sr-q-num" style={{ background: '#ffedd5', color: '#ea580c', flexShrink: 0 }}>LOG</span>
-// // // // //                                         <div className="sr-q-text quill-read-only-content" style={{ color: '#073f4e', fontWeight: 'bold', margin: 0, flex: 1, minWidth: 0, wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.title) }} />
+// // // // //                                         <RichMathText html={block.title} style={{ color: '#073f4e', fontWeight: 'bold', margin: 0, flex: 1, minWidth: 0 }} />
 // // // // //                                     </div>
 // // // // //                                 </div>
 // // // // //                                 <div className="sr-q-body">
 // // // // //                                     {renderBlockImage(block)}
+// // // // //                                     {renderBlockFile(block)}
 // // // // //                                     <div className="sr-answer-box">
 // // // // //                                         <div className="sr-answer-label" style={{ color: 'black', display: 'flex', alignItems: 'center', gap: '6px' }}><CalendarRange size={14} /> Workplace Hours Logged:</div>
 // // // // //                                         {entries.length === 0 ? (
@@ -8560,7 +8878,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // // //                                                                 <tr key={i} style={{ borderBottom: '1px solid #f1f5f9', background: 'white', verticalAlign: 'top' }}>
 // // // // //                                                                     <td style={{ padding: '10px', color: '#0f172a', fontWeight: 'bold' }}>{entry.date}</td>
 // // // // //                                                                     <td style={{ padding: '10px', color: '#334155' }}>
-// // // // //                                                                         <div className="quill-read-only-content" style={{ fontSize: '0.85rem', wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(entry.task) || '<em>No task description provided.</em>' }} />
+// // // // //                                                                         <RichMathText html={entry.task || '<em>No task description provided.</em>'} style={{ fontSize: '0.85rem' }} />
 // // // // //                                                                         {entry.uploadUrl && <div style={{ marginTop: '10px' }}><FilePreview url={entry.uploadUrl} /></div>}
 // // // // //                                                                         {entry.url && <div style={{ marginTop: '10px' }}><UrlPreview url={entry.url} /></div>}
 // // // // //                                                                     </td>
@@ -8610,7 +8928,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // // //                                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', width: '100%' }}>
 // // // // //                                         <span className="sr-q-num" style={{ background: '#ccfbf1', color: '#0d9488', flexShrink: 0 }}>CHK</span>
 // // // // //                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1, minWidth: 0 }}>
-// // // // //                                             <div className="sr-q-text quill-read-only-content" style={{ color: '#073f4e', fontWeight: 'bold', margin: 0, wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.title) }} />
+// // // // //                                             <RichMathText html={block.title} style={{ color: '#073f4e', fontWeight: 'bold', margin: 0 }} />
 // // // // //                                             <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
 // // // // //                                                 {isMentor ? 'Workplace observation checklist — verify each criterion.' : 'Assessor observation checklist.'}
 // // // // //                                             </span>
@@ -8620,6 +8938,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // // //                                 <div className="sr-q-body">
 // // // // //                                     {renderNetworkIDEToggleUI(block)}
 // // // // //                                     {renderBlockImage(block)}
+// // // // //                                     {renderBlockFile(block)}
 // // // // //                                     <div style={{ marginTop: '1rem' }}>
 // // // // //                                         {block.criteria?.map((crit: string, i: number) => {
 // // // // //                                             const mentorResult = fData.criteriaResults?.[i] || { status: null, comment: '' };
@@ -8643,7 +8962,9 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 
 // // // // //                                                     {block.requireEvidencePerCriterion !== false && (() => {
 // // // // //                                                         const rawEv = learnerAns?.[`evidence_${i}`];
+
 // // // // //                                                         const critEvidence = typeof rawEv === 'string' ? { text: rawEv } : (rawEv || {});
+
 // // // // //                                                         const cleanTextCheck = critEvidence.text ? critEvidence.text.replace(/<[^>]*>/g, '').trim() : '';
 // // // // //                                                         const isTextTrulyEmpty = cleanTextCheck.length === 0;
 
@@ -8651,7 +8972,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // // //                                                             { id: 'upload', icon: <UploadCloud size={13} />, label: 'File Artifact', val: critEvidence.uploadUrl, render: () => <FilePreview url={critEvidence.uploadUrl} /> },
 // // // // //                                                             { id: 'url', icon: <LinkIcon size={13} />, label: 'Web Link', val: critEvidence.url, render: () => <UrlPreview url={critEvidence.url} /> },
 // // // // //                                                             { id: 'code', icon: <Code size={13} />, label: 'Source Code', val: critEvidence.code, render: () => <pre style={{ background: '#1e293b', color: '#f8fafc', padding: '0.5rem', borderRadius: '4px', overflowX: 'auto', margin: 0, fontFamily: 'monospace', fontSize: '0.82rem' }}><code>{critEvidence.code}</code></pre> },
-// // // // //                                                             { id: 'text', icon: <FileText size={13} />, label: 'Learner Notes', val: isTextTrulyEmpty ? null : critEvidence.text, render: () => <div className="quill-read-only-content" dangerouslySetInnerHTML={{ __html: cleanRichText(critEvidence.text) }} /> }
+// // // // //                                                             { id: 'text', icon: <FileText size={13} />, label: 'Learner Notes', val: isTextTrulyEmpty ? null : critEvidence.text, render: () => <RichMathText html={critEvidence.text} /> }
 // // // // //                                                         ];
 
 // // // // //                                                         const activeEvidenceTabs = allTabs.filter(t => !!t.val);
@@ -8862,7 +9183,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // // //                                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', width: '100%' }}>
 // // // // //                                         <span className="sr-q-num" style={{ background: '#ffe4e6', color: '#e11d48', flexShrink: 0 }}>QCTO</span>
 // // // // //                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1, minWidth: 0 }}>
-// // // // //                                             <div className="sr-q-text quill-read-only-content" style={{ color: '#073f4e', fontWeight: 'bold', margin: 0, wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(`${block.weCode} – ${block.weTitle}`) }} />
+// // // // //                                             <RichMathText html={`${block.weCode} – ${block.weTitle}`} style={{ color: '#073f4e', fontWeight: 'bold', margin: 0 }} />
 // // // // //                                             <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
 // // // // //                                                 {isMentor ? 'Workplace Experience — Mentor Verification' : 'Workplace Experience Checkpoint'}
 // // // // //                                             </span>
@@ -8873,6 +9194,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // // //                                 <div className="sr-q-body">
 // // // // //                                     {renderNetworkIDEToggleUI(block)}
 // // // // //                                     {renderBlockImage(block)}
+// // // // //                                     {renderBlockFile(block)}
 // // // // //                                     {block.workActivities?.map((wa: any, actIdx: number) => {
 // // // // //                                         const taskKey = `wa_${wa.id}_task`;
 // // // // //                                         const dateKey = `wa_${wa.id}_date`;
@@ -8892,13 +9214,15 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // // //                                                 <div style={{ padding: '1rem' }}>
 // // // // //                                                     <div style={{ marginBottom: '1.5rem' }}>
 // // // // //                                                         <div style={{ display: 'flex', gap: '20px', marginBottom: '15px', flexWrap: 'wrap' }}>
-// // // // //                                                             {task && <div style={{ flex: 1, minWidth: '250px' }}><strong style={{ fontSize: '0.75rem', color: '#64748b' }}>Task Performed:</strong><div className="quill-read-only-content" style={{ wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap', marginTop: '6px' }} dangerouslySetInnerHTML={{ __html: cleanRichText(task) }} /></div>}
+// // // // //                                                             {task && <div style={{ flex: 1, minWidth: '250px' }}><strong style={{ fontSize: '0.75rem', color: '#64748b' }}>Task Performed:</strong><RichMathText html={task} style={{ marginTop: '6px' }} /></div>}
 // // // // //                                                             {date && <div style={{ minWidth: '120px' }}><strong style={{ fontSize: '0.75rem', color: '#64748b' }}>Date:</strong><div style={{ marginTop: '6px' }}>{new Date(date).toLocaleDateString()}</div></div>}
 // // // // //                                                         </div>
 
 // // // // //                                                         {wa.evidenceItems?.map((evItem: any) => {
 // // // // //                                                             const seKey = `se_${evItem.id}`;
-// // // // //                                                             const seData = learnerAns?.[seKey] || {};
+// // // // //                                                             const rawSe = learnerAns?.[seKey];
+// // // // //                                                             const seData = typeof rawSe === 'string' ? { text: rawSe } : (rawSe || {});
+
 // // // // //                                                             return (
 // // // // //                                                                 <div key={evItem.id} style={{ marginBottom: '1.5rem', background: '#f8fafc', padding: '10px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
 // // // // //                                                                     <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#e11d48', display: 'block', marginBottom: '8px' }}>
@@ -8907,7 +9231,7 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // // //                                                                     {seData.uploadUrl && <div style={{ marginBottom: '10px' }}><FilePreview url={seData.uploadUrl} /></div>}
 // // // // //                                                                     {seData.url && <div style={{ marginBottom: '10px' }}><UrlPreview url={seData.url} /></div>}
 // // // // //                                                                     {seData.code && <pre style={{ background: '#1e293b', color: '#f8fafc', padding: '0.75rem', borderRadius: '4px', overflowX: 'auto', marginBottom: '10px' }}><code>{seData.code}</code></pre>}
-// // // // //                                                                     {seData.text && <div className="quill-read-only-content" dangerouslySetInnerHTML={{ __html: cleanRichText(seData.text) }} />}
+// // // // //                                                                     {seData.text && <RichMathText html={seData.text} />}
 // // // // //                                                                     {(!seData.uploadUrl && !seData.url && !seData.code && !seData.text) && <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontStyle: 'italic' }}>No evidence attached for this item.</span>}
 // // // // //                                                                 </div>
 // // // // //                                                             );
@@ -9043,3 +9367,2856 @@ export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
 // // // // //         </>
 // // // // //     );
 // // // // // };
+
+
+
+// // // // // // // src/pages/FacilitatorDashboard/SubmissionReview/SubmissionReview/SubmissionReviewBlocks.tsx
+// // // // // // import React, { useState, useEffect, useRef } from 'react';
+// // // // // // import {
+// // // // // //     Award, Check, CheckCircle, X, Edit3, Info, Layers, FileText, Mic,
+// // // // // //     UploadCloud, Code, Link as LinkIcon, CalendarRange, Timer, Play, Square,
+// // // // // //     ShieldCheck, Award as AwardIcon, BarChart, AlertCircle, Sigma, Lock, Loader2, Maximize2,
+// // // // // //     ChevronDown, ChevronUp
+// // // // // // } from 'lucide-react';
+// // // // // // import moment from 'moment';
+// // // // // // import { LogbookHoursTally } from './SubmissionReviewHelpers';
+// // // // // // import { FilePreview } from './SubmissionReviewPreviews';
+// // // // // // import { UrlPreview } from '../../../../components/common/UrlPreview';
+// // // // // // import '../SubmissionReview';
+// // // // // // import { CodeSandboxPlayer } from '../../../../components/common/CodeSandboxPlayer/CodeSandboxPlayer';
+// // // // // // import { getFunctions, httpsCallable } from 'firebase/functions';
+
+// // // // // // // 🚀 Direct Firestore Import for Real-Time Unlocks
+// // // // // // import { getFirestore, doc, setDoc } from 'firebase/firestore';
+
+// // // // // // // 🚀 Core Charting Engine Registration
+// // // // // // import { CartesianPlane } from '@zakq/axisjs';
+// // // // // // import "mathlive";
+
+// // // // // // const POINT_COLORS = ["#ef4444", "#2563eb", "#94c73d", "#f59e0b", "#a855f7", "#0891b2"];
+
+// // // // // // // ─── TYPES ───────────────────────────────────────────────────────────────────
+// // // // // // export interface CriterionResult {
+// // // // // //     status: 'C' | 'NYC' | null;
+// // // // // //     comment: string;
+// // // // // //     startTime: string;
+// // // // // //     endTime: string;
+// // // // // // }
+
+// // // // // // export interface WorkplaceActivityResult {
+// // // // // //     status: 'C' | 'NYC' | null;
+// // // // // //     comment: string;
+// // // // // // }
+
+// // // // // // export interface GradeData {
+// // // // // //     score: number;
+// // // // // //     feedback: string;
+// // // // // //     isCorrect?: boolean | null;
+// // // // // //     criteriaResults?: CriterionResult[];
+// // // // // //     activityResults?: WorkplaceActivityResult[];
+// // // // // //     obsDate?: string;
+// // // // // //     obsStartTime?: string;
+// // // // // //     obsEndTime?: string;
+// // // // // //     obsDeclaration?: boolean;
+// // // // // // }
+
+// // // // // // // ─── PROPS INTERFACE ─────────────────────────────────────────────────────────
+// // // // // // interface RenderBlocksProps {
+// // // // // //     assessment: any;
+// // // // // //     submission: any;
+// // // // // //     facBreakdown: Record<string, GradeData>;
+// // // // // //     assBreakdown: Record<string, GradeData>;
+// // // // // //     modBreakdown: Record<string, GradeData>;
+// // // // // //     activeTabs: Record<string, string>;
+// // // // // //     setActiveTabs: (tabs: Record<string, string>) => void;
+// // // // // //     sectionTotals: Record<string, { total: number; awarded: number }>;
+
+// // // // // //     // Flags
+// // // // // //     isPrintMode: boolean;
+// // // // // //     canFacilitatorMark: boolean;
+// // // // // //     canGrade: boolean;
+// // // // // //     canModerate: boolean;
+// // // // // //     isFacDone: boolean;
+// // // // // //     isAssDone: boolean;
+// // // // // //     isModDone: boolean;
+// // // // // //     isMentor: boolean;
+// // // // // //     isWorkplaceModule: boolean;
+// // // // // //     savedFacRole: string;
+// // // // // //     facReadOnlyLabel: string;
+
+// // // // // //     // Handlers
+// // // // // //     handleVisualMark: (blockId: string, isCorrect: boolean, maxMarks: number) => void;
+// // // // // //     handleScoreChange: (blockId: string, score: number, max: number) => void;
+// // // // // //     handleFeedbackChange: (blockId: string, feedback: string) => void;
+// // // // // //     handleCriterionChange: (blockId: string, index: number, field: keyof CriterionResult, value: any) => void;
+// // // // // //     handleActivityStatusChange: (blockId: string, index: number, status: 'C' | 'NYC') => void;
+// // // // // //     handleActivityCommentChange: (blockId: string, index: number, comment: string) => void;
+// // // // // //     handleGlobalChecklistChange: (blockId: string, field: 'obsDate' | 'obsStartTime' | 'obsEndTime' | 'obsDeclaration', value: any) => void;
+// // // // // //     handleSetToNow: (blockId: string, field: 'obsDate' | 'obsStartTime' | 'obsEndTime') => void;
+// // // // // // }
+
+// // // // // // // ─── HELPER: CLEAN RICH TEXT ─────────────────────────────────────────────────
+// // // // // // const cleanRichText = (html?: string) => {
+// // // // // //     if (!html) return '';
+// // // // // //     return html.replace(/&nbsp;/g, ' ');
+// // // // // // };
+
+// // // // // // // ─── HELPER: RENDER ATTACHED IMAGES ──────────────────────────────────────────
+// // // // // // const renderBlockImage = (block: any) => {
+// // // // // //     if (!block.imageUrl) return null;
+// // // // // //     return (
+// // // // // //         <div className="no-print" style={{ margin: '1rem 0', textAlign: 'center' }}>
+// // // // // //             <img
+// // // // // //                 src={block.imageUrl}
+// // // // // //                 alt={block.imageCaption || "Assessment attachment"}
+// // // // // //                 style={{ maxWidth: '100%', maxHeight: '400px', borderRadius: '8px', border: '1px solid #e2e8f0', objectFit: 'contain' }}
+// // // // // //             />
+// // // // // //             {block.imageCaption && (
+// // // // // //                 <p style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '8px', fontStyle: 'italic' }}>
+// // // // // //                     {block.imageCaption}
+// // // // // //                 </p>
+// // // // // //             )}
+// // // // // //         </div>
+// // // // // //     );
+// // // // // // };
+
+// // // // // // // ─── AXISJS GRAPH SNAPSHOT VISUALIZER ────────────────────────────────────────
+// // // // // // const ReviewAxisGraph: React.FC<{ block: any; learnerAns: any }> = ({ block, learnerAns }) => {
+// // // // // //     const containerRef = useRef<HTMLDivElement>(null);
+// // // // // //     const canvasRef = useRef<HTMLCanvasElement>(null);
+// // // // // //     const planeRef = useRef<CartesianPlane | null>(null);
+
+// // // // // //     useEffect(() => {
+// // // // // //         if (!canvasRef.current) return;
+
+// // // // // //         const plane = new CartesianPlane(canvasRef.current, {
+// // // // // //             stepSequences: [1, 2, 5],
+// // // // // //             autoFit: false,
+// // // // // //         });
+// // // // // //         planeRef.current = plane;
+
+// // // // // //         const ro = new ResizeObserver(() => {
+// // // // // //             plane.resize();
+// // // // // //         });
+// // // // // //         if (containerRef.current) {
+// // // // // //             ro.observe(containerRef.current);
+// // // // // //         }
+
+// // // // // //         return () => {
+// // // // // //             ro.disconnect();
+// // // // // //             plane.destroy();
+// // // // // //             planeRef.current = null;
+// // // // // //         };
+// // // // // //     }, []);
+
+// // // // // //     useEffect(() => {
+// // // // // //         const plane = planeRef.current;
+// // // // // //         if (!plane) return;
+
+// // // // // //         plane.clear();
+// // // // // //         const allCoords: { x: number; y: number }[] = [];
+
+// // // // // //         const pointsList = learnerAns?.points || [];
+// // // // // //         const shapesList = learnerAns?.shapes || [];
+
+// // // // // //         pointsList.forEach((p: any, i: number) => {
+// // // // // //             const px = parseFloat(String(p.x));
+// // // // // //             const py = parseFloat(String(p.y));
+// // // // // //             if (!isNaN(px) && !isNaN(py)) {
+// // // // // //                 allCoords.push({ x: px, y: py });
+// // // // // //                 const color = POINT_COLORS[i % POINT_COLORS.length];
+// // // // // //                 plane.addPoint(px, py, color, `(${px}, ${py})`, true, 5);
+// // // // // //             }
+// // // // // //         });
+
+// // // // // //         shapesList.forEach((shape: any) => {
+// // // // // //             const shapeCoords: { x: number; y: number }[] = [];
+// // // // // //             shape.points?.forEach((p: any) => {
+// // // // // //                 const px = parseFloat(String(p.x));
+// // // // // //                 const py = parseFloat(String(p.y));
+// // // // // //                 if (!isNaN(px) && !isNaN(py)) {
+// // // // // //                     shapeCoords.push({ x: px, y: py });
+// // // // // //                     allCoords.push({ x: px, y: py });
+// // // // // //                 }
+// // // // // //             });
+
+// // // // // //             if (shapeCoords.length > 0) {
+// // // // // //                 plane.addPolygon(shapeCoords, `${shape.color}1f`, shape.color, 2);
+// // // // // //                 shapeCoords.forEach((coord) => {
+// // // // // //                     plane.addPoint(coord.x, coord.y, shape.color, `(${coord.x}, ${coord.y})`, false, 5);
+// // // // // //                 });
+// // // // // //             }
+// // // // // //         });
+
+// // // // // //         if (allCoords.length > 0) {
+// // // // // //             setTimeout(() => {
+// // // // // //                 planeRef.current?.animateToFit(allCoords);
+// // // // // //             }, 100);
+// // // // // //         } else {
+// // // // // //             setTimeout(() => {
+// // // // // //                 planeRef.current?.animateToFit([{ x: -10, y: -10 }, { x: 10, y: 10 }], 0);
+// // // // // //             }, 50);
+// // // // // //         }
+// // // // // //     }, [learnerAns]);
+
+// // // // // //     return (
+// // // // // //         <div ref={containerRef} style={{ position: 'relative', width: '100%', height: '420px', border: '1px solid #cbd5e1', background: '#ffffff', borderRadius: '6px', overflow: 'hidden' }}>
+// // // // // //             <canvas ref={canvasRef} style={{ display: 'block', width: '100%', height: '100%' }} />
+// // // // // //         </div>
+// // // // // //     );
+// // // // // // };
+
+// // // // // // // ─── CODE SANDBOX PLAYER ─────────────────────────────────────────────────────
+// // // // // // const ReviewCodeSandbox: React.FC<{ block: any, learnerAns: any, submissionId: string }> = ({ block, learnerAns, submissionId }) => {
+// // // // // //     const [snapshot, setSnapshot] = useState<any>(learnerAns?.snapshot || null);
+// // // // // //     const [isLoading, setIsLoading] = useState<boolean>(!!learnerAns?.storagePath && !learnerAns?.snapshot);
+// // // // // //     const [isBooted, setIsBooted] = useState<boolean>(false);
+
+// // // // // //     useEffect(() => {
+// // // // // //         if (!isBooted) return;
+
+// // // // // //         let isMounted = true;
+
+// // // // // //         if (learnerAns?.storagePath && !learnerAns?.snapshot) {
+// // // // // //             const functions = getFunctions();
+// // // // // //             const fetchSnapshot = httpsCallable(functions, 'getCodeSnapshot');
+// // // // // //             fetchSnapshot({ submissionId, blockId: block.id })
+// // // // // //                 .then((res: any) => {
+// // // // // //                     if (isMounted) {
+// // // // // //                         setSnapshot(res.data.files);
+// // // // // //                         setIsLoading(false);
+// // // // // //                     }
+// // // // // //                 })
+// // // // // //                 .catch((err) => {
+// // // // // //                     console.error(`Failed to fetch code snapshot for block ${block.id}:`, err);
+// // // // // //                     if (isMounted) setIsLoading(false);
+// // // // // //                 });
+// // // // // //         } else {
+// // // // // //             setSnapshot(learnerAns?.snapshot || null);
+// // // // // //             setIsLoading(false);
+// // // // // //         }
+
+// // // // // //         return () => { isMounted = false; };
+// // // // // //     }, [learnerAns, submissionId, block.id, isBooted]);
+
+// // // // // //     if (!isBooted) {
+// // // // // //         return (
+// // // // // //             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '3rem', background: '#f8fafc', border: '1px dashed #cbd5e1', borderRadius: '8px', color: '#64748b', gap: '10px' }}>
+// // // // // //                 <Code size={32} color="#94a3b8" />
+// // // // // //                 <p style={{ margin: 0, fontSize: '0.9rem', fontWeight: 'bold', color: '#334155' }}>Facilitator Code Preview is Paused</p>
+// // // // // //                 <p style={{ margin: '0 0 10px 0', fontSize: '0.8rem', textAlign: 'center', maxWidth: '400px' }}>This button only boots the IDE on <strong>YOUR</strong> screen to conserve memory. Use the Network Control switch above to unlock the Learner's screen.</p>
+// // // // // //                 <button
+// // // // // //                     onClick={() => setIsBooted(true)}
+// // // // // //                     style={{ background: '#3b82f6', color: 'white', padding: '8px 16px', borderRadius: '6px', border: 'none', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem', boxShadow: '0 2px 4px rgba(59,130,246,0.3)' }}
+// // // // // //                 >
+// // // // // //                     <Play size={14} /> Boot Facilitator Preview (Local)
+// // // // // //                 </button>
+// // // // // //             </div>
+// // // // // //         );
+// // // // // //     }
+
+// // // // // //     if (isLoading) {
+// // // // // //         return (
+// // // // // //             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '3rem', background: '#1e293b', borderRadius: '8px', color: '#94a3b8', gap: '10px' }}>
+// // // // // //                 <Loader2 size={24} className="animate-spin" />
+// // // // // //                 <p style={{ margin: 0, fontSize: '0.85rem' }}>Retrieving learner's code snapshot from cloud storage...</p>
+// // // // // //             </div>
+// // // // // //         );
+// // // // // //     }
+
+// // // // // //     return (
+// // // // // //         <div style={{ height: '600px', width: '100%', border: '1px solid #cbd5e1', borderRadius: '6px', overflow: 'hidden' }}>
+// // // // // //             <CodeSandboxPlayer
+// // // // // //                 block={block}
+// // // // // //                 learnerAns={{ ...(learnerAns || {}), snapshot }}
+// // // // // //                 readOnly={true}
+// // // // // //             />
+// // // // // //         </div>
+// // // // // //     );
+// // // // // // };
+
+// // // // // // // ─── MAIN RENDER COMPONENT ───────────────────────────────────────────────────
+// // // // // // export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
+// // // // // //     const {
+// // // // // //         assessment, submission, facBreakdown, assBreakdown, modBreakdown,
+// // // // // //         activeTabs, setActiveTabs, sectionTotals,
+// // // // // //         isPrintMode, canFacilitatorMark, canGrade, canModerate,
+// // // // // //         isFacDone, isAssDone, isModDone, isMentor, isWorkplaceModule,
+// // // // // //         savedFacRole, facReadOnlyLabel,
+// // // // // //         handleVisualMark, handleScoreChange, handleFeedbackChange,
+// // // // // //         handleCriterionChange, handleActivityStatusChange, handleActivityCommentChange,
+// // // // // //         handleGlobalChecklistChange, handleSetToNow
+// // // // // //     } = props;
+
+// // // // // //     const [expandedGraphMemos, setExpandedGraphMemos] = useState<Record<string, boolean>>({});
+// // // // // //     const [togglingIDE, setTogglingIDE] = useState<string | null>(null);
+
+// // // // // //     const toggleGraphMemo = (blockId: string) => {
+// // // // // //         setExpandedGraphMemos(prev => ({ ...prev, [blockId]: !prev[blockId] }));
+// // // // // //     };
+
+// // // // // //     const handleNetworkIDEToggle = async (blockId: string, currentState: boolean) => {
+// // // // // //         if (!submission?.id) return;
+// // // // // //         setTogglingIDE(blockId);
+// // // // // //         try {
+// // // // // //             const db = getFirestore();
+// // // // // //             const subRef = doc(db, 'learner_submissions', submission.id);
+// // // // // //             await setDoc(subRef, { ideUnlocks: { [blockId]: !currentState } }, { merge: true });
+// // // // // //         } catch (err) {
+// // // // // //             console.error("Failed to toggle IDE network access:", err);
+// // // // // //         } finally {
+// // // // // //             setTogglingIDE(null);
+// // // // // //         }
+// // // // // //     };
+
+// // // // // //     const renderNetworkIDEToggleUI = (block: any) => {
+// // // // // //         const hasIDE = block.type === 'code_sandbox' || (['task', 'checklist', 'qcto_workplace'].includes(block.type) && block.allowCode !== false);
+// // // // // //         if (!hasIDE || isPrintMode) return null;
+
+// // // // // //         const isUnlocked = submission?.ideUnlocks?.[block.id] === true;
+// // // // // //         const isProcessing = togglingIDE === block.id;
+
+// // // // // //         return (
+// // // // // //             <div className="no-print" style={{ marginBottom: '1rem', background: isUnlocked ? '#eff6ff' : '#f8fafc', border: isUnlocked ? '1px solid #bfdbfe' : '1px dashed #cbd5e1', borderRadius: '6px', padding: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
+// // // // // //                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+// // // // // //                     <div style={{ background: isUnlocked ? '#dbeafe' : '#e2e8f0', padding: '8px', borderRadius: '8px' }}>
+// // // // // //                         <Code size={18} color={isUnlocked ? '#2563eb' : '#64748b'} />
+// // // // // //                     </div>
+// // // // // //                     <div>
+// // // // // //                         <div style={{ fontSize: '0.85rem', fontWeight: 'bold', color: isUnlocked ? '#1e3a8a' : '#334155' }}>Network IDE Access (Remote Control)</div>
+// // // // // //                         <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>Remotely unlock the Live IDE on the learner's screen in real-time.</div>
+// // // // // //                     </div>
+// // // // // //                 </div>
+// // // // // //                 <button
+// // // // // //                     type="button"
+// // // // // //                     disabled={isProcessing}
+// // // // // //                     onClick={() => handleNetworkIDEToggle(block.id, isUnlocked)}
+// // // // // //                     style={{ display: 'flex', alignItems: 'center', gap: '6px', background: isUnlocked ? '#2563eb' : 'white', color: isUnlocked ? 'white' : '#475569', padding: '6px 12px', borderRadius: '20px', border: isUnlocked ? '1px solid #2563eb' : '1px solid #cbd5e1', cursor: isProcessing ? 'wait' : 'pointer', fontWeight: 'bold', fontSize: '0.8rem', transition: 'all 0.2s ease' }}
+// // // // // //                 >
+// // // // // //                     {isProcessing ? <Loader2 size={14} className="animate-spin" /> : (isUnlocked ? <CheckCircle size={14} /> : <Lock size={14} />)}
+// // // // // //                     {isUnlocked ? 'Unlocked for Learner' : 'Unlock for Learner'}
+// // // // // //                 </button>
+// // // // // //             </div>
+// // // // // //         );
+// // // // // //     };
+
+// // // // // //     let qNum = 0;
+
+// // // // // //     if (!assessment?.blocks || !Array.isArray(assessment.blocks)) return null;
+
+// // // // // //     return (
+// // // // // //         <>
+// // // // // //             {assessment.blocks.map((block: any) => {
+// // // // // //                 // ── SECTION ──────────────────────────────────────────────────────────────
+// // // // // //                 if (block.type === 'section') {
+// // // // // //                     const totals = sectionTotals[block.id];
+// // // // // //                     return (
+// // // // // //                         <div key={(isPrintMode ? 'print-' : '') + block.id} className="sr-section-title-wrap" style={{ display: 'flex', flexDirection: 'column', gap: '10px', borderBottom: '2px solid #e2e8f0', marginBottom: '1.5rem', paddingBottom: '1rem' }}>
+// // // // // //                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+// // // // // //                                 <h2 className="sr-section-title" style={{ color: '#073f4e', margin: 0, border: 'none', padding: 0 }}>{block.title}</h2>
+// // // // // //                                 {isAssDone && totals && totals.total > 0 && (
+// // // // // //                                     <span className="no-print" style={{ fontSize: '0.8rem', background: '#f1f5f9', color: '#64748b', padding: '4px 10px', display: 'flex', alignItems: 'center', gap: '5px', fontFamily: 'var(--font-heading)', letterSpacing: '0.06em', borderRadius: '4px', fontWeight: 'bold' }}>
+// // // // // //                                         <BarChart size={14} /> {totals.awarded}/{totals.total}
+// // // // // //                                     </span>
+// // // // // //                                 )}
+// // // // // //                             </div>
+// // // // // //                             {block.content && (
+// // // // // //                                 <div className="quill-read-only-content" style={{ color: '#334155', fontSize: '0.95rem', wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.content) }} />
+// // // // // //                             )}
+// // // // // //                             {renderBlockImage(block)}
+// // // // // //                         </div>
+// // // // // //                     );
+// // // // // //                 }
+
+// // // // // //                 // ── INFO BLOCK ──────────────────────────────────────────────────────────
+// // // // // //                 if (block.type === 'info') {
+// // // // // //                     return (
+// // // // // //                         <div key={(isPrintMode ? 'print-' : '') + block.id} className="sr-q-card" style={{ borderLeft: '4px solid #0ea5e9', background: '#f0f9ff', padding: '1rem', marginBottom: '1.5rem' }}>
+// // // // // //                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#0284c7', fontWeight: 'bold', marginBottom: '8px' }}><Info size={16} /> Reading Material</div>
+// // // // // //                             <div className="quill-read-only-content" style={{ margin: 0, color: '#0c4a6e', wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.content) }} />
+// // // // // //                             {renderBlockImage(block)}
+// // // // // //                         </div>
+// // // // // //                     );
+// // // // // //                 }
+
+// // // // // //                 // ── QUESTION EVALUATION CARD SELECTOR ROUTINE ───────────────────────────
+// // // // // //                 if (['mcq', 'text', 'task', 'checklist', 'logbook', 'qcto_workplace', 'code_sandbox', 'mathpad', 'graph'].includes(block.type)) {
+// // // // // //                     qNum++;
+
+// // // // // //                     // 🚀 AUTO-RECOVERY HEURISTIC FOR ORPHANED ANSWERS
+// // // // // //                     let learnerAns = submission.answers?.[block.id];
+
+// // // // // //                     if (learnerAns === undefined && submission.answers && Object.keys(submission.answers).length > 0) {
+// // // // // //                         const answerKeys = Object.keys(submission.answers);
+// // // // // //                         const scorableBlocks = assessment.blocks.filter((b: any) =>
+// // // // // //                             ['mcq', 'text', 'task', 'checklist', 'logbook', 'qcto_workplace', 'code_sandbox', 'mathpad', 'graph'].includes(b.type)
+// // // // // //                         );
+
+// // // // // //                         const currentBlockIndex = scorableBlocks.findIndex((b: any) => b.id === block.id);
+
+// // // // // //                         if (currentBlockIndex >= 0 && currentBlockIndex < answerKeys.length) {
+// // // // // //                             const recoveredKey = answerKeys[currentBlockIndex];
+// // // // // //                             learnerAns = submission.answers[recoveredKey];
+// // // // // //                             console.log(`🩹 [AUTO-RECOVERY] Rescued orphaned answer from [${recoveredKey}] into block [${block.id}]`);
+// // // // // //                         }
+// // // // // //                     }
+
+// // // // // //                     const maxM = block.marks || 0;
+
+// // // // // //                     const fData = facBreakdown[block.id] || { score: 0, feedback: '', isCorrect: null, criteriaResults: [], activityResults: [] };
+// // // // // //                     const aData = assBreakdown[block.id] || { score: 0, feedback: '', isCorrect: null, criteriaResults: [], activityResults: [] };
+// // // // // //                     const mData = modBreakdown[block.id] || { score: 0, feedback: '', isCorrect: null, criteriaResults: [], activityResults: [] };
+
+// // // // // //                     let activeInkColor = 'blue';
+// // // // // //                     let activeData = fData;
+// // // // // //                     let isActiveRole = false;
+
+// // // // // //                     if (canFacilitatorMark) { activeInkColor = 'blue'; activeData = fData; isActiveRole = true; }
+// // // // // //                     else if (canGrade) { activeInkColor = 'red'; activeData = aData; isActiveRole = true; }
+// // // // // //                     else if (canModerate) { activeInkColor = 'green'; activeData = mData; isActiveRole = true; }
+// // // // // //                     else {
+// // // // // //                         if (isModDone) { activeInkColor = 'green'; activeData = mData; }
+// // // // // //                         else if (isAssDone) { activeInkColor = 'red'; activeData = aData; }
+// // // // // //                         else { activeInkColor = 'blue'; activeData = fData; }
+// // // // // //                     }
+
+// // // // // //                     const renderFacReadOnly = (isFacDone || fData?.feedback || fData?.score > 0) && (!canFacilitatorMark || isPrintMode);
+// // // // // //                     const renderAssReadOnly = (isAssDone || aData?.feedback || aData?.score > 0) && (!canGrade || isPrintMode);
+// // // // // //                     const renderModReadOnly = (isModDone || mData?.feedback) && (!canModerate || isPrintMode);
+
+// // // // // //                     const mentorActiveOnScorableBlock = isMentor && canFacilitatorMark && ['mcq', 'text', 'task', 'code_sandbox', 'mathpad', 'graph'].includes(block.type);
+
+// // // // // //                     let decData = activeData;
+// // // // // //                     let isDeclarationInteractive = isActiveRole;
+// // // // // //                     if (canModerate) {
+// // // // // //                         decData = isWorkplaceModule ? fData : aData;
+// // // // // //                         isDeclarationInteractive = false;
+// // // // // //                     } else if (canGrade && isWorkplaceModule) {
+// // // // // //                         decData = fData;
+// // // // // //                         isDeclarationInteractive = false;
+// // // // // //                     }
+
+// // // // // //                     const renderReadOnlyLayers = () => (
+// // // // // //                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: (!isPrintMode && isActiveRole) ? '1rem' : '0' }}>
+// // // // // //                             {renderFacReadOnly && (
+// // // // // //                                 <div style={{ background: '#eff6ff', padding: '0.75rem', borderRadius: '4px' }}>
+// // // // // //                                     <div style={{ color: '#0284c7', fontSize: '0.7rem', textTransform: 'uppercase', fontWeight: 'bold', marginBottom: '4px' }}>
+// // // // // //                                         <Info size={13} /> {facReadOnlyLabel}
+// // // // // //                                     </div>
+// // // // // //                                     <div style={{ color: '#0369a1', fontSize: '0.85rem', whiteSpace: 'pre-wrap', wordBreak: 'break-word', overflowWrap: 'break-word' }}>
+// // // // // //                                         {savedFacRole !== 'mentor' && !isWorkplaceModule && (
+// // // // // //                                             <span style={{ fontWeight: 'bold', marginRight: '6px' }}>[{fData.score ?? 0}/{maxM}]</span>
+// // // // // //                                         )}
+// // // // // //                                         {fData.feedback || <em style={{ opacity: 0.7 }}>No specific {savedFacRole === 'mentor' ? 'supervisor comments' : 'coaching'} provided.</em>}
+// // // // // //                                     </div>
+// // // // // //                                 </div>
+// // // // // //                             )}
+// // // // // //                             {renderAssReadOnly && (
+// // // // // //                                 <div style={{ background: '#fef2f2', padding: '0.75rem', borderRadius: '4px' }}>
+// // // // // //                                     <div style={{ color: '#b91c1c', fontSize: '0.7rem', textTransform: 'uppercase', fontWeight: 'bold', marginBottom: '4px' }}><AwardIcon size={13} /> Assessor Grade</div>
+// // // // // //                                     <div style={{ color: '#991b1b', fontSize: '0.85rem', whiteSpace: 'pre-wrap', wordBreak: 'break-word', overflowWrap: 'break-word' }}>
+// // // // // //                                         {!isWorkplaceModule && <span style={{ fontWeight: 'bold', marginRight: '6px' }}>[{aData.score ?? 0}/{maxM}]</span>}
+// // // // // //                                         {aData.feedback || <em style={{ opacity: 0.7 }}>No specific feedback provided.</em>}
+// // // // // //                                     </div>
+// // // // // //                                 </div>
+// // // // // //                             )}
+// // // // // //                             {renderModReadOnly && (
+// // // // // //                                 <div style={{ background: '#f0fdf4', padding: '0.75rem', borderRadius: '4px' }}>
+// // // // // //                                     <div style={{ color: '#15803d', fontSize: '0.7rem', textTransform: 'uppercase', fontWeight: 'bold', marginBottom: '4px' }}><ShieldCheck size={13} /> Moderator QA</div>
+// // // // // //                                     <div style={{ color: '#16a34a', fontSize: '0.85rem', whiteSpace: 'pre-wrap', wordBreak: 'break-word', overflowWrap: 'break-word' }}>
+// // // // // //                                         {!isWorkplaceModule && <span style={{ fontWeight: 'bold', marginRight: '6px' }}>[{mData.score ?? 0}/{maxM}]</span>}
+// // // // // //                                         {mData.feedback || <em style={{ opacity: 0.7 }}>No QA feedback provided.</em>}
+// // // // // //                                     </div>
+// // // // // //                                 </div>
+// // // // // //                             )}
+// // // // // //                         </div>
+// // // // // //                     );
+
+// // // // // //                     const renderActiveGradeControls = (blockId: string) => {
+// // // // // //                         if (canModerate && isWorkplaceModule) {
+// // // // // //                             return (
+// // // // // //                                 <div>
+// // // // // //                                     <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '6px', padding: '1rem', marginTop: '1rem' }}>
+// // // // // //                                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px', color: '#15803d', fontWeight: 'bold', fontSize: '0.8rem', textTransform: 'uppercase' }}>
+// // // // // //                                             <ShieldCheck size={14} /> Moderator QA Notes
+// // // // // //                                         </div>
+// // // // // //                                         <textarea
+// // // // // //                                             className="sr-feedback-input"
+// // // // // //                                             rows={2}
+// // // // // //                                             style={{ width: '100%', color: 'green', fontStyle: 'italic', padding: '8px', border: '1px solid #bbf7d0', borderRadius: '4px', resize: 'vertical', background: 'white' }}
+// // // // // //                                             placeholder="Moderator Green Pen QA notes for this item (optional)..."
+// // // // // //                                             value={activeData.feedback || ''}
+// // // // // //                                             onChange={e => handleFeedbackChange(blockId, e.target.value)}
+// // // // // //                                         />
+// // // // // //                                     </div>
+// // // // // //                                 </div>
+// // // // // //                             );
+// // // // // //                         }
+
+// // // // // //                         if (mentorActiveOnScorableBlock) {
+// // // // // //                             return (
+// // // // // //                                 <div>
+// // // // // //                                     <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '6px', padding: '1rem', marginTop: '1rem' }}>
+// // // // // //                                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px', color: '#1d4ed8', fontWeight: 'bold', fontSize: '0.8rem', textTransform: 'uppercase' }}>
+// // // // // //                                             <ShieldCheck size={14} /> Supervisor Observation Comments
+// // // // // //                                         </div>
+// // // // // //                                         <textarea
+// // // // // //                                             className="sr-feedback-input"
+// // // // // //                                             rows={2}
+// // // // // //                                             style={{ width: '100%', color: 'blue', fontStyle: 'italic', padding: '8px', border: '1px solid #bfdbfe', borderRadius: '4px', resize: 'vertical', background: 'white' }}
+// // // // // //                                             placeholder="Add any supervisor observation notes for this item (optional)..."
+// // // // // //                                             value={activeData.feedback || ''}
+// // // // // //                                             onChange={e => handleFeedbackChange(blockId, e.target.value)}
+// // // // // //                                         />
+// // // // // //                                     </div>
+// // // // // //                                 </div>
+// // // // // //                             );
+// // // // // //                         }
+
+// // // // // //                         return (
+// // // // // //                             <div>
+// // // // // //                                 <div className="sr-score-input-wrap" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+// // // // // //                                     <label style={{ color: '#0f172a', fontWeight: 'bold', fontSize: '0.85rem' }}>Total Marks Awarded for this block:</label>
+// // // // // //                                     <input
+// // // // // //                                         type="number"
+// // // // // //                                         className="sr-score-input"
+// // // // // //                                         style={{ color: activeInkColor, width: '60px', padding: '4px 8px', border: `1px solid ${activeInkColor}`, borderRadius: '4px', textAlign: 'center', fontWeight: 'bold' }}
+// // // // // //                                         value={activeData.score ?? 0}
+// // // // // //                                         onChange={e => handleScoreChange(blockId, parseInt(e.target.value) || 0, maxM)}
+// // // // // //                                     />
+// // // // // //                                     <span style={{ color: '#0f172a', fontWeight: 'bold' }}>/ {maxM}</span>
+// // // // // //                                 </div>
+// // // // // //                                 <div className="sr-feedback-wrap" style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+// // // // // //                                     <Edit3 size={16} color={activeInkColor} style={{ marginTop: '6px' }} />
+// // // // // //                                     <textarea
+// // // // // //                                         className="sr-feedback-input"
+// // // // // //                                         rows={2}
+// // // // // //                                         style={{ width: '100%', color: activeInkColor, fontStyle: 'italic', padding: '8px', border: '1px solid #e2e8f0', borderRadius: '4px', resize: 'vertical' }}
+// // // // // //                                         placeholder={canModerate ? "Moderator Green Pen QA Notes..." : canGrade ? "Assessor Red Pen feedback..." : "Facilitator Blue Pen feedback..."}
+// // // // // //                                         value={activeData.feedback || ''}
+// // // // // //                                         onChange={e => handleFeedbackChange(blockId, e.target.value)}
+// // // // // //                                     />
+// // // // // //                                 </div>
+// // // // // //                             </div>
+// // // // // //                         );
+// // // // // //                     };
+
+// // // // // //                     // ── GRAPH PLOT INTERACTIVE BLOCK (NEW) ───────────────────────────────
+// // // // // //                     if (block.type === 'graph') {
+// // // // // //                         return (
+// // // // // //                             <div key={block.id} className="sr-q-card" style={{ borderTop: '4px solid black', marginBottom: '2rem' }}>
+// // // // // //                                 <div className="sr-q-header">
+// // // // // //                                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', width: '100%' }}>
+// // // // // //                                         <span className="sr-q-num" style={{ background: '#ccfbf1', color: '#0f766e', flexShrink: 0 }}>PLOT</span>
+// // // // // //                                         <div className="sr-q-text quill-read-only-content" style={{ color: '#073f4e', fontWeight: 'bold', margin: 0, flex: 1, minWidth: 0, wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.question) }} />
+// // // // // //                                     </div>
+// // // // // //                                     {!isPrintMode && isActiveRole && !isMentor && !(canModerate && isWorkplaceModule) && (
+// // // // // //                                         <div className="sr-visual-mark" style={{ flexShrink: 0, marginLeft: '10px' }}>
+// // // // // //                                             <button onClick={() => handleVisualMark(block.id, true, maxM)} className="sr-mark-btn" style={activeData.isCorrect === true ? { color: activeInkColor, border: `1px solid ${activeInkColor}`, background: 'white' } : {}} title="Mark Correct"><Check size={20} /></button>
+// // // // // //                                             <button onClick={() => handleVisualMark(block.id, false, maxM)} className="sr-mark-btn" style={activeData.isCorrect === false ? { color: activeInkColor, border: `1px solid ${activeInkColor}`, background: 'white' } : {}} title="Mark Incorrect"><X size={20} /></button>
+// // // // // //                                         </div>
+// // // // // //                                     )}
+// // // // // //                                 </div>
+// // // // // //                                 <div className="sr-q-body">
+// // // // // //                                     {renderBlockImage(block)}
+
+// // // // // //                                     <div className="sr-answer-box">
+// // // // // //                                         <div className="sr-answer-label" style={{ color: 'black', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+// // // // // //                                             <BarChart size={14} /> Learner's Plotted Cartesian Graph:
+// // // // // //                                         </div>
+// // // // // //                                         <ReviewAxisGraph block={block} learnerAns={learnerAns} />
+// // // // // //                                     </div>
+
+// // // // // //                                     {(block.memoGraph?.points?.length > 0 || block.memoGraph?.shapes?.length > 0) && (
+// // // // // //                                         <div style={{ marginTop: '1rem', padding: '1rem', background: '#fdf2f8', border: '1px solid #fbcfe8', borderRadius: '6px' }}>
+// // // // // //                                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#be185d', fontSize: '0.85rem', marginBottom: '12px', fontWeight: 'bold' }}>
+// // // // // //                                                 <Lock size={14} /> Assessor Memorandum Graph (Hidden from Learner)
+// // // // // //                                             </div>
+// // // // // //                                             <ReviewAxisGraph block={block} learnerAns={block.memoGraph} />
+// // // // // //                                         </div>
+// // // // // //                                     )}
+
+// // // // // //                                     <div className="sr-grade-box" style={{ borderLeft: `4px solid ${activeInkColor}`, marginTop: '1rem', padding: '1rem', background: 'white', borderRadius: '6px' }}>
+// // // // // //                                         {renderReadOnlyLayers()}
+// // // // // //                                         {(!isPrintMode && isActiveRole) && renderActiveGradeControls(block.id)}
+// // // // // //                                     </div>
+// // // // // //                                 </div>
+// // // // // //                             </div>
+// // // // // //                         );
+// // // // // //                     }
+
+// // // // // //                     // ── MATHPAD ──────────────────────────────────────────────────────────
+// // // // // //                     if (block.type === 'mathpad') {
+// // // // // //                         const safeLearnerAns = typeof learnerAns === 'object' && learnerAns !== null ? learnerAns : { equation: learnerAns };
+
+// // // // // //                         const mathTabs = [
+// // // // // //                             { id: 'equation', icon: <Sigma size={13} />, label: 'Equation Editor', val: safeLearnerAns.equation !== undefined ? safeLearnerAns.equation : null, theme: { text: '#be185d', bg: '#fdf2f8', border: '#fbcfe8', activeBg: '#fce7f3' } },
+// // // // // //                             { id: 'graph', icon: <BarChart size={13} />, label: 'Graphing Calculator', val: safeLearnerAns.graphState, theme: { text: '#166534', bg: '#f0fdf4', border: '#bbf7d0', activeBg: '#dcfce7' } }
+// // // // // //                         ].filter(t => t.val !== null && t.val !== undefined);
+
+// // // // // //                         const activeTabId = activeTabs[block.id] || (mathTabs.length > 0 ? mathTabs[0].id : 'equation');
+// // // // // //                         const isGraphMemoExpanded = expandedGraphMemos[block.id] || false;
+
+// // // // // //                         return (
+// // // // // //                             <div key={block.id} className="sr-q-card" style={{ borderTop: '4px solid black', marginBottom: '2rem' }}>
+// // // // // //                                 <div className="sr-q-header">
+// // // // // //                                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', width: '100%' }}>
+// // // // // //                                         <span className="sr-q-num" style={{ background: '#fce7f3', color: '#db2777', flexShrink: 0 }}>MATH</span>
+// // // // // //                                         <div className="sr-q-text quill-read-only-content" style={{ color: '#073f4e', fontWeight: 'bold', margin: 0, flex: 1, minWidth: 0, wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.question) }} />
+// // // // // //                                     </div>
+// // // // // //                                     {!isPrintMode && isActiveRole && !isMentor && !(canModerate && isWorkplaceModule) && (
+// // // // // //                                         <div className="sr-visual-mark" style={{ flexShrink: 0, marginLeft: '10px' }}>
+// // // // // //                                             <button onClick={() => handleVisualMark(block.id, true, maxM)} className="sr-mark-btn" style={activeData.isCorrect === true ? { color: activeInkColor, border: `1px solid ${activeInkColor}`, background: 'white' } : {}} title="Mark Correct"><Check size={20} /></button>
+// // // // // //                                             <button onClick={() => handleVisualMark(block.id, false, maxM)} className="sr-mark-btn" style={activeData.isCorrect === false ? { color: activeInkColor, border: `1px solid ${activeInkColor}`, background: 'white' } : {}} title="Mark Incorrect"><X size={20} /></button>
+// // // // // //                                         </div>
+// // // // // //                                     )}
+// // // // // //                                 </div>
+// // // // // //                                 <div className="sr-q-body">
+// // // // // //                                     {renderBlockImage(block)}
+
+// // // // // //                                     <div className="sr-answer-box">
+// // // // // //                                         <div className="sr-answer-label" style={{ color: 'black', marginBottom: '8px' }}>
+// // // // // //                                             <Layers size={14} style={{ display: 'inline', marginBottom: '-2px', marginRight: '4px' }} />Learner's Math Response:
+// // // // // //                                         </div>
+
+// // // // // //                                         {mathTabs.length === 0 ? (
+// // // // // //                                             <span style={{ color: '#64748b', fontStyle: 'italic' }}>No answer provided.</span>
+// // // // // //                                         ) : (
+// // // // // //                                             <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden', background: 'white' }}>
+// // // // // //                                                 {mathTabs.length > 1 && (
+// // // // // //                                                     <div className="no-print" style={{ paddingTop: 8, paddingLeft: 8, paddingRight: 8, display: 'flex', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', overflowX: 'auto', padding: '10px' }}>
+// // // // // //                                                         {mathTabs.map(t => {
+// // // // // //                                                             const isActive = activeTabId === t.id;
+// // // // // //                                                             return (
+// // // // // //                                                                 <button
+// // // // // //                                                                     key={t.id}
+// // // // // //                                                                     onClick={() => setActiveTabs({ ...activeTabs, [block.id]: t.id })}
+// // // // // //                                                                     style={{
+// // // // // //                                                                         display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem',
+// // // // // //                                                                         background: isActive ? t.theme.activeBg : t.theme.bg,
+// // // // // //                                                                         padding: '6px 14px', borderRadius: '20px', color: t.theme.text,
+// // // // // //                                                                         border: `1px solid ${isActive ? t.theme.text : t.theme.border}`,
+// // // // // //                                                                         cursor: 'pointer', fontWeight: isActive ? 'bold' : 'normal',
+// // // // // //                                                                         boxShadow: isActive ? `0 2px 4px ${t.theme.border}` : 'none',
+// // // // // //                                                                         transition: 'all 0.2s ease',
+// // // // // //                                                                         opacity: isActive ? 1 : 0.7,
+// // // // // //                                                                         whiteSpace: 'nowrap'
+// // // // // //                                                                     }}
+// // // // // //                                                                     onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+// // // // // //                                                                     onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.opacity = '0.7'; }}
+// // // // // //                                                                 >
+// // // // // //                                                                     {t.icon} {t.label}
+// // // // // //                                                                 </button>
+// // // // // //                                                             );
+// // // // // //                                                         })}
+// // // // // //                                                     </div>
+// // // // // //                                                 )}
+
+// // // // // //                                                 <div style={{ padding: '15px' }}>
+// // // // // //                                                     {activeTabId === 'equation' && (
+// // // // // //                                                         <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+// // // // // //                                                             {React.createElement('math-field', {
+// // // // // //                                                                 'read-only': 'true',
+// // // // // //                                                                 style: { width: '100%', fontSize: '1.4rem', outline: 'none', background: 'transparent', border: 'none', color: '#0f172a' }
+// // // // // //                                                             }, safeLearnerAns.equation || '')}
+// // // // // //                                                         </div>
+// // // // // //                                                     )}
+// // // // // //                                                     {activeTabId === 'graph' && (
+// // // // // //                                                         <ReviewAxisGraph block={block} learnerAns={safeLearnerAns.graphState} />
+// // // // // //                                                     )}
+// // // // // //                                                 </div>
+// // // // // //                                             </div>
+// // // // // //                                         )}
+
+// // // // // //                                         {(block.correctAnswer || block.modelSolution || block.memoGraph) && (
+// // // // // //                                             <div style={{ marginTop: '1rem', padding: '1rem', background: '#fdf2f8', border: '1px solid #fbcfe8', borderRadius: '6px' }}>
+// // // // // //                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#be185d', fontSize: '0.85rem', marginBottom: '12px', fontWeight: 'bold' }}>
+// // // // // //                                                     <Lock size={14} /> Assessor Memorandum (Hidden from Learner)
+// // // // // //                                                 </div>
+
+// // // // // //                                                 {block.correctAnswer && (
+// // // // // //                                                     <div style={{ marginBottom: '12px' }}>
+// // // // // //                                                         <div style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#9d174d', marginBottom: '4px', textTransform: 'uppercase' }}>Expected Final Answer</div>
+// // // // // //                                                         {React.createElement('math-field', {
+// // // // // //                                                             'read-only': 'true',
+// // // // // //                                                             style: { width: '100%', fontSize: '1.2rem', padding: '8px', background: 'white', border: '1px solid #fbcfe8', borderRadius: '4px', color: '#0f172a' }
+// // // // // //                                                         }, block.correctAnswer)}
+// // // // // //                                                     </div>
+// // // // // //                                                 )}
+
+// // // // // //                                                 {block.modelSolution && (
+// // // // // //                                                     <div style={{ marginBottom: '12px' }}>
+// // // // // //                                                         <div style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#9d174d', marginBottom: '4px', textTransform: 'uppercase' }}>Step-by-Step Solution</div>
+// // // // // //                                                         <div className="quill-read-only-content" style={{ background: 'white', padding: '10px', borderRadius: '4px', border: '1px dashed #fbcfe8', fontSize: '0.9rem', color: '#334155' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.modelSolution) }} />
+// // // // // //                                                     </div>
+// // // // // //                                                 )}
+
+// // // // // //                                                 {(block.memoGraph?.points?.length > 0 || block.memoGraph?.shapes?.length > 0) && (
+// // // // // //                                                     <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px dashed #fbcfe8' }}>
+// // // // // //                                                         <div
+// // // // // //                                                             style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', background: '#fce7f3', padding: '8px 12px', borderRadius: '6px', border: '1px solid #fbcfe8' }}
+// // // // // //                                                             onClick={(e) => { e.stopPropagation(); toggleGraphMemo(block.id); }}
+// // // // // //                                                         >
+// // // // // //                                                             <div>
+// // // // // //                                                                 <label style={{ color: '#9d174d', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', margin: 0, fontWeight: 'bold', fontSize: '0.8rem', textTransform: 'uppercase' }}>
+// // // // // //                                                                     <BarChart size={14} /> Expected Graph Solution
+// // // // // //                                                                 </label>
+// // // // // //                                                                 <p style={{ fontSize: '0.75rem', color: '#be185d', margin: '2px 0 0 0' }}>
+// // // // // //                                                                     Click to {isGraphMemoExpanded ? 'collapse' : 'expand'} the expected visual solution graph.
+// // // // // //                                                                 </p>
+// // // // // //                                                             </div>
+// // // // // //                                                             <div style={{ color: '#9d174d', padding: '4px', background: '#fdf2f8', borderRadius: '4px' }}>
+// // // // // //                                                                 {isGraphMemoExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+// // // // // //                                                             </div>
+// // // // // //                                                         </div>
+
+// // // // // //                                                         {isGraphMemoExpanded && (
+// // // // // //                                                             <div style={{ marginTop: '12px', animation: 'fadeIn 0.2s ease-out' }}>
+// // // // // //                                                                 <ReviewAxisGraph block={block} learnerAns={block.memoGraph} />
+// // // // // //                                                             </div>
+// // // // // //                                                         )}
+// // // // // //                                                     </div>
+// // // // // //                                                 )}
+// // // // // //                                             </div>
+// // // // // //                                         )}
+// // // // // //                                     </div>
+// // // // // //                                     <div className="sr-grade-box" style={{ borderLeft: `4px solid ${activeInkColor}`, marginTop: '1rem', padding: '1rem', background: 'white', borderRadius: '6px' }}>
+// // // // // //                                         {renderReadOnlyLayers()}
+// // // // // //                                         {(!isPrintMode && isActiveRole) && renderActiveGradeControls(block.id)}
+// // // // // //                                     </div>
+// // // // // //                                 </div>
+// // // // // //                             </div>
+// // // // // //                         );
+// // // // // //                     }
+
+// // // // // //                     // ── CODE SANDBOX ──────────────────────────────────────────────────
+// // // // // //                     if (block.type === 'code_sandbox') {
+// // // // // //                         return (
+// // // // // //                             <div key={block.id} className="sr-q-card" style={{ borderTop: '4px solid black', marginBottom: '2rem' }}>
+// // // // // //                                 <div className="sr-q-header">
+// // // // // //                                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', width: '100%' }}>
+// // // // // //                                         <span className="sr-q-num" style={{ background: '#eff6ff', color: '#3b82f6', flexShrink: 0 }}>IDE</span>
+// // // // // //                                         <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
+// // // // // //                                             <div className="ap-code-sandbox-instructions" style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '1rem', width: '100%' }}>
+// // // // // //                                                 {block.title && (
+// // // // // //                                                     <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#0f172a', marginBottom: '0.75rem', borderBottom: '1px solid #e2e8f0', paddingBottom: '0.5rem' }}>
+// // // // // //                                                         {block.title}
+// // // // // //                                                     </h3>
+// // // // // //                                                 )}
+// // // // // //                                                 {block.question && (
+// // // // // //                                                     <div className="quill-read-only-content" style={{ wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap', color: '#334155' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.question) }} />
+// // // // // //                                                 )}
+// // // // // //                                             </div>
+// // // // // //                                         </div>
+// // // // // //                                     </div>
+
+// // // // // //                                     {!isPrintMode && isActiveRole && !isMentor && !(canModerate && isWorkplaceModule) && (
+// // // // // //                                         <div className="sr-visual-mark" style={{ flexShrink: 0, marginLeft: '10px' }}>
+// // // // // //                                             <button onClick={() => handleVisualMark(block.id, true, maxM)} className="sr-mark-btn" style={activeData.isCorrect === true ? { color: activeInkColor, border: `1px solid ${activeInkColor}`, background: 'white' } : {}} title="Mark Correct"><Check size={20} /></button>
+// // // // // //                                             <button onClick={() => handleVisualMark(block.id, false, maxM)} className="sr-mark-btn" style={activeData.isCorrect === false ? { color: activeInkColor, border: `1px solid ${activeInkColor}`, background: 'white' } : {}} title="Mark Incorrect"><X size={20} /></button>
+// // // // // //                                         </div>
+// // // // // //                                     )}
+// // // // // //                                 </div>
+
+// // // // // //                                 <div className="sr-q-body">
+// // // // // //                                     {renderNetworkIDEToggleUI(block)}
+// // // // // //                                     {renderBlockImage(block)}
+
+// // // // // //                                     <ReviewCodeSandbox
+// // // // // //                                         block={block}
+// // // // // //                                         learnerAns={learnerAns}
+// // // // // //                                         submissionId={submission.id}
+// // // // // //                                     />
+
+// // // // // //                                     <div className="sr-grade-box" style={{ borderLeft: `4px solid ${activeInkColor}`, marginTop: '1rem', padding: '1rem', background: 'white', borderRadius: '6px' }}>
+// // // // // //                                         {renderReadOnlyLayers()}
+// // // // // //                                         {(!isPrintMode && isActiveRole) && renderActiveGradeControls(block.id)}
+// // // // // //                                     </div>
+// // // // // //                                 </div>
+// // // // // //                             </div>
+// // // // // //                         );
+// // // // // //                     }
+
+// // // // // //                     // ── MCQ ────────────────────────────────────────────────────────────────
+// // // // // //                     if (block.type === 'mcq') {
+// // // // // //                         return (
+// // // // // //                             <div key={block.id} className="sr-q-card" style={{ borderTop: '4px solid black', marginBottom: '2rem' }}>
+// // // // // //                                 <div className="sr-q-header">
+// // // // // //                                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', width: '100%' }}>
+// // // // // //                                         <span className="sr-q-num" style={{ background: '#f1f5f9', color: '#073f4e', flexShrink: 0 }}>Q{qNum}</span>
+// // // // // //                                         <div className="sr-q-text quill-read-only-content" style={{ color: '#073f4e', fontWeight: 'bold', margin: 0, flex: 1, minWidth: 0, wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.question) }} />
+// // // // // //                                     </div>
+// // // // // //                                     {!isPrintMode && isActiveRole && !isMentor && !(canModerate && isWorkplaceModule) && (
+// // // // // //                                         <div className="sr-visual-mark" style={{ flexShrink: 0, marginLeft: '10px' }}>
+// // // // // //                                             <button onClick={() => handleVisualMark(block.id, true, maxM)} className="sr-mark-btn" style={activeData.isCorrect === true ? { color: activeInkColor, border: `1px solid ${activeInkColor}`, background: 'white' } : {}} title="Mark Correct"><Check size={20} /></button>
+// // // // // //                                             <button onClick={() => handleVisualMark(block.id, false, maxM)} className="sr-mark-btn" style={activeData.isCorrect === false ? { color: activeInkColor, border: `1px solid ${activeInkColor}`, background: 'white' } : {}} title="Mark Incorrect"><X size={20} /></button>
+// // // // // //                                         </div>
+// // // // // //                                     )}
+// // // // // //                                 </div>
+// // // // // //                                 <div className="sr-q-body">
+// // // // // //                                     {renderBlockImage(block)}
+// // // // // //                                     <div className="sr-answer-box">
+// // // // // //                                         <div className="sr-answer-label" style={{ color: 'black' }}>Learner's Response:</div>
+// // // // // //                                         <div className={`sr-mcq-ans ${learnerAns === block.correctOption ? 'correct' : 'wrong'}`}>
+// // // // // //                                             <span style={{ color: 'black', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{learnerAns !== undefined ? `${String.fromCharCode(65 + learnerAns)}. ${block.options?.[learnerAns]}` : 'No answer provided.'}</span>
+// // // // // //                                             {learnerAns === block.correctOption && <CheckCircle size={14} color="black" />}
+// // // // // //                                         </div>
+// // // // // //                                         <div className="sr-mcq-correct-hint" style={{ color: 'black' }}>Correct Answer: <strong>{String.fromCharCode(65 + block.correctOption)}. {block.options?.[block.correctOption]}</strong></div>
+// // // // // //                                     </div>
+// // // // // //                                     <div className="sr-grade-box" style={{ borderLeft: `4px solid ${activeInkColor}`, marginTop: '1rem', padding: '1rem', background: 'white', borderRadius: '6px' }}>
+// // // // // //                                         {renderReadOnlyLayers()}
+// // // // // //                                         {(!isPrintMode && isActiveRole) && renderActiveGradeControls(block.id)}
+// // // // // //                                     </div>
+// // // // // //                                 </div>
+// // // // // //                             </div>
+// // // // // //                         );
+// // // // // //                     }
+
+// // // // // //                     // ── TEXT ────────────────────────────────────────────────
+// // // // // //                     if (block.type === 'text') {
+// // // // // //                         return (
+// // // // // //                             <div key={block.id} className="sr-q-card" style={{ borderTop: '4px solid black', marginBottom: '2rem' }}>
+// // // // // //                                 <div className="sr-q-header">
+// // // // // //                                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', width: '100%' }}>
+// // // // // //                                         <span className="sr-q-num" style={{ background: '#f1f5f9', color: '#073f4e', flexShrink: 0 }}>Q{qNum}</span>
+// // // // // //                                         <div className="sr-q-text quill-read-only-content" style={{ color: '#073f4e', fontWeight: 'bold', margin: 0, flex: 1, minWidth: 0, wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.question) }} />
+// // // // // //                                     </div>
+// // // // // //                                     {!isPrintMode && isActiveRole && !isMentor && !(canModerate && isWorkplaceModule) && (
+// // // // // //                                         <div className="sr-visual-mark" style={{ flexShrink: 0, marginLeft: '10px' }}>
+// // // // // //                                             <button onClick={() => handleVisualMark(block.id, true, maxM)} className="sr-mark-btn" style={activeData.isCorrect === true ? { color: activeInkColor, border: `1px solid ${activeInkColor}`, background: 'white' } : {}} title="Mark Correct"><Check size={20} /></button>
+// // // // // //                                             <button onClick={() => handleVisualMark(block.id, false, maxM)} className="sr-mark-btn" style={activeData.isCorrect === false ? { color: activeInkColor, border: `1px solid ${activeInkColor}`, background: 'white' } : {}} title="Mark Incorrect"><X size={20} /></button>
+// // // // // //                                         </div>
+// // // // // //                                     )}
+// // // // // //                                 </div>
+// // // // // //                                 <div className="sr-q-body">
+// // // // // //                                     {renderBlockImage(block)}
+// // // // // //                                     <div className="sr-answer-box">
+// // // // // //                                         <div className="sr-answer-label" style={{ color: 'black' }}>Learner's Response:</div>
+// // // // // //                                         <div className="sr-text-ans">
+// // // // // //                                             {learnerAns ? <div className="quill-read-only-content" style={{ color: 'black', wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(learnerAns) }} /> : <span style={{ color: 'black', fontStyle: 'italic' }}>No answer provided.</span>}
+// // // // // //                                         </div>
+// // // // // //                                     </div>
+// // // // // //                                     <div className="sr-grade-box" style={{ borderLeft: `4px solid ${activeInkColor}`, marginTop: '1rem', padding: '1rem', background: 'white', borderRadius: '6px' }}>
+// // // // // //                                         {renderReadOnlyLayers()}
+// // // // // //                                         {(!isPrintMode && isActiveRole) && renderActiveGradeControls(block.id)}
+// // // // // //                                     </div>
+// // // // // //                                 </div>
+// // // // // //                             </div>
+// // // // // //                         );
+// // // // // //                     }
+
+// // // // // //                     // ── TASK ────────────────────────────────────────────────
+// // // // // //                     if (block.type === 'task') {
+// // // // // //                         const safeLearnerAns = typeof learnerAns === 'object' && learnerAns !== null ? learnerAns : { text: learnerAns };
+
+// // // // // //                         const taskTabs = [
+// // // // // //                             { id: 'text', icon: <FileText size={14} />, label: 'Rich Text', val: safeLearnerAns.text },
+// // // // // //                             { id: 'audio', icon: <Mic size={14} />, label: 'Audio', val: safeLearnerAns.audioUrl },
+// // // // // //                             { id: 'url', icon: <LinkIcon size={14} />, label: 'Link', val: safeLearnerAns.url },
+// // // // // //                             { id: 'upload', icon: <UploadCloud size={14} />, label: 'File Upload', val: safeLearnerAns.uploadUrl },
+// // // // // //                             { id: 'code', icon: <Code size={14} />, label: 'Code', val: safeLearnerAns.code }
+// // // // // //                         ].filter(t => !!t.val);
+
+// // // // // //                         const activeTabId = activeTabs[block.id] || taskTabs[0]?.id;
+
+// // // // // //                         return (
+// // // // // //                             <div key={block.id} className="sr-q-card" style={{ borderTop: '4px solid black', marginBottom: '2rem' }}>
+// // // // // //                                 <div className="sr-q-header">
+// // // // // //                                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', width: '100%' }}>
+// // // // // //                                         <span className="sr-q-num" style={{ background: '#ede9fe', color: '#8b5cf6', flexShrink: 0 }}>Q{qNum}</span>
+// // // // // //                                         <div className="sr-q-text quill-read-only-content" style={{ color: '#073f4e', fontWeight: 'bold', margin: 0, flex: 1, minWidth: 0, wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.question) }} />
+// // // // // //                                     </div>
+// // // // // //                                     {!isPrintMode && isActiveRole && !isMentor && !(canModerate && isWorkplaceModule) && (
+// // // // // //                                         <div className="sr-visual-mark" style={{ flexShrink: 0, marginLeft: '10px' }}>
+// // // // // //                                             <button onClick={() => handleVisualMark(block.id, true, maxM)} className="sr-mark-btn" style={activeData.isCorrect === true ? { color: activeInkColor, border: `1px solid ${activeInkColor}`, background: 'white' } : {}} title="Mark Correct"><Check size={20} /></button>
+// // // // // //                                             <button onClick={() => handleVisualMark(block.id, false, maxM)} className="sr-mark-btn" style={activeData.isCorrect === false ? { color: activeInkColor, border: `1px solid ${activeInkColor}`, background: 'white' } : {}} title="Mark Incorrect"><X size={20} /></button>
+// // // // // //                                         </div>
+// // // // // //                                     )}
+// // // // // //                                 </div>
+// // // // // //                                 <div className="sr-q-body">
+// // // // // //                                     {renderNetworkIDEToggleUI(block)}
+// // // // // //                                     {renderBlockImage(block)}
+// // // // // //                                     <div className="sr-answer-box">
+// // // // // //                                         <div className="sr-answer-label" style={{ color: 'black', display: 'flex', alignItems: 'center', gap: '6px' }}><Layers size={14} /> Learner Evidence Submitted:</div>
+
+// // // // // //                                         {(!safeLearnerAns || Object.keys(safeLearnerAns).length === 0 || (!safeLearnerAns.text && !safeLearnerAns.audioUrl && !safeLearnerAns.url && !safeLearnerAns.uploadUrl && !safeLearnerAns.code)) ? (
+// // // // // //                                             <span style={{ color: '#64748b', fontStyle: 'italic', display: 'block', padding: '10px' }}>No evidence uploaded by learner.</span>
+// // // // // //                                         ) : isPrintMode ? (
+// // // // // //                                             <div style={{ border: '1px solid #cbd5e1', borderRadius: '6px', padding: '10px', background: 'white' }}>
+// // // // // //                                                 {safeLearnerAns.text && <div style={{ marginBottom: '10px' }}><strong style={{ fontSize: '0.75rem', color: '#475569' }}>Rich Text Response:</strong><div className="quill-read-only-content" style={{ wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(safeLearnerAns.text) }} /></div>}
+// // // // // //                                                 {safeLearnerAns.audioUrl && <div style={{ marginBottom: '10px' }}><strong style={{ fontSize: '0.75rem', color: '#475569' }}>Audio Recording:</strong><div>URL: {safeLearnerAns.audioUrl}</div></div>}
+// // // // // //                                                 {safeLearnerAns.url && <div style={{ marginBottom: '10px' }}><strong style={{ fontSize: '0.75rem', color: '#475569' }}>Link:</strong><div><a href={safeLearnerAns.url} target="_blank" rel="noreferrer">{safeLearnerAns.url}</a></div></div>}
+// // // // // //                                                 {safeLearnerAns.uploadUrl && <div style={{ marginBottom: '10px' }}><strong style={{ fontSize: '0.75rem', color: '#475569' }}>Uploaded File:</strong><FilePreview url={safeLearnerAns.uploadUrl} /></div>}
+// // // // // //                                                 {safeLearnerAns.code && <div><strong style={{ fontSize: '0.75rem', color: '#475569' }}>Code:</strong><pre style={{ background: '#f1f5f9', padding: '8px', borderRadius: '4px', overflowX: 'auto', fontSize: '0.8rem', fontFamily: 'monospace' }}>{safeLearnerAns.code}</pre></div>}
+// // // // // //                                             </div>
+// // // // // //                                         ) : taskTabs.length === 0 ? (
+// // // // // //                                             <span style={{ color: '#64748b', fontStyle: 'italic' }}>No evidence provided.</span>
+// // // // // //                                         ) : (
+// // // // // //                                             <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden', background: 'white' }}>
+// // // // // //                                                 <div className="no-print" style={{ display: 'flex', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', overflowX: 'auto' }}>
+// // // // // //                                                     {taskTabs.map(t => (
+// // // // // //                                                         <button key={t.id} onClick={() => setActiveTabs({ ...activeTabs, [block.id]: t.id })} style={{ padding: '10px 15px', border: 'none', borderBottom: activeTabId === t.id ? '2px solid var(--mlab-blue)' : '2px solid transparent', background: activeTabId === t.id ? 'white' : 'transparent', color: activeTabId === t.id ? 'var(--mlab-blue)' : '#64748b', fontWeight: activeTabId === t.id ? 'bold' : 'normal', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+// // // // // //                                                             {t.icon} {t.label}
+// // // // // //                                                         </button>
+// // // // // //                                                     ))}
+// // // // // //                                                 </div>
+// // // // // //                                                 <div style={{ padding: '15px' }}>
+// // // // // //                                                     {activeTabId === 'text' && <div className="quill-read-only-content" style={{ wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(safeLearnerAns.text) }} />}
+// // // // // //                                                     {activeTabId === 'audio' && <audio controls src={safeLearnerAns.audioUrl} style={{ width: '100%', height: '40px' }} />}
+// // // // // //                                                     {activeTabId === 'url' && <UrlPreview url={safeLearnerAns.url} />}
+// // // // // //                                                     {activeTabId === 'upload' && <FilePreview url={safeLearnerAns.uploadUrl} />}
+// // // // // //                                                     {activeTabId === 'code' && <pre style={{ margin: 0, overflowX: 'auto', fontSize: '0.85rem', fontFamily: 'monospace', background: '#1e293b', color: '#f8fafc', padding: '15px', borderRadius: '4px' }}><code>{safeLearnerAns.code}</code></pre>}
+// // // // // //                                                 </div>
+// // // // // //                                             </div>
+// // // // // //                                         )}
+// // // // // //                                     </div>
+// // // // // //                                     <div className="sr-grade-box" style={{ borderLeft: `4px solid ${activeInkColor}`, marginTop: '1rem', padding: '1rem', background: 'white', borderRadius: '6px' }}>
+// // // // // //                                         {renderReadOnlyLayers()}
+// // // // // //                                         {(!isPrintMode && isActiveRole) && renderActiveGradeControls(block.id)}
+// // // // // //                                     </div>
+// // // // // //                                 </div>
+// // // // // //                             </div>
+// // // // // //                         );
+// // // // // //                     }
+
+// // // // // //                     // ── LOGBOOK ────────────────────────────────────────────────
+// // // // // //                     if (block.type === 'logbook') {
+// // // // // //                         const entries = Array.isArray(learnerAns) ? learnerAns : [];
+// // // // // //                         const totalHours = entries.reduce((acc: number, curr: any) => acc + (Number(curr.hours) || 0), 0);
+
+// // // // // //                         return (
+// // // // // //                             <div key={block.id} className="sr-q-card" style={{ borderTop: '4px solid black', marginBottom: '2rem' }}>
+// // // // // //                                 <div className="sr-q-header">
+// // // // // //                                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', width: '100%' }}>
+// // // // // //                                         <span className="sr-q-num" style={{ background: '#ffedd5', color: '#ea580c', flexShrink: 0 }}>LOG</span>
+// // // // // //                                         <div className="sr-q-text quill-read-only-content" style={{ color: '#073f4e', fontWeight: 'bold', margin: 0, flex: 1, minWidth: 0, wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.title) }} />
+// // // // // //                                     </div>
+// // // // // //                                 </div>
+// // // // // //                                 <div className="sr-q-body">
+// // // // // //                                     {renderBlockImage(block)}
+// // // // // //                                     <div className="sr-answer-box">
+// // // // // //                                         <div className="sr-answer-label" style={{ color: 'black', display: 'flex', alignItems: 'center', gap: '6px' }}><CalendarRange size={14} /> Workplace Hours Logged:</div>
+// // // // // //                                         {entries.length === 0 ? (
+// // // // // //                                             <span style={{ color: '#64748b', fontStyle: 'italic', display: 'block', padding: '10px' }}>No entries logged by learner.</span>
+// // // // // //                                         ) : (
+// // // // // //                                             <div>
+// // // // // //                                                 <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: '6px' }}>
+// // // // // //                                                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem', textAlign: 'left', background: 'white' }}>
+// // // // // //                                                         <thead>
+// // // // // //                                                             <tr style={{ background: '#f8fafc', borderBottom: '2px solid #cbd5e1', color: '#334155' }}>
+// // // // // //                                                                 <th style={{ padding: '10px' }}>Date</th>
+// // // // // //                                                                 <th style={{ padding: '10px' }}>Assignment Task & Evidence</th>
+// // // // // //                                                                 <th style={{ padding: '10px' }}>Start Time</th>
+// // // // // //                                                                 <th style={{ padding: '10px' }}>Finish Time</th>
+// // // // // //                                                                 <th style={{ padding: '10px' }}>Total Hours</th>
+// // // // // //                                                             </tr>
+// // // // // //                                                         </thead>
+// // // // // //                                                         <tbody>
+// // // // // //                                                             {entries.map((entry: any, i: number) => (
+// // // // // //                                                                 <tr key={i} style={{ borderBottom: '1px solid #f1f5f9', background: 'white', verticalAlign: 'top' }}>
+// // // // // //                                                                     <td style={{ padding: '10px', color: '#0f172a', fontWeight: 'bold' }}>{entry.date}</td>
+// // // // // //                                                                     <td style={{ padding: '10px', color: '#334155' }}>
+// // // // // //                                                                         <div className="quill-read-only-content" style={{ fontSize: '0.85rem', wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(entry.task) || '<em>No task description provided.</em>' }} />
+// // // // // //                                                                         {entry.uploadUrl && <div style={{ marginTop: '10px' }}><FilePreview url={entry.uploadUrl} /></div>}
+// // // // // //                                                                         {entry.url && <div style={{ marginTop: '10px' }}><UrlPreview url={entry.url} /></div>}
+// // // // // //                                                                     </td>
+// // // // // //                                                                     <td style={{ padding: '10px', color: '#475569' }}>{entry.startTime}</td>
+// // // // // //                                                                     <td style={{ padding: '10px', color: '#475569' }}>{entry.endTime}</td>
+// // // // // //                                                                     <td style={{ padding: '10px', color: '#0f172a', fontWeight: 'bold' }}>{entry.hours}</td>
+// // // // // //                                                                 </tr>
+// // // // // //                                                             ))}
+// // // // // //                                                             <tr style={{ background: '#f1f5f9', fontWeight: 'bold' }}>
+// // // // // //                                                                 <td colSpan={4} style={{ padding: '10px', textAlign: 'right', fontFamily: 'var(--font-heading)', textTransform: 'uppercase', fontSize: '0.8rem', color: '#475569' }}>Total Logged Hours:</td>
+// // // // // //                                                                 <td style={{ padding: '10px', color: '#ea580c', fontSize: '1.1rem' }}>{totalHours}</td>
+// // // // // //                                                             </tr>
+// // // // // //                                                         </tbody>
+// // // // // //                                                     </table>
+// // // // // //                                                 </div>
+
+// // // // // //                                                 <LogbookHoursTally entries={entries} requiredHours={block.requiredHours} />
+
+// // // // // //                                                 {isMentor && canFacilitatorMark && (
+// // // // // //                                                     <div style={{ marginTop: '1rem', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '6px', padding: '1rem' }}>
+// // // // // //                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px', color: '#1d4ed8', fontWeight: 'bold', fontSize: '0.8rem', textTransform: 'uppercase' }}>
+// // // // // //                                                             <ShieldCheck size={14} /> Supervisor Comments on Logbook
+// // // // // //                                                         </div>
+// // // // // //                                                         <textarea
+// // // // // //                                                             className="sr-feedback-input"
+// // // // // //                                                             rows={3}
+// // // // // //                                                             style={{ width: '100%', color: 'blue', fontStyle: 'italic', padding: '8px', border: '1px solid #bfdbfe', borderRadius: '4px', resize: 'vertical', background: 'white' }}
+// // // // // //                                                             placeholder="Comment on the accuracy and completeness of hours logged..."
+// // // // // //                                                             value={activeData.feedback || ''}
+// // // // // //                                                             onChange={e => handleFeedbackChange(block.id, e.target.value)}
+// // // // // //                                                         />
+// // // // // //                                                     </div>
+// // // // // //                                                 )}
+// // // // // //                                             </div>
+// // // // // //                                         )}
+// // // // // //                                     </div>
+// // // // // //                                 </div>
+// // // // // //                             </div>
+// // // // // //                         );
+// // // // // //                     }
+
+// // // // // //                     // ── CHECKLIST ──────────────────────────────────────────────
+// // // // // //                     if (block.type === 'checklist') {
+// // // // // //                         return (
+// // // // // //                             <div key={block.id} className="sr-q-card" style={{ borderTop: '4px solid black', marginBottom: '2rem' }}>
+// // // // // //                                 <div className="sr-q-header">
+// // // // // //                                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', width: '100%' }}>
+// // // // // //                                         <span className="sr-q-num" style={{ background: '#ccfbf1', color: '#0d9488', flexShrink: 0 }}>CHK</span>
+// // // // // //                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1, minWidth: 0 }}>
+// // // // // //                                             <div className="sr-q-text quill-read-only-content" style={{ color: '#073f4e', fontWeight: 'bold', margin: 0, wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.title) }} />
+// // // // // //                                             <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+// // // // // //                                                 {isMentor ? 'Workplace observation checklist — verify each criterion.' : 'Assessor observation checklist.'}
+// // // // // //                                             </span>
+// // // // // //                                         </div>
+// // // // // //                                     </div>
+// // // // // //                                 </div>
+// // // // // //                                 <div className="sr-q-body">
+// // // // // //                                     {renderNetworkIDEToggleUI(block)}
+// // // // // //                                     {renderBlockImage(block)}
+// // // // // //                                     <div style={{ marginTop: '1rem' }}>
+// // // // // //                                         {block.criteria?.map((crit: string, i: number) => {
+// // // // // //                                             const mentorResult = fData.criteriaResults?.[i] || { status: null, comment: '' };
+// // // // // //                                             const assessorResult = aData.criteriaResults?.[i] || { status: null, comment: '' };
+// // // // // //                                             const modResult = mData.criteriaResults?.[i] || { status: null, comment: '' };
+// // // // // //                                             const myResult = activeData.criteriaResults?.[i] || { status: null, comment: '', startTime: '', endTime: '' };
+
+// // // // // //                                             let durationStr = '0m 0s';
+// // // // // //                                             if (myResult.startTime && myResult.endTime) {
+// // // // // //                                                 const diffMs = new Date(myResult.endTime).getTime() - new Date(myResult.startTime).getTime();
+// // // // // //                                                 if (diffMs > 0) {
+// // // // // //                                                     const m = Math.floor(diffMs / 60000);
+// // // // // //                                                     const s = Math.floor((diffMs % 60000) / 1000);
+// // // // // //                                                     durationStr = `${m}m ${s}s`;
+// // // // // //                                                 }
+// // // // // //                                             }
+
+// // // // // //                                             return (
+// // // // // //                                                 <div key={i} style={{ marginBottom: '1.5rem', padding: '1.25rem', border: '1px solid #cbd5e1', borderRadius: '8px', background: isActiveRole ? 'white' : '#f8fafc' }}>
+// // // // // //                                                     <p style={{ margin: '0 0 12px 0', fontWeight: 'bold', color: '#0f172a', fontSize: '0.95rem' }}>{i + 1}. {crit}</p>
+
+// // // // // //                                                     {block.requireEvidencePerCriterion !== false && (() => {
+// // // // // //                                                         const rawEv = learnerAns?.[`evidence_${i}`];
+
+// // // // // //                                                         const critEvidence = typeof rawEv === 'string' ? { text: rawEv } : (rawEv || {});
+
+// // // // // //                                                         const cleanTextCheck = critEvidence.text ? critEvidence.text.replace(/<[^>]*>/g, '').trim() : '';
+// // // // // //                                                         const isTextTrulyEmpty = cleanTextCheck.length === 0;
+
+// // // // // //                                                         const allTabs = [
+// // // // // //                                                             { id: 'upload', icon: <UploadCloud size={13} />, label: 'File Artifact', val: critEvidence.uploadUrl, render: () => <FilePreview url={critEvidence.uploadUrl} /> },
+// // // // // //                                                             { id: 'url', icon: <LinkIcon size={13} />, label: 'Web Link', val: critEvidence.url, render: () => <UrlPreview url={critEvidence.url} /> },
+// // // // // //                                                             { id: 'code', icon: <Code size={13} />, label: 'Source Code', val: critEvidence.code, render: () => <pre style={{ background: '#1e293b', color: '#f8fafc', padding: '0.5rem', borderRadius: '4px', overflowX: 'auto', margin: 0, fontFamily: 'monospace', fontSize: '0.82rem' }}><code>{critEvidence.code}</code></pre> },
+// // // // // //                                                             { id: 'text', icon: <FileText size={13} />, label: 'Learner Notes', val: isTextTrulyEmpty ? null : critEvidence.text, render: () => <div className="quill-read-only-content" dangerouslySetInnerHTML={{ __html: cleanRichText(critEvidence.text) }} /> }
+// // // // // //                                                         ];
+
+// // // // // //                                                         const activeEvidenceTabs = allTabs.filter(t => !!t.val);
+// // // // // //                                                         const hasUploadedEvidence = activeEvidenceTabs.length > 0;
+// // // // // //                                                         const isObservedOrTimed = !!(myResult.startTime || myResult.status || mentorResult.status || assessorResult.status);
+
+// // // // // //                                                         if (!hasUploadedEvidence) {
+// // // // // //                                                             if (isObservedOrTimed) {
+// // // // // //                                                                 return (
+// // // // // //                                                                     <div style={{ background: '#fffbeb', border: '1px solid #fef3c7', padding: '12px 15px', borderRadius: '6px', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '8px', color: '#b45309' }}>
+// // // // // //                                                                         <AlertCircle size={18} className="animate-pulse" style={{ color: '#d97706', flexShrink: 0 }} />
+// // // // // //                                                                         <div>
+// // // // // //                                                                             <span style={{ fontSize: '0.8rem', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block' }}>Evidence Pending</span>
+// // // // // //                                                                             <span style={{ fontSize: '0.75rem', color: '#78350f' }}>Observation logged, but waiting for the learner to upload their supporting files.</span>
+// // // // // //                                                                         </div>
+// // // // // //                                                                     </div>
+// // // // // //                                                                 );
+// // // // // //                                                             }
+// // // // // //                                                             return <p style={{ margin: '0 0 12px 0', fontSize: '0.8rem', color: '#64748b', fontStyle: 'italic', background: '#f1f5f9', padding: '8px', borderRadius: '4px' }}>Awaiting learner evidence upload.</p>;
+// // // // // //                                                         }
+
+// // // // // //                                                         const isDraft = ['not_started', 'in_progress'].includes(String(submission?.status || '').toLowerCase());
+// // // // // //                                                         const subTabKey = `${block.id}_ev_${i}`;
+// // // // // //                                                         const activeSubTab = activeTabs[subTabKey] || activeEvidenceTabs[0]?.id;
+// // // // // //                                                         const selectedTabConfig = activeEvidenceTabs.find(t => t.id === activeSubTab) || activeEvidenceTabs[0];
+// // // // // //                                                         const expandKey = `${subTabKey}_expanded`;
+// // // // // //                                                         const isTabExpanded = activeTabs[expandKey] === 'true';
+
+// // // // // //                                                         return (
+// // // // // //                                                             <div style={{ background: isDraft ? '#fffdf5' : '#f5f3ff', border: isDraft ? '1px solid #fef08a' : '1px solid #c4b5fd', padding: '15px', borderRadius: '6px', marginBottom: '15px' }}>
+// // // // // //                                                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
+// // // // // //                                                                     <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', fontWeight: 'bold', color: isDraft ? '#b45309' : '#6d28d9', textTransform: 'uppercase' }}>
+// // // // // //                                                                         <Layers size={16} /> {isDraft ? 'Learner Evidence (Live Draft Preview)' : 'Learner Evidence Submitted'}
+// // // // // //                                                                     </label>
+// // // // // //                                                                     {isDraft && (
+// // // // // //                                                                         <span style={{ fontSize: '0.68rem', background: '#d97706', color: 'white', padding: '2px 8px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+// // // // // //                                                                             Learner Modifying · Not Yet Submitted
+// // // // // //                                                                         </span>
+// // // // // //                                                                     )}
+// // // // // //                                                                 </div>
+
+// // // // // //                                                                 <div className="no-print" style={{ display: 'flex', borderBottom: '1px solid #cbd5e1', gap: '4px', marginBottom: '10px', overflowX: 'auto', paddingBottom: '2px' }}>
+// // // // // //                                                                     {activeEvidenceTabs.map(tab => (
+// // // // // //                                                                         <button key={tab.id} type="button" onClick={() => setActiveTabs({ ...activeTabs, [subTabKey]: tab.id })} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '6px 12px', fontSize: '0.75rem', border: 'none', borderBottom: activeSubTab === tab.id ? (isDraft ? '2px solid #b45309' : '2px solid #6d28d9') : '2px solid transparent', background: activeSubTab === tab.id ? 'white' : 'transparent', color: activeSubTab === tab.id ? (isDraft ? '#b45309' : '#6d28d9') : '#64748b', fontWeight: activeSubTab === tab.id ? 'bold' : 'normal', cursor: 'pointer', whiteSpace: 'nowrap', borderRadius: '4px 4px 0 0' }}>
+// // // // // //                                                                             {tab.icon} {tab.label}
+// // // // // //                                                                         </button>
+// // // // // //                                                                     ))}
+// // // // // //                                                                 </div>
+
+// // // // // //                                                                 <div style={{ position: 'relative' }}>
+// // // // // //                                                                     <div style={{ maxHeight: isTabExpanded ? 'none' : '150px', overflow: 'hidden', transition: 'max-height 0.2s ease-out', border: '1px solid #cbd5e1', borderRadius: '4px', padding: '10px', background: 'white' }}>
+// // // // // //                                                                         {selectedTabConfig?.render()}
+// // // // // //                                                                         {!isTabExpanded && <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '30px', background: 'linear-gradient(to top, white, transparent)', pointerEvents: 'none' }} />}
+// // // // // //                                                                     </div>
+// // // // // //                                                                     <div style={{ marginTop: '6px', display: 'flex', justifyContent: 'flex-start' }}>
+// // // // // //                                                                         <button type="button" onClick={() => setActiveTabs({ ...activeTabs, [expandKey]: isTabExpanded ? 'false' : 'true' })} style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', padding: '3px 8px', fontSize: '0.7rem', fontWeight: 'bold', color: '#475569', borderRadius: '4px', cursor: 'pointer' }}>
+// // // // // //                                                                             {isTabExpanded ? 'Collapse Evidence View ↑' : 'Expand Evidence View ↓'}
+// // // // // //                                                                         </button>
+// // // // // //                                                                     </div>
+// // // // // //                                                                 </div>
+// // // // // //                                                             </div>
+// // // // // //                                                         );
+// // // // // //                                                     })()}
+
+// // // // // //                                                     {/* READ ONLY BACKDOWN LAYERS */}
+// // // // // //                                                     {(isFacDone || mentorResult.status) && (!canFacilitatorMark || isPrintMode) && (
+// // // // // //                                                         <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '6px', padding: '10px', marginBottom: '10px' }}>
+// // // // // //                                                             <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#1d4ed8', textTransform: 'uppercase', display: 'flex', gap: '5px' }}>
+// // // // // //                                                                 <ShieldCheck size={12} /> {savedFacRole === 'mentor' ? 'Workplace Mentor Observation' : 'Facilitator Pre-Mark'}
+// // // // // //                                                             </span>
+// // // // // //                                                             <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: mentorResult.status === 'C' ? '#166534' : mentorResult.status === 'NYC' ? '#991b1b' : '#64748b' }}>
+// // // // // //                                                                 {mentorResult.status === 'C' ? (savedFacRole === 'mentor' ? 'Observed ✓' : 'Competent (C)') : mentorResult.status === 'NYC' ? (savedFacRole === 'mentor' ? 'Not Observed ✗' : 'NYC') : 'Not Reviewed'}
+// // // // // //                                                             </span>
+// // // // // //                                                             {mentorResult.comment && <div style={{ fontSize: '0.82rem', color: '#1e40af', fontStyle: 'italic', marginTop: '4px' }}>{mentorResult.comment}</div>}
+// // // // // //                                                         </div>
+// // // // // //                                                     )}
+
+// // // // // //                                                     {(isAssDone || assessorResult.status) && (!canGrade || isPrintMode) && (
+// // // // // //                                                         <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: '6px', padding: '10px', marginBottom: '10px' }}>
+// // // // // //                                                             <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#b91c1c', textTransform: 'uppercase', display: 'flex', gap: '5px' }}>
+// // // // // //                                                                 <AwardIcon size={12} /> Assessor Grade
+// // // // // //                                                             </span>
+// // // // // //                                                             <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: assessorResult.status === 'C' ? '#166534' : assessorResult.status === 'NYC' ? '#991b1b' : '#64748b' }}>
+// // // // // //                                                                 {assessorResult.status === 'C' ? 'Competent (C)' : assessorResult.status === 'NYC' ? 'NYC' : 'Not Graded'}
+// // // // // //                                                             </span>
+// // // // // //                                                             {assessorResult.comment && <div style={{ fontSize: '0.82rem', color: '#991b1b', fontStyle: 'italic', marginTop: '4px' }}>{assessorResult.comment}</div>}
+// // // // // //                                                         </div>
+// // // // // //                                                     )}
+
+// // // // // //                                                     {(isModDone || modResult.status || modResult.comment) && (!canModerate || isPrintMode) && (
+// // // // // //                                                         <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '6px', padding: '10px', marginBottom: '10px' }}>
+// // // // // //                                                             <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#15803d', textTransform: 'uppercase', display: 'flex', gap: '5px' }}>
+// // // // // //                                                                 <ShieldCheck size={12} /> Moderator QA
+// // // // // //                                                             </span>
+// // // // // //                                                             {modResult.status && (
+// // // // // //                                                                 <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: modResult.status === 'C' ? '#166534' : modResult.status === 'NYC' ? '#991b1b' : '#64748b' }}>
+// // // // // //                                                                     {modResult.status === 'C' ? 'Competent (C)' : modResult.status === 'NYC' ? 'NYC' : 'Not Graded'}
+// // // // // //                                                                 </span>
+// // // // // //                                                             )}
+// // // // // //                                                             {modResult.comment && <div style={{ fontSize: '0.82rem', color: '#15803d', fontStyle: 'italic', marginTop: '4px' }}>{modResult.comment}</div>}
+// // // // // //                                                         </div>
+// // // // // //                                                     )}
+
+// // // // // //                                                     {/* EVALUATION INTERACTIVE INTERFACE CONTROLS */}
+// // // // // //                                                     {(!isPrintMode && isActiveRole) && (
+// // // // // //                                                         <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', flexWrap: 'wrap', borderTop: '1px dashed #cbd5e1', paddingTop: '15px', marginTop: '5px' }}>
+// // // // // //                                                             {block.requirePerCriterionTiming !== false && !canModerate && (
+// // // // // //                                                                 <div style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px', background: '#f1f5f9', padding: '8px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', flexWrap: 'wrap' }}>
+// // // // // //                                                                     <Timer size={16} color="#64748b" style={{ flexShrink: 0 }} />
+// // // // // //                                                                     <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#475569', minWidth: '80px' }}>Task Timer:</span>
+
+// // // // // //                                                                     {!myResult.startTime ? (
+// // // // // //                                                                         <button onClick={() => handleCriterionChange(block.id, i, 'startTime', new Date().toISOString())} className="ab-btn sm" style={{ background: '#10b981', color: 'white', border: 'none', padding: '4px 12px', borderRadius: '4px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}><Play size={12} /> Start</button>
+// // // // // //                                                                     ) : (
+// // // // // //                                                                         <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', alignItems: 'center', flex: 1 }}>
+// // // // // //                                                                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#334155' }}>
+// // // // // //                                                                                 <strong>Start:</strong>
+// // // // // //                                                                                 <input type="datetime-local" className="datetime-input" value={myResult.startTime ? moment(myResult.startTime).format('YYYY-MM-DDTHH:mm') : ''} onChange={(e) => handleCriterionChange(block.id, i, 'startTime', e.target.value ? new Date(e.target.value).toISOString() : '')} style={{ padding: '2px 6px', fontSize: '0.75rem', borderRadius: '4px', border: '1px solid #cbd5e1', background: 'white', color: 'black' }} />
+// // // // // //                                                                             </div>
+
+// // // // // //                                                                             {!myResult.endTime ? (
+// // // // // //                                                                                 <button onClick={() => handleCriterionChange(block.id, i, 'endTime', new Date().toISOString())} className="ab-btn sm" style={{ background: '#ef4444', color: 'white', border: 'none', padding: '4px 12px', borderRadius: '4px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}><Square size={12} /> Stop</button>
+// // // // // //                                                                             ) : (
+// // // // // //                                                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+// // // // // //                                                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#334155' }}>
+// // // // // //                                                                                         <strong>End:</strong>
+// // // // // //                                                                                         <input type="datetime-local" className="datetime-input" value={myResult.endTime ? moment(myResult.endTime).format('YYYY-MM-DDTHH:mm') : ''} onChange={(e) => handleCriterionChange(block.id, i, 'endTime', e.target.value ? new Date(e.target.value).toISOString() : '')} style={{ padding: '2px 6px', fontSize: '0.75rem', borderRadius: '4px', border: '1px solid #cbd5e1', background: 'white', color: 'black' }} />
+// // // // // //                                                                                     </div>
+// // // // // //                                                                                     <span style={{ color: '#0ea5e9', fontWeight: 'bold', background: '#e0f2fe', padding: '4px 8px', borderRadius: '4px', fontSize: '0.75rem' }}>Duration: {durationStr}</span>
+// // // // // //                                                                                 </div>
+// // // // // //                                                                             )}
+// // // // // //                                                                         </div>
+// // // // // //                                                                     )}
+// // // // // //                                                                 </div>
+// // // // // //                                                             )}
+// // // // // //                                                             <div style={{ display: 'flex', gap: '10px' }}>
+// // // // // //                                                                 <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.85rem', background: myResult.status === 'C' ? '#dcfce7' : '#f8fafc', padding: '8px 12px', borderRadius: '4px', border: myResult.status === 'C' ? '2px solid #22c55e' : '1px solid #cbd5e1', color: myResult.status === 'C' ? '#166534' : '#64748b', fontWeight: 'bold', cursor: canModerate ? 'not-allowed' : 'pointer' }}>
+// // // // // //                                                                     <input type="radio" disabled={canModerate} checked={myResult.status === 'C'} onChange={() => handleCriterionChange(block.id, i, 'status', 'C')} style={{ accentColor: '#22c55e' }} />
+// // // // // //                                                                     {isMentor ? 'Observed ✓' : 'Competent (C)'}
+// // // // // //                                                                 </label>
+// // // // // //                                                                 <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.85rem', background: myResult.status === 'NYC' ? '#fee2e2' : '#f8fafc', padding: '8px 12px', borderRadius: '4px', border: myResult.status === 'NYC' ? '2px solid #ef4444' : '1px solid #cbd5e1', color: myResult.status === 'NYC' ? '#991b1b' : '#64748b', fontWeight: 'bold', cursor: canModerate ? 'not-allowed' : 'pointer' }}>
+// // // // // //                                                                     <input type="radio" disabled={canModerate} checked={myResult.status === 'NYC'} onChange={() => handleCriterionChange(block.id, i, 'status', 'NYC')} style={{ accentColor: '#ef4444' }} />
+// // // // // //                                                                     {isMentor ? 'Not Observed ✗' : 'NYC'}
+// // // // // //                                                                 </label>
+// // // // // //                                                             </div>
+// // // // // //                                                             <div style={{ flex: 1, minWidth: '250px' }}>
+// // // // // //                                                                 <textarea className="ab-input" disabled={canModerate && !isWorkplaceModule && !myResult.comment} rows={2} placeholder={isMentor ? "Supervisor observation notes..." : canModerate ? "Assessor's comments" : "Assessor comments / reasoning..."} value={myResult.comment} onChange={e => handleCriterionChange(block.id, i, 'comment', e.target.value)} style={{ fontSize: '0.85rem', width: '100%', border: '1px solid #e2e8f0', resize: 'vertical', background: 'white' }} />
+// // // // // //                                                             </div>
+// // // // // //                                                         </div>
+// // // // // //                                                     )}
+// // // // // //                                                 </div>
+// // // // // //                                             );
+// // // // // //                                         })}
+
+// // // // // //                                         <div className="sr-grade-box" style={{ borderTop: `1px dashed #cbd5e1`, marginTop: '1rem', paddingTop: '1rem' }}>
+// // // // // //                                             {renderReadOnlyLayers()}
+// // // // // //                                             {(!isPrintMode && isActiveRole) && renderActiveGradeControls(block.id)}
+// // // // // //                                         </div>
+
+// // // // // //                                         {block.requireObservationDeclaration !== false && !canModerate && (
+// // // // // //                                             <div style={{ marginTop: '2rem', padding: '1.5rem', background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '8px', borderLeft: `4px solid ${activeInkColor}` }}>
+// // // // // //                                                 <h4 style={{ fontSize: '0.9rem', color: '#0f172a', margin: '0 0 15px 0', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '6px' }}>
+// // // // // //                                                     <ShieldCheck size={16} color={activeInkColor} />
+// // // // // //                                                     {isWorkplaceModule ? 'Mentor Verification Declaration' : 'Observation Declaration'}
+// // // // // //                                                 </h4>
+
+// // // // // //                                                 {block.requireTimeTracking !== false && (
+// // // // // //                                                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px', marginBottom: '15px' }}>
+// // // // // //                                                         {(['obsDate', 'obsStartTime', 'obsEndTime'] as const).map((field, fi) => {
+// // // // // //                                                             const labels = ['Date of Observation', 'Session Start Time', 'Session End Time'];
+// // // // // //                                                             const types = ['date', 'time', 'time'];
+// // // // // //                                                             const val = decData[field];
+// // // // // //                                                             return (
+// // // // // //                                                                 <div key={field}>
+// // // // // //                                                                     <label style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#475569', marginBottom: '4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+// // // // // //                                                                         {labels[fi]}
+// // // // // //                                                                         {isDeclarationInteractive && !isPrintMode && <button className="ab-text-btn" style={{ fontSize: '0.65rem', padding: 0 }} onClick={() => handleSetToNow(block.id, field)}>Set Now</button>}
+// // // // // //                                                                     </label>
+// // // // // //                                                                     {(!isDeclarationInteractive || isPrintMode)
+// // // // // //                                                                         ? <div style={{ fontWeight: 'bold', fontSize: '0.9rem', color: '#0f172a' }}>{field === 'obsDate' ? (val ? moment(val).format('DD/MM/YYYY') : '—') : (val || '—')}</div>
+// // // // // //                                                                         : <input type={types[fi]} className="ab-input" value={val || ''} onChange={e => handleGlobalChecklistChange(block.id, field, e.target.value)} />
+// // // // // //                                                                     }
+// // // // // //                                                                 </div>
+// // // // // //                                                             );
+// // // // // //                                                         })}
+// // // // // //                                                     </div>
+// // // // // //                                                 )}
+
+// // // // // //                                                 <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.85rem', color: '#0f172a', fontWeight: 'bold', background: decData.obsDeclaration ? '#eff6ff' : 'white', padding: '10px', borderRadius: '6px', border: '1px solid #bfdbfe', cursor: isDeclarationInteractive && !isPrintMode ? 'pointer' : 'default' }}>
+// // // // // //                                                     <input type="checkbox" disabled={!isDeclarationInteractive || isPrintMode} checked={decData.obsDeclaration || false} onChange={e => handleGlobalChecklistChange(block.id, 'obsDeclaration', e.target.checked)} style={{ width: '18px', height: '18px', accentColor: isDeclarationInteractive ? activeInkColor : '#64748b' }} />
+// // // // // //                                                     {isWorkplaceModule
+// // // // // //                                                         ? 'I confirm that I have directly observed this learner performing the above workplace activities in a real work environment, and that the evidence submitted is authentic.'
+// // // // // //                                                         : 'I officially declare that I have observed the learner performing these tasks and that the evidence was submitted by the learner.'}
+// // // // // //                                                 </label>
+// // // // // //                                             </div>
+// // // // // //                                         )}
+// // // // // //                                     </div>
+// // // // // //                                 </div>
+// // // // // //                             </div>
+// // // // // //                         );
+// // // // // //                     }
+
+// // // // // //                     // ── QCTO WORKPLACE ─────────────────────────────────────────
+// // // // // //                     if (block.type === 'qcto_workplace') {
+// // // // // //                         return (
+// // // // // //                             <div key={block.id} className="sr-q-card" style={{ borderTop: '4px solid black', marginBottom: '2rem' }}>
+// // // // // //                                 <div className="sr-q-header">
+// // // // // //                                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', width: '100%' }}>
+// // // // // //                                         <span className="sr-q-num" style={{ background: '#ffe4e6', color: '#e11d48', flexShrink: 0 }}>QCTO</span>
+// // // // // //                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1, minWidth: 0 }}>
+// // // // // //                                             <div className="sr-q-text quill-read-only-content" style={{ color: '#073f4e', fontWeight: 'bold', margin: 0, wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(`${block.weCode} – ${block.weTitle}`) }} />
+// // // // // //                                             <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+// // // // // //                                                 {isMentor ? 'Workplace Experience — Mentor Verification' : 'Workplace Experience Checkpoint'}
+// // // // // //                                             </span>
+// // // // // //                                         </div>
+// // // // // //                                     </div>
+// // // // // //                                 </div>
+
+// // // // // //                                 <div className="sr-q-body">
+// // // // // //                                     {renderNetworkIDEToggleUI(block)}
+// // // // // //                                     {renderBlockImage(block)}
+// // // // // //                                     {block.workActivities?.map((wa: any, actIdx: number) => {
+// // // // // //                                         const taskKey = `wa_${wa.id}_task`;
+// // // // // //                                         const dateKey = `wa_${wa.id}_date`;
+// // // // // //                                         const task = learnerAns?.[taskKey] || '';
+// // // // // //                                         const date = learnerAns?.[dateKey] || '';
+
+// // // // // //                                         const mentorResult = fData.activityResults?.[actIdx] || { status: null, comment: '' };
+// // // // // //                                         const assessorResult = aData.activityResults?.[actIdx] || { status: null, comment: '' };
+// // // // // //                                         const modResult = mData.activityResults?.[actIdx] || { status: null, comment: '' };
+// // // // // //                                         const myResult = activeData.activityResults?.[actIdx] || { status: null, comment: '' };
+
+// // // // // //                                         return (
+// // // // // //                                             <div key={wa.id} style={{ marginBottom: '2rem', border: '1px solid #cbd5e1', borderRadius: '8px', background: isActiveRole ? 'white' : '#f8fafc' }}>
+// // // // // //                                                 <div style={{ padding: '1rem', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+// // // // // //                                                     <h4 style={{ margin: 0, color: '#073f4e' }}>{wa.code}: {wa.description}</h4>
+// // // // // //                                                 </div>
+// // // // // //                                                 <div style={{ padding: '1rem' }}>
+// // // // // //                                                     <div style={{ marginBottom: '1.5rem' }}>
+// // // // // //                                                         <div style={{ display: 'flex', gap: '20px', marginBottom: '15px', flexWrap: 'wrap' }}>
+// // // // // //                                                             {task && <div style={{ flex: 1, minWidth: '250px' }}><strong style={{ fontSize: '0.75rem', color: '#64748b' }}>Task Performed:</strong><div className="quill-read-only-content" style={{ wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap', marginTop: '6px' }} dangerouslySetInnerHTML={{ __html: cleanRichText(task) }} /></div>}
+// // // // // //                                                             {date && <div style={{ minWidth: '120px' }}><strong style={{ fontSize: '0.75rem', color: '#64748b' }}>Date:</strong><div style={{ marginTop: '6px' }}>{new Date(date).toLocaleDateString()}</div></div>}
+// // // // // //                                                         </div>
+
+// // // // // //                                                         {wa.evidenceItems?.map((evItem: any) => {
+// // // // // //                                                             const seKey = `se_${evItem.id}`;
+
+// // // // // //                                                             // 🚀 FIX: Safely parse legacy string sub-evidence objects
+// // // // // //                                                             const rawSe = learnerAns?.[seKey];
+// // // // // //                                                             const seData = typeof rawSe === 'string' ? { text: rawSe } : (rawSe || {});
+
+// // // // // //                                                             return (
+// // // // // //                                                                 <div key={evItem.id} style={{ marginBottom: '1.5rem', background: '#f8fafc', padding: '10px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+// // // // // //                                                                     <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#e11d48', display: 'block', marginBottom: '8px' }}>
+// // // // // //                                                                         Evidence: {evItem.code} - {evItem.description}
+// // // // // //                                                                     </span>
+// // // // // //                                                                     {seData.uploadUrl && <div style={{ marginBottom: '10px' }}><FilePreview url={seData.uploadUrl} /></div>}
+// // // // // //                                                                     {seData.url && <div style={{ marginBottom: '10px' }}><UrlPreview url={seData.url} /></div>}
+// // // // // //                                                                     {seData.code && <pre style={{ background: '#1e293b', color: '#f8fafc', padding: '0.75rem', borderRadius: '4px', overflowX: 'auto', marginBottom: '10px' }}><code>{seData.code}</code></pre>}
+// // // // // //                                                                     {seData.text && <div className="quill-read-only-content" dangerouslySetInnerHTML={{ __html: cleanRichText(seData.text) }} />}
+// // // // // //                                                                     {(!seData.uploadUrl && !seData.url && !seData.code && !seData.text) && <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontStyle: 'italic' }}>No evidence attached for this item.</span>}
+// // // // // //                                                                 </div>
+// // // // // //                                                             );
+// // // // // //                                                         })}
+// // // // // //                                                     </div>
+
+// // // // // //                                                     <div style={{ borderTop: '1px dashed #cbd5e1', paddingTop: '1rem' }}>
+// // // // // //                                                         {(isFacDone || mentorResult.status) && (!canFacilitatorMark || isPrintMode) && (
+// // // // // //                                                             <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '6px', padding: '10px', marginBottom: '10px' }}>
+// // // // // //                                                                 <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#1d4ed8', textTransform: 'uppercase', display: 'flex', gap: '5px' }}>
+// // // // // //                                                                     <ShieldCheck size={12} /> {savedFacRole === 'mentor' ? 'Workplace Mentor Observation' : 'Facilitator Pre-Mark'}
+// // // // // //                                                                 </span>
+// // // // // //                                                                 <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: mentorResult.status === 'C' ? '#166534' : mentorResult.status === 'NYC' ? '#991b1b' : '#64748b' }}>
+// // // // // //                                                                     {mentorResult.status === 'C' ? (savedFacRole === 'mentor' ? 'Observed ✓' : 'Competent (C)') : mentorResult.status === 'NYC' ? (savedFacRole === 'mentor' ? 'Not Observed ✗' : 'NYC') : 'Not Reviewed'}
+// // // // // //                                                                 </span>
+// // // // // //                                                                 {mentorResult.comment && <div style={{ fontSize: '0.82rem', color: '#1e40af', fontStyle: 'italic', marginTop: '4px' }}>{mentorResult.comment}</div>}
+// // // // // //                                                             </div>
+// // // // // //                                                         )}
+
+// // // // // //                                                         {(isAssDone || assessorResult.status) && (!canGrade || isPrintMode) && (
+// // // // // //                                                             <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: '6px', padding: '10px', marginBottom: '10px' }}>
+// // // // // //                                                                 <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#b91c1c', textTransform: 'uppercase', display: 'flex', gap: '5px' }}>
+// // // // // //                                                                     <AwardIcon size={12} /> Assessor Grade
+// // // // // //                                                                 </span>
+// // // // // //                                                                 <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: assessorResult.status === 'C' ? '#166534' : assessorResult.status === 'NYC' ? '#991b1b' : '#64748b' }}>
+// // // // // //                                                                     {assessorResult.status === 'C' ? 'Competent (C)' : assessorResult.status === 'NYC' ? 'NYC' : 'Not Graded'}
+// // // // // //                                                                 </span>
+// // // // // //                                                                 {assessorResult.comment && <div style={{ fontSize: '0.82rem', color: '#991b1b', fontStyle: 'italic', marginTop: '4px' }}>{assessorResult.comment}</div>}
+// // // // // //                                                             </div>
+// // // // // //                                                         )}
+
+// // // // // //                                                         {(isModDone || modResult.status || modResult.comment) && (!canModerate || isPrintMode) && (
+// // // // // //                                                             <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '6px', padding: '10px', marginBottom: '10px' }}>
+// // // // // //                                                                 <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#15803d', textTransform: 'uppercase', display: 'flex', gap: '5px' }}>
+// // // // // //                                                                     <ShieldCheck size={12} /> Moderator QA
+// // // // // //                                                                 </span>
+// // // // // //                                                                 {modResult.status && (
+// // // // // //                                                                     <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: modResult.status === 'C' ? '#166534' : modResult.status === 'NYC' ? '#991b1b' : '#64748b' }}>
+// // // // // //                                                                         {modResult.status === 'C' ? 'Competent (C)' : modResult.status === 'NYC' ? 'NYC' : 'Not Graded'}
+// // // // // //                                                                     </span>
+// // // // // //                                                                 )}
+// // // // // //                                                                 {modResult.comment && <div style={{ fontSize: '0.82rem', color: '#15803d', fontStyle: 'italic', marginTop: '4px' }}>{modResult.comment}</div>}
+// // // // // //                                                             </div>
+// // // // // //                                                         )}
+
+// // // // // //                                                         {/* EVALUATION INTERACTIVE INTERFACE CONTROLS */}
+// // // // // //                                                         {(!isPrintMode && isActiveRole) && (
+// // // // // //                                                             <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', flexWrap: 'wrap', borderTop: '1px dashed #cbd5e1', paddingTop: '10px', marginTop: '10px' }}>
+// // // // // //                                                                 <div style={{ display: 'flex', gap: '10px' }}>
+// // // // // //                                                                     <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.85rem', background: myResult.status === 'C' ? '#dcfce7' : '#f8fafc', padding: '8px 12px', borderRadius: '4px', border: myResult.status === 'C' ? '2px solid #22c55e' : '1px solid #cbd5e1', color: myResult.status === 'C' ? '#166534' : '#64748b', fontWeight: 'bold', cursor: canModerate ? 'not-allowed' : 'pointer' }}>
+// // // // // //                                                                         <input type="radio" disabled={canModerate} checked={myResult.status === 'C'} onChange={() => handleActivityStatusChange(block.id, actIdx, 'C')} style={{ accentColor: '#22c55e' }} />
+// // // // // //                                                                         {isMentor ? 'Verified ✓' : 'Competent (C)'}
+// // // // // //                                                                     </label>
+// // // // // //                                                                     <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.85rem', background: myResult.status === 'NYC' ? '#fee2e2' : '#f8fafc', padding: '8px 12px', borderRadius: '4px', border: myResult.status === 'NYC' ? '2px solid #ef4444' : '1px solid #cbd5e1', color: myResult.status === 'NYC' ? '#991b1b' : '#64748b', fontWeight: 'bold', cursor: canModerate ? 'not-allowed' : 'pointer' }}>
+// // // // // //                                                                         <input type="radio" disabled={canModerate} checked={myResult.status === 'NYC'} onChange={() => handleActivityStatusChange(block.id, actIdx, 'NYC')} style={{ accentColor: '#ef4444' }} />
+// // // // // //                                                                         {isMentor ? 'Not Verified ✗' : 'NYC'}
+// // // // // //                                                                     </label>
+// // // // // //                                                                 </div>
+// // // // // //                                                                 <div style={{ flex: 1, minWidth: '250px' }}>
+// // // // // //                                                                     <textarea className="ab-input" disabled={canModerate && !myResult.comment} rows={2} placeholder={isMentor ? "Supervisor verification notes..." : canModerate ? "Assessor's comments" : "Assessor comments / reasoning..."} value={myResult.comment} onChange={e => handleActivityCommentChange(block.id, actIdx, e.target.value)} style={{ fontSize: '0.85rem', width: '100%', border: '1px solid #e2e8f0', resize: 'vertical', background: 'white' }} />
+// // // // // //                                                                 </div>
+// // // // // //                                                             </div>
+// // // // // //                                                         )}
+// // // // // //                                                     </div>
+// // // // // //                                                 </div>
+// // // // // //                                             </div>
+// // // // // //                                         );
+// // // // // //                                     })}
+// // // // // //                                     <div className="ap-workplace__toggles" style={{ marginTop: '1rem' }}>
+// // // // // //                                         {block.requireSelfAssessment !== false && (
+// // // // // //                                             <label className={`ap-workplace__toggle${learnerAns?.selfAssessmentDone ? ' ap-workplace__toggle--checked' : ''}`}>
+// // // // // //                                                 <CheckCircle size={16} color={learnerAns?.selfAssessmentDone ? 'var(--mlab-green)' : 'var(--mlab-grey-light)'} />
+// // // // // //                                                 <span className="ap-workplace__toggle-label" style={{ color: learnerAns?.selfAssessmentDone ? 'black' : 'var(--mlab-grey-light)' }}>Learner completed self-assessment.</span>
+// // // // // //                                             </label>
+// // // // // //                                         )}
+// // // // // //                                         {block.requireGoalPlanning !== false && (
+// // // // // //                                             <label className={`ap-workplace__toggle${learnerAns?.goalPlanningDone ? ' ap-workplace__toggle--checked' : ''}`}>
+// // // // // //                                                 <CheckCircle size={16} color={learnerAns?.goalPlanningDone ? 'var(--mlab-green)' : 'var(--mlab-grey-light)'} />
+// // // // // //                                                 <span className="ap-workplace__toggle-label" style={{ color: learnerAns?.goalPlanningDone ? 'black' : 'var(--mlab-grey-light)' }}>Learner updated goal planning document.</span>
+// // // // // //                                             </label>
+// // // // // //                                         )}
+// // // // // //                                     </div>
+
+// // // // // //                                     <div className="sr-grade-box" style={{ borderTop: `1px dashed #cbd5e1`, marginTop: '1rem', paddingTop: '1rem' }}>
+// // // // // //                                         {renderReadOnlyLayers()}
+// // // // // //                                         {(!isPrintMode && isActiveRole) && renderActiveGradeControls(block.id)}
+// // // // // //                                     </div>
+
+// // // // // //                                     {block.requireObservationDeclaration !== false && !canModerate && (
+// // // // // //                                         <div style={{ marginTop: '2rem', padding: '1.5rem', background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '8px', borderLeft: `4px solid ${activeInkColor}` }}>
+// // // // // //                                             <h4 style={{ fontSize: '0.9rem', color: '#0f172a', margin: '0 0 15px 0', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '6px' }}>
+// // // // // //                                                 <ShieldCheck size={16} color={activeInkColor} />
+// // // // // //                                                 {isWorkplaceModule ? 'Mentor Verification Declaration' : 'Observation Declaration'}
+// // // // // //                                             </h4>
+
+// // // // // //                                             {block.requireTimeTracking !== false && (
+// // // // // //                                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px', marginBottom: '15px' }}>
+// // // // // //                                                     {(['obsDate', 'obsStartTime', 'obsEndTime'] as const).map((field, fi) => {
+// // // // // //                                                         const labels = ['Date of Observation', 'Session Start Time', 'Session End Time'];
+// // // // // //                                                         const types = ['date', 'time', 'time'];
+// // // // // //                                                         const val = decData[field];
+// // // // // //                                                         return (
+// // // // // //                                                             <div key={field}>
+// // // // // //                                                                 <label style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#475569', marginBottom: '4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+// // // // // //                                                                     {labels[fi]}
+// // // // // //                                                                     {isDeclarationInteractive && !isPrintMode && <button className="ab-text-btn" style={{ fontSize: '0.65rem', padding: 0 }} onClick={() => handleSetToNow(block.id, field)}>Set Now</button>}
+// // // // // //                                                                 </label>
+// // // // // //                                                                 {(!isDeclarationInteractive || isPrintMode)
+// // // // // //                                                                     ? <div style={{ fontWeight: 'bold', fontSize: '0.9rem', color: '#0f172a' }}>{field === 'obsDate' ? (val ? moment(val).format('DD/MM/YYYY') : '—') : (val || '—')}</div>
+// // // // // //                                                                     : <input type={types[fi]} className="ab-input" value={val || ''} onChange={e => handleGlobalChecklistChange(block.id, field, e.target.value)} />
+// // // // // //                                                                 }
+// // // // // //                                                             </div>
+// // // // // //                                                         );
+// // // // // //                                                     })}
+// // // // // //                                                 </div>
+// // // // // //                                             )}
+
+// // // // // //                                             <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.85rem', color: '#0f172a', fontWeight: 'bold', background: decData.obsDeclaration ? '#eff6ff' : 'white', padding: '10px', borderRadius: '6px', border: '1px solid #bfdbfe', cursor: isDeclarationInteractive && !isPrintMode ? 'pointer' : 'default' }}>
+// // // // // //                                                 <input type="checkbox" disabled={!isDeclarationInteractive || isPrintMode} checked={decData.obsDeclaration || false} onChange={e => handleGlobalChecklistChange(block.id, 'obsDeclaration', e.target.checked)} style={{ width: '18px', height: '18px', accentColor: isDeclarationInteractive ? activeInkColor : '#64748b' }} />
+// // // // // //                                                 {isWorkplaceModule
+// // // // // //                                                     ? 'I confirm that I have directly observed this learner performing the above workplace activities in a real work environment, and that the evidence submitted is authentic.'
+// // // // // //                                                     : 'I officially declare that I have observed the learner performing these tasks and that the evidence was submitted by the learner.'}
+// // // // // //                                             </label>
+// // // // // //                                         </div>
+// // // // // //                                     )}
+// // // // // //                                 </div>
+// // // // // //                             </div>
+// // // // // //                         );
+// // // // // //                     }
+// // // // // //                 }
+// // // // // //                 return null;
+// // // // // //             })}
+// // // // // //         </>
+// // // // // //     );
+// // // // // // };
+
+
+// // // // // // // // src/pages/FacilitatorDashboard/SubmissionReview/SubmissionReview/SubmissionReviewBlocks.tsx
+// // // // // // // import React, { useState, useEffect, useRef } from 'react';
+// // // // // // // import {
+// // // // // // //     Award, Check, CheckCircle, X, Edit3, Info, Layers, FileText, Mic,
+// // // // // // //     UploadCloud, Code, Link as LinkIcon, CalendarRange, Timer, Play, Square,
+// // // // // // //     ShieldCheck, Award as AwardIcon, BarChart, AlertCircle, Sigma, Lock, Loader2, Maximize2,
+// // // // // // //     ChevronDown, ChevronUp
+// // // // // // // } from 'lucide-react';
+// // // // // // // import moment from 'moment';
+// // // // // // // import { LogbookHoursTally } from './SubmissionReviewHelpers';
+// // // // // // // import { FilePreview } from './SubmissionReviewPreviews';
+// // // // // // // import { UrlPreview } from '../../../../components/common/UrlPreview';
+// // // // // // // import '../SubmissionReview';
+// // // // // // // import { CodeSandboxPlayer } from '../../../../components/common/CodeSandboxPlayer/CodeSandboxPlayer';
+// // // // // // // import { getFunctions, httpsCallable } from 'firebase/functions';
+
+// // // // // // // // 🚀 Direct Firestore Import for Real-Time Unlocks
+// // // // // // // import { getFirestore, doc, setDoc } from 'firebase/firestore';
+
+// // // // // // // // 🚀 Core Charting Engine Registration
+// // // // // // // import { CartesianPlane } from '@zakq/axisjs';
+// // // // // // // import "mathlive";
+
+// // // // // // // const POINT_COLORS = ["#ef4444", "#2563eb", "#94c73d", "#f59e0b", "#a855f7", "#0891b2"];
+
+// // // // // // // // ─── TYPES ───────────────────────────────────────────────────────────────────
+// // // // // // // export interface CriterionResult {
+// // // // // // //     status: 'C' | 'NYC' | null;
+// // // // // // //     comment: string;
+// // // // // // //     startTime: string;
+// // // // // // //     endTime: string;
+// // // // // // // }
+
+// // // // // // // export interface WorkplaceActivityResult {
+// // // // // // //     status: 'C' | 'NYC' | null;
+// // // // // // //     comment: string;
+// // // // // // // }
+
+// // // // // // // export interface GradeData {
+// // // // // // //     score: number;
+// // // // // // //     feedback: string;
+// // // // // // //     isCorrect?: boolean | null;
+// // // // // // //     criteriaResults?: CriterionResult[];
+// // // // // // //     activityResults?: WorkplaceActivityResult[];
+// // // // // // //     obsDate?: string;
+// // // // // // //     obsStartTime?: string;
+// // // // // // //     obsEndTime?: string;
+// // // // // // //     obsDeclaration?: boolean;
+// // // // // // // }
+
+// // // // // // // // ─── PROPS INTERFACE ─────────────────────────────────────────────────────────
+// // // // // // // interface RenderBlocksProps {
+// // // // // // //     assessment: any;
+// // // // // // //     submission: any;
+// // // // // // //     facBreakdown: Record<string, GradeData>;
+// // // // // // //     assBreakdown: Record<string, GradeData>;
+// // // // // // //     modBreakdown: Record<string, GradeData>;
+// // // // // // //     activeTabs: Record<string, string>;
+// // // // // // //     setActiveTabs: (tabs: Record<string, string>) => void;
+// // // // // // //     sectionTotals: Record<string, { total: number; awarded: number }>;
+
+// // // // // // //     // Flags
+// // // // // // //     isPrintMode: boolean;
+// // // // // // //     canFacilitatorMark: boolean;
+// // // // // // //     canGrade: boolean;
+// // // // // // //     canModerate: boolean;
+// // // // // // //     isFacDone: boolean;
+// // // // // // //     isAssDone: boolean;
+// // // // // // //     isModDone: boolean;
+// // // // // // //     isMentor: boolean;
+// // // // // // //     isWorkplaceModule: boolean;
+// // // // // // //     savedFacRole: string;
+// // // // // // //     facReadOnlyLabel: string;
+
+// // // // // // //     // Handlers
+// // // // // // //     handleVisualMark: (blockId: string, isCorrect: boolean, maxMarks: number) => void;
+// // // // // // //     handleScoreChange: (blockId: string, score: number, max: number) => void;
+// // // // // // //     handleFeedbackChange: (blockId: string, feedback: string) => void;
+// // // // // // //     handleCriterionChange: (blockId: string, index: number, field: keyof CriterionResult, value: any) => void;
+// // // // // // //     handleActivityStatusChange: (blockId: string, index: number, status: 'C' | 'NYC') => void;
+// // // // // // //     handleActivityCommentChange: (blockId: string, index: number, comment: string) => void;
+// // // // // // //     handleGlobalChecklistChange: (blockId: string, field: 'obsDate' | 'obsStartTime' | 'obsEndTime' | 'obsDeclaration', value: any) => void;
+// // // // // // //     handleSetToNow: (blockId: string, field: 'obsDate' | 'obsStartTime' | 'obsEndTime') => void;
+// // // // // // // }
+
+// // // // // // // // ─── HELPER: CLEAN RICH TEXT ─────────────────────────────────────────────────
+// // // // // // // const cleanRichText = (html?: string) => {
+// // // // // // //     if (!html) return '';
+// // // // // // //     return html.replace(/&nbsp;/g, ' ');
+// // // // // // // };
+
+// // // // // // // // ─── HELPER: RENDER ATTACHED IMAGES ──────────────────────────────────────────
+// // // // // // // const renderBlockImage = (block: any) => {
+// // // // // // //     if (!block.imageUrl) return null;
+// // // // // // //     return (
+// // // // // // //         <div className="no-print" style={{ margin: '1rem 0', textAlign: 'center' }}>
+// // // // // // //             <img
+// // // // // // //                 src={block.imageUrl}
+// // // // // // //                 alt={block.imageCaption || "Assessment attachment"}
+// // // // // // //                 style={{ maxWidth: '100%', maxHeight: '400px', borderRadius: '8px', border: '1px solid #e2e8f0', objectFit: 'contain' }}
+// // // // // // //             />
+// // // // // // //             {block.imageCaption && (
+// // // // // // //                 <p style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '8px', fontStyle: 'italic' }}>
+// // // // // // //                     {block.imageCaption}
+// // // // // // //                 </p>
+// // // // // // //             )}
+// // // // // // //         </div>
+// // // // // // //     );
+// // // // // // // };
+
+// // // // // // // // ─── AXISJS GRAPH SNAPSHOT VISUALIZER ────────────────────────────────────────
+// // // // // // // const ReviewAxisGraph: React.FC<{ block: any; learnerAns: any }> = ({ block, learnerAns }) => {
+// // // // // // //     const containerRef = useRef<HTMLDivElement>(null);
+// // // // // // //     const canvasRef = useRef<HTMLCanvasElement>(null);
+// // // // // // //     const planeRef = useRef<CartesianPlane | null>(null);
+
+// // // // // // //     useEffect(() => {
+// // // // // // //         if (!canvasRef.current) return;
+
+// // // // // // //         const plane = new CartesianPlane(canvasRef.current, {
+// // // // // // //             stepSequences: [1, 2, 5],
+// // // // // // //             autoFit: false,
+// // // // // // //         });
+// // // // // // //         planeRef.current = plane;
+
+// // // // // // //         const ro = new ResizeObserver(() => {
+// // // // // // //             plane.resize();
+// // // // // // //         });
+// // // // // // //         if (containerRef.current) {
+// // // // // // //             ro.observe(containerRef.current);
+// // // // // // //         }
+
+// // // // // // //         return () => {
+// // // // // // //             ro.disconnect();
+// // // // // // //             plane.destroy();
+// // // // // // //             planeRef.current = null;
+// // // // // // //         };
+// // // // // // //     }, []);
+
+// // // // // // //     useEffect(() => {
+// // // // // // //         const plane = planeRef.current;
+// // // // // // //         if (!plane) return;
+
+// // // // // // //         plane.clear();
+// // // // // // //         const allCoords: { x: number; y: number }[] = [];
+
+// // // // // // //         const pointsList = learnerAns?.points || [];
+// // // // // // //         const shapesList = learnerAns?.shapes || [];
+
+// // // // // // //         pointsList.forEach((p: any, i: number) => {
+// // // // // // //             const px = parseFloat(String(p.x));
+// // // // // // //             const py = parseFloat(String(p.y));
+// // // // // // //             if (!isNaN(px) && !isNaN(py)) {
+// // // // // // //                 allCoords.push({ x: px, y: py });
+// // // // // // //                 const color = POINT_COLORS[i % POINT_COLORS.length];
+// // // // // // //                 plane.addPoint(px, py, color, `(${px}, ${py})`, true, 5);
+// // // // // // //             }
+// // // // // // //         });
+
+// // // // // // //         shapesList.forEach((shape: any) => {
+// // // // // // //             const shapeCoords: { x: number; y: number }[] = [];
+// // // // // // //             shape.points?.forEach((p: any) => {
+// // // // // // //                 const px = parseFloat(String(p.x));
+// // // // // // //                 const py = parseFloat(String(p.y));
+// // // // // // //                 if (!isNaN(px) && !isNaN(py)) {
+// // // // // // //                     shapeCoords.push({ x: px, y: py });
+// // // // // // //                     allCoords.push({ x: px, y: py });
+// // // // // // //                 }
+// // // // // // //             });
+
+// // // // // // //             if (shapeCoords.length > 0) {
+// // // // // // //                 plane.addPolygon(shapeCoords, `${shape.color}1f`, shape.color, 2);
+// // // // // // //                 shapeCoords.forEach((coord) => {
+// // // // // // //                     plane.addPoint(coord.x, coord.y, shape.color, `(${coord.x}, ${coord.y})`, false, 5);
+// // // // // // //                 });
+// // // // // // //             }
+// // // // // // //         });
+
+// // // // // // //         if (allCoords.length > 0) {
+// // // // // // //             setTimeout(() => {
+// // // // // // //                 planeRef.current?.animateToFit(allCoords);
+// // // // // // //             }, 100);
+// // // // // // //         } else {
+// // // // // // //             setTimeout(() => {
+// // // // // // //                 planeRef.current?.animateToFit([{ x: -10, y: -10 }, { x: 10, y: 10 }], 0);
+// // // // // // //             }, 50);
+// // // // // // //         }
+// // // // // // //     }, [learnerAns]);
+
+// // // // // // //     return (
+// // // // // // //         <div ref={containerRef} style={{ position: 'relative', width: '100%', height: '420px', border: '1px solid #cbd5e1', background: '#ffffff', borderRadius: '6px', overflow: 'hidden' }}>
+// // // // // // //             <canvas ref={canvasRef} style={{ display: 'block', width: '100%', height: '100%' }} />
+// // // // // // //         </div>
+// // // // // // //     );
+// // // // // // // };
+
+// // // // // // // // ─── CODE SANDBOX PLAYER ─────────────────────────────────────────────────────
+// // // // // // // const ReviewCodeSandbox: React.FC<{ block: any, learnerAns: any, submissionId: string }> = ({ block, learnerAns, submissionId }) => {
+// // // // // // //     const [snapshot, setSnapshot] = useState<any>(learnerAns?.snapshot || null);
+// // // // // // //     const [isLoading, setIsLoading] = useState<boolean>(!!learnerAns?.storagePath && !learnerAns?.snapshot);
+// // // // // // //     const [isBooted, setIsBooted] = useState<boolean>(false);
+
+// // // // // // //     useEffect(() => {
+// // // // // // //         if (!isBooted) return;
+
+// // // // // // //         let isMounted = true;
+
+// // // // // // //         if (learnerAns?.storagePath && !learnerAns?.snapshot) {
+// // // // // // //             const functions = getFunctions();
+// // // // // // //             const fetchSnapshot = httpsCallable(functions, 'getCodeSnapshot');
+// // // // // // //             fetchSnapshot({ submissionId, blockId: block.id })
+// // // // // // //                 .then((res: any) => {
+// // // // // // //                     if (isMounted) {
+// // // // // // //                         setSnapshot(res.data.files);
+// // // // // // //                         setIsLoading(false);
+// // // // // // //                     }
+// // // // // // //                 })
+// // // // // // //                 .catch((err) => {
+// // // // // // //                     console.error(`Failed to fetch code snapshot for block ${block.id}:`, err);
+// // // // // // //                     if (isMounted) setIsLoading(false);
+// // // // // // //                 });
+// // // // // // //         } else {
+// // // // // // //             setSnapshot(learnerAns?.snapshot || null);
+// // // // // // //             setIsLoading(false);
+// // // // // // //         }
+
+// // // // // // //         return () => { isMounted = false; };
+// // // // // // //     }, [learnerAns, submissionId, block.id, isBooted]);
+
+// // // // // // //     if (!isBooted) {
+// // // // // // //         return (
+// // // // // // //             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '3rem', background: '#f8fafc', border: '1px dashed #cbd5e1', borderRadius: '8px', color: '#64748b', gap: '10px' }}>
+// // // // // // //                 <Code size={32} color="#94a3b8" />
+// // // // // // //                 <p style={{ margin: 0, fontSize: '0.9rem', fontWeight: 'bold', color: '#334155' }}>Facilitator Code Preview is Paused</p>
+// // // // // // //                 <p style={{ margin: '0 0 10px 0', fontSize: '0.8rem', textAlign: 'center', maxWidth: '400px' }}>This button only boots the IDE on <strong>YOUR</strong> screen to conserve memory. Use the Network Control switch above to unlock the Learner's screen.</p>
+// // // // // // //                 <button
+// // // // // // //                     onClick={() => setIsBooted(true)}
+// // // // // // //                     style={{ background: '#3b82f6', color: 'white', padding: '8px 16px', borderRadius: '6px', border: 'none', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem', boxShadow: '0 2px 4px rgba(59,130,246,0.3)' }}
+// // // // // // //                 >
+// // // // // // //                     <Play size={14} /> Boot Facilitator Preview (Local)
+// // // // // // //                 </button>
+// // // // // // //             </div>
+// // // // // // //         );
+// // // // // // //     }
+
+// // // // // // //     if (isLoading) {
+// // // // // // //         return (
+// // // // // // //             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '3rem', background: '#1e293b', borderRadius: '8px', color: '#94a3b8', gap: '10px' }}>
+// // // // // // //                 <Loader2 size={24} className="animate-spin" />
+// // // // // // //                 <p style={{ margin: 0, fontSize: '0.85rem' }}>Retrieving learner's code snapshot from cloud storage...</p>
+// // // // // // //             </div>
+// // // // // // //         );
+// // // // // // //     }
+
+// // // // // // //     return (
+// // // // // // //         <div style={{ height: '600px', width: '100%', border: '1px solid #cbd5e1', borderRadius: '6px', overflow: 'hidden' }}>
+// // // // // // //             <CodeSandboxPlayer
+// // // // // // //                 block={block}
+// // // // // // //                 learnerAns={{ ...(learnerAns || {}), snapshot }}
+// // // // // // //                 readOnly={true}
+// // // // // // //             />
+// // // // // // //         </div>
+// // // // // // //     );
+// // // // // // // };
+
+// // // // // // // // ─── MAIN RENDER COMPONENT ───────────────────────────────────────────────────
+// // // // // // // export const RenderBlocks: React.FC<RenderBlocksProps> = (props) => {
+// // // // // // //     const {
+// // // // // // //         assessment, submission, facBreakdown, assBreakdown, modBreakdown,
+// // // // // // //         activeTabs, setActiveTabs, sectionTotals,
+// // // // // // //         isPrintMode, canFacilitatorMark, canGrade, canModerate,
+// // // // // // //         isFacDone, isAssDone, isModDone, isMentor, isWorkplaceModule,
+// // // // // // //         savedFacRole, facReadOnlyLabel,
+// // // // // // //         handleVisualMark, handleScoreChange, handleFeedbackChange,
+// // // // // // //         handleCriterionChange, handleActivityStatusChange, handleActivityCommentChange,
+// // // // // // //         handleGlobalChecklistChange, handleSetToNow
+// // // // // // //     } = props;
+
+// // // // // // //     const [expandedGraphMemos, setExpandedGraphMemos] = useState<Record<string, boolean>>({});
+// // // // // // //     const [togglingIDE, setTogglingIDE] = useState<string | null>(null);
+
+// // // // // // //     const toggleGraphMemo = (blockId: string) => {
+// // // // // // //         setExpandedGraphMemos(prev => ({ ...prev, [blockId]: !prev[blockId] }));
+// // // // // // //     };
+
+// // // // // // //     const handleNetworkIDEToggle = async (blockId: string, currentState: boolean) => {
+// // // // // // //         if (!submission?.id) return;
+// // // // // // //         setTogglingIDE(blockId);
+// // // // // // //         try {
+// // // // // // //             const db = getFirestore();
+// // // // // // //             const subRef = doc(db, 'learner_submissions', submission.id);
+// // // // // // //             // Using setDoc with merge creates the nested map safely without overwriting other properties
+// // // // // // //             await setDoc(subRef, { ideUnlocks: { [blockId]: !currentState } }, { merge: true });
+// // // // // // //         } catch (err) {
+// // // // // // //             console.error("Failed to toggle IDE network access:", err);
+// // // // // // //             // Optional: You can toast the error if you pass toast as a prop, but logging is fine for now
+// // // // // // //         } finally {
+// // // // // // //             setTogglingIDE(null);
+// // // // // // //         }
+// // // // // // //     };
+
+// // // // // // //     const renderNetworkIDEToggleUI = (block: any) => {
+// // // // // // //         const hasIDE = block.type === 'code_sandbox' || (['task', 'checklist', 'qcto_workplace'].includes(block.type) && block.allowCode !== false);
+// // // // // // //         if (!hasIDE || isPrintMode) return null;
+
+// // // // // // //         const isUnlocked = submission?.ideUnlocks?.[block.id] === true;
+// // // // // // //         const isProcessing = togglingIDE === block.id;
+
+// // // // // // //         return (
+// // // // // // //             <div className="no-print" style={{ marginBottom: '1rem', background: isUnlocked ? '#eff6ff' : '#f8fafc', border: isUnlocked ? '1px solid #bfdbfe' : '1px dashed #cbd5e1', borderRadius: '6px', padding: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
+// // // // // // //                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+// // // // // // //                     <div style={{ background: isUnlocked ? '#dbeafe' : '#e2e8f0', padding: '8px', borderRadius: '8px' }}>
+// // // // // // //                         <Code size={18} color={isUnlocked ? '#2563eb' : '#64748b'} />
+// // // // // // //                     </div>
+// // // // // // //                     <div>
+// // // // // // //                         <div style={{ fontSize: '0.85rem', fontWeight: 'bold', color: isUnlocked ? '#1e3a8a' : '#334155' }}>Network IDE Access (Remote Control)</div>
+// // // // // // //                         <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>Remotely unlock the Live IDE on the learner's screen in real-time.</div>
+// // // // // // //                     </div>
+// // // // // // //                 </div>
+// // // // // // //                 <button
+// // // // // // //                     type="button"
+// // // // // // //                     disabled={isProcessing}
+// // // // // // //                     onClick={() => handleNetworkIDEToggle(block.id, isUnlocked)}
+// // // // // // //                     style={{ display: 'flex', alignItems: 'center', gap: '6px', background: isUnlocked ? '#2563eb' : 'white', color: isUnlocked ? 'white' : '#475569', padding: '6px 12px', borderRadius: '20px', border: isUnlocked ? '1px solid #2563eb' : '1px solid #cbd5e1', cursor: isProcessing ? 'wait' : 'pointer', fontWeight: 'bold', fontSize: '0.8rem', transition: 'all 0.2s ease' }}
+// // // // // // //                 >
+// // // // // // //                     {isProcessing ? <Loader2 size={14} className="animate-spin" /> : (isUnlocked ? <CheckCircle size={14} /> : <Lock size={14} />)}
+// // // // // // //                     {isUnlocked ? 'Unlocked for Learner' : 'Unlock for Learner'}
+// // // // // // //                 </button>
+// // // // // // //             </div>
+// // // // // // //         );
+// // // // // // //     };
+
+// // // // // // //     let qNum = 0;
+
+// // // // // // //     if (!assessment?.blocks || !Array.isArray(assessment.blocks)) return null;
+
+// // // // // // //     return (
+// // // // // // //         <>
+// // // // // // //             {assessment.blocks.map((block: any) => {
+// // // // // // //                 // ── SECTION ──────────────────────────────────────────────────────────────
+// // // // // // //                 if (block.type === 'section') {
+// // // // // // //                     const totals = sectionTotals[block.id];
+// // // // // // //                     return (
+// // // // // // //                         <div key={(isPrintMode ? 'print-' : '') + block.id} className="sr-section-title-wrap" style={{ display: 'flex', flexDirection: 'column', gap: '10px', borderBottom: '2px solid #e2e8f0', marginBottom: '1.5rem', paddingBottom: '1rem' }}>
+// // // // // // //                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+// // // // // // //                                 <h2 className="sr-section-title" style={{ color: '#073f4e', margin: 0, border: 'none', padding: 0 }}>{block.title}</h2>
+// // // // // // //                                 {isAssDone && totals && totals.total > 0 && (
+// // // // // // //                                     <span className="no-print" style={{ fontSize: '0.8rem', background: '#f1f5f9', color: '#64748b', padding: '4px 10px', display: 'flex', alignItems: 'center', gap: '5px', fontFamily: 'var(--font-heading)', letterSpacing: '0.06em', borderRadius: '4px', fontWeight: 'bold' }}>
+// // // // // // //                                         <BarChart size={14} /> {totals.awarded}/{totals.total}
+// // // // // // //                                     </span>
+// // // // // // //                                 )}
+// // // // // // //                             </div>
+// // // // // // //                             {block.content && (
+// // // // // // //                                 <div className="quill-read-only-content" style={{ color: '#334155', fontSize: '0.95rem', wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.content) }} />
+// // // // // // //                             )}
+// // // // // // //                             {renderBlockImage(block)}
+// // // // // // //                         </div>
+// // // // // // //                     );
+// // // // // // //                 }
+
+// // // // // // //                 // ── INFO BLOCK ──────────────────────────────────────────────────────────
+// // // // // // //                 if (block.type === 'info') {
+// // // // // // //                     return (
+// // // // // // //                         <div key={(isPrintMode ? 'print-' : '') + block.id} className="sr-q-card" style={{ borderLeft: '4px solid #0ea5e9', background: '#f0f9ff', padding: '1rem', marginBottom: '1.5rem' }}>
+// // // // // // //                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#0284c7', fontWeight: 'bold', marginBottom: '8px' }}><Info size={16} /> Reading Material</div>
+// // // // // // //                             <div className="quill-read-only-content" style={{ margin: 0, color: '#0c4a6e', wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.content) }} />
+// // // // // // //                             {renderBlockImage(block)}
+// // // // // // //                         </div>
+// // // // // // //                     );
+// // // // // // //                 }
+
+// // // // // // //                 // ── QUESTION EVALUATION CARD SELECTOR ROUTINE ───────────────────────────
+// // // // // // //                 if (['mcq', 'text', 'task', 'checklist', 'logbook', 'qcto_workplace', 'code_sandbox', 'mathpad', 'graph'].includes(block.type)) {
+// // // // // // //                     qNum++;
+// // // // // // //                     const learnerAns = submission.answers?.[block.id];
+// // // // // // //                     const maxM = block.marks || 0;
+
+// // // // // // //                     const fData = facBreakdown[block.id] || { score: 0, feedback: '', isCorrect: null, criteriaResults: [], activityResults: [] };
+// // // // // // //                     const aData = assBreakdown[block.id] || { score: 0, feedback: '', isCorrect: null, criteriaResults: [], activityResults: [] };
+// // // // // // //                     const mData = modBreakdown[block.id] || { score: 0, feedback: '', isCorrect: null, criteriaResults: [], activityResults: [] };
+
+// // // // // // //                     let activeInkColor = 'blue';
+// // // // // // //                     let activeData = fData;
+// // // // // // //                     let isActiveRole = false;
+
+// // // // // // //                     if (canFacilitatorMark) { activeInkColor = 'blue'; activeData = fData; isActiveRole = true; }
+// // // // // // //                     else if (canGrade) { activeInkColor = 'red'; activeData = aData; isActiveRole = true; }
+// // // // // // //                     else if (canModerate) { activeInkColor = 'green'; activeData = mData; isActiveRole = true; }
+// // // // // // //                     else {
+// // // // // // //                         if (isModDone) { activeInkColor = 'green'; activeData = mData; }
+// // // // // // //                         else if (isAssDone) { activeInkColor = 'red'; activeData = aData; }
+// // // // // // //                         else { activeInkColor = 'blue'; activeData = fData; }
+// // // // // // //                     }
+
+// // // // // // //                     const renderFacReadOnly = (isFacDone || fData?.feedback || fData?.score > 0) && (!canFacilitatorMark || isPrintMode);
+// // // // // // //                     const renderAssReadOnly = (isAssDone || aData?.feedback || aData?.score > 0) && (!canGrade || isPrintMode);
+// // // // // // //                     const renderModReadOnly = (isModDone || mData?.feedback) && (!canModerate || isPrintMode);
+
+// // // // // // //                     const mentorActiveOnScorableBlock = isMentor && canFacilitatorMark && ['mcq', 'text', 'task', 'code_sandbox', 'mathpad', 'graph'].includes(block.type);
+
+// // // // // // //                     let decData = activeData;
+// // // // // // //                     let isDeclarationInteractive = isActiveRole;
+// // // // // // //                     if (canModerate) {
+// // // // // // //                         decData = isWorkplaceModule ? fData : aData;
+// // // // // // //                         isDeclarationInteractive = false;
+// // // // // // //                     } else if (canGrade && isWorkplaceModule) {
+// // // // // // //                         decData = fData;
+// // // // // // //                         isDeclarationInteractive = false;
+// // // // // // //                     }
+
+// // // // // // //                     const renderReadOnlyLayers = () => (
+// // // // // // //                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: (!isPrintMode && isActiveRole) ? '1rem' : '0' }}>
+// // // // // // //                             {renderFacReadOnly && (
+// // // // // // //                                 <div style={{ background: '#eff6ff', padding: '0.75rem', borderRadius: '4px' }}>
+// // // // // // //                                     <div style={{ color: '#0284c7', fontSize: '0.7rem', textTransform: 'uppercase', fontWeight: 'bold', marginBottom: '4px' }}>
+// // // // // // //                                         <Info size={13} /> {facReadOnlyLabel}
+// // // // // // //                                     </div>
+// // // // // // //                                     <div style={{ color: '#0369a1', fontSize: '0.85rem', whiteSpace: 'pre-wrap', wordBreak: 'break-word', overflowWrap: 'break-word' }}>
+// // // // // // //                                         {savedFacRole !== 'mentor' && !isWorkplaceModule && (
+// // // // // // //                                             <span style={{ fontWeight: 'bold', marginRight: '6px' }}>[{fData.score ?? 0}/{maxM}]</span>
+// // // // // // //                                         )}
+// // // // // // //                                         {fData.feedback || <em style={{ opacity: 0.7 }}>No specific {savedFacRole === 'mentor' ? 'supervisor comments' : 'coaching'} provided.</em>}
+// // // // // // //                                     </div>
+// // // // // // //                                 </div>
+// // // // // // //                             )}
+// // // // // // //                             {renderAssReadOnly && (
+// // // // // // //                                 <div style={{ background: '#fef2f2', padding: '0.75rem', borderRadius: '4px' }}>
+// // // // // // //                                     <div style={{ color: '#b91c1c', fontSize: '0.7rem', textTransform: 'uppercase', fontWeight: 'bold', marginBottom: '4px' }}><AwardIcon size={13} /> Assessor Grade</div>
+// // // // // // //                                     <div style={{ color: '#991b1b', fontSize: '0.85rem', whiteSpace: 'pre-wrap', wordBreak: 'break-word', overflowWrap: 'break-word' }}>
+// // // // // // //                                         {!isWorkplaceModule && <span style={{ fontWeight: 'bold', marginRight: '6px' }}>[{aData.score ?? 0}/{maxM}]</span>}
+// // // // // // //                                         {aData.feedback || <em style={{ opacity: 0.7 }}>No specific feedback provided.</em>}
+// // // // // // //                                     </div>
+// // // // // // //                                 </div>
+// // // // // // //                             )}
+// // // // // // //                             {renderModReadOnly && (
+// // // // // // //                                 <div style={{ background: '#f0fdf4', padding: '0.75rem', borderRadius: '4px' }}>
+// // // // // // //                                     <div style={{ color: '#15803d', fontSize: '0.7rem', textTransform: 'uppercase', fontWeight: 'bold', marginBottom: '4px' }}><ShieldCheck size={13} /> Moderator QA</div>
+// // // // // // //                                     <div style={{ color: '#16a34a', fontSize: '0.85rem', whiteSpace: 'pre-wrap', wordBreak: 'break-word', overflowWrap: 'break-word' }}>
+// // // // // // //                                         {!isWorkplaceModule && <span style={{ fontWeight: 'bold', marginRight: '6px' }}>[{mData.score ?? 0}/{maxM}]</span>}
+// // // // // // //                                         {mData.feedback || <em style={{ opacity: 0.7 }}>No QA feedback provided.</em>}
+// // // // // // //                                     </div>
+// // // // // // //                                 </div>
+// // // // // // //                             )}
+// // // // // // //                         </div>
+// // // // // // //                     );
+
+// // // // // // //                     const renderActiveGradeControls = (blockId: string) => {
+// // // // // // //                         if (canModerate && isWorkplaceModule) {
+// // // // // // //                             return (
+// // // // // // //                                 <div>
+// // // // // // //                                     <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '6px', padding: '1rem', marginTop: '1rem' }}>
+// // // // // // //                                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px', color: '#15803d', fontWeight: 'bold', fontSize: '0.8rem', textTransform: 'uppercase' }}>
+// // // // // // //                                             <ShieldCheck size={14} /> Moderator QA Notes
+// // // // // // //                                         </div>
+// // // // // // //                                         <textarea
+// // // // // // //                                             className="sr-feedback-input"
+// // // // // // //                                             rows={2}
+// // // // // // //                                             style={{ width: '100%', color: 'green', fontStyle: 'italic', padding: '8px', border: '1px solid #bbf7d0', borderRadius: '4px', resize: 'vertical', background: 'white' }}
+// // // // // // //                                             placeholder="Moderator Green Pen QA notes for this item (optional)..."
+// // // // // // //                                             value={activeData.feedback || ''}
+// // // // // // //                                             onChange={e => handleFeedbackChange(blockId, e.target.value)}
+// // // // // // //                                         />
+// // // // // // //                                     </div>
+// // // // // // //                                 </div>
+// // // // // // //                             );
+// // // // // // //                         }
+
+// // // // // // //                         if (mentorActiveOnScorableBlock) {
+// // // // // // //                             return (
+// // // // // // //                                 <div>
+// // // // // // //                                     <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '6px', padding: '1rem', marginTop: '1rem' }}>
+// // // // // // //                                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px', color: '#1d4ed8', fontWeight: 'bold', fontSize: '0.8rem', textTransform: 'uppercase' }}>
+// // // // // // //                                             <ShieldCheck size={14} /> Supervisor Observation Comments
+// // // // // // //                                         </div>
+// // // // // // //                                         <textarea
+// // // // // // //                                             className="sr-feedback-input"
+// // // // // // //                                             rows={2}
+// // // // // // //                                             style={{ width: '100%', color: 'blue', fontStyle: 'italic', padding: '8px', border: '1px solid #bfdbfe', borderRadius: '4px', resize: 'vertical', background: 'white' }}
+// // // // // // //                                             placeholder="Add any supervisor observation notes for this item (optional)..."
+// // // // // // //                                             value={activeData.feedback || ''}
+// // // // // // //                                             onChange={e => handleFeedbackChange(blockId, e.target.value)}
+// // // // // // //                                         />
+// // // // // // //                                     </div>
+// // // // // // //                                 </div>
+// // // // // // //                             );
+// // // // // // //                         }
+
+// // // // // // //                         return (
+// // // // // // //                             <div>
+// // // // // // //                                 <div className="sr-score-input-wrap" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+// // // // // // //                                     <label style={{ color: '#0f172a', fontWeight: 'bold', fontSize: '0.85rem' }}>Total Marks Awarded for this block:</label>
+// // // // // // //                                     <input
+// // // // // // //                                         type="number"
+// // // // // // //                                         className="sr-score-input"
+// // // // // // //                                         style={{ color: activeInkColor, width: '60px', padding: '4px 8px', border: `1px solid ${activeInkColor}`, borderRadius: '4px', textAlign: 'center', fontWeight: 'bold' }}
+// // // // // // //                                         value={activeData.score ?? 0}
+// // // // // // //                                         onChange={e => handleScoreChange(blockId, parseInt(e.target.value) || 0, maxM)}
+// // // // // // //                                     />
+// // // // // // //                                     <span style={{ color: '#0f172a', fontWeight: 'bold' }}>/ {maxM}</span>
+// // // // // // //                                 </div>
+// // // // // // //                                 <div className="sr-feedback-wrap" style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+// // // // // // //                                     <Edit3 size={16} color={activeInkColor} style={{ marginTop: '6px' }} />
+// // // // // // //                                     <textarea
+// // // // // // //                                         className="sr-feedback-input"
+// // // // // // //                                         rows={2}
+// // // // // // //                                         style={{ width: '100%', color: activeInkColor, fontStyle: 'italic', padding: '8px', border: '1px solid #e2e8f0', borderRadius: '4px', resize: 'vertical' }}
+// // // // // // //                                         placeholder={canModerate ? "Moderator Green Pen QA Notes..." : canGrade ? "Assessor Red Pen feedback..." : "Facilitator Blue Pen feedback..."}
+// // // // // // //                                         value={activeData.feedback || ''}
+// // // // // // //                                         onChange={e => handleFeedbackChange(blockId, e.target.value)}
+// // // // // // //                                     />
+// // // // // // //                                 </div>
+// // // // // // //                             </div>
+// // // // // // //                         );
+// // // // // // //                     };
+
+// // // // // // //                     // ── GRAPH PLOT INTERACTIVE BLOCK (NEW) ───────────────────────────────
+// // // // // // //                     if (block.type === 'graph') {
+// // // // // // //                         return (
+// // // // // // //                             <div key={block.id} className="sr-q-card" style={{ borderTop: '4px solid black', marginBottom: '2rem' }}>
+// // // // // // //                                 <div className="sr-q-header">
+// // // // // // //                                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', width: '100%' }}>
+// // // // // // //                                         <span className="sr-q-num" style={{ background: '#ccfbf1', color: '#0f766e', flexShrink: 0 }}>PLOT</span>
+// // // // // // //                                         <div className="sr-q-text quill-read-only-content" style={{ color: '#073f4e', fontWeight: 'bold', margin: 0, flex: 1, minWidth: 0, wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.question) }} />
+// // // // // // //                                     </div>
+// // // // // // //                                     {!isPrintMode && isActiveRole && !isMentor && !(canModerate && isWorkplaceModule) && (
+// // // // // // //                                         <div className="sr-visual-mark" style={{ flexShrink: 0, marginLeft: '10px' }}>
+// // // // // // //                                             <button onClick={() => handleVisualMark(block.id, true, maxM)} className="sr-mark-btn" style={activeData.isCorrect === true ? { color: activeInkColor, border: `1px solid ${activeInkColor}`, background: 'white' } : {}} title="Mark Correct"><Check size={20} /></button>
+// // // // // // //                                             <button onClick={() => handleVisualMark(block.id, false, maxM)} className="sr-mark-btn" style={activeData.isCorrect === false ? { color: activeInkColor, border: `1px solid ${activeInkColor}`, background: 'white' } : {}} title="Mark Incorrect"><X size={20} /></button>
+// // // // // // //                                         </div>
+// // // // // // //                                     )}
+// // // // // // //                                 </div>
+// // // // // // //                                 <div className="sr-q-body">
+// // // // // // //                                     {renderBlockImage(block)}
+
+// // // // // // //                                     <div className="sr-answer-box">
+// // // // // // //                                         <div className="sr-answer-label" style={{ color: 'black', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+// // // // // // //                                             <BarChart size={14} /> Learner's Plotted Cartesian Graph:
+// // // // // // //                                         </div>
+// // // // // // //                                         <ReviewAxisGraph block={block} learnerAns={learnerAns} />
+// // // // // // //                                     </div>
+
+// // // // // // //                                     {(block.memoGraph?.points?.length > 0 || block.memoGraph?.shapes?.length > 0) && (
+// // // // // // //                                         <div style={{ marginTop: '1rem', padding: '1rem', background: '#fdf2f8', border: '1px solid #fbcfe8', borderRadius: '6px' }}>
+// // // // // // //                                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#be185d', fontSize: '0.85rem', marginBottom: '12px', fontWeight: 'bold' }}>
+// // // // // // //                                                 <Lock size={14} /> Assessor Memorandum Graph (Hidden from Learner)
+// // // // // // //                                             </div>
+// // // // // // //                                             <ReviewAxisGraph block={block} learnerAns={block.memoGraph} />
+// // // // // // //                                         </div>
+// // // // // // //                                     )}
+
+// // // // // // //                                     <div className="sr-grade-box" style={{ borderLeft: `4px solid ${activeInkColor}`, marginTop: '1rem', padding: '1rem', background: 'white', borderRadius: '6px' }}>
+// // // // // // //                                         {renderReadOnlyLayers()}
+// // // // // // //                                         {(!isPrintMode && isActiveRole) && renderActiveGradeControls(block.id)}
+// // // // // // //                                     </div>
+// // // // // // //                                 </div>
+// // // // // // //                             </div>
+// // // // // // //                         );
+// // // // // // //                     }
+
+// // // // // // //                     // ── MATHPAD ──────────────────────────────────────────────────────────
+// // // // // // //                     if (block.type === 'mathpad') {
+// // // // // // //                         const safeLearnerAns = typeof learnerAns === 'object' && learnerAns !== null ? learnerAns : { equation: learnerAns };
+
+// // // // // // //                         const mathTabs = [
+// // // // // // //                             { id: 'equation', icon: <Sigma size={13} />, label: 'Equation Editor', val: safeLearnerAns.equation !== undefined ? safeLearnerAns.equation : null, theme: { text: '#be185d', bg: '#fdf2f8', border: '#fbcfe8', activeBg: '#fce7f3' } },
+// // // // // // //                             { id: 'graph', icon: <BarChart size={13} />, label: 'Graphing Calculator', val: safeLearnerAns.graphState, theme: { text: '#166534', bg: '#f0fdf4', border: '#bbf7d0', activeBg: '#dcfce7' } }
+// // // // // // //                         ].filter(t => t.val !== null && t.val !== undefined);
+
+// // // // // // //                         const activeTabId = activeTabs[block.id] || (mathTabs.length > 0 ? mathTabs[0].id : 'equation');
+// // // // // // //                         const isGraphMemoExpanded = expandedGraphMemos[block.id] || false;
+
+// // // // // // //                         return (
+// // // // // // //                             <div key={block.id} className="sr-q-card" style={{ borderTop: '4px solid black', marginBottom: '2rem' }}>
+// // // // // // //                                 <div className="sr-q-header">
+// // // // // // //                                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', width: '100%' }}>
+// // // // // // //                                         <span className="sr-q-num" style={{ background: '#fce7f3', color: '#db2777', flexShrink: 0 }}>MATH</span>
+// // // // // // //                                         <div className="sr-q-text quill-read-only-content" style={{ color: '#073f4e', fontWeight: 'bold', margin: 0, flex: 1, minWidth: 0, wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.question) }} />
+// // // // // // //                                     </div>
+// // // // // // //                                     {!isPrintMode && isActiveRole && !isMentor && !(canModerate && isWorkplaceModule) && (
+// // // // // // //                                         <div className="sr-visual-mark" style={{ flexShrink: 0, marginLeft: '10px' }}>
+// // // // // // //                                             <button onClick={() => handleVisualMark(block.id, true, maxM)} className="sr-mark-btn" style={activeData.isCorrect === true ? { color: activeInkColor, border: `1px solid ${activeInkColor}`, background: 'white' } : {}} title="Mark Correct"><Check size={20} /></button>
+// // // // // // //                                             <button onClick={() => handleVisualMark(block.id, false, maxM)} className="sr-mark-btn" style={activeData.isCorrect === false ? { color: activeInkColor, border: `1px solid ${activeInkColor}`, background: 'white' } : {}} title="Mark Incorrect"><X size={20} /></button>
+// // // // // // //                                         </div>
+// // // // // // //                                     )}
+// // // // // // //                                 </div>
+// // // // // // //                                 <div className="sr-q-body">
+// // // // // // //                                     {renderBlockImage(block)}
+
+// // // // // // //                                     <div className="sr-answer-box">
+// // // // // // //                                         <div className="sr-answer-label" style={{ color: 'black', marginBottom: '8px' }}>
+// // // // // // //                                             <Layers size={14} style={{ display: 'inline', marginBottom: '-2px', marginRight: '4px' }} />Learner's Math Response:
+// // // // // // //                                         </div>
+
+// // // // // // //                                         {mathTabs.length === 0 ? (
+// // // // // // //                                             <span style={{ color: '#64748b', fontStyle: 'italic' }}>No answer provided.</span>
+// // // // // // //                                         ) : (
+// // // // // // //                                             <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden', background: 'white' }}>
+// // // // // // //                                                 {mathTabs.length > 1 && (
+// // // // // // //                                                     <div className="no-print" style={{ paddingTop: 8, paddingLeft: 8, paddingRight: 8, display: 'flex', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', overflowX: 'auto', padding: '10px' }}>
+// // // // // // //                                                         {mathTabs.map(t => {
+// // // // // // //                                                             const isActive = activeTabId === t.id;
+// // // // // // //                                                             return (
+// // // // // // //                                                                 <button
+// // // // // // //                                                                     key={t.id}
+// // // // // // //                                                                     onClick={() => setActiveTabs({ ...activeTabs, [block.id]: t.id })}
+// // // // // // //                                                                     style={{
+// // // // // // //                                                                         display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem',
+// // // // // // //                                                                         background: isActive ? t.theme.activeBg : t.theme.bg,
+// // // // // // //                                                                         padding: '6px 14px', borderRadius: '20px', color: t.theme.text,
+// // // // // // //                                                                         border: `1px solid ${isActive ? t.theme.text : t.theme.border}`,
+// // // // // // //                                                                         cursor: 'pointer', fontWeight: isActive ? 'bold' : 'normal',
+// // // // // // //                                                                         boxShadow: isActive ? `0 2px 4px ${t.theme.border}` : 'none',
+// // // // // // //                                                                         transition: 'all 0.2s ease',
+// // // // // // //                                                                         opacity: isActive ? 1 : 0.7,
+// // // // // // //                                                                         whiteSpace: 'nowrap'
+// // // // // // //                                                                     }}
+// // // // // // //                                                                     onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+// // // // // // //                                                                     onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.opacity = '0.7'; }}
+// // // // // // //                                                                 >
+// // // // // // //                                                                     {t.icon} {t.label}
+// // // // // // //                                                                 </button>
+// // // // // // //                                                             );
+// // // // // // //                                                         })}
+// // // // // // //                                                     </div>
+// // // // // // //                                                 )}
+
+// // // // // // //                                                 <div style={{ padding: '15px' }}>
+// // // // // // //                                                     {activeTabId === 'equation' && (
+// // // // // // //                                                         <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+// // // // // // //                                                             {React.createElement('math-field', {
+// // // // // // //                                                                 'read-only': 'true',
+// // // // // // //                                                                 style: { width: '100%', fontSize: '1.4rem', outline: 'none', background: 'transparent', border: 'none', color: '#0f172a' }
+// // // // // // //                                                             }, safeLearnerAns.equation || '')}
+// // // // // // //                                                         </div>
+// // // // // // //                                                     )}
+// // // // // // //                                                     {activeTabId === 'graph' && (
+// // // // // // //                                                         <ReviewAxisGraph block={block} learnerAns={safeLearnerAns.graphState} />
+// // // // // // //                                                     )}
+// // // // // // //                                                 </div>
+// // // // // // //                                             </div>
+// // // // // // //                                         )}
+
+// // // // // // //                                         {(block.correctAnswer || block.modelSolution || block.memoGraph) && (
+// // // // // // //                                             <div style={{ marginTop: '1rem', padding: '1rem', background: '#fdf2f8', border: '1px solid #fbcfe8', borderRadius: '6px' }}>
+// // // // // // //                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#be185d', fontSize: '0.85rem', marginBottom: '12px', fontWeight: 'bold' }}>
+// // // // // // //                                                     <Lock size={14} /> Assessor Memorandum (Hidden from Learner)
+// // // // // // //                                                 </div>
+
+// // // // // // //                                                 {block.correctAnswer && (
+// // // // // // //                                                     <div style={{ marginBottom: '12px' }}>
+// // // // // // //                                                         <div style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#9d174d', marginBottom: '4px', textTransform: 'uppercase' }}>Expected Final Answer</div>
+// // // // // // //                                                         {React.createElement('math-field', {
+// // // // // // //                                                             'read-only': 'true',
+// // // // // // //                                                             style: { width: '100%', fontSize: '1.2rem', padding: '8px', background: 'white', border: '1px solid #fbcfe8', borderRadius: '4px', color: '#0f172a' }
+// // // // // // //                                                         }, block.correctAnswer)}
+// // // // // // //                                                     </div>
+// // // // // // //                                                 )}
+
+// // // // // // //                                                 {block.modelSolution && (
+// // // // // // //                                                     <div style={{ marginBottom: '12px' }}>
+// // // // // // //                                                         <div style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#9d174d', marginBottom: '4px', textTransform: 'uppercase' }}>Step-by-Step Solution</div>
+// // // // // // //                                                         <div className="quill-read-only-content" style={{ background: 'white', padding: '10px', borderRadius: '4px', border: '1px dashed #fbcfe8', fontSize: '0.9rem', color: '#334155' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.modelSolution) }} />
+// // // // // // //                                                     </div>
+// // // // // // //                                                 )}
+
+// // // // // // //                                                 {(block.memoGraph?.points?.length > 0 || block.memoGraph?.shapes?.length > 0) && (
+// // // // // // //                                                     <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px dashed #fbcfe8' }}>
+// // // // // // //                                                         <div
+// // // // // // //                                                             style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', background: '#fce7f3', padding: '8px 12px', borderRadius: '6px', border: '1px solid #fbcfe8' }}
+// // // // // // //                                                             onClick={(e) => { e.stopPropagation(); toggleGraphMemo(block.id); }}
+// // // // // // //                                                         >
+// // // // // // //                                                             <div>
+// // // // // // //                                                                 <label style={{ color: '#9d174d', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', margin: 0, fontWeight: 'bold', fontSize: '0.8rem', textTransform: 'uppercase' }}>
+// // // // // // //                                                                     <BarChart size={14} /> Expected Graph Solution
+// // // // // // //                                                                 </label>
+// // // // // // //                                                                 <p style={{ fontSize: '0.75rem', color: '#be185d', margin: '2px 0 0 0' }}>
+// // // // // // //                                                                     Click to {isGraphMemoExpanded ? 'collapse' : 'expand'} the expected visual solution graph.
+// // // // // // //                                                                 </p>
+// // // // // // //                                                             </div>
+// // // // // // //                                                             <div style={{ color: '#9d174d', padding: '4px', background: '#fdf2f8', borderRadius: '4px' }}>
+// // // // // // //                                                                 {isGraphMemoExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+// // // // // // //                                                             </div>
+// // // // // // //                                                         </div>
+
+// // // // // // //                                                         {isGraphMemoExpanded && (
+// // // // // // //                                                             <div style={{ marginTop: '12px', animation: 'fadeIn 0.2s ease-out' }}>
+// // // // // // //                                                                 <ReviewAxisGraph block={block} learnerAns={block.memoGraph} />
+// // // // // // //                                                             </div>
+// // // // // // //                                                         )}
+// // // // // // //                                                     </div>
+// // // // // // //                                                 )}
+// // // // // // //                                             </div>
+// // // // // // //                                         )}
+// // // // // // //                                     </div>
+
+// // // // // // //                                     <div className="sr-grade-box" style={{ borderLeft: `4px solid ${activeInkColor}`, marginTop: '1rem', padding: '1rem', background: 'white', borderRadius: '6px' }}>
+// // // // // // //                                         {renderReadOnlyLayers()}
+// // // // // // //                                         {(!isPrintMode && isActiveRole) && renderActiveGradeControls(block.id)}
+// // // // // // //                                     </div>
+// // // // // // //                                 </div>
+// // // // // // //                             </div>
+// // // // // // //                         );
+// // // // // // //                     }
+
+// // // // // // //                     // ── CODE SANDBOX ──────────────────────────────────────────────────
+// // // // // // //                     if (block.type === 'code_sandbox') {
+// // // // // // //                         return (
+// // // // // // //                             <div key={block.id} className="sr-q-card" style={{ borderTop: '4px solid black', marginBottom: '2rem' }}>
+// // // // // // //                                 <div className="sr-q-header">
+// // // // // // //                                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', width: '100%' }}>
+// // // // // // //                                         <span className="sr-q-num" style={{ background: '#eff6ff', color: '#3b82f6', flexShrink: 0 }}>IDE</span>
+// // // // // // //                                         <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
+// // // // // // //                                             <div className="ap-code-sandbox-instructions" style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '1rem', width: '100%' }}>
+// // // // // // //                                                 {block.title && (
+// // // // // // //                                                     <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#0f172a', marginBottom: '0.75rem', borderBottom: '1px solid #e2e8f0', paddingBottom: '0.5rem' }}>
+// // // // // // //                                                         {block.title}
+// // // // // // //                                                     </h3>
+// // // // // // //                                                 )}
+// // // // // // //                                                 {block.question && (
+// // // // // // //                                                     <div className="quill-read-only-content" style={{ wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap', color: '#334155' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.question) }} />
+// // // // // // //                                                 )}
+// // // // // // //                                             </div>
+// // // // // // //                                         </div>
+// // // // // // //                                     </div>
+
+// // // // // // //                                     {!isPrintMode && isActiveRole && !isMentor && !(canModerate && isWorkplaceModule) && (
+// // // // // // //                                         <div className="sr-visual-mark" style={{ flexShrink: 0, marginLeft: '10px' }}>
+// // // // // // //                                             <button onClick={() => handleVisualMark(block.id, true, maxM)} className="sr-mark-btn" style={activeData.isCorrect === true ? { color: activeInkColor, border: `1px solid ${activeInkColor}`, background: 'white' } : {}} title="Mark Correct"><Check size={20} /></button>
+// // // // // // //                                             <button onClick={() => handleVisualMark(block.id, false, maxM)} className="sr-mark-btn" style={activeData.isCorrect === false ? { color: activeInkColor, border: `1px solid ${activeInkColor}`, background: 'white' } : {}} title="Mark Incorrect"><X size={20} /></button>
+// // // // // // //                                         </div>
+// // // // // // //                                     )}
+// // // // // // //                                 </div>
+
+// // // // // // //                                 <div className="sr-q-body">
+// // // // // // //                                     {renderNetworkIDEToggleUI(block)}
+// // // // // // //                                     {renderBlockImage(block)}
+
+// // // // // // //                                     <ReviewCodeSandbox
+// // // // // // //                                         block={block}
+// // // // // // //                                         learnerAns={learnerAns}
+// // // // // // //                                         submissionId={submission.id}
+// // // // // // //                                     />
+
+// // // // // // //                                     <div className="sr-grade-box" style={{ borderLeft: `4px solid ${activeInkColor}`, marginTop: '1rem', padding: '1rem', background: 'white', borderRadius: '6px' }}>
+// // // // // // //                                         {renderReadOnlyLayers()}
+// // // // // // //                                         {(!isPrintMode && isActiveRole) && renderActiveGradeControls(block.id)}
+// // // // // // //                                     </div>
+// // // // // // //                                 </div>
+// // // // // // //                             </div>
+// // // // // // //                         );
+// // // // // // //                     }
+
+// // // // // // //                     // ── MCQ ────────────────────────────────────────────────────────────────
+// // // // // // //                     if (block.type === 'mcq') {
+// // // // // // //                         return (
+// // // // // // //                             <div key={block.id} className="sr-q-card" style={{ borderTop: '4px solid black', marginBottom: '2rem' }}>
+// // // // // // //                                 <div className="sr-q-header">
+// // // // // // //                                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', width: '100%' }}>
+// // // // // // //                                         <span className="sr-q-num" style={{ background: '#f1f5f9', color: '#073f4e', flexShrink: 0 }}>Q{qNum}</span>
+// // // // // // //                                         <div className="sr-q-text quill-read-only-content" style={{ color: '#073f4e', fontWeight: 'bold', margin: 0, flex: 1, minWidth: 0, wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.question) }} />
+// // // // // // //                                     </div>
+// // // // // // //                                     {!isPrintMode && isActiveRole && !isMentor && !(canModerate && isWorkplaceModule) && (
+// // // // // // //                                         <div className="sr-visual-mark" style={{ flexShrink: 0, marginLeft: '10px' }}>
+// // // // // // //                                             <button onClick={() => handleVisualMark(block.id, true, maxM)} className="sr-mark-btn" style={activeData.isCorrect === true ? { color: activeInkColor, border: `1px solid ${activeInkColor}`, background: 'white' } : {}} title="Mark Correct"><Check size={20} /></button>
+// // // // // // //                                             <button onClick={() => handleVisualMark(block.id, false, maxM)} className="sr-mark-btn" style={activeData.isCorrect === false ? { color: activeInkColor, border: `1px solid ${activeInkColor}`, background: 'white' } : {}} title="Mark Incorrect"><X size={20} /></button>
+// // // // // // //                                         </div>
+// // // // // // //                                     )}
+// // // // // // //                                 </div>
+// // // // // // //                                 <div className="sr-q-body">
+// // // // // // //                                     {renderBlockImage(block)}
+// // // // // // //                                     <div className="sr-answer-box">
+// // // // // // //                                         <div className="sr-answer-label" style={{ color: 'black' }}>Learner's Response:</div>
+// // // // // // //                                         <div className={`sr-mcq-ans ${learnerAns === block.correctOption ? 'correct' : 'wrong'}`}>
+// // // // // // //                                             <span style={{ color: 'black', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{learnerAns !== undefined ? `${String.fromCharCode(65 + learnerAns)}. ${block.options?.[learnerAns]}` : 'No answer provided.'}</span>
+// // // // // // //                                             {learnerAns === block.correctOption && <CheckCircle size={14} color="black" />}
+// // // // // // //                                         </div>
+// // // // // // //                                         <div className="sr-mcq-correct-hint" style={{ color: 'black' }}>Correct Answer: <strong>{String.fromCharCode(65 + block.correctOption)}. {block.options?.[block.correctOption]}</strong></div>
+// // // // // // //                                     </div>
+// // // // // // //                                     <div className="sr-grade-box" style={{ borderLeft: `4px solid ${activeInkColor}`, marginTop: '1rem', padding: '1rem', background: 'white', borderRadius: '6px' }}>
+// // // // // // //                                         {renderReadOnlyLayers()}
+// // // // // // //                                         {(!isPrintMode && isActiveRole) && renderActiveGradeControls(block.id)}
+// // // // // // //                                     </div>
+// // // // // // //                                 </div>
+// // // // // // //                             </div>
+// // // // // // //                         );
+// // // // // // //                     }
+
+// // // // // // //                     // ── TEXT ────────────────────────────────────────────────
+// // // // // // //                     if (block.type === 'text') {
+// // // // // // //                         return (
+// // // // // // //                             <div key={block.id} className="sr-q-card" style={{ borderTop: '4px solid black', marginBottom: '2rem' }}>
+// // // // // // //                                 <div className="sr-q-header">
+// // // // // // //                                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', width: '100%' }}>
+// // // // // // //                                         <span className="sr-q-num" style={{ background: '#f1f5f9', color: '#073f4e', flexShrink: 0 }}>Q{qNum}</span>
+// // // // // // //                                         <div className="sr-q-text quill-read-only-content" style={{ color: '#073f4e', fontWeight: 'bold', margin: 0, flex: 1, minWidth: 0, wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.question) }} />
+// // // // // // //                                     </div>
+// // // // // // //                                     {!isPrintMode && isActiveRole && !isMentor && !(canModerate && isWorkplaceModule) && (
+// // // // // // //                                         <div className="sr-visual-mark" style={{ flexShrink: 0, marginLeft: '10px' }}>
+// // // // // // //                                             <button onClick={() => handleVisualMark(block.id, true, maxM)} className="sr-mark-btn" style={activeData.isCorrect === true ? { color: activeInkColor, border: `1px solid ${activeInkColor}`, background: 'white' } : {}} title="Mark Correct"><Check size={20} /></button>
+// // // // // // //                                             <button onClick={() => handleVisualMark(block.id, false, maxM)} className="sr-mark-btn" style={activeData.isCorrect === false ? { color: activeInkColor, border: `1px solid ${activeInkColor}`, background: 'white' } : {}} title="Mark Incorrect"><X size={20} /></button>
+// // // // // // //                                         </div>
+// // // // // // //                                     )}
+// // // // // // //                                 </div>
+// // // // // // //                                 <div className="sr-q-body">
+// // // // // // //                                     {renderBlockImage(block)}
+// // // // // // //                                     <div className="sr-answer-box">
+// // // // // // //                                         <div className="sr-answer-label" style={{ color: 'black' }}>Learner's Response:</div>
+// // // // // // //                                         <div className="sr-text-ans">
+// // // // // // //                                             {learnerAns ? <div className="quill-read-only-content" style={{ color: 'black', wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(learnerAns) }} /> : <span style={{ color: 'black', fontStyle: 'italic' }}>No answer provided.</span>}
+// // // // // // //                                         </div>
+// // // // // // //                                     </div>
+// // // // // // //                                     <div className="sr-grade-box" style={{ borderLeft: `4px solid ${activeInkColor}`, marginTop: '1rem', padding: '1rem', background: 'white', borderRadius: '6px' }}>
+// // // // // // //                                         {renderReadOnlyLayers()}
+// // // // // // //                                         {(!isPrintMode && isActiveRole) && renderActiveGradeControls(block.id)}
+// // // // // // //                                     </div>
+// // // // // // //                                 </div>
+// // // // // // //                             </div>
+// // // // // // //                         );
+// // // // // // //                     }
+
+// // // // // // //                     // ── TASK ────────────────────────────────────────────────
+// // // // // // //                     if (block.type === 'task') {
+// // // // // // //                         const safeLearnerAns = learnerAns || {};
+// // // // // // //                         const taskTabs = [
+// // // // // // //                             { id: 'text', icon: <FileText size={14} />, label: 'Rich Text', val: safeLearnerAns.text },
+// // // // // // //                             { id: 'audio', icon: <Mic size={14} />, label: 'Audio', val: safeLearnerAns.audioUrl },
+// // // // // // //                             { id: 'url', icon: <LinkIcon size={14} />, label: 'Link', val: safeLearnerAns.url },
+// // // // // // //                             { id: 'upload', icon: <UploadCloud size={14} />, label: 'File Upload', val: safeLearnerAns.uploadUrl },
+// // // // // // //                             { id: 'code', icon: <Code size={14} />, label: 'Code', val: safeLearnerAns.code }
+// // // // // // //                         ].filter(t => !!t.val);
+
+// // // // // // //                         const activeTabId = activeTabs[block.id] || taskTabs[0]?.id;
+
+// // // // // // //                         return (
+// // // // // // //                             <div key={block.id} className="sr-q-card" style={{ borderTop: '4px solid black', marginBottom: '2rem' }}>
+// // // // // // //                                 <div className="sr-q-header">
+// // // // // // //                                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', width: '100%' }}>
+// // // // // // //                                         <span className="sr-q-num" style={{ background: '#ede9fe', color: '#8b5cf6', flexShrink: 0 }}>Q{qNum}</span>
+// // // // // // //                                         <div className="sr-q-text quill-read-only-content" style={{ color: '#073f4e', fontWeight: 'bold', margin: 0, flex: 1, minWidth: 0, wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.question) }} />
+// // // // // // //                                     </div>
+// // // // // // //                                     {!isPrintMode && isActiveRole && !isMentor && !(canModerate && isWorkplaceModule) && (
+// // // // // // //                                         <div className="sr-visual-mark" style={{ flexShrink: 0, marginLeft: '10px' }}>
+// // // // // // //                                             <button onClick={() => handleVisualMark(block.id, true, maxM)} className="sr-mark-btn" style={activeData.isCorrect === true ? { color: activeInkColor, border: `1px solid ${activeInkColor}`, background: 'white' } : {}} title="Mark Correct"><Check size={20} /></button>
+// // // // // // //                                             <button onClick={() => handleVisualMark(block.id, false, maxM)} className="sr-mark-btn" style={activeData.isCorrect === false ? { color: activeInkColor, border: `1px solid ${activeInkColor}`, background: 'white' } : {}} title="Mark Incorrect"><X size={20} /></button>
+// // // // // // //                                         </div>
+// // // // // // //                                     )}
+// // // // // // //                                 </div>
+// // // // // // //                                 <div className="sr-q-body">
+// // // // // // //                                     {renderNetworkIDEToggleUI(block)}
+// // // // // // //                                     {renderBlockImage(block)}
+// // // // // // //                                     <div className="sr-answer-box">
+// // // // // // //                                         <div className="sr-answer-label" style={{ color: 'black', display: 'flex', alignItems: 'center', gap: '6px' }}><Layers size={14} /> Learner Evidence Submitted:</div>
+
+// // // // // // //                                         {(!learnerAns || Object.keys(learnerAns).length === 0) ? (
+// // // // // // //                                             <span style={{ color: '#64748b', fontStyle: 'italic', display: 'block', padding: '10px' }}>No evidence uploaded by learner.</span>
+// // // // // // //                                         ) : isPrintMode ? (
+// // // // // // //                                             <div style={{ border: '1px solid #cbd5e1', borderRadius: '6px', padding: '10px', background: 'white' }}>
+// // // // // // //                                                 {safeLearnerAns.text && <div style={{ marginBottom: '10px' }}><strong style={{ fontSize: '0.75rem', color: '#475569' }}>Rich Text Response:</strong><div className="quill-read-only-content" style={{ wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(safeLearnerAns.text) }} /></div>}
+// // // // // // //                                                 {safeLearnerAns.audioUrl && <div style={{ marginBottom: '10px' }}><strong style={{ fontSize: '0.75rem', color: '#475569' }}>Audio Recording:</strong><div>URL: {safeLearnerAns.audioUrl}</div></div>}
+// // // // // // //                                                 {safeLearnerAns.url && <div style={{ marginBottom: '10px' }}><strong style={{ fontSize: '0.75rem', color: '#475569' }}>Link:</strong><div><a href={safeLearnerAns.url} target="_blank" rel="noreferrer">{safeLearnerAns.url}</a></div></div>}
+// // // // // // //                                                 {safeLearnerAns.uploadUrl && <div style={{ marginBottom: '10px' }}><strong style={{ fontSize: '0.75rem', color: '#475569' }}>Uploaded File:</strong><FilePreview url={safeLearnerAns.uploadUrl} /></div>}
+// // // // // // //                                                 {safeLearnerAns.code && <div><strong style={{ fontSize: '0.75rem', color: '#475569' }}>Code:</strong><pre style={{ background: '#f1f5f9', padding: '8px', borderRadius: '4px', overflowX: 'auto', fontSize: '0.8rem', fontFamily: 'monospace' }}>{safeLearnerAns.code}</pre></div>}
+// // // // // // //                                             </div>
+// // // // // // //                                         ) : taskTabs.length === 0 ? (
+// // // // // // //                                             <span style={{ color: '#64748b', fontStyle: 'italic' }}>No evidence provided.</span>
+// // // // // // //                                         ) : (
+// // // // // // //                                             <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden', background: 'white' }}>
+// // // // // // //                                                 <div className="no-print" style={{ display: 'flex', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', overflowX: 'auto' }}>
+// // // // // // //                                                     {taskTabs.map(t => (
+// // // // // // //                                                         <button key={t.id} onClick={() => setActiveTabs({ ...activeTabs, [block.id]: t.id })} style={{ padding: '10px 15px', border: 'none', borderBottom: activeTabId === t.id ? '2px solid var(--mlab-blue)' : '2px solid transparent', background: activeTabId === t.id ? 'white' : 'transparent', color: activeTabId === t.id ? 'var(--mlab-blue)' : '#64748b', fontWeight: activeTabId === t.id ? 'bold' : 'normal', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+// // // // // // //                                                             {t.icon} {t.label}
+// // // // // // //                                                         </button>
+// // // // // // //                                                     ))}
+// // // // // // //                                                 </div>
+// // // // // // //                                                 <div style={{ padding: '15px' }}>
+// // // // // // //                                                     {activeTabId === 'text' && <div className="quill-read-only-content" style={{ wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(safeLearnerAns.text) }} />}
+// // // // // // //                                                     {activeTabId === 'audio' && <audio controls src={safeLearnerAns.audioUrl} style={{ width: '100%', height: '40px' }} />}
+// // // // // // //                                                     {activeTabId === 'url' && <UrlPreview url={safeLearnerAns.url} />}
+// // // // // // //                                                     {activeTabId === 'upload' && <FilePreview url={safeLearnerAns.uploadUrl} />}
+// // // // // // //                                                     {activeTabId === 'code' && <pre style={{ margin: 0, overflowX: 'auto', fontSize: '0.85rem', fontFamily: 'monospace', background: '#1e293b', color: '#f8fafc', padding: '15px', borderRadius: '4px' }}><code>{safeLearnerAns.code}</code></pre>}
+// // // // // // //                                                 </div>
+// // // // // // //                                             </div>
+// // // // // // //                                         )}
+// // // // // // //                                     </div>
+// // // // // // //                                     <div className="sr-grade-box" style={{ borderLeft: `4px solid ${activeInkColor}`, marginTop: '1rem', padding: '1rem', background: 'white', borderRadius: '6px' }}>
+// // // // // // //                                         {renderReadOnlyLayers()}
+// // // // // // //                                         {(!isPrintMode && isActiveRole) && renderActiveGradeControls(block.id)}
+// // // // // // //                                     </div>
+// // // // // // //                                 </div>
+// // // // // // //                             </div>
+// // // // // // //                         );
+// // // // // // //                     }
+
+// // // // // // //                     // ── LOGBOOK ────────────────────────────────────────────────
+// // // // // // //                     if (block.type === 'logbook') {
+// // // // // // //                         const entries = Array.isArray(learnerAns) ? learnerAns : [];
+// // // // // // //                         const totalHours = entries.reduce((acc: number, curr: any) => acc + (Number(curr.hours) || 0), 0);
+
+// // // // // // //                         return (
+// // // // // // //                             <div key={block.id} className="sr-q-card" style={{ borderTop: '4px solid black', marginBottom: '2rem' }}>
+// // // // // // //                                 <div className="sr-q-header">
+// // // // // // //                                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', width: '100%' }}>
+// // // // // // //                                         <span className="sr-q-num" style={{ background: '#ffedd5', color: '#ea580c', flexShrink: 0 }}>LOG</span>
+// // // // // // //                                         <div className="sr-q-text quill-read-only-content" style={{ color: '#073f4e', fontWeight: 'bold', margin: 0, flex: 1, minWidth: 0, wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.title) }} />
+// // // // // // //                                     </div>
+// // // // // // //                                 </div>
+// // // // // // //                                 <div className="sr-q-body">
+// // // // // // //                                     {renderBlockImage(block)}
+// // // // // // //                                     <div className="sr-answer-box">
+// // // // // // //                                         <div className="sr-answer-label" style={{ color: 'black', display: 'flex', alignItems: 'center', gap: '6px' }}><CalendarRange size={14} /> Workplace Hours Logged:</div>
+// // // // // // //                                         {entries.length === 0 ? (
+// // // // // // //                                             <span style={{ color: '#64748b', fontStyle: 'italic', display: 'block', padding: '10px' }}>No entries logged by learner.</span>
+// // // // // // //                                         ) : (
+// // // // // // //                                             <div>
+// // // // // // //                                                 <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: '6px' }}>
+// // // // // // //                                                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem', textAlign: 'left', background: 'white' }}>
+// // // // // // //                                                         <thead>
+// // // // // // //                                                             <tr style={{ background: '#f8fafc', borderBottom: '2px solid #cbd5e1', color: '#334155' }}>
+// // // // // // //                                                                 <th style={{ padding: '10px' }}>Date</th>
+// // // // // // //                                                                 <th style={{ padding: '10px' }}>Assignment Task & Evidence</th>
+// // // // // // //                                                                 <th style={{ padding: '10px' }}>Start Time</th>
+// // // // // // //                                                                 <th style={{ padding: '10px' }}>Finish Time</th>
+// // // // // // //                                                                 <th style={{ padding: '10px' }}>Total Hours</th>
+// // // // // // //                                                             </tr>
+// // // // // // //                                                         </thead>
+// // // // // // //                                                         <tbody>
+// // // // // // //                                                             {entries.map((entry: any, i: number) => (
+// // // // // // //                                                                 <tr key={i} style={{ borderBottom: '1px solid #f1f5f9', background: 'white', verticalAlign: 'top' }}>
+// // // // // // //                                                                     <td style={{ padding: '10px', color: '#0f172a', fontWeight: 'bold' }}>{entry.date}</td>
+// // // // // // //                                                                     <td style={{ padding: '10px', color: '#334155' }}>
+// // // // // // //                                                                         <div className="quill-read-only-content" style={{ fontSize: '0.85rem', wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(entry.task) || '<em>No task description provided.</em>' }} />
+// // // // // // //                                                                         {entry.uploadUrl && <div style={{ marginTop: '10px' }}><FilePreview url={entry.uploadUrl} /></div>}
+// // // // // // //                                                                         {entry.url && <div style={{ marginTop: '10px' }}><UrlPreview url={entry.url} /></div>}
+// // // // // // //                                                                     </td>
+// // // // // // //                                                                     <td style={{ padding: '10px', color: '#475569' }}>{entry.startTime}</td>
+// // // // // // //                                                                     <td style={{ padding: '10px', color: '#475569' }}>{entry.endTime}</td>
+// // // // // // //                                                                     <td style={{ padding: '10px', color: '#0f172a', fontWeight: 'bold' }}>{entry.hours}</td>
+// // // // // // //                                                                 </tr>
+// // // // // // //                                                             ))}
+// // // // // // //                                                             <tr style={{ background: '#f1f5f9', fontWeight: 'bold' }}>
+// // // // // // //                                                                 <td colSpan={4} style={{ padding: '10px', textAlign: 'right', fontFamily: 'var(--font-heading)', textTransform: 'uppercase', fontSize: '0.8rem', color: '#475569' }}>Total Logged Hours:</td>
+// // // // // // //                                                                 <td style={{ padding: '10px', color: '#ea580c', fontSize: '1.1rem' }}>{totalHours}</td>
+// // // // // // //                                                             </tr>
+// // // // // // //                                                         </tbody>
+// // // // // // //                                                     </table>
+// // // // // // //                                                 </div>
+
+// // // // // // //                                                 <LogbookHoursTally entries={entries} requiredHours={block.requiredHours} />
+
+// // // // // // //                                                 {isMentor && canFacilitatorMark && (
+// // // // // // //                                                     <div style={{ marginTop: '1rem', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '6px', padding: '1rem' }}>
+// // // // // // //                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px', color: '#1d4ed8', fontWeight: 'bold', fontSize: '0.8rem', textTransform: 'uppercase' }}>
+// // // // // // //                                                             <ShieldCheck size={14} /> Supervisor Comments on Logbook
+// // // // // // //                                                         </div>
+// // // // // // //                                                         <textarea
+// // // // // // //                                                             className="sr-feedback-input"
+// // // // // // //                                                             rows={3}
+// // // // // // //                                                             style={{ width: '100%', color: 'blue', fontStyle: 'italic', padding: '8px', border: '1px solid #bfdbfe', borderRadius: '4px', resize: 'vertical', background: 'white' }}
+// // // // // // //                                                             placeholder="Comment on the accuracy and completeness of hours logged..."
+// // // // // // //                                                             value={activeData.feedback || ''}
+// // // // // // //                                                             onChange={e => handleFeedbackChange(block.id, e.target.value)}
+// // // // // // //                                                         />
+// // // // // // //                                                     </div>
+// // // // // // //                                                 )}
+// // // // // // //                                             </div>
+// // // // // // //                                         )}
+// // // // // // //                                     </div>
+// // // // // // //                                 </div>
+// // // // // // //                             </div>
+// // // // // // //                         );
+// // // // // // //                     }
+
+// // // // // // //                     // ── CHECKLIST ──────────────────────────────────────────────
+// // // // // // //                     if (block.type === 'checklist') {
+// // // // // // //                         return (
+// // // // // // //                             <div key={block.id} className="sr-q-card" style={{ borderTop: '4px solid black', marginBottom: '2rem' }}>
+// // // // // // //                                 <div className="sr-q-header">
+// // // // // // //                                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', width: '100%' }}>
+// // // // // // //                                         <span className="sr-q-num" style={{ background: '#ccfbf1', color: '#0d9488', flexShrink: 0 }}>CHK</span>
+// // // // // // //                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1, minWidth: 0 }}>
+// // // // // // //                                             <div className="sr-q-text quill-read-only-content" style={{ color: '#073f4e', fontWeight: 'bold', margin: 0, wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(block.title) }} />
+// // // // // // //                                             <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+// // // // // // //                                                 {isMentor ? 'Workplace observation checklist — verify each criterion.' : 'Assessor observation checklist.'}
+// // // // // // //                                             </span>
+// // // // // // //                                         </div>
+// // // // // // //                                     </div>
+// // // // // // //                                 </div>
+// // // // // // //                                 <div className="sr-q-body">
+// // // // // // //                                     {renderNetworkIDEToggleUI(block)}
+// // // // // // //                                     {renderBlockImage(block)}
+// // // // // // //                                     <div style={{ marginTop: '1rem' }}>
+// // // // // // //                                         {block.criteria?.map((crit: string, i: number) => {
+// // // // // // //                                             const mentorResult = fData.criteriaResults?.[i] || { status: null, comment: '' };
+// // // // // // //                                             const assessorResult = aData.criteriaResults?.[i] || { status: null, comment: '' };
+// // // // // // //                                             const modResult = mData.criteriaResults?.[i] || { status: null, comment: '' };
+// // // // // // //                                             const myResult = activeData.criteriaResults?.[i] || { status: null, comment: '', startTime: '', endTime: '' };
+
+// // // // // // //                                             let durationStr = '0m 0s';
+// // // // // // //                                             if (myResult.startTime && myResult.endTime) {
+// // // // // // //                                                 const diffMs = new Date(myResult.endTime).getTime() - new Date(myResult.startTime).getTime();
+// // // // // // //                                                 if (diffMs > 0) {
+// // // // // // //                                                     const m = Math.floor(diffMs / 60000);
+// // // // // // //                                                     const s = Math.floor((diffMs % 60000) / 1000);
+// // // // // // //                                                     durationStr = `${m}m ${s}s`;
+// // // // // // //                                                 }
+// // // // // // //                                             }
+
+// // // // // // //                                             return (
+// // // // // // //                                                 <div key={i} style={{ marginBottom: '1.5rem', padding: '1.25rem', border: '1px solid #cbd5e1', borderRadius: '8px', background: isActiveRole ? 'white' : '#f8fafc' }}>
+// // // // // // //                                                     <p style={{ margin: '0 0 12px 0', fontWeight: 'bold', color: '#0f172a', fontSize: '0.95rem' }}>{i + 1}. {crit}</p>
+
+// // // // // // //                                                     {block.requireEvidencePerCriterion !== false && (() => {
+// // // // // // //                                                         const rawEv = learnerAns?.[`evidence_${i}`];
+// // // // // // //                                                         const critEvidence = typeof rawEv === 'string' ? { text: rawEv } : (rawEv || {});
+// // // // // // //                                                         const cleanTextCheck = critEvidence.text ? critEvidence.text.replace(/<[^>]*>/g, '').trim() : '';
+// // // // // // //                                                         const isTextTrulyEmpty = cleanTextCheck.length === 0;
+
+// // // // // // //                                                         const allTabs = [
+// // // // // // //                                                             { id: 'upload', icon: <UploadCloud size={13} />, label: 'File Artifact', val: critEvidence.uploadUrl, render: () => <FilePreview url={critEvidence.uploadUrl} /> },
+// // // // // // //                                                             { id: 'url', icon: <LinkIcon size={13} />, label: 'Web Link', val: critEvidence.url, render: () => <UrlPreview url={critEvidence.url} /> },
+// // // // // // //                                                             { id: 'code', icon: <Code size={13} />, label: 'Source Code', val: critEvidence.code, render: () => <pre style={{ background: '#1e293b', color: '#f8fafc', padding: '0.5rem', borderRadius: '4px', overflowX: 'auto', margin: 0, fontFamily: 'monospace', fontSize: '0.82rem' }}><code>{critEvidence.code}</code></pre> },
+// // // // // // //                                                             { id: 'text', icon: <FileText size={13} />, label: 'Learner Notes', val: isTextTrulyEmpty ? null : critEvidence.text, render: () => <div className="quill-read-only-content" dangerouslySetInnerHTML={{ __html: cleanRichText(critEvidence.text) }} /> }
+// // // // // // //                                                         ];
+
+// // // // // // //                                                         const activeEvidenceTabs = allTabs.filter(t => !!t.val);
+// // // // // // //                                                         const hasUploadedEvidence = activeEvidenceTabs.length > 0;
+// // // // // // //                                                         const isObservedOrTimed = !!(myResult.startTime || myResult.status || mentorResult.status || assessorResult.status);
+
+// // // // // // //                                                         if (!hasUploadedEvidence) {
+// // // // // // //                                                             if (isObservedOrTimed) {
+// // // // // // //                                                                 return (
+// // // // // // //                                                                     <div style={{ background: '#fffbeb', border: '1px solid #fef3c7', padding: '12px 15px', borderRadius: '6px', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '8px', color: '#b45309' }}>
+// // // // // // //                                                                         <AlertCircle size={18} className="animate-pulse" style={{ color: '#d97706', flexShrink: 0 }} />
+// // // // // // //                                                                         <div>
+// // // // // // //                                                                             <span style={{ fontSize: '0.8rem', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block' }}>Evidence Pending</span>
+// // // // // // //                                                                             <span style={{ fontSize: '0.75rem', color: '#78350f' }}>Observation logged, but waiting for the learner to upload their supporting files.</span>
+// // // // // // //                                                                         </div>
+// // // // // // //                                                                     </div>
+// // // // // // //                                                                 );
+// // // // // // //                                                             }
+// // // // // // //                                                             return <p style={{ margin: '0 0 12px 0', fontSize: '0.8rem', color: '#64748b', fontStyle: 'italic', background: '#f1f5f9', padding: '8px', borderRadius: '4px' }}>Awaiting learner evidence upload.</p>;
+// // // // // // //                                                         }
+
+// // // // // // //                                                         const isDraft = ['not_started', 'in_progress'].includes(String(submission?.status || '').toLowerCase());
+// // // // // // //                                                         const subTabKey = `${block.id}_ev_${i}`;
+// // // // // // //                                                         const activeSubTab = activeTabs[subTabKey] || activeEvidenceTabs[0]?.id;
+// // // // // // //                                                         const selectedTabConfig = activeEvidenceTabs.find(t => t.id === activeSubTab) || activeEvidenceTabs[0];
+// // // // // // //                                                         const expandKey = `${subTabKey}_expanded`;
+// // // // // // //                                                         const isTabExpanded = activeTabs[expandKey] === 'true';
+
+// // // // // // //                                                         return (
+// // // // // // //                                                             <div style={{ background: isDraft ? '#fffdf5' : '#f5f3ff', border: isDraft ? '1px solid #fef08a' : '1px solid #c4b5fd', padding: '15px', borderRadius: '6px', marginBottom: '15px' }}>
+// // // // // // //                                                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
+// // // // // // //                                                                     <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', fontWeight: 'bold', color: isDraft ? '#b45309' : '#6d28d9', textTransform: 'uppercase' }}>
+// // // // // // //                                                                         <Layers size={16} /> {isDraft ? 'Learner Evidence (Live Draft Preview)' : 'Learner Evidence Submitted'}
+// // // // // // //                                                                     </label>
+// // // // // // //                                                                     {isDraft && (
+// // // // // // //                                                                         <span style={{ fontSize: '0.68rem', background: '#d97706', color: 'white', padding: '2px 8px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+// // // // // // //                                                                             Learner Modifying · Not Yet Submitted
+// // // // // // //                                                                         </span>
+// // // // // // //                                                                     )}
+// // // // // // //                                                                 </div>
+
+// // // // // // //                                                                 <div className="no-print" style={{ display: 'flex', borderBottom: '1px solid #cbd5e1', gap: '4px', marginBottom: '10px', overflowX: 'auto', paddingBottom: '2px' }}>
+// // // // // // //                                                                     {activeEvidenceTabs.map(tab => (
+// // // // // // //                                                                         <button key={tab.id} type="button" onClick={() => setActiveTabs({ ...activeTabs, [subTabKey]: tab.id })} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '6px 12px', fontSize: '0.75rem', border: 'none', borderBottom: activeSubTab === tab.id ? (isDraft ? '2px solid #b45309' : '2px solid #6d28d9') : '2px solid transparent', background: activeSubTab === tab.id ? 'white' : 'transparent', color: activeSubTab === tab.id ? (isDraft ? '#b45309' : '#6d28d9') : '#64748b', fontWeight: activeSubTab === tab.id ? 'bold' : 'normal', cursor: 'pointer', whiteSpace: 'nowrap', borderRadius: '4px 4px 0 0' }}>
+// // // // // // //                                                                             {tab.icon} {tab.label}
+// // // // // // //                                                                         </button>
+// // // // // // //                                                                     ))}
+// // // // // // //                                                                 </div>
+
+// // // // // // //                                                                 <div style={{ position: 'relative' }}>
+// // // // // // //                                                                     <div style={{ maxHeight: isTabExpanded ? 'none' : '150px', overflow: 'hidden', transition: 'max-height 0.2s ease-out', border: '1px solid #cbd5e1', borderRadius: '4px', padding: '10px', background: 'white' }}>
+// // // // // // //                                                                         {selectedTabConfig?.render()}
+// // // // // // //                                                                         {!isTabExpanded && <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '30px', background: 'linear-gradient(to top, white, transparent)', pointerEvents: 'none' }} />}
+// // // // // // //                                                                     </div>
+// // // // // // //                                                                     <div style={{ marginTop: '6px', display: 'flex', justifyContent: 'flex-start' }}>
+// // // // // // //                                                                         <button type="button" onClick={() => setActiveTabs({ ...activeTabs, [expandKey]: isTabExpanded ? 'false' : 'true' })} style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', padding: '3px 8px', fontSize: '0.7rem', fontWeight: 'bold', color: '#475569', borderRadius: '4px', cursor: 'pointer' }}>
+// // // // // // //                                                                             {isTabExpanded ? 'Collapse Evidence View ↑' : 'Expand Evidence View ↓'}
+// // // // // // //                                                                         </button>
+// // // // // // //                                                                     </div>
+// // // // // // //                                                                 </div>
+// // // // // // //                                                             </div>
+// // // // // // //                                                         );
+// // // // // // //                                                     })()}
+
+// // // // // // //                                                     {/* READ ONLY BACKDOWN LAYERS */}
+// // // // // // //                                                     {(isFacDone || mentorResult.status) && (!canFacilitatorMark || isPrintMode) && (
+// // // // // // //                                                         <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '6px', padding: '10px', marginBottom: '10px' }}>
+// // // // // // //                                                             <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#1d4ed8', textTransform: 'uppercase', display: 'flex', gap: '5px' }}>
+// // // // // // //                                                                 <ShieldCheck size={12} /> {savedFacRole === 'mentor' ? 'Workplace Mentor Observation' : 'Facilitator Pre-Mark'}
+// // // // // // //                                                             </span>
+// // // // // // //                                                             <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: mentorResult.status === 'C' ? '#166534' : mentorResult.status === 'NYC' ? '#991b1b' : '#64748b' }}>
+// // // // // // //                                                                 {mentorResult.status === 'C' ? (savedFacRole === 'mentor' ? 'Observed ✓' : 'Competent (C)') : mentorResult.status === 'NYC' ? (savedFacRole === 'mentor' ? 'Not Observed ✗' : 'NYC') : 'Not Reviewed'}
+// // // // // // //                                                             </span>
+// // // // // // //                                                             {mentorResult.comment && <div style={{ fontSize: '0.82rem', color: '#1e40af', fontStyle: 'italic', marginTop: '4px' }}>{mentorResult.comment}</div>}
+// // // // // // //                                                         </div>
+// // // // // // //                                                     )}
+
+// // // // // // //                                                     {(isAssDone || assessorResult.status) && (!canGrade || isPrintMode) && (
+// // // // // // //                                                         <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: '6px', padding: '10px', marginBottom: '10px' }}>
+// // // // // // //                                                             <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#b91c1c', textTransform: 'uppercase', display: 'flex', gap: '5px' }}>
+// // // // // // //                                                                 <AwardIcon size={12} /> Assessor Grade
+// // // // // // //                                                             </span>
+// // // // // // //                                                             <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: assessorResult.status === 'C' ? '#166534' : assessorResult.status === 'NYC' ? '#991b1b' : '#64748b' }}>
+// // // // // // //                                                                 {assessorResult.status === 'C' ? 'Competent (C)' : assessorResult.status === 'NYC' ? 'NYC' : 'Not Graded'}
+// // // // // // //                                                             </span>
+// // // // // // //                                                             {assessorResult.comment && <div style={{ fontSize: '0.82rem', color: '#991b1b', fontStyle: 'italic', marginTop: '4px' }}>{assessorResult.comment}</div>}
+// // // // // // //                                                         </div>
+// // // // // // //                                                     )}
+
+// // // // // // //                                                     {(isModDone || modResult.status || modResult.comment) && (!canModerate || isPrintMode) && (
+// // // // // // //                                                         <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '6px', padding: '10px', marginBottom: '10px' }}>
+// // // // // // //                                                             <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#15803d', textTransform: 'uppercase', display: 'flex', gap: '5px' }}>
+// // // // // // //                                                                 <ShieldCheck size={12} /> Moderator QA
+// // // // // // //                                                             </span>
+// // // // // // //                                                             {modResult.status && (
+// // // // // // //                                                                 <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: modResult.status === 'C' ? '#166534' : modResult.status === 'NYC' ? '#991b1b' : '#64748b' }}>
+// // // // // // //                                                                     {modResult.status === 'C' ? 'Competent (C)' : modResult.status === 'NYC' ? 'NYC' : 'Not Graded'}
+// // // // // // //                                                                 </span>
+// // // // // // //                                                             )}
+// // // // // // //                                                             {modResult.comment && <div style={{ fontSize: '0.82rem', color: '#15803d', fontStyle: 'italic', marginTop: '4px' }}>{modResult.comment}</div>}
+// // // // // // //                                                         </div>
+// // // // // // //                                                     )}
+
+// // // // // // //                                                     {/* EVALUATION INTERACTIVE INTERFACE CONTROLS */}
+// // // // // // //                                                     {(!isPrintMode && isActiveRole) && (
+// // // // // // //                                                         <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', flexWrap: 'wrap', borderTop: '1px dashed #cbd5e1', paddingTop: '15px', marginTop: '5px' }}>
+// // // // // // //                                                             {block.requirePerCriterionTiming !== false && !canModerate && (
+// // // // // // //                                                                 <div style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px', background: '#f1f5f9', padding: '8px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', flexWrap: 'wrap' }}>
+// // // // // // //                                                                     <Timer size={16} color="#64748b" style={{ flexShrink: 0 }} />
+// // // // // // //                                                                     <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#475569', minWidth: '80px' }}>Task Timer:</span>
+
+// // // // // // //                                                                     {!myResult.startTime ? (
+// // // // // // //                                                                         <button onClick={() => handleCriterionChange(block.id, i, 'startTime', new Date().toISOString())} className="ab-btn sm" style={{ background: '#10b981', color: 'white', border: 'none', padding: '4px 12px', borderRadius: '4px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}><Play size={12} /> Start</button>
+// // // // // // //                                                                     ) : (
+// // // // // // //                                                                         <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', alignItems: 'center', flex: 1 }}>
+// // // // // // //                                                                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#334155' }}>
+// // // // // // //                                                                                 <strong>Start:</strong>
+// // // // // // //                                                                                 <input type="datetime-local" className="datetime-input" value={myResult.startTime ? moment(myResult.startTime).format('YYYY-MM-DDTHH:mm') : ''} onChange={(e) => handleCriterionChange(block.id, i, 'startTime', e.target.value ? new Date(e.target.value).toISOString() : '')} style={{ padding: '2px 6px', fontSize: '0.75rem', borderRadius: '4px', border: '1px solid #cbd5e1', background: 'white', color: 'black' }} />
+// // // // // // //                                                                             </div>
+
+// // // // // // //                                                                             {!myResult.endTime ? (
+// // // // // // //                                                                                 <button onClick={() => handleCriterionChange(block.id, i, 'endTime', new Date().toISOString())} className="ab-btn sm" style={{ background: '#ef4444', color: 'white', border: 'none', padding: '4px 12px', borderRadius: '4px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}><Square size={12} /> Stop</button>
+// // // // // // //                                                                             ) : (
+// // // // // // //                                                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+// // // // // // //                                                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#334155' }}>
+// // // // // // //                                                                                         <strong>End:</strong>
+// // // // // // //                                                                                         <input type="datetime-local" className="datetime-input" value={myResult.endTime ? moment(myResult.endTime).format('YYYY-MM-DDTHH:mm') : ''} onChange={(e) => handleCriterionChange(block.id, i, 'endTime', e.target.value ? new Date(e.target.value).toISOString() : '')} style={{ padding: '2px 6px', fontSize: '0.75rem', borderRadius: '4px', border: '1px solid #cbd5e1', background: 'white', color: 'black' }} />
+// // // // // // //                                                                                     </div>
+// // // // // // //                                                                                     <span style={{ color: '#0ea5e9', fontWeight: 'bold', background: '#e0f2fe', padding: '4px 8px', borderRadius: '4px', fontSize: '0.75rem' }}>Duration: {durationStr}</span>
+// // // // // // //                                                                                 </div>
+// // // // // // //                                                                             )}
+// // // // // // //                                                                         </div>
+// // // // // // //                                                                     )}
+// // // // // // //                                                                 </div>
+// // // // // // //                                                             )}
+// // // // // // //                                                             <div style={{ display: 'flex', gap: '10px' }}>
+// // // // // // //                                                                 <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.85rem', background: myResult.status === 'C' ? '#dcfce7' : '#f8fafc', padding: '8px 12px', borderRadius: '4px', border: myResult.status === 'C' ? '2px solid #22c55e' : '1px solid #cbd5e1', color: myResult.status === 'C' ? '#166534' : '#64748b', fontWeight: 'bold', cursor: canModerate ? 'not-allowed' : 'pointer' }}>
+// // // // // // //                                                                     <input type="radio" disabled={canModerate} checked={myResult.status === 'C'} onChange={() => handleCriterionChange(block.id, i, 'status', 'C')} style={{ accentColor: '#22c55e' }} />
+// // // // // // //                                                                     {isMentor ? 'Observed ✓' : 'Competent (C)'}
+// // // // // // //                                                                 </label>
+// // // // // // //                                                                 <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.85rem', background: myResult.status === 'NYC' ? '#fee2e2' : '#f8fafc', padding: '8px 12px', borderRadius: '4px', border: myResult.status === 'NYC' ? '2px solid #ef4444' : '1px solid #cbd5e1', color: myResult.status === 'NYC' ? '#991b1b' : '#64748b', fontWeight: 'bold', cursor: canModerate ? 'not-allowed' : 'pointer' }}>
+// // // // // // //                                                                     <input type="radio" disabled={canModerate} checked={myResult.status === 'NYC'} onChange={() => handleCriterionChange(block.id, i, 'status', 'NYC')} style={{ accentColor: '#ef4444' }} />
+// // // // // // //                                                                     {isMentor ? 'Not Observed ✗' : 'NYC'}
+// // // // // // //                                                                 </label>
+// // // // // // //                                                             </div>
+// // // // // // //                                                             <div style={{ flex: 1, minWidth: '250px' }}>
+// // // // // // //                                                                 <textarea className="ab-input" disabled={canModerate && !isWorkplaceModule && !myResult.comment} rows={2} placeholder={isMentor ? "Supervisor observation notes..." : canModerate ? "Assessor's comments" : "Assessor comments / reasoning..."} value={myResult.comment} onChange={e => handleCriterionChange(block.id, i, 'comment', e.target.value)} style={{ fontSize: '0.85rem', width: '100%', border: '1px solid #e2e8f0', resize: 'vertical', background: 'white' }} />
+// // // // // // //                                                             </div>
+// // // // // // //                                                         </div>
+// // // // // // //                                                     )}
+// // // // // // //                                                 </div>
+// // // // // // //                                             );
+// // // // // // //                                         })}
+
+// // // // // // //                                         <div className="sr-grade-box" style={{ borderTop: `1px dashed #cbd5e1`, marginTop: '1rem', paddingTop: '1rem' }}>
+// // // // // // //                                             {renderReadOnlyLayers()}
+// // // // // // //                                             {(!isPrintMode && isActiveRole) && renderActiveGradeControls(block.id)}
+// // // // // // //                                         </div>
+
+// // // // // // //                                         {block.requireObservationDeclaration !== false && !canModerate && (
+// // // // // // //                                             <div style={{ marginTop: '2rem', padding: '1.5rem', background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '8px', borderLeft: `4px solid ${activeInkColor}` }}>
+// // // // // // //                                                 <h4 style={{ fontSize: '0.9rem', color: '#0f172a', margin: '0 0 15px 0', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '6px' }}>
+// // // // // // //                                                     <ShieldCheck size={16} color={activeInkColor} />
+// // // // // // //                                                     {isWorkplaceModule ? 'Mentor Verification Declaration' : 'Observation Declaration'}
+// // // // // // //                                                 </h4>
+
+// // // // // // //                                                 {block.requireTimeTracking !== false && (
+// // // // // // //                                                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px', marginBottom: '15px' }}>
+// // // // // // //                                                         {(['obsDate', 'obsStartTime', 'obsEndTime'] as const).map((field, fi) => {
+// // // // // // //                                                             const labels = ['Date of Observation', 'Session Start Time', 'Session End Time'];
+// // // // // // //                                                             const types = ['date', 'time', 'time'];
+// // // // // // //                                                             const val = decData[field];
+// // // // // // //                                                             return (
+// // // // // // //                                                                 <div key={field}>
+// // // // // // //                                                                     <label style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#475569', marginBottom: '4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+// // // // // // //                                                                         {labels[fi]}
+// // // // // // //                                                                         {isDeclarationInteractive && !isPrintMode && <button className="ab-text-btn" style={{ fontSize: '0.65rem', padding: 0 }} onClick={() => handleSetToNow(block.id, field)}>Set Now</button>}
+// // // // // // //                                                                     </label>
+// // // // // // //                                                                     {(!isDeclarationInteractive || isPrintMode)
+// // // // // // //                                                                         ? <div style={{ fontWeight: 'bold', fontSize: '0.9rem', color: '#0f172a' }}>{field === 'obsDate' ? (val ? moment(val).format('DD/MM/YYYY') : '—') : (val || '—')}</div>
+// // // // // // //                                                                         : <input type={types[fi]} className="ab-input" value={val || ''} onChange={e => handleGlobalChecklistChange(block.id, field, e.target.value)} />
+// // // // // // //                                                                     }
+// // // // // // //                                                                 </div>
+// // // // // // //                                                             );
+// // // // // // //                                                         })}
+// // // // // // //                                                     </div>
+// // // // // // //                                                 )}
+
+// // // // // // //                                                 <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.85rem', color: '#0f172a', fontWeight: 'bold', background: decData.obsDeclaration ? '#eff6ff' : 'white', padding: '10px', borderRadius: '6px', border: '1px solid #bfdbfe', cursor: isDeclarationInteractive && !isPrintMode ? 'pointer' : 'default' }}>
+// // // // // // //                                                     <input type="checkbox" disabled={!isDeclarationInteractive || isPrintMode} checked={decData.obsDeclaration || false} onChange={e => handleGlobalChecklistChange(block.id, 'obsDeclaration', e.target.checked)} style={{ width: '18px', height: '18px', accentColor: isDeclarationInteractive ? activeInkColor : '#64748b' }} />
+// // // // // // //                                                     {isWorkplaceModule
+// // // // // // //                                                         ? 'I confirm that I have directly observed this learner performing the above workplace activities in a real work environment, and that the evidence submitted is authentic.'
+// // // // // // //                                                         : 'I officially declare that I have observed the learner performing these tasks and that the evidence was submitted by the learner.'}
+// // // // // // //                                                 </label>
+// // // // // // //                                             </div>
+// // // // // // //                                         )}
+// // // // // // //                                     </div>
+// // // // // // //                                 </div>
+// // // // // // //                             </div>
+// // // // // // //                         );
+// // // // // // //                     }
+
+// // // // // // //                     // ── QCTO WORKPLACE ─────────────────────────────────────────
+// // // // // // //                     if (block.type === 'qcto_workplace') {
+// // // // // // //                         return (
+// // // // // // //                             <div key={block.id} className="sr-q-card" style={{ borderTop: '4px solid black', marginBottom: '2rem' }}>
+// // // // // // //                                 <div className="sr-q-header">
+// // // // // // //                                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', width: '100%' }}>
+// // // // // // //                                         <span className="sr-q-num" style={{ background: '#ffe4e6', color: '#e11d48', flexShrink: 0 }}>QCTO</span>
+// // // // // // //                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1, minWidth: 0 }}>
+// // // // // // //                                             <div className="sr-q-text quill-read-only-content" style={{ color: '#073f4e', fontWeight: 'bold', margin: 0, wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: cleanRichText(`${block.weCode} – ${block.weTitle}`) }} />
+// // // // // // //                                             <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+// // // // // // //                                                 {isMentor ? 'Workplace Experience — Mentor Verification' : 'Workplace Experience Checkpoint'}
+// // // // // // //                                             </span>
+// // // // // // //                                         </div>
+// // // // // // //                                     </div>
+// // // // // // //                                 </div>
+
+// // // // // // //                                 <div className="sr-q-body">
+// // // // // // //                                     {renderNetworkIDEToggleUI(block)}
+// // // // // // //                                     {renderBlockImage(block)}
+// // // // // // //                                     {block.workActivities?.map((wa: any, actIdx: number) => {
+// // // // // // //                                         const taskKey = `wa_${wa.id}_task`;
+// // // // // // //                                         const dateKey = `wa_${wa.id}_date`;
+// // // // // // //                                         const task = learnerAns?.[taskKey] || '';
+// // // // // // //                                         const date = learnerAns?.[dateKey] || '';
+
+// // // // // // //                                         const mentorResult = fData.activityResults?.[actIdx] || { status: null, comment: '' };
+// // // // // // //                                         const assessorResult = aData.activityResults?.[actIdx] || { status: null, comment: '' };
+// // // // // // //                                         const modResult = mData.activityResults?.[actIdx] || { status: null, comment: '' };
+// // // // // // //                                         const myResult = activeData.activityResults?.[actIdx] || { status: null, comment: '' };
+
+// // // // // // //                                         return (
+// // // // // // //                                             <div key={wa.id} style={{ marginBottom: '2rem', border: '1px solid #cbd5e1', borderRadius: '8px', background: isActiveRole ? 'white' : '#f8fafc' }}>
+// // // // // // //                                                 <div style={{ padding: '1rem', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+// // // // // // //                                                     <h4 style={{ margin: 0, color: '#073f4e' }}>{wa.code}: {wa.description}</h4>
+// // // // // // //                                                 </div>
+// // // // // // //                                                 <div style={{ padding: '1rem' }}>
+// // // // // // //                                                     <div style={{ marginBottom: '1.5rem' }}>
+// // // // // // //                                                         <div style={{ display: 'flex', gap: '20px', marginBottom: '15px', flexWrap: 'wrap' }}>
+// // // // // // //                                                             {task && <div style={{ flex: 1, minWidth: '250px' }}><strong style={{ fontSize: '0.75rem', color: '#64748b' }}>Task Performed:</strong><div className="quill-read-only-content" style={{ wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'pre-wrap', marginTop: '6px' }} dangerouslySetInnerHTML={{ __html: cleanRichText(task) }} /></div>}
+// // // // // // //                                                             {date && <div style={{ minWidth: '120px' }}><strong style={{ fontSize: '0.75rem', color: '#64748b' }}>Date:</strong><div style={{ marginTop: '6px' }}>{new Date(date).toLocaleDateString()}</div></div>}
+// // // // // // //                                                         </div>
+
+// // // // // // //                                                         {wa.evidenceItems?.map((evItem: any) => {
+// // // // // // //                                                             const seKey = `se_${evItem.id}`;
+// // // // // // //                                                             const seData = learnerAns?.[seKey] || {};
+// // // // // // //                                                             return (
+// // // // // // //                                                                 <div key={evItem.id} style={{ marginBottom: '1.5rem', background: '#f8fafc', padding: '10px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+// // // // // // //                                                                     <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#e11d48', display: 'block', marginBottom: '8px' }}>
+// // // // // // //                                                                         Evidence: {evItem.code} - {evItem.description}
+// // // // // // //                                                                     </span>
+// // // // // // //                                                                     {seData.uploadUrl && <div style={{ marginBottom: '10px' }}><FilePreview url={seData.uploadUrl} /></div>}
+// // // // // // //                                                                     {seData.url && <div style={{ marginBottom: '10px' }}><UrlPreview url={seData.url} /></div>}
+// // // // // // //                                                                     {seData.code && <pre style={{ background: '#1e293b', color: '#f8fafc', padding: '0.75rem', borderRadius: '4px', overflowX: 'auto', marginBottom: '10px' }}><code>{seData.code}</code></pre>}
+// // // // // // //                                                                     {seData.text && <div className="quill-read-only-content" dangerouslySetInnerHTML={{ __html: cleanRichText(seData.text) }} />}
+// // // // // // //                                                                     {(!seData.uploadUrl && !seData.url && !seData.code && !seData.text) && <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontStyle: 'italic' }}>No evidence attached for this item.</span>}
+// // // // // // //                                                                 </div>
+// // // // // // //                                                             );
+// // // // // // //                                                         })}
+// // // // // // //                                                     </div>
+
+// // // // // // //                                                     <div style={{ borderTop: '1px dashed #cbd5e1', paddingTop: '1rem' }}>
+// // // // // // //                                                         {(isFacDone || mentorResult.status) && (!canFacilitatorMark || isPrintMode) && (
+// // // // // // //                                                             <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '6px', padding: '10px', marginBottom: '10px' }}>
+// // // // // // //                                                                 <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#1d4ed8', textTransform: 'uppercase', display: 'flex', gap: '5px' }}>
+// // // // // // //                                                                     <ShieldCheck size={12} /> {savedFacRole === 'mentor' ? 'Workplace Mentor Observation' : 'Facilitator Pre-Mark'}
+// // // // // // //                                                                 </span>
+// // // // // // //                                                                 <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: mentorResult.status === 'C' ? '#166534' : mentorResult.status === 'NYC' ? '#991b1b' : '#64748b' }}>
+// // // // // // //                                                                     {mentorResult.status === 'C' ? (savedFacRole === 'mentor' ? 'Observed ✓' : 'Competent (C)') : mentorResult.status === 'NYC' ? (savedFacRole === 'mentor' ? 'Not Observed ✗' : 'NYC') : 'Not Reviewed'}
+// // // // // // //                                                                 </span>
+// // // // // // //                                                                 {mentorResult.comment && <div style={{ fontSize: '0.82rem', color: '#1e40af', fontStyle: 'italic', marginTop: '4px' }}>{mentorResult.comment}</div>}
+// // // // // // //                                                             </div>
+// // // // // // //                                                         )}
+
+// // // // // // //                                                         {(isAssDone || assessorResult.status) && (!canGrade || isPrintMode) && (
+// // // // // // //                                                             <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: '6px', padding: '10px', marginBottom: '10px' }}>
+// // // // // // //                                                                 <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#b91c1c', textTransform: 'uppercase', display: 'flex', gap: '5px' }}>
+// // // // // // //                                                                     <AwardIcon size={12} /> Assessor Grade
+// // // // // // //                                                                 </span>
+// // // // // // //                                                                 <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: assessorResult.status === 'C' ? '#166534' : assessorResult.status === 'NYC' ? '#991b1b' : '#64748b' }}>
+// // // // // // //                                                                     {assessorResult.status === 'C' ? 'Competent (C)' : assessorResult.status === 'NYC' ? 'NYC' : 'Not Graded'}
+// // // // // // //                                                                 </span>
+// // // // // // //                                                                 {assessorResult.comment && <div style={{ fontSize: '0.82rem', color: '#991b1b', fontStyle: 'italic', marginTop: '4px' }}>{assessorResult.comment}</div>}
+// // // // // // //                                                             </div>
+// // // // // // //                                                         )}
+
+// // // // // // //                                                         {(isModDone || modResult.status || modResult.comment) && (!canModerate || isPrintMode) && (
+// // // // // // //                                                             <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '6px', padding: '10px', marginBottom: '10px' }}>
+// // // // // // //                                                                 <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#15803d', textTransform: 'uppercase', display: 'flex', gap: '5px' }}>
+// // // // // // //                                                                     <ShieldCheck size={12} /> Moderator QA
+// // // // // // //                                                                 </span>
+// // // // // // //                                                                 {modResult.status && (
+// // // // // // //                                                                     <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: modResult.status === 'C' ? '#166534' : modResult.status === 'NYC' ? '#991b1b' : '#64748b' }}>
+// // // // // // //                                                                         {modResult.status === 'C' ? 'Competent (C)' : modResult.status === 'NYC' ? 'NYC' : 'Not Graded'}
+// // // // // // //                                                                     </span>
+// // // // // // //                                                                 )}
+// // // // // // //                                                                 {modResult.comment && <div style={{ fontSize: '0.82rem', color: '#15803d', fontStyle: 'italic', marginTop: '4px' }}>{modResult.comment}</div>}
+// // // // // // //                                                             </div>
+// // // // // // //                                                         )}
+
+// // // // // // //                                                         {/* EVALUATION INTERACTIVE INTERFACE CONTROLS */}
+// // // // // // //                                                         {(!isPrintMode && isActiveRole) && (
+// // // // // // //                                                             <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', flexWrap: 'wrap', borderTop: '1px dashed #cbd5e1', paddingTop: '10px', marginTop: '10px' }}>
+// // // // // // //                                                                 <div style={{ display: 'flex', gap: '10px' }}>
+// // // // // // //                                                                     <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.85rem', background: myResult.status === 'C' ? '#dcfce7' : '#f8fafc', padding: '8px 12px', borderRadius: '4px', border: myResult.status === 'C' ? '2px solid #22c55e' : '1px solid #cbd5e1', color: myResult.status === 'C' ? '#166534' : '#64748b', fontWeight: 'bold', cursor: canModerate ? 'not-allowed' : 'pointer' }}>
+// // // // // // //                                                                         <input type="radio" disabled={canModerate} checked={myResult.status === 'C'} onChange={() => handleActivityStatusChange(block.id, actIdx, 'C')} style={{ accentColor: '#22c55e' }} />
+// // // // // // //                                                                         {isMentor ? 'Verified ✓' : 'Competent (C)'}
+// // // // // // //                                                                     </label>
+// // // // // // //                                                                     <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.85rem', background: myResult.status === 'NYC' ? '#fee2e2' : '#f8fafc', padding: '8px 12px', borderRadius: '4px', border: myResult.status === 'NYC' ? '2px solid #ef4444' : '1px solid #cbd5e1', color: myResult.status === 'NYC' ? '#991b1b' : '#64748b', fontWeight: 'bold', cursor: canModerate ? 'not-allowed' : 'pointer' }}>
+// // // // // // //                                                                         <input type="radio" disabled={canModerate} checked={myResult.status === 'NYC'} onChange={() => handleActivityStatusChange(block.id, actIdx, 'NYC')} style={{ accentColor: '#ef4444' }} />
+// // // // // // //                                                                         {isMentor ? 'Not Verified ✗' : 'NYC'}
+// // // // // // //                                                                     </label>
+// // // // // // //                                                                 </div>
+// // // // // // //                                                                 <div style={{ flex: 1, minWidth: '250px' }}>
+// // // // // // //                                                                     <textarea className="ab-input" disabled={canModerate && !myResult.comment} rows={2} placeholder={isMentor ? "Supervisor verification notes..." : canModerate ? "Assessor's comments" : "Assessor comments / reasoning..."} value={myResult.comment} onChange={e => handleActivityCommentChange(block.id, actIdx, e.target.value)} style={{ fontSize: '0.85rem', width: '100%', border: '1px solid #e2e8f0', resize: 'vertical', background: 'white' }} />
+// // // // // // //                                                                 </div>
+// // // // // // //                                                             </div>
+// // // // // // //                                                         )}
+// // // // // // //                                                     </div>
+// // // // // // //                                                 </div>
+// // // // // // //                                             </div>
+// // // // // // //                                         );
+// // // // // // //                                     })}
+// // // // // // //                                     <div className="ap-workplace__toggles" style={{ marginTop: '1rem' }}>
+// // // // // // //                                         {block.requireSelfAssessment !== false && (
+// // // // // // //                                             <label className={`ap-workplace__toggle${learnerAns?.selfAssessmentDone ? ' ap-workplace__toggle--checked' : ''}`}>
+// // // // // // //                                                 <CheckCircle size={16} color={learnerAns?.selfAssessmentDone ? 'var(--mlab-green)' : 'var(--mlab-grey-light)'} />
+// // // // // // //                                                 <span className="ap-workplace__toggle-label" style={{ color: learnerAns?.selfAssessmentDone ? 'black' : 'var(--mlab-grey-light)' }}>Learner completed self-assessment.</span>
+// // // // // // //                                             </label>
+// // // // // // //                                         )}
+// // // // // // //                                         {block.requireGoalPlanning !== false && (
+// // // // // // //                                             <label className={`ap-workplace__toggle${learnerAns?.goalPlanningDone ? ' ap-workplace__toggle--checked' : ''}`}>
+// // // // // // //                                                 <CheckCircle size={16} color={learnerAns?.goalPlanningDone ? 'var(--mlab-green)' : 'var(--mlab-grey-light)'} />
+// // // // // // //                                                 <span className="ap-workplace__toggle-label" style={{ color: learnerAns?.goalPlanningDone ? 'black' : 'var(--mlab-grey-light)' }}>Learner updated goal planning document.</span>
+// // // // // // //                                             </label>
+// // // // // // //                                         )}
+// // // // // // //                                     </div>
+
+// // // // // // //                                     <div className="sr-grade-box" style={{ borderTop: `1px dashed #cbd5e1`, marginTop: '1rem', paddingTop: '1rem' }}>
+// // // // // // //                                         {renderReadOnlyLayers()}
+// // // // // // //                                         {(!isPrintMode && isActiveRole) && renderActiveGradeControls(block.id)}
+// // // // // // //                                     </div>
+
+// // // // // // //                                     {block.requireObservationDeclaration !== false && !canModerate && (
+// // // // // // //                                         <div style={{ marginTop: '2rem', padding: '1.5rem', background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '8px', borderLeft: `4px solid ${activeInkColor}` }}>
+// // // // // // //                                             <h4 style={{ fontSize: '0.9rem', color: '#0f172a', margin: '0 0 15px 0', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '6px' }}>
+// // // // // // //                                                 <ShieldCheck size={16} color={activeInkColor} />
+// // // // // // //                                                 {isWorkplaceModule ? 'Mentor Verification Declaration' : 'Observation Declaration'}
+// // // // // // //                                             </h4>
+
+// // // // // // //                                             {block.requireTimeTracking !== false && (
+// // // // // // //                                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px', marginBottom: '15px' }}>
+// // // // // // //                                                     {(['obsDate', 'obsStartTime', 'obsEndTime'] as const).map((field, fi) => {
+// // // // // // //                                                         const labels = ['Date of Observation', 'Session Start Time', 'Session End Time'];
+// // // // // // //                                                         const types = ['date', 'time', 'time'];
+// // // // // // //                                                         const val = decData[field];
+// // // // // // //                                                         return (
+// // // // // // //                                                             <div key={field}>
+// // // // // // //                                                                 <label style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#475569', marginBottom: '4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+// // // // // // //                                                                     {labels[fi]}
+// // // // // // //                                                                     {isDeclarationInteractive && !isPrintMode && <button className="ab-text-btn" style={{ fontSize: '0.65rem', padding: 0 }} onClick={() => handleSetToNow(block.id, field)}>Set Now</button>}
+// // // // // // //                                                                 </label>
+// // // // // // //                                                                 {(!isDeclarationInteractive || isPrintMode)
+// // // // // // //                                                                     ? <div style={{ fontWeight: 'bold', fontSize: '0.9rem', color: '#0f172a' }}>{field === 'obsDate' ? (val ? moment(val).format('DD/MM/YYYY') : '—') : (val || '—')}</div>
+// // // // // // //                                                                     : <input type={types[fi]} className="ab-input" value={val || ''} onChange={e => handleGlobalChecklistChange(block.id, field, e.target.value)} />
+// // // // // // //                                                                 }
+// // // // // // //                                                             </div>
+// // // // // // //                                                         );
+// // // // // // //                                                     })}
+// // // // // // //                                                 </div>
+// // // // // // //                                             )}
+
+// // // // // // //                                             <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.85rem', color: '#0f172a', fontWeight: 'bold', background: decData.obsDeclaration ? '#eff6ff' : 'white', padding: '10px', borderRadius: '6px', border: '1px solid #bfdbfe', cursor: isDeclarationInteractive && !isPrintMode ? 'pointer' : 'default' }}>
+// // // // // // //                                                 <input type="checkbox" disabled={!isDeclarationInteractive || isPrintMode} checked={decData.obsDeclaration || false} onChange={e => handleGlobalChecklistChange(block.id, 'obsDeclaration', e.target.checked)} style={{ width: '18px', height: '18px', accentColor: isDeclarationInteractive ? activeInkColor : '#64748b' }} />
+// // // // // // //                                                 {isWorkplaceModule
+// // // // // // //                                                     ? 'I confirm that I have directly observed this learner performing the above workplace activities in a real work environment, and that the evidence submitted is authentic.'
+// // // // // // //                                                     : 'I officially declare that I have observed the learner performing these tasks and that the evidence was submitted by the learner.'}
+// // // // // // //                                             </label>
+// // // // // // //                                         </div>
+// // // // // // //                                     )}
+// // // // // // //                                 </div>
+// // // // // // //                             </div>
+// // // // // // //                         );
+// // // // // // //                     }
+// // // // // // //                 }
+// // // // // // //                 return null;
+// // // // // // //             })}
+// // // // // // //         </>
+// // // // // // //     );
+// // // // // // // };
