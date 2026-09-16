@@ -5063,9 +5063,11 @@ export const scheduleAssessmentSweep = onCall(
   },
 );
 
-// This is the safety-net HTTP endpoint that Google Cloud Tasks calls when the clock runs out
+// ============================================================================
+// AUTOMATED ASSESSMENT SWEEPER (GOOGLE CLOUD TASKS EXECUTOR)
+// ============================================================================
+
 export const executeAssessmentSweep = onRequest((req, res) => {
-  // Wrap in your existing CORS setup to ensure Cloud Run Health Checks pass
   return cors(req, res, async () => {
     if (req.method !== "POST") {
       res.status(405).send("Method Not Allowed");
@@ -5082,13 +5084,14 @@ export const executeAssessmentSweep = onRequest((req, res) => {
     const db = admin.firestore();
 
     try {
-      logger.info(` Executing Assessment Auto-Sweep for ${assessmentId}...`);
+      logger.info(`Executing Assessment Auto-Sweep for ${assessmentId}...`);
 
-      // THE SAFETY NET: Check the Master Assessment
+      // 1. Verify Master Assessment status
       const assessmentSnap = await db
         .collection("assessments")
         .doc(assessmentId)
         .get();
+
       if (!assessmentSnap.exists) {
         logger.warn(
           `Sweep Aborted: Assessment ${assessmentId} no longer exists.`,
@@ -5099,73 +5102,143 @@ export const executeAssessmentSweep = onRequest((req, res) => {
 
       const assessmentData = assessmentSnap.data();
 
-      // If the assessment was cancelled, unpublished, or paused, DO NOT execute the sweep!
+      // If the assessment was cancelled, unpublished, or paused, abort sweep
       if (
         assessmentData?.status !== "active" &&
         assessmentData?.status !== "completed" &&
         assessmentData?.status !== "scheduled"
       ) {
         logger.warn(
-          `Sweep Aborted: Assessment ${assessmentId} is not active (Current status: ${assessmentData?.status}).`,
+          `Sweep Aborted: Assessment ${assessmentId} is not active (Status: ${assessmentData?.status}).`,
         );
         res.status(200).send("Aborted: Assessment is not active.");
         return;
       }
 
-      // THE SWEEP: Find ghost learners
+      // 2. Query all unfinalized attempts (both 'not_started' and 'in_progress')
       const submissionsSnap = await db
         .collection("learner_submissions")
         .where("assessmentId", "==", assessmentId)
-        .where("status", "==", "not_started")
+        .where("status", "in", ["not_started", "in_progress"])
         .get();
 
       if (submissionsSnap.empty) {
         logger.info(
-          `Sweep Complete: No absent learners found for ${assessmentId}.`,
+          `Sweep Complete: No pending or absent learners found for ${assessmentId}.`,
         );
-        res.status(200).send("Complete: No missed submissions.");
+        res.status(200).send("Complete: No pending submissions.");
         return;
       }
 
-      // THE EXECUTION: Mark them as missed
-      const batch = db.batch();
-      let sweptCount = 0;
+      // Chunk batch operations to stay safely under Firestore's 500-op limit
+      let currentBatch = db.batch();
+      let batchOpCount = 0;
+      const batchPromises: Promise<any>[] = [];
+
+      let autoSubmittedCount = 0;
+      let missedCount = 0;
+      let skippedOverrideCount = 0;
+
+      const timestampIso = new Date().toISOString();
 
       submissionsSnap.docs.forEach((docSnap) => {
         const subData = docSnap.data();
 
-        // Double-check the overrideUnlock flag for deferred access
+        // Honor deferred access override locks
         if (subData.overrideUnlock === true) {
           logger.info(
-            `Skipping Learner ${subData.learnerId} - They have deferred access granted.`,
+            `Skipping Learner ${subData.learnerId} - Deferred access override granted.`,
           );
+          skippedOverrideCount++;
           return;
         }
 
-        batch.update(docSnap.ref, {
-          status: "missed",
-          lastStaffEditAt: new Date().toISOString(),
-          systemNote:
-            "Auto-swept: Learner failed to start assessment within the scheduled window.",
+        // 3. REFINED EVALUATION: Detect true non-empty work
+        const answersObj = subData.answers || {};
+        const hasValidAnswers = Object.keys(answersObj).some((key) => {
+          const val = answersObj[key];
+          if (val === null || val === undefined) return false;
+          if (typeof val === "string") return val.trim().length > 0;
+          if (typeof val === "number" || typeof val === "boolean") return true;
+          if (typeof val === "object") {
+            return Boolean(
+              (val.text &&
+                String(val.text)
+                  .replace(/<[^>]*>/g, "")
+                  .trim().length > 0) ||
+              val.code ||
+              val.codeData ||
+              val.url ||
+              val.uploadUrl ||
+              val.equation ||
+              val.graphState ||
+              val.storagePath ||
+              (Array.isArray(val.points) && val.points.length > 0) ||
+              (Array.isArray(val.shapes) && val.shapes.length > 0),
+            );
+          }
+          return false;
         });
-        sweptCount++;
+
+        const rawLogObj = subData.rawLogData || {};
+        const hasLogs = Object.keys(rawLogObj).length > 0;
+
+        // Candidate must have actual content to trigger Auto-Submit
+        const hasWork = hasValidAnswers || hasLogs;
+
+        if (hasWork) {
+          // AUTO-SUBMIT: Candidate started and answered questions
+          currentBatch.update(docSnap.ref, {
+            status: "submitted",
+            submittedAt: subData.submittedAt || timestampIso,
+            autoSubmitted: true,
+            lastStaffEditAt: timestampIso,
+            systemNote:
+              "Auto-submitted by system sweeper: Learner had saved work on file when the assessment window closed.",
+          });
+          autoSubmittedCount++;
+        } else {
+          // MISSED: Candidate never opened the test OR abandoned a blank screen
+          currentBatch.update(docSnap.ref, {
+            status: "missed",
+            missedAt: timestampIso,
+            lastStaffEditAt: timestampIso,
+            systemNote:
+              "Auto-swept: Learner failed to complete or submit assessment within the scheduled window.",
+          });
+          missedCount++;
+        }
+
+        batchOpCount++;
+
+        // Commit batch when approaching Firestore limits
+        if (batchOpCount >= 480) {
+          batchPromises.push(currentBatch.commit());
+          currentBatch = db.batch();
+          batchOpCount = 0;
+        }
       });
 
-      if (sweptCount > 0) {
-        await batch.commit();
-        logger.info(
-          `Successfully swept ${sweptCount} ghost submissions to 'missed' for assessment ${assessmentId}`,
-        );
-      } else {
-        logger.info(
-          `Sweep Complete: All pending learners had deferred access overrides.`,
-        );
+      if (batchOpCount > 0) {
+        batchPromises.push(currentBatch.commit());
       }
 
-      res.status(200).send(`Swept ${sweptCount} submissions.`);
-    } catch (error) {
+      await Promise.all(batchPromises);
+
+      logger.info(
+        `Sweep Complete for ${assessmentId}: Auto-submitted: ${autoSubmittedCount}, Missed: ${missedCount}, Deferred Overrides Skipped: ${skippedOverrideCount}`,
+      );
+
+      res.status(200).send({
+        success: true,
+        assessmentId,
+        autoSubmittedCount,
+        missedCount,
+        skippedOverrideCount,
+      });
+    } catch (error: any) {
       logger.error(
-        ` Critical error during assessment sweep for ${assessmentId}:`,
+        `Critical error during assessment sweep for ${assessmentId}:`,
         error,
       );
       res.status(500).send("Internal Server Error during sweep.");
@@ -7684,13 +7757,21 @@ export const generateWeeklyMentorLinks = onSchedule(
         { name: string; logs: string[]; mentorId: string }
       > = {};
 
+      const ALLOWED_SUPERVISOR_ROLES = [
+        "mentor",
+        "staff",
+        "facilitator",
+        "admin",
+        "supervisor",
+        "assistant_admin",
+      ];
+
       for (const docSnap of logsSnap.docs) {
         const logData = docSnap.data();
         const learnerId = logData.learnerId;
-        const mentorId = logData.mentorId; // 🚀 Explicitly stamped by the UI
+        const mentorId = logData.mentorId; // Explicitly stamped by the UI (Primary or Co-Mentor)
 
         if (mentorId) {
-          // 🚀 Fetch the actual mentor profile from the 'users' collection
           const mentorProfileSnap = await db
             .collection("users")
             .doc(mentorId)
@@ -7698,10 +7779,13 @@ export const generateWeeklyMentorLinks = onSchedule(
 
           if (mentorProfileSnap.exists) {
             const mentorData = mentorProfileSnap.data()!;
+            const normalizedRole = String(mentorData.role || "")
+              .toLowerCase()
+              .trim();
 
-            // 🚀 STRICT GATES: Must be a mentor, must not be archived, must have an email
+            // FLEXIBLE ROLE GATE: Accepts primary mentors, co-mentors, facilitators, and staff supervisors
             if (
-              mentorData.role === "mentor" &&
+              ALLOWED_SUPERVISOR_ROLES.includes(normalizedRole) &&
               mentorData.status !== "archived" &&
               mentorData.email
             ) {
@@ -7719,7 +7803,7 @@ export const generateWeeklyMentorLinks = onSchedule(
               logsByMentor[verifiedEmail].logs.push(docSnap.id);
             } else {
               logger.warn(
-                `Mentor ${mentorId} for Learner ${learnerId} failed compliance gates (Archived, Invalid Role, or Missing Email).`,
+                `Mentor ${mentorId} for Learner ${learnerId} failed compliance gates (Role: ${mentorData.role}, Status: ${mentorData.status}, Has Email: ${!!mentorData.email}).`,
               );
             }
           } else {
@@ -7740,13 +7824,11 @@ export const generateWeeklyMentorLinks = onSchedule(
       let tokenCount = 0;
 
       for (const [email, data] of Object.entries(logsByMentor)) {
-        // Generate a cryptographically random token string
         const tokenId = crypto.randomBytes(24).toString("hex");
 
         const expireDate = new Date();
         expireDate.setDate(expireDate.getDate() + 7); // Valid for 7 days
 
-        // Store the secure token in the DB
         const tokenRef = db.collection("mentor_tokens").doc(tokenId);
         batch.set(tokenRef, {
           mentorEmail: email,
@@ -7758,7 +7840,6 @@ export const generateWeeklyMentorLinks = onSchedule(
           expiresAt: expireDate.toISOString(),
         });
 
-        // The secure magic link to your web platform route
         const magicLink = `${APP_URL}/mentor-verify/${tokenId}`;
 
         const emailParams = {
@@ -7816,7 +7897,6 @@ export const generateWeeklyMentorLinks = onSchedule(
 );
 
 // ─── MANUAL TRIGGER FOR TESTING ───
-// ─── MANUAL TRIGGER FOR TESTING ───
 export const testGenerateWeeklyMentorLinks = onRequest(
   { secrets: [mailgunSecret], timeoutSeconds: 120, memory: "256MiB" },
   async (req, res) => {
@@ -7837,9 +7917,15 @@ export const testGenerateWeeklyMentorLinks = onRequest(
           return;
         }
 
-        const TEST_EMAIL = "codetribe@mlab.co.za";
+        const ALLOWED_SUPERVISOR_ROLES = [
+          "mentor",
+          "staff",
+          "facilitator",
+          "admin",
+          "supervisor",
+          "assistant_admin",
+        ];
 
-        // Mirror exact verification logic in Test mode
         const logsByMentor: Record<
           string,
           { name: string; logs: string[]; mentorId: string }
@@ -7848,7 +7934,7 @@ export const testGenerateWeeklyMentorLinks = onRequest(
         for (const docSnap of logsSnap.docs) {
           const logData = docSnap.data();
           const mentorId = logData.mentorId;
-          const learnerId = logData.learnerId; // 🚀 Kept and used below to fix the ts(6133) warning!
+          const learnerId = logData.learnerId;
 
           if (mentorId) {
             const mentorProfileSnap = await db
@@ -7858,27 +7944,30 @@ export const testGenerateWeeklyMentorLinks = onRequest(
 
             if (mentorProfileSnap.exists) {
               const mentorData = mentorProfileSnap.data()!;
+              const normalizedRole = String(mentorData.role || "")
+                .toLowerCase()
+                .trim();
 
               if (
-                mentorData.role === "mentor" &&
-                mentorData.status !== "archived"
+                ALLOWED_SUPERVISOR_ROLES.includes(normalizedRole) &&
+                mentorData.status !== "archived" &&
+                mentorData.email
               ) {
                 const verifiedName =
-                  mentorData.fullName || logData.mentorName || "Test Mentor";
+                  mentorData.fullName || logData.mentorName || "Mentor";
+                const verifiedEmail = mentorData.email.toLowerCase().trim();
 
-                // Overwrite the destination email to the test email, but keep real logic
-                if (!logsByMentor[TEST_EMAIL]) {
-                  logsByMentor[TEST_EMAIL] = {
+                if (!logsByMentor[verifiedEmail]) {
+                  logsByMentor[verifiedEmail] = {
                     name: `${verifiedName} (TEST MODE)`,
                     mentorId: mentorId,
                     logs: [],
                   };
                 }
-                logsByMentor[TEST_EMAIL].logs.push(docSnap.id);
+                logsByMentor[verifiedEmail].logs.push(docSnap.id);
               } else {
-                // 🚀 Explicitly using learnerId to provide contextual audit trails
                 logger.warn(
-                  `Test Sweeper: Mentor ${mentorId} for Learner ${learnerId || "Unknown"} failed compliance gates.`,
+                  `Test Sweeper: Mentor ${mentorId} for Learner ${learnerId || "Unknown"} failed compliance gates (Role: ${mentorData.role}, Status: ${mentorData.status}, Has Email: ${!!mentorData.email}).`,
                 );
               }
             } else {
@@ -7912,7 +8001,7 @@ export const testGenerateWeeklyMentorLinks = onRequest(
 
           const tokenRef = db.collection("mentor_tokens").doc(tokenId);
           batch.set(tokenRef, {
-            mentorEmail: email, // Will be the test email
+            mentorEmail: email, // Resolves to the actual mentor's email
             mentorName: data.name,
             mentorId: data.mentorId,
             logIds: data.logs,
@@ -7943,7 +8032,7 @@ export const testGenerateWeeklyMentorLinks = onRequest(
 
           emailPromises.push(
             sendMailgunEmail({
-              to: email,
+              to: email, // Dispatches directly to each resolved mentor email
               subject: "[TEST] Action Required: Weekly Timesheet Verification",
               text: buildMlabEmailPlainText(emailParams),
               html: buildMlabEmailHtml(emailParams),
@@ -7956,7 +8045,7 @@ export const testGenerateWeeklyMentorLinks = onRequest(
 
         res.status(200).send({
           success: true,
-          message: `Test complete. Generated ${Object.keys(logsByMentor).length} token(s) and routed emails to ${TEST_EMAIL}.`,
+          message: `Test complete. Generated ${Object.keys(logsByMentor).length} token(s) and dispatched emails directly to actual mentor email addresses.`,
         });
       } catch (error: any) {
         logger.error("Error executing Test Mentor Sweeper:", error);
@@ -13220,3 +13309,246 @@ export {
   evaluateMockInterview,
   generateSpeech,
 } from "./modules/interviewEngine";
+
+// import { onRequest } from "firebase-functions/v2/https";
+// import * as logger from "firebase-functions/logger";
+
+/**
+ * 🚀 BACKFILL ENDPOINT: Scans learner_submissions for mismatched Competency outcomes.
+ *
+ * Usage:
+ * - Simulation (Dry Run):  GET /backfillMismatchedCompetencies
+ * - Live Execution:        GET /backfillMismatchedCompetencies?execute=true
+ */
+export const backfillMismatchedCompetencies = onRequest(
+  { timeoutSeconds: 540, memory: "512MiB" },
+  (req, res) => {
+    return cors(req, res, async () => {
+      const isExecute = req.query.execute === "true";
+      const dryRun = !isExecute;
+      const db = admin.firestore();
+      const timestampIso = new Date().toISOString();
+
+      logger.info(
+        `=== STARTING COMPETENCY BACKFILL SWEEP (Dry Run: ${dryRun}) ===`,
+      );
+
+      try {
+        // 1. Fetch assessment templates to map dynamic pass marks & total marks
+        const assessmentsSnap = await db.collection("assessments").get();
+        const passMarkMap: Record<string, number> = {};
+        const totalMarksMap: Record<string, number> = {};
+
+        assessmentsSnap.docs.forEach((docSnap) => {
+          const data = docSnap.data();
+          const passMark = Number(
+            data.passPercentage ??
+              data.passMark ??
+              data.moduleInfo?.passMark ??
+              80,
+          );
+          passMarkMap[docSnap.id] = passMark;
+          totalMarksMap[docSnap.id] = Number(data.totalMarks || 0);
+        });
+
+        // 2. Query all submissions currently recorded as Competent
+        const submissionsSnap = await db
+          .collection("learner_submissions")
+          .where("competency", "in", ["C", "HC", "3", "4"])
+          .get();
+
+        logger.info(
+          `Analyzing ${submissionsSnap.size} competent submission records...`,
+        );
+
+        let totalMismatched = 0;
+        let batchOpCount = 0;
+        let currentBatch = db.batch();
+        const batchPromises: Promise<any>[] = [];
+
+        // 3. Evaluate each submission
+        for (const subDoc of submissionsSnap.docs) {
+          const subData = subDoc.data();
+          const assessmentId = subData.assessmentId;
+
+          const minPassPercentage = passMarkMap[assessmentId] ?? 80;
+          const totalMarks =
+            totalMarksMap[assessmentId] || Number(subData.totalMarks || 0);
+
+          // Skip non-numeric/workplace modules with no total marks
+          if (totalMarks <= 0) continue;
+
+          const awardedMarks = Number(subData.marks || 0);
+          const percentage = Math.round((awardedMarks / totalMarks) * 100);
+
+          // Flag records where score is strictly below required pass mark
+          if (percentage < minPassPercentage) {
+            totalMismatched++;
+            logger.info(
+              `[CORRECTION NEEDED] SubID: ${subDoc.id} | Score: ${awardedMarks}/${totalMarks} (${percentage}%) | Required: ${minPassPercentage}%`,
+            );
+
+            if (!dryRun) {
+              currentBatch.update(subDoc.ref, {
+                competency: "NYC",
+                previousMismatchedCompetency: subData.competency,
+                lastStaffEditAt: timestampIso,
+                systemNote: `Automated Audit Correction: Updated competency from '${subData.competency}' to 'NYC'. Score achieved (${percentage}%) was below required threshold (${minPassPercentage}%).`,
+              });
+
+              batchOpCount++;
+
+              if (batchOpCount >= 400) {
+                batchPromises.push(currentBatch.commit());
+                currentBatch = db.batch();
+                batchOpCount = 0;
+              }
+            }
+          }
+        }
+
+        if (!dryRun && batchOpCount > 0) {
+          batchPromises.push(currentBatch.commit());
+        }
+
+        await Promise.all(batchPromises);
+
+        const modeMsg = dryRun
+          ? "DRY RUN Complete. No database writes executed. Append '?execute=true' to the URL to apply live changes."
+          : "LIVE EXECUTION Complete. Database records updated successfully.";
+
+        logger.info(`=== SWEEP COMPLETE === ${modeMsg}`);
+
+        res.status(200).send({
+          success: true,
+          mode: dryRun ? "DRY RUN" : "LIVE EXECUTION",
+          message: modeMsg,
+          totalAnalyzed: submissionsSnap.size,
+          totalMismatched,
+        });
+      } catch (error: any) {
+        logger.error("Backfill Competency Sweep Failed:", error);
+        res.status(500).send({ success: false, error: error.message });
+      }
+    });
+  },
+);
+
+/**
+ * HTTPS Cloud Function v2 to migrate existing learner profiles containing `skills`
+ * to the new `skillsHistory` timeline structure.
+ */
+export const migrateLearnerSkillsHistory = onRequest(
+  {
+    cors: true,
+    timeoutSeconds: 540,
+    memory: "1GiB",
+  },
+  async (req, res) => {
+    // Basic HTTP method restriction
+    if (req.method !== "POST" && req.method !== "GET") {
+      res.status(455).send("Method Not Allowed");
+      return;
+    }
+
+    const db = admin.firestore();
+
+    try {
+      console.log("🚀 Starting learner skills history migration...");
+
+      // Fetch all user profiles that have a learner role
+      const usersSnap = await db
+        .collection("users")
+        .where("role", "==", "learner")
+        .get();
+
+      if (usersSnap.empty) {
+        res.status(200).json({
+          success: true,
+          message: "No learner profiles found to migrate.",
+          stats: { checked: 0, migrated: 0 },
+        });
+        return;
+      }
+
+      const bulkWriter = db.bulkWriter();
+      let totalChecked = 0;
+      let totalMigrated = 0;
+
+      usersSnap.forEach((docSnap) => {
+        totalChecked++;
+        const data = docSnap.data();
+
+        const skills = Array.isArray(data.skills) ? data.skills : [];
+        const existingHistory = Array.isArray(data.skillsHistory)
+          ? data.skillsHistory
+          : [];
+
+        // Skip learners who do not have any existing skills
+        if (skills.length > 0) {
+          const historyKeys = new Set(
+            existingHistory.map((h: any) => String(h.skillId || h.skillName)),
+          );
+
+          const newHistoryEntries: any[] = [];
+
+          skills.forEach((skill: any, idx: number) => {
+            const skillKey = String(
+              skill.id || skill.name || skill.label || `skill_${idx}`,
+            );
+            const skillName = skill.name || skill.label || "Unlabeled Skill";
+            const currentLevel = skill.level || "Beginner";
+
+            // If the skill is not represented in skillsHistory, generate the baseline entry
+            if (!historyKeys.has(skillKey) && !historyKeys.has(skillName)) {
+              newHistoryEntries.push({
+                id: `sh_migrated_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+                skillId: skillKey,
+                skillName: skillName,
+                category: skill.category || "General Technical",
+                previousLevel: "None",
+                newLevel: currentLevel,
+                updatedAt:
+                  skill.addedAt ||
+                  skill.updatedAt ||
+                  data.createdAt ||
+                  new Date().toISOString(),
+              });
+            }
+          });
+
+          // Only queue an update if new history entries were created
+          if (newHistoryEntries.length > 0) {
+            totalMigrated++;
+            bulkWriter.update(docSnap.ref, {
+              skillsHistory: [...existingHistory, ...newHistoryEntries],
+              updatedAt: new Date().toISOString(),
+            });
+          }
+        }
+      });
+
+      // Flushes all pending writes and handles retries
+      await bulkWriter.close();
+
+      console.log(
+        `✅ Migration complete. Checked: ${totalChecked}, Migrated: ${totalMigrated}`,
+      );
+
+      res.status(200).json({
+        success: true,
+        message: "Skills timeline migration completed successfully.",
+        stats: {
+          totalLearnersChecked: totalChecked,
+          totalLearnersMigrated: totalMigrated,
+        },
+      });
+    } catch (error: any) {
+      console.error("❌ Cloud Function migration error:", error);
+      res.status(500).json({
+        success: false,
+        error: error.message || "Internal Server Error during migration.",
+      });
+    }
+  },
+);

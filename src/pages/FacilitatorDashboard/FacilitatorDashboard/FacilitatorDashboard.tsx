@@ -18,7 +18,8 @@ import {
     ChevronUp,
     ChevronDown,
     HelpCircle,
-    Award
+    Award,
+    Shield
 } from 'lucide-react';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { collection, query, where, getDocs } from 'firebase/firestore';
@@ -36,6 +37,7 @@ import './FacilitatorDashboard.css';
 import '../../../components/views/CohortsView/CohortsView.css';
 import { CertificateStudio } from '../../AdminDashboard/CertificateStudio/CertificateStudio';
 import { SurveyManager } from '../../AdminDashboard/SurveyManager/SurveyManager';
+import { MentorDashboard } from '../../mentor/MentorDashboard/MentorDashboard';
 
 export const FacilitatorDashboard: React.FC = () => {
     const {
@@ -58,8 +60,8 @@ export const FacilitatorDashboard: React.FC = () => {
     const location = useLocation();
     const [searchParams, setSearchParams] = useSearchParams();
 
-    // 🚀 INCLUDED 'studio' IN THE URL TAB UNION
-    const urlTab = searchParams.get('tab') as 'dashboard' | 'history' | 'profile' | 'assessments' | 'coaching' | 'surveys' | 'studio' | null;
+    // 🚀 INCLUDED 'workplace-verification' IN THE URL TAB UNION
+    const urlTab = searchParams.get('tab') as 'dashboard' | 'history' | 'profile' | 'assessments' | 'coaching' | 'surveys' | 'studio' | 'workplace-verification' | null;
 
     const activeTab = useMemo(() => {
         const path = location.pathname;
@@ -70,7 +72,7 @@ export const FacilitatorDashboard: React.FC = () => {
         return 'dashboard';
     }, [location.pathname, urlTab]);
 
-    const handleSetTab = (tab: 'dashboard' | 'history' | 'profile' | 'assessments' | 'coaching' | 'surveys' | 'studio') => {
+    const handleSetTab = (tab: 'dashboard' | 'history' | 'profile' | 'assessments' | 'coaching' | 'surveys' | 'studio' | 'workplace-verification') => {
         setSearchParams((prev) => {
             prev.set('tab', tab);
             return prev;
@@ -281,46 +283,55 @@ export const FacilitatorDashboard: React.FC = () => {
     return (
         <div className="cdp-layout">
             <main className="cdp-main">
-                {/* ── PAGE HEADER ── */}
-                <header className="cdp-header" style={{ borderBottom: '3px solid var(--mlab-blue)' }}>
-                    <div className="cdp-header__left">
-                        <div className="cdp-header__icon-wrap">
-                            {activeTab === 'dashboard' && <LayoutDashboard size={22} />}
-                            {activeTab === 'history' && <ClipboardCheck size={22} />}
-                            {activeTab === 'profile' && <UserCircle size={22} />}
-                            {activeTab === 'assessments' && <FileEdit size={22} />}
-                            {activeTab === 'surveys' && <HelpCircle size={22} />}
-                            {activeTab === 'coaching' && <MessageSquare size={22} />}
-                            {activeTab === 'studio' && <Award size={22} />}
+                {/* ── PAGE HEADER (HIDDEN FOR WORKPLACE VERIFICATION AS IT USES ITS OWN NAVBAR) ── */}
+                {activeTab !== 'workplace-verification' && (
+                    <header className="cdp-header" style={{ borderBottom: '3px solid var(--mlab-blue)' }}>
+                        <div className="cdp-header__left">
+                            <div className="cdp-header__icon-wrap">
+                                {activeTab === 'dashboard' && <LayoutDashboard size={22} />}
+                                {activeTab === 'history' && <ClipboardCheck size={22} />}
+                                {activeTab === 'profile' && <UserCircle size={22} />}
+                                {activeTab === 'assessments' && <FileEdit size={22} />}
+                                {activeTab === 'surveys' && <HelpCircle size={22} />}
+                                {activeTab === 'coaching' && <MessageSquare size={22} />}
+                                {activeTab === 'studio' && <Award size={22} />}
+                            </div>
+                            <div className="cdp-header__text">
+                                <span className="cdp-header__eyebrow">Facilitator Portal</span>
+                                <h1 className="cdp-header__title">
+                                    {activeTab === 'dashboard' && (isAssistant ? 'Assistant Facilitator Overview' : 'My Cohorts')}
+                                    {activeTab === 'history' && 'Attendance History'}
+                                    {activeTab === 'profile' && 'My Profile'}
+                                    {activeTab === 'assessments' && (isAssistant ? 'Portfolio Tracking' : 'Assessment Manager')}
+                                    {activeTab === 'surveys' && 'Surveys & Feedback Center'}
+                                    {activeTab === 'coaching' && 'Coaching & Support Schedule'}
+                                    {activeTab === 'studio' && 'Certificate Studio'}
+                                </h1>
+                                <p className="cdp-header__sub">
+                                    Practitioner: {user?.fullName || 'Unknown User'}
+                                </p>
+                            </div>
                         </div>
-                        <div className="cdp-header__text">
-                            <span className="cdp-header__eyebrow">Facilitator Portal</span>
-                            <h1 className="cdp-header__title">
-                                {activeTab === 'dashboard' && (isAssistant ? 'Assistant Facilitator Overview' : 'My Cohorts')}
-                                {activeTab === 'history' && 'Attendance History'}
-                                {activeTab === 'profile' && 'My Profile'}
-                                {activeTab === 'assessments' && (isAssistant ? 'Portfolio Tracking' : 'Assessment Manager')}
-                                {activeTab === 'surveys' && 'Surveys & Feedback Center'}
-                                {activeTab === 'coaching' && 'Coaching & Support Schedule'}
-                                {activeTab === 'studio' && 'Certificate Studio'}
-                            </h1>
-                            <p className="cdp-header__sub">
-                                Practitioner: {user?.fullName || 'Unknown User'}
-                            </p>
+
+                        <div className="cdp-header__right" style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                            {activeTab === 'assessments' && !isAssistant && (
+                                <button className="lfm-btn lfm-btn--primary" onClick={() => navigate('/facilitator/assessments/builder')}>
+                                    <Plus size={16} /> New Assessment
+                                </button>
+                            )}
+                            <NotificationBell />
                         </div>
-                    </div>
+                    </header>
+                )}
 
-                    <div className="cdp-header__right" style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                        {activeTab === 'assessments' && !isAssistant && (
-                            <button className="lfm-btn lfm-btn--primary" onClick={() => navigate('/facilitator/assessments/builder')}>
-                                <Plus size={16} /> New Assessment
-                            </button>
-                        )}
-                        <NotificationBell />
-                    </div>
-                </header>
+                <div className="cdp-content" style={{ padding: activeTab === 'workplace-verification' ? 0 : '2rem' }}>
 
-                <div className="cdp-content" style={{ padding: '2rem' }}>
+                    {/* WORKPLACE LOGBOOK VERIFICATION DASHBOARD */}
+                    {activeTab === 'workplace-verification' && (
+                        <div className="animate-fade-in">
+                            <MentorDashboard />
+                        </div>
+                    )}
 
                     {/* COACHING SCHEDULE */}
                     {activeTab === 'coaching' && (

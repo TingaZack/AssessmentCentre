@@ -1,7 +1,7 @@
 // src/App.tsx
 
 import { useEffect, useState } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useParams, useNavigate } from 'react-router-dom';
 import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { getAnalytics, logEvent } from 'firebase/analytics';
@@ -67,7 +67,7 @@ import { PrivacyPolicy } from './components/views/PrivacyPolicy/PrivacyPolicy';
 import Loader from './components/common/Loader/Loader';
 import ResetPassword from './pages/ResetPassword/ResetPassword';
 
-// IMPORT THE WELCOME WIZARD
+// IMPORT THE WELCOME WIZARD & ANALYTICS HUB
 import { WelcomeWizard } from './components/common/WelcomeWizard/WelcomeWizard';
 
 import '../src/assets/styles/mLabModals.css';
@@ -76,6 +76,37 @@ import { EventKioskPage } from './components/admin/EcosystemDashboard/EventKiosk
 import { EventDetailsPage } from './components/admin/EcosystemDashboard/EventDetailsPage';
 import { EmployerApplicationForm } from './pages/LearnerPortal/public/EmployerApplicationForm/EmployerApplicationForm';
 import PublicSurveyPage from './pages/PublicSurvey/PublicSurvey';
+
+// // ════════════════════════════════════════════════════════════════════════════
+// // 🚀 ROUTE WRAPPER FOR DIRECT LESSON ANALYTICS ACCESS
+// // ════════════════════════════════════════════════════════════════════════════
+// const StandaloneLessonAnalyticsRoute = () => {
+//   const { unitId } = useParams();
+//   const navigate = useNavigate();
+
+//   const dummyUnit = {
+//     id: unitId || 'unit_secam_01',
+//     containerId: 'container_cta_01',
+//     title: 'JSX Syntax & Component Architecture',
+//     unitType: 'video',
+//     estimatedMinutes: 15,
+//     isRequired: true,
+//     orderIndex: 1
+//   };
+
+//   const dummyCohorts = [
+//     { id: 'cohort_dbn_01', name: 'CodeTribe Durban - Jan 2026' },
+//     { id: 'cohort_mict_2026', name: 'MICT SETA Systems Dev 2026' }
+//   ];
+
+//   return (
+//     <LessonAnalyticsModal
+//       unit={dummyUnit as any}
+//       cohorts={dummyCohorts}
+//       onClose={() => navigate('/admin?tab=content')}
+//     />
+//   );
+// };
 
 // ════════════════════════════════════════════════════════════════════════════
 // 🚀 GOOGLE WEB VITALS PERFORMANCE TRACKER
@@ -96,7 +127,6 @@ const sendVitalToAnalytics = ({ name, delta, value, id }: any) => {
   }
 };
 
-// Register listeners once on app startup
 if (typeof window !== 'undefined') {
   onCLS(sendVitalToAnalytics);
   onINP(sendVitalToAnalytics);
@@ -106,7 +136,7 @@ if (typeof window !== 'undefined') {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  GLOBAL UNHANDLED ERROR LISTENER (Catches Async/Network Errors)
+//  GLOBAL UNHANDLED ERROR LISTENER
 // ════════════════════════════════════════════════════════════════════════════
 const logGlobalError = async (type: string, message: string, stack?: string) => {
   try {
@@ -187,7 +217,6 @@ const RootRedirect = () => {
   const uploadedDocs = Array.isArray(rawUploadedDocs) ? rawUploadedDocs : [];
   const hasDoc = (docId: string) => uploadedDocs.some((doc: any) => doc.id === docId && typeof doc.url === 'string' && doc.url.trim() !== '');
 
-  // 1. Learner Strict Compliance Logic
   const isLearnerCompliant = () => {
     if (user.role !== 'learner') return true;
     const d = (user as any).demographics || {};
@@ -201,7 +230,6 @@ const RootRedirect = () => {
     return user.profileCompleted === true && hasDemographics && hasDoc('id') && hasDoc('qual') && hasDoc('poa');
   };
 
-  // 2. Staff Compliance Logic
   const isStaffCompliant = () => {
     if (user.role === 'learner') return true;
     if (!user.profileCompleted) return false;
@@ -230,7 +258,6 @@ const RootRedirect = () => {
     }
   };
 
-  // 3. APPLY GATES
   if (user.role === 'learner' && !isLearnerCompliant()) {
     return <Navigate to="/setup-profile" replace />;
   }
@@ -240,7 +267,6 @@ const RootRedirect = () => {
     return <Navigate to={`/setup-${user.role === 'assistant_facilitator' ? 'facilitator' : user.role === 'assistant_admin' ? 'admin' : user.role}`} replace />;
   }
 
-  // 4. FINAL TRAFFIC CONTROL
   switch (user.role) {
     case 'admin':
     case 'assistant_admin': return <Navigate to="/admin" replace />;
@@ -394,6 +420,13 @@ function App() {
               </RoleProtectedRoute>
             } />
             <Route path="/admin/crashes" element={<Navigate to="/admin?tab=crashes" replace />} />
+
+            {/* 🚀 LESSON ANALYTICS & MODERATION ROUTE */}
+            {/* <Route path="/admin/content/analytics/:unitId" element={
+              <RoleProtectedRoute allowedRoles={['admin', 'assistant_admin', 'facilitator']}>
+                <StandaloneLessonAnalyticsRoute />
+              </RoleProtectedRoute>
+            } /> */}
 
             <Route path="/admin/ecosystem/event/:eventId" element={
               <RoleProtectedRoute allowedRoles={['admin', 'assistant_admin']}>

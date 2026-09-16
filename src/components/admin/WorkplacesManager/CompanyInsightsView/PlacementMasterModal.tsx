@@ -12,6 +12,20 @@ import { useStore, type StaffMember } from '../../../../store/useStore';
 import { useToast } from '../../../common/Toast/Toast';
 import { db } from '../../../../lib/firebase';
 
+/* ─── SANITIZE PAYLOAD HELPER ───────────────────────────────────────────── */
+const sanitizePayload = (obj: any): any => {
+    if (obj === undefined) return null;
+    if (obj === null) return null;
+    if (Array.isArray(obj)) return obj.map(sanitizePayload);
+    if (typeof obj === 'object' && !(obj instanceof Date)) {
+        const cleaned: Record<string, any> = {};
+        for (const [key, val] of Object.entries(obj)) {
+            cleaned[key] = val === undefined ? null : sanitizePayload(val);
+        }
+        return cleaned;
+    }
+    return obj;
+};
 
 /* ─── FALLBACK COMPLIANCE SCHEMAS ───────────────────────────────────────────── */
 const GENERIC_3_PHASE_SCHEMA: ComplianceSchema = {
@@ -34,12 +48,13 @@ const MONTHLY_PAYROLL_SCHEMA: ComplianceSchema = {
 
 interface SelectedLearner {
     learner: DashboardLearner;
-    mentorId: string;
+    mentorId: string;              // Primary Mentor ID
+    secondaryMentorIds: string[];  // Co-Mentor IDs
     isExisting?: boolean;
 }
 
 export const PlacementMasterModal: React.FC<{
-    editPlacement?: any | null; // Pass placement object to Edit, or null/undefined to Create
+    editPlacement?: any | null;
     employers: Employer[];
     mentors: StaffMember[];
     learners: DashboardLearner[];
@@ -52,7 +67,7 @@ export const PlacementMasterModal: React.FC<{
     onAddNewMentor: (employerId: string) => void;
 }> = ({ editPlacement, employers, mentors, learners, placements, cohorts, programmes, onClose, onSaved, onCreate, onAddNewMentor }) => {
     const toast = useToast();
-    const { fetchEmployers } = useStore() as any;
+    const { fetchEmployers, staff } = useStore() as any;
     const [saving, setSaving] = useState(false);
 
     const isEditMode = !!editPlacement;
@@ -66,7 +81,7 @@ export const PlacementMasterModal: React.FC<{
     const [selectedCohortId, setSelectedCohortId] = useState(isEditMode ? (editPlacement.cohortId || '') : '');
     const [learnerSearch, setLearnerSearch] = useState('');
 
-    // Selected Learners State (Initializes existing learner in Edit mode, allows adding new ones)
+    // Selected Learners State
     const [selectedLearners, setSelectedLearners] = useState<SelectedLearner[]>(() => {
         if (isEditMode) {
             const targetLearner = learners.find(l => l.id === editPlacement.learnerId) || ({
@@ -74,7 +89,12 @@ export const PlacementMasterModal: React.FC<{
                 fullName: editPlacement.learnerName || 'Learner',
                 idNumber: editPlacement.idNumber || '—'
             } as DashboardLearner);
-            return [{ learner: targetLearner, mentorId: editPlacement.mentorId || '', isExisting: true }];
+            return [{
+                learner: targetLearner,
+                mentorId: editPlacement.mentorId || '',
+                secondaryMentorIds: Array.isArray(editPlacement.secondaryMentorIds) ? editPlacement.secondaryMentorIds : [],
+                isExisting: true
+            }];
         }
         return [];
     });
@@ -96,10 +116,32 @@ export const PlacementMasterModal: React.FC<{
 
     const isRegulatedTrack = form.placementType === 'QCTO Workplace Module' || form.placementType === 'SETA Funded (Programme Linked)';
 
+    // 🚀 UNIFIED STAFF AND MENTORS REGISTRY POOL
+    const allStaffAndMentors = useMemo(() => {
+        const map = new Map<string, StaffMember>();
+        (mentors || []).forEach((m: StaffMember) => { if (m?.id) map.set(m.id, m); });
+        (staff || []).forEach((s: StaffMember) => { if (s?.id) map.set(s.id, s); });
+        return Array.from(map.values());
+    }, [mentors, staff]);
+
+    // 🚀 DUAL-ROLE & FACILITATOR AWARE SUPERVISOR FILTER ENGINE
     const availableMentors = useMemo(() => {
         if (!selectedEmployerId) return [];
-        return mentors.filter(m => m.employerId === selectedEmployerId && m.status !== 'archived');
-    }, [selectedEmployerId, mentors]);
+        return allStaffAndMentors.filter(m => {
+            const roleStr = String(m.role || '').toLowerCase();
+            return (
+                m.status !== 'archived' && (
+                    m.employerId === selectedEmployerId ||
+                    roleStr === 'mentor' ||
+                    (m as any).isMentor === true ||
+                    roleStr === 'facilitator' ||
+                    roleStr === 'assistant_facilitator' ||
+                    roleStr === 'admin' ||
+                    roleStr === 'assistant_admin'
+                )
+            );
+        });
+    }, [selectedEmployerId, allStaffAndMentors]);
 
     const filteredLearners = useMemo(() => {
         if (!learnerSearch) return [];
@@ -124,8 +166,34 @@ export const PlacementMasterModal: React.FC<{
         setSelectedLearners(prev => prev.filter(sl => sl.learner.id !== id));
     };
 
-    const handleLearnerMentorChange = (learnerId: string, mentorId: string) => {
-        setSelectedLearners(prev => prev.map(sl => sl.learner.id === learnerId ? { ...sl, mentorId } : sl));
+    const handleLearnerPrimaryMentorChange = (learnerId: string, mentorId: string) => {
+        setSelectedLearners(prev => prev.map(sl => {
+            if (sl.learner.id === learnerId) {
+                const updatedSecondary = sl.secondaryMentorIds.filter(id => id !== mentorId);
+                return { ...sl, mentorId, secondaryMentorIds: updatedSecondary };
+            }
+            return sl;
+        }));
+    };
+
+    const handleAddSecondaryMentor = (learnerId: string, secondaryId: string) => {
+        if (!secondaryId) return;
+        setSelectedLearners(prev => prev.map(sl => {
+            if (sl.learner.id === learnerId) {
+                if (sl.secondaryMentorIds.includes(secondaryId) || sl.mentorId === secondaryId) return sl;
+                return { ...sl, secondaryMentorIds: [...sl.secondaryMentorIds, secondaryId] };
+            }
+            return sl;
+        }));
+    };
+
+    const handleRemoveSecondaryMentor = (learnerId: string, secondaryId: string) => {
+        setSelectedLearners(prev => prev.map(sl => {
+            if (sl.learner.id === learnerId) {
+                return { ...sl, secondaryMentorIds: sl.secondaryMentorIds.filter(id => id !== secondaryId) };
+            }
+            return sl;
+        }));
     };
 
     const selectedEmployer = employers.find(e => e.id === selectedEmployerId);
@@ -151,16 +219,19 @@ export const PlacementMasterModal: React.FC<{
             await fetchEmployers(true);
             setIsEditingCap(false);
             toast.success("Host Company capacity updated!");
-        } catch (err) {
+        } catch {
             toast.error("Failed to update capacity.");
         }
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+
         if (!selectedEmployerId) return toast.error("Please select a Host Company.");
         if (selectedLearners.length === 0) return toast.error("Please select at least one learner.");
-        if (form.placementType === 'Other' && !customPlacementType.trim()) return toast.error("Please specify the custom placement type.");
+        if (form.placementType === 'Other' && !customPlacementType.trim()) {
+            return toast.error("Please specify the custom placement type.");
+        }
 
         if (isRegulatedTrack && linkToExistingCohort && !isEditMode) {
             const missingCohorts = selectedLearners.filter(sl => !sl.learner.cohortId);
@@ -172,15 +243,16 @@ export const PlacementMasterModal: React.FC<{
         }
 
         if (isOverCapacity) {
-            if (!window.confirm(`WARNING: Exceeding stated capacity for ${selectedEmployer?.name}. Force placement?`)) return;
+            if (!window.confirm(`WARNING: Exceeding stated capacity for ${selectedEmployer?.name}. Force placement?`)) {
+                return;
+            }
         }
 
         setSaving(true);
         try {
             const finalPlacementType = form.placementType === 'Other' ? customPlacementType.trim() : form.placementType;
 
-            // Resolve Compliance Schema Blueprint
-            let schemaToApply: ComplianceSchema | null = isEditMode ? (editPlacement.complianceSchema || null) : null;
+            let schemaToApply: ComplianceSchema | null = isEditMode ? (editPlacement?.complianceSchema || null) : null;
 
             if (isRegulatedTrack && selectedCohortId) {
                 const matchedCohort = cohorts.find(c => c.id === selectedCohortId);
@@ -201,96 +273,177 @@ export const PlacementMasterModal: React.FC<{
                 }
             }
 
-            if (isEditMode) {
+            // 🚀 COLLECT ALL PRIMARY AND SECONDARY MENTOR IDS TO STAMP ISMENTOR: TRUE
+            const mentorIdsToStamp = new Set<string>();
+            selectedLearners.forEach(sl => {
+                if (sl.mentorId) mentorIdsToStamp.add(sl.mentorId);
+                if (Array.isArray(sl.secondaryMentorIds)) {
+                    sl.secondaryMentorIds.forEach(secId => {
+                        if (secId) mentorIdsToStamp.add(secId);
+                    });
+                }
+            });
+
+            if (isEditMode && editPlacement?.id) {
                 const batch = writeBatch(db);
 
-                // 1. Update Existing Target Placement Record
                 const existingSL = selectedLearners.find(sl => sl.isExisting) || selectedLearners[0];
                 const placementRef = doc(db, 'placements', editPlacement.id);
                 const learnerRef = doc(db, 'learners', editPlacement.learnerId);
 
-                batch.update(placementRef, {
-                    mentorId: existingSL.mentorId,
-                    cohortId: isRegulatedTrack ? selectedCohortId : '',
-                    placementType: finalPlacementType,
-                    customPlacementType: finalPlacementType,
+                const secondaryIds = existingSL.secondaryMentorIds || [];
+                const resolvedSecondaryMentors = secondaryIds.map(secId => {
+                    const m = allStaffAndMentors.find(item => item.id === secId);
+                    return {
+                        id: secId,
+                        name: m?.fullName || 'Co-Mentor',
+                        email: m?.email || '',
+                        phone: m?.phone || ''
+                    };
+                });
+
+                const existingCompliance = editPlacement.compliance || {};
+                const resolvedAgreementUrl = existingCompliance.wblpaAgreementUrl ?? editPlacement?.wblAgreementUrl ?? null;
+
+                const rawPlacementPayload = {
+                    mentorId: existingSL.mentorId || '',
+                    secondaryMentorIds: secondaryIds,
+                    secondaryMentors: resolvedSecondaryMentors,
+                    cohortId: isRegulatedTrack ? (selectedCohortId || '') : '',
+                    placementType: finalPlacementType || '',
+                    customPlacementType: finalPlacementType || '',
                     stipendAmount: Number(form.stipendAmount) || 0,
-                    startDate: form.startDate,
-                    endDate: form.endDate,
-                    complianceSchema: schemaToApply,
+                    startDate: form.startDate || '',
+                    endDate: form.endDate || '',
+                    complianceSchema: schemaToApply || null,
                     compliance: {
-                        ...(editPlacement.compliance || {}),
-                        bbbeeSpendCategory: form.bbbeeSpendCategory,
-                        isAgreementFullyExecuted: form.isAgreementFullyExecuted
+                        ...existingCompliance,
+                        bbbeeSpendCategory: form.bbbeeSpendCategory || 'N/A',
+                        isAgreementFullyExecuted: !!form.isAgreementFullyExecuted,
+                        wblpaAgreementUrl: resolvedAgreementUrl
                     },
                     updatedAt: new Date().toISOString()
+                };
+
+                const cleanPlacementPayload = sanitizePayload(rawPlacementPayload);
+                batch.update(placementRef, cleanPlacementPayload);
+
+                const rawLearnerPayload = {
+                    employerId: selectedEmployerId || null,
+                    mentorId: existingSL.mentorId || '',
+                    secondaryMentorIds: secondaryIds,
+                    updatedAt: new Date().toISOString()
+                };
+                const cleanLearnerPayload = sanitizePayload(rawLearnerPayload);
+                batch.update(learnerRef, cleanLearnerPayload);
+
+                // 🚀 STAMP ISMENTOR: TRUE ON USERS COLLECTION FOR EDIT MODE
+                mentorIdsToStamp.forEach(mId => {
+                    const mentorUserRef = doc(db, 'users', mId);
+                    batch.set(mentorUserRef, {
+                        isMentor: true,
+                        updatedAt: new Date().toISOString()
+                    }, { merge: true });
                 });
-                batch.update(learnerRef, { mentorId: existingSL.mentorId, updatedAt: new Date().toISOString() });
+
                 await batch.commit();
 
-                // 2. Provision new placements for learners added to cohort during edit session
+                // Provision new placements if learners were added to cohort during edit
                 const newLearners = selectedLearners.filter(sl => !sl.isExisting);
                 if (newLearners.length > 0 && onCreate) {
                     await Promise.all(newLearners.map(sl => {
-                        const targetCohortId = isRegulatedTrack ? selectedCohortId : '';
-                        return onCreate({
+                        const targetCohortId = isRegulatedTrack ? (selectedCohortId || '') : '';
+                        const secMentors = (sl.secondaryMentorIds || []).map(secId => {
+                            const m = allStaffAndMentors.find(item => item.id === secId);
+                            return { id: secId, name: m?.fullName || 'Co-Mentor', email: m?.email || '', phone: m?.phone || '' };
+                        });
+
+                        const newPayload = sanitizePayload({
                             learnerId: sl.learner.id,
                             employerId: selectedEmployerId,
                             cohortId: targetCohortId,
-                            mentorId: sl.mentorId,
-                            startDate: form.startDate,
-                            endDate: form.endDate,
-                            placementType: finalPlacementType,
-                            customPlacementType: finalPlacementType,
+                            mentorId: sl.mentorId || '',
+                            secondaryMentorIds: sl.secondaryMentorIds || [],
+                            secondaryMentors: secMentors,
+                            startDate: form.startDate || '',
+                            endDate: form.endDate || '',
+                            placementType: finalPlacementType || '',
+                            customPlacementType: finalPlacementType || '',
                             stipendAmount: Number(form.stipendAmount) || 0,
-                            bbbeeSpendCategory: form.bbbeeSpendCategory,
+                            bbbeeSpendCategory: form.bbbeeSpendCategory || 'N/A',
                             status: 'Active Placement',
-                            complianceSchema: schemaToApply,
+                            complianceSchema: schemaToApply || null,
                             compliance: {
-                                bbbeeSpendCategory: form.bbbeeSpendCategory,
-                                isAgreementFullyExecuted: form.isAgreementFullyExecuted
+                                bbbeeSpendCategory: form.bbbeeSpendCategory || 'N/A',
+                                isAgreementFullyExecuted: !!form.isAgreementFullyExecuted,
+                                wblpaAgreementUrl: null
                             },
                             evidenceMap: {}
                         });
+                        return onCreate(newPayload);
                     }));
                 }
 
             } else {
-                // CREATE BRAND NEW PLACEMENTS FOR ALL SELECTED LEARNERS
-                await Promise.all(selectedLearners.map(sl => {
-                    const targetCohortId = isRegulatedTrack ? (linkToExistingCohort ? sl.learner.cohortId : selectedCohortId) : '';
+                if (!onCreate) throw new Error("Placement creation handler is missing.");
 
-                    return onCreate!({
+                // 🚀 STAMP ISMENTOR: TRUE ON USERS COLLECTION FOR CREATE MODE
+                if (mentorIdsToStamp.size > 0) {
+                    const mentorBatch = writeBatch(db);
+                    mentorIdsToStamp.forEach(mId => {
+                        const mentorUserRef = doc(db, 'users', mId);
+                        mentorBatch.set(mentorUserRef, {
+                            isMentor: true,
+                            updatedAt: new Date().toISOString()
+                        }, { merge: true });
+                    });
+                    await mentorBatch.commit();
+                }
+
+                await Promise.all(selectedLearners.map(sl => {
+                    const targetCohortId = isRegulatedTrack ? (linkToExistingCohort ? (sl.learner.cohortId || '') : (selectedCohortId || '')) : '';
+                    const secMentors = (sl.secondaryMentorIds || []).map(secId => {
+                        const m = allStaffAndMentors.find(item => item.id === secId);
+                        return { id: secId, name: m?.fullName || 'Co-Mentor', email: m?.email || '', phone: m?.phone || '' };
+                    });
+
+                    const createPayload = sanitizePayload({
                         learnerId: sl.learner.id,
                         employerId: selectedEmployerId,
                         cohortId: targetCohortId,
-                        mentorId: sl.mentorId,
-                        startDate: form.startDate,
-                        endDate: form.endDate,
-                        placementType: finalPlacementType,
-                        customPlacementType: finalPlacementType,
+                        mentorId: sl.mentorId || '',
+                        secondaryMentorIds: sl.secondaryMentorIds || [],
+                        secondaryMentors: secMentors,
+                        startDate: form.startDate || '',
+                        endDate: form.endDate || '',
+                        placementType: finalPlacementType || '',
+                        customPlacementType: finalPlacementType || '',
                         stipendAmount: Number(form.stipendAmount) || 0,
-                        bbbeeSpendCategory: form.bbbeeSpendCategory,
+                        bbbeeSpendCategory: form.bbbeeSpendCategory || 'N/A',
                         status: 'Active Placement',
-                        complianceSchema: schemaToApply,
+                        complianceSchema: schemaToApply || null,
                         compliance: {
-                            bbbeeSpendCategory: form.bbbeeSpendCategory,
-                            isAgreementFullyExecuted: form.isAgreementFullyExecuted
+                            bbbeeSpendCategory: form.bbbeeSpendCategory || 'N/A',
+                            isAgreementFullyExecuted: !!form.isAgreementFullyExecuted,
+                            wblpaAgreementUrl: null
                         },
                         evidenceMap: {}
                     });
+                    return onCreate(createPayload);
                 }));
             }
 
             const newCount = selectedLearners.filter(sl => !sl.isExisting).length;
-            toast.success(isEditMode ? `Ecosystem updated! ${newCount > 0 ? `Added ${newCount} new intern(s) to cohort.` : ''}` : `Placed ${selectedLearners.length} learner(s)!`);
-            setTimeout(() => {
-                onSaved();
-                onClose();
-            }, 1200);
+            const successMsg = isEditMode ? `Ecosystem updated! ${newCount > 0 ? `Added ${newCount} new intern(s) to cohort.` : ''}` : `Placed ${selectedLearners.length} learner(s)!`;
+            toast.success(successMsg);
+
+            onSaved();
+            onClose();
 
         } catch (err: any) {
-            toast.error(err.message || "Failed to process placement details.");
+            console.error('[PlacementMasterModal] ERROR during submission execution:', err);
+            toast.error(err?.message || "Failed to process placement details.");
+        } finally {
             setSaving(false);
         }
     };
@@ -385,10 +538,10 @@ export const PlacementMasterModal: React.FC<{
                             </div>
                         </div>
 
-                        {/* SECTION 2: PARTICIPANTS & SUPERVISORS */}
+                        {/* SECTION 2: PARTICIPANTS & MULTI-MENTOR ASSIGNMENT */}
                         <div className="wm-form-section" style={{ opacity: selectedEmployerId ? 1 : 0.5, pointerEvents: selectedEmployerId ? 'auto' : 'none' }}>
                             <div className="wm-form-section__label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <span><Users size={12} /> 2. Participants & Workplace Supervisors</span>
+                                <span><Users size={12} /> 2. Participants & Workplace Supervision Team</span>
                                 {isEditMode && <span style={{ fontSize: '0.65rem', color: 'var(--mlab-blue)', textTransform: 'none', fontWeight: 600 }}>+ Search below to add more interns to this placement cohort</span>}
                             </div>
 
@@ -397,7 +550,7 @@ export const PlacementMasterModal: React.FC<{
                                 {learnerSearch && (
                                     <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'white', border: '1px solid #cbd5e1', borderRadius: '0', marginTop: '4px', zIndex: 10, boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}>
                                         {filteredLearners.length > 0 ? filteredLearners.map(l => (
-                                            <div key={l.id} onClick={() => { setSelectedLearners(prev => [...prev, { learner: l, mentorId: '', isExisting: false }]); setLearnerSearch(''); }} style={{ padding: '10px 12px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <div key={l.id} onClick={() => { setSelectedLearners(prev => [...prev, { learner: l, mentorId: '', secondaryMentorIds: [], isExisting: false }]); setLearnerSearch(''); }} style={{ padding: '10px 12px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                 <div>
                                                     <div style={{ fontWeight: 600, color: 'var(--mlab-blue)', fontSize: '0.85rem' }}>{l.fullName}</div>
                                                     <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{l.idNumber}</div>
@@ -414,8 +567,8 @@ export const PlacementMasterModal: React.FC<{
                                 <div className="animate-fade-in" style={{ background: 'white', border: '1px solid #cbd5e1', borderRadius: '0', overflow: 'hidden' }}>
                                     <div style={{ background: '#f1f5f9', padding: '8px 12px', display: 'flex', alignItems: 'center', borderBottom: '1px solid #cbd5e1' }}>
                                         <div style={{ flex: 1, fontSize: '0.7rem', fontWeight: 700, color: '#475569', letterSpacing: '0.05em' }}>LEARNER PROFILE</div>
-                                        <div style={{ flex: 1, fontSize: '0.7rem', fontWeight: 700, color: '#475569', letterSpacing: '0.05em', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                            ASSIGNED MENTOR
+                                        <div style={{ flex: 1.5, fontSize: '0.7rem', fontWeight: 700, color: '#475569', letterSpacing: '0.05em', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            SUPERVISION TEAM (PRIMARY & CO-MENTORS)
                                             {selectedEmployerId && (
                                                 <button type="button" onClick={() => onAddNewMentor(selectedEmployerId)} style={{ background: 'none', border: 'none', color: 'var(--mlab-blue)', cursor: 'pointer', fontSize: '0.65rem', display: 'flex', alignItems: 'center', gap: '2px', fontWeight: 'bold' }}>
                                                     <Plus size={10} /> Quick Add
@@ -424,30 +577,92 @@ export const PlacementMasterModal: React.FC<{
                                         </div>
                                         <div style={{ width: '30px' }}></div>
                                     </div>
-                                    <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
+                                    <div style={{ maxHeight: '280px', overflowY: 'auto' }}>
                                         {selectedLearners.map((sl, i) => (
-                                            <div key={sl.learner.id} style={{ display: 'flex', alignItems: 'center', padding: '10px 12px', borderBottom: i === selectedLearners.length - 1 ? 'none' : '1px solid #e2e8f0', background: sl.isExisting ? '#f8fafc' : 'white' }}>
-                                                <div style={{ flex: 1 }}>
+                                            <div key={sl.learner.id} style={{ display: 'flex', alignItems: 'flex-start', padding: '10px 12px', borderBottom: i === selectedLearners.length - 1 ? 'none' : '1px solid #e2e8f0', background: sl.isExisting ? '#f8fafc' : 'white' }}>
+                                                <div style={{ flex: 1, paddingTop: '4px' }}>
                                                     <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--mlab-midnight)', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                         {sl.learner.fullName}
-                                                        {sl.isExisting && <span style={{ fontSize: '0.55rem', background: '#e0e7ff', color: 'var(--mlab-blue)', padding: '2px 6px', borderRadius: '0', fontWeight: 700 }}>Existing</span>}
+                                                        {sl.isExisting && <span style={{ fontSize: '0.55rem', background: '#e0e0e0', color: 'var(--mlab-blue)', padding: '2px 6px', borderRadius: '0', fontWeight: 700 }}>Existing</span>}
                                                         {!sl.isExisting && <span style={{ fontSize: '0.55rem', background: '#dcfce7', color: '#166534', padding: '2px 6px', borderRadius: '0', fontWeight: 700 }}>+ Adding</span>}
                                                     </div>
                                                     <div style={{ fontSize: '0.7rem', color: '#64748b' }}>{sl.learner.idNumber}</div>
                                                 </div>
-                                                <div style={{ flex: 1, paddingRight: '12px' }}>
-                                                    <select
-                                                        className="wm-form-input"
-                                                        style={{ padding: '6px 8px', borderRadius: '0', fontSize: '0.75rem', height: 'auto', background: sl.mentorId ? 'white' : '#fff7ed', borderColor: sl.mentorId ? '#cbd5e1' : '#fed7aa' }}
-                                                        value={sl.mentorId}
-                                                        onChange={e => handleLearnerMentorChange(sl.learner.id, e.target.value)}
-                                                        disabled={saving}
-                                                    >
-                                                        <option value="">-- Flag as Missing --</option>
-                                                        {availableMentors.map(m => <option key={m.id} value={m.id}>{m.fullName}</option>)}
-                                                    </select>
+
+                                                <div style={{ flex: 1.5, paddingRight: '12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                                    {/* Primary Mentor Dropdown */}
+                                                    <div>
+                                                        <label style={{ fontSize: '0.65rem', fontWeight: 700, color: '#64748b', display: 'block', marginBottom: '2px' }}>PRIMARY MENTOR</label>
+                                                        <select
+                                                            className="wm-form-input"
+                                                            style={{ padding: '4px 8px', borderRadius: '0', fontSize: '0.75rem', height: 'auto', background: sl.mentorId ? 'white' : '#fff7ed', borderColor: sl.mentorId ? '#cbd5e1' : '#fed7aa' }}
+                                                            value={sl.mentorId}
+                                                            onChange={e => handleLearnerPrimaryMentorChange(sl.learner.id, e.target.value)}
+                                                            disabled={saving}
+                                                        >
+                                                            <option value="">-- Flag as Missing --</option>
+                                                            {availableMentors.map(m => (
+                                                                <option key={m.id} value={m.id}>
+                                                                    {m.fullName} {m.role ? `(${m.role.replace('_', ' ')})` : ''}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+
+                                                    {/* Secondary Co-Mentors Selector */}
+                                                    <div>
+                                                        <label style={{ fontSize: '0.65rem', fontWeight: 700, color: '#64748b', display: 'block', marginBottom: '2px' }}>CO-MENTORS / BACKUP SUPERVISORS</label>
+                                                        <select
+                                                            className="wm-form-input"
+                                                            style={{ padding: '4px 8px', borderRadius: '0', fontSize: '0.75rem', height: 'auto', background: 'white' }}
+                                                            value=""
+                                                            onChange={e => handleAddSecondaryMentor(sl.learner.id, e.target.value)}
+                                                            disabled={saving || !sl.mentorId}
+                                                        >
+                                                            <option value="">+ Assign Co-Mentor...</option>
+                                                            {availableMentors
+                                                                .filter(m => m.id !== sl.mentorId && !sl.secondaryMentorIds.includes(m.id))
+                                                                .map(m => (
+                                                                    <option key={m.id} value={m.id}>
+                                                                        {m.fullName} {m.role ? `(${m.role.replace('_', ' ')})` : ''}
+                                                                    </option>
+                                                                ))}
+                                                        </select>
+
+                                                        {sl.secondaryMentorIds.length > 0 && (
+                                                            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: '4px' }}>
+                                                                {sl.secondaryMentorIds.map(secId => {
+                                                                    const coMentor = availableMentors.find(m => m.id === secId) || allStaffAndMentors.find(m => m.id === secId);
+                                                                    return (
+                                                                        <span
+                                                                            key={secId}
+                                                                            style={{
+                                                                                fontSize: '0.65rem',
+                                                                                background: '#e0e7ff',
+                                                                                color: '#3730a3',
+                                                                                padding: '2px 6px',
+                                                                                border: '1px solid #c7d2fe',
+                                                                                display: 'inline-flex',
+                                                                                alignItems: 'center',
+                                                                                gap: '4px',
+                                                                                fontWeight: 600
+                                                                            }}
+                                                                        >
+                                                                            {coMentor?.fullName || 'Co-Mentor'} {coMentor?.role ? `(${coMentor.role.replace('_', ' ')})` : ''}
+                                                                            <X
+                                                                                size={10}
+                                                                                style={{ cursor: 'pointer' }}
+                                                                                onClick={() => handleRemoveSecondaryMentor(sl.learner.id, secId)}
+                                                                            />
+                                                                        </span>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 </div>
-                                                <div style={{ width: '30px', textAlign: 'right' }}>
+
+                                                <div style={{ width: '30px', textAlign: 'right', paddingTop: '4px' }}>
                                                     {!sl.isExisting && (
                                                         <button type="button" onClick={() => handleRemoveLearner(sl.learner.id)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}><X size={16} /></button>
                                                     )}
@@ -573,12 +788,12 @@ export const PlacementMasterModal: React.FC<{
                                 <div className="wm-form-group"><label className="wm-form-label">Start Date <span className="wm-form-required">*</span></label><input className="wm-form-input" style={{ borderRadius: '0' }} required type="date" value={form.startDate} onChange={e => setForm(p => ({ ...p, startDate: e.target.value }))} disabled={saving} /></div>
                                 <div className="wm-form-group"><label className="wm-form-label">Expected End Date <span className="wm-form-required">*</span></label><input className="wm-form-input" style={{ borderRadius: '0' }} required type="date" value={form.endDate} onChange={e => setForm(p => ({ ...p, endDate: e.target.value }))} disabled={saving} /></div>
 
-                                {/* <div className="wm-form-group wm-form-group--full" style={{ marginTop: '8px' }}>
+                                <div className="wm-form-group wm-form-group--full" style={{ marginTop: '8px' }}>
                                     <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 600, color: 'var(--mlab-midnight)', fontSize: '0.85rem' }}>
                                         <input type="checkbox" checked={form.isAgreementFullyExecuted} onChange={e => setForm(p => ({ ...p, isAgreementFullyExecuted: e.target.checked }))} style={{ width: '16px', height: '16px', accentColor: 'var(--mlab-green)' }} disabled={saving} />
                                         WBLPA Signed & On File
                                     </label>
-                                </div> */}
+                                </div>
                             </div>
                         </div>
 

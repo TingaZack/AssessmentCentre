@@ -136,7 +136,7 @@ export const createPlacementSlice: StateCreator<
         placementsLoading: false,
       }));
 
-      console.log(`Successfully created placement ${placementId}`);
+      // console.log(`Successfully created placement ${placementId}`);
     } catch (err: any) {
       console.error("Failed to create placement:", err);
       set({ placementsError: err.message, placementsLoading: false });

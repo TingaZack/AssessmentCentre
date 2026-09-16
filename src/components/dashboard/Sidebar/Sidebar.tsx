@@ -1,13 +1,13 @@
 // src/components/dashboard/Sidebar/Sidebar.tsx
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import {
     LayoutDashboard, Users, BookOpen, UserCheck,
     Settings, LogOut, Layers, ShieldCheck,
     GraduationCap, ClipboardList, CheckSquare, User, UserCircle, Building2,
-    Award, Key, Calendar, Globe, CalendarCheck, MessageSquare, Bug, HelpCircle
+    Award, Key, Calendar, Globe, CalendarCheck, MessageSquare, Bug, HelpCircle, PlayCircle, Shield
 } from 'lucide-react';
 import type { UserRole } from '../../../types/auth.types';
 import { useStore } from '../../../store/useStore';
@@ -29,21 +29,36 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, currentNav, setCurrentNa
     const location = useLocation();
     const [searchParams, setSearchParams] = useSearchParams();
 
-    const {
-        settings,
-        staff = [],
-        cohorts = [],
-        learners = [],
-        fetchStaff,
-        fetchCohorts,
-        fetchLearners
-    } = useStore();
+    const { settings, staff = [], cohorts = [], learners = [], fetchStaff, fetchCohorts, fetchLearners } = useStore();
     const user = useStore((state) => state.user);
 
     const activeRole = (role || user?.role || '').toLowerCase();
     const isAssistant = ['assistant_facilitator', 'support_facilitator', 'supportfacilitator'].includes(activeRole);
 
-    const tabbedBasePaths = ['/admin', '/facilitator', '/portal', '/marking', '/moderation'];
+    const currentStaffDoc = useMemo(() => {
+        if (!user) return null;
+        return staff.find(s =>
+            s.authUid === user?.uid ||
+            (s.email && user?.email && s.email.toLowerCase() === user.email.toLowerCase()) ||
+            s.id === user?.uid
+        );
+    }, [staff, user]);
+
+    // 🚀 STRICT AUTHORIZED LOGBOOK EVALUATOR EVALUATION
+    const isMentor = useMemo(() => {
+        const userIsMentorExplicit = (user as any)?.isMentor;
+        const userCanVerify = (user as any)?.canVerifyLogbooks === true;
+        const roleFlag = activeRole === 'mentor';
+        const secondaryFlag = Array.isArray((user as any)?.secondaryRoles) && (user as any).secondaryRoles.includes('mentor');
+
+        if (typeof userIsMentorExplicit === 'boolean') {
+            return userIsMentorExplicit || userCanVerify || roleFlag || secondaryFlag;
+        }
+
+        const staffFlag = (currentStaffDoc as any)?.isMentor === true || (currentStaffDoc as any)?.isMentor === 'true' || (currentStaffDoc as any)?.canVerifyLogbooks === true;
+
+        return staffFlag || roleFlag || secondaryFlag;
+    }, [user, currentStaffDoc, activeRole]);
 
     const urlTab = searchParams.get('tab');
     const activeTabId = urlTab || currentNav || 'dashboard';
@@ -57,24 +72,17 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, currentNav, setCurrentNa
         if (learners.length === 0 && fetchLearners) fetchLearners();
     }, [staff.length, cohorts.length, learners.length, fetchStaff, fetchCohorts, fetchLearners]);
 
-    // Real-time Coaching Alert Listener with Detailed Debug Logging
+    // Real-time Coaching Alert Listener for both Staff and Learners
     useEffect(() => {
         if (!user?.uid) return;
-
-        // console.group('🔍 SIDEBAR COACHING BADGE DEBUGGER');
-        // console.log('1. User Auth UID:', user.uid);
-        // console.log('2. User Email:', user.email);
-        // console.log('3. Store Staff Array Length:', staff.length);
-        // console.log('4. Store Cohorts Array Length:', cohorts.length);
-        // console.log('5. Store Learners Array Length:', learners.length);
-
-        const myStaffDoc = staff.find(s => s.authUid === user?.uid || s.email === user?.email || s.id === user?.uid);
-        const myStaffId = myStaffDoc?.id;
-        console.log('6. Resolved Staff Doc ID:', myStaffId);
 
         const isSuperAdmin = (user as any)?.isSuperAdmin === true || activeRole.includes('super');
         const isAdmin = activeRole.includes('admin');
         const isStaffUser = ['admin', 'assistant_admin', 'super_admin', 'superadmin', 'facilitator', 'assistant_facilitator', 'assessor', 'moderator'].includes(activeRole) || isSuperAdmin;
+
+        const myStaffDoc = staff.find(s => s.authUid === user?.uid || s.email === user?.email || s.id === user?.uid);
+        const myStaffId = myStaffDoc?.id;
+        const myEmail = user?.email?.toLowerCase();
 
         const myCohortIds = cohorts
             .filter(c =>
@@ -83,9 +91,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, currentNav, setCurrentNa
                 c.assessorId === user.uid || c.assessorId === myStaffId
             )
             .map(c => c.id);
-        console.log('7. Resolved Assigned Cohort IDs:', myCohortIds);
 
-        // Map both Document ID and South African ID Number for all learners in my cohorts
         const myLearnerIdentifiers = new Set<string>();
         learners.forEach(l => {
             if (l.cohortId && myCohortIds.includes(l.cohortId)) {
@@ -94,7 +100,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, currentNav, setCurrentNa
                 if ((l as any).learnerId) myLearnerIdentifiers.add((l as any).learnerId);
             }
         });
-        console.log('8. Resolved Learner Identifier Set Size:', myLearnerIdentifiers.size);
 
         const q = query(
             collection(db, 'coaching_sessions'),
@@ -102,11 +107,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, currentNav, setCurrentNa
         );
 
         const unsub = onSnapshot(q, (snap) => {
-            console.log('9. Raw Snapshot Docs Count:', snap.docs.length);
             let count = 0;
             const nowMs = Date.now();
 
-            snap.docs.forEach((docSnap, i) => {
+            snap.docs.forEach((docSnap) => {
                 const data = docSnap.data();
                 const facId = data.facilitatorId;
                 const assId = data.assessorId;
@@ -115,64 +119,59 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, currentNav, setCurrentNa
                 const hostEmail = (data.hostEmail || data.facilitatorEmail || '').toLowerCase();
                 const cohortId = data.cohortId;
 
-                // Precision relevance check matching class allocations & direct assignments
                 const isRelevantToUser = isStaffUser ? (
                     isSuperAdmin ||
                     isAdmin ||
                     facId === user.uid || (myStaffId && facId === myStaffId) ||
                     assId === user.uid || (myStaffId && assId === myStaffId) ||
                     hostId === user.uid || (myStaffId && hostId === myStaffId) ||
-                    (hostEmail && user.email && hostEmail === user.email.toLowerCase()) ||
+                    (hostEmail && myEmail && hostEmail === myEmail) ||
                     (cohortId && myCohortIds.includes(cohortId)) ||
                     (learnerId && myLearnerIdentifiers.has(learnerId))
                 ) : (
-                    data.learnerId === user.uid || (user.email && data.learnerEmail?.toLowerCase() === user.email.toLowerCase())
+                    data.learnerId === user.uid ||
+                    (myEmail && data.learnerEmail?.toLowerCase() === myEmail) ||
+                    ((user as any)?.idNumber && data.learnerId === (user as any).idNumber)
                 );
 
-                const isPast = new Date(data.dateTime).getTime() < nowMs;
+                const sessionTime = new Date(data.dateTime).getTime();
+                const isPast = sessionTime < nowMs;
                 const needsLink = !data.meetLink || data.requiresManualLink;
-                const isActionRequired = data.status === 'pending_notes' || data.status === 'requested' || (data.status === 'scheduled' && (isPast || needsLink));
 
-                console.group(`Session #${i + 1} (${docSnap.id}): ${data.topic || 'Untitled'}`);
-                console.log('Status:', data.status);
-                console.log('IDs -> facilitatorId:', facId, '| assessorId:', assId, '| hostId:', hostId, '| learnerId:', learnerId);
-                console.log('cohortId:', cohortId);
-                console.log('Is Relevant to User?:', isRelevantToUser);
-                console.log('Is Action Required?:', isActionRequired);
-                console.log('Included in Badge Count?:', isRelevantToUser && isActionRequired);
-                console.groupEnd();
+                const isActionRequired = isStaffUser ? (
+                    data.status === 'pending_notes' ||
+                    data.status === 'requested' ||
+                    (data.status === 'scheduled' && (isPast || needsLink))
+                ) : (
+                    data.status === 'scheduled' ||
+                    data.status === 'requested'
+                );
 
                 if (isRelevantToUser && isActionRequired) count++;
             });
 
-            console.log('10. FINAL CALCULATED BADGE COUNT:', count);
-            console.groupEnd();
-
             setInternalCoachingAlerts(count);
         }, (err) => {
             console.error("Coaching alerts listener error:", err);
-            console.groupEnd();
         });
 
         return () => unsub();
     }, [user?.uid, user?.email, staff.length, cohorts.length, learners.length, activeRole]);
 
-    useEffect(() => {
-        const targetTab = urlTab || 'dashboard';
-        if (setCurrentNav && currentNav !== targetTab) {
-            setCurrentNav(targetTab);
-        }
-    }, [urlTab, currentNav, setCurrentNav]);
-
     const getMenuItems = () => {
         if (isAssistant) {
-            return [
+            const assistantMenu: any[] = [
                 { id: 'dashboard', label: 'Cohort Overview', icon: LayoutDashboard, path: '/facilitator' },
                 { id: 'attendance', label: 'Attendance Hub', icon: Users, path: '/facilitator/attendance' },
+                { id: 'content', label: 'Content Studio', icon: PlayCircle, path: '/facilitator' },
                 { id: 'assessments', label: 'Portfolio Tracking', icon: ClipboardList, path: '/facilitator/assessments' },
-                { id: 'coaching', label: 'Support Sessions', icon: MessageSquare, path: '/facilitator' },
-                { id: 'profile', label: 'My Profile', icon: UserCircle, path: '/facilitator/profile' },
+                { id: 'coaching', label: 'Support Sessions', icon: MessageSquare, path: '/facilitator' }
             ];
+            if (isMentor) {
+                assistantMenu.push({ id: 'workplace-verification', label: 'Workplace Logbooks', icon: Shield, path: '/facilitator' });
+            }
+            assistantMenu.push({ id: 'profile', label: 'My Profile', icon: UserCircle, path: '/facilitator/profile' });
+            return assistantMenu;
         }
 
         switch (activeRole) {
@@ -181,22 +180,21 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, currentNav, setCurrentNa
             case 'super_admin':
             case 'superadmin': {
                 const currentUser = user as any;
-
-                const isSuperAdmin = currentUser?.isSuperAdmin === true ||
-                    activeRole === 'super_admin' ||
-                    activeRole === 'superadmin';
-
-                const privs = currentUser?.privileges || {};
-                const hasPrivilegesObject = currentUser?.privileges && Object.keys(currentUser.privileges).length > 0;
+                const isSuperAdmin = currentUser?.isSuperAdmin === true || activeRole.includes('super');
 
                 const hasPriv = (key: string) => {
                     if (isSuperAdmin) return true;
-                    if (!hasPrivilegesObject) return true;
-                    return privs[key] !== false;
+                    if (currentUser?.privileges && typeof currentUser.privileges === 'object') {
+                        return currentUser.privileges[key] === true;
+                    }
+                    return false;
                 };
 
                 const secondary = Array.isArray(currentUser?.secondaryRoles) ? currentUser.secondaryRoles : [];
                 const hasAssessorRights = isSuperAdmin || currentUser?.canMarkAssessments === true || secondary.includes('assessor');
+
+                // 🚀 STRICT GATING: Only SuperAdmins or users with explicit mentor/logbook rights see this item
+                const isAuthorizedLogbooksAdmin = isSuperAdmin || isMentor;
 
                 const adminMenu = [
                     { id: 'dashboard', label: 'Overview', icon: LayoutDashboard, path: '/admin' },
@@ -205,11 +203,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, currentNav, setCurrentNa
                     hasPriv('attendance') && { id: 'attendance', label: 'Attendance Hub', icon: Calendar, path: '/admin' },
                     hasPriv('ecosystem') && { id: 'ecosystem', label: 'Ecosystem & Events', icon: Globe, path: '/admin' },
                     hasPriv('qualifications') && { id: 'qualifications', label: 'Qualifications', icon: BookOpen, path: '/admin' },
+                    hasPriv('content') && { id: 'content', label: 'Content Studio', icon: PlayCircle, path: '/admin' },
                     hasPriv('assessments') && { id: 'assessments', label: 'Assessments', icon: ClipboardList, path: '/admin' },
                     hasPriv('surveys') && { id: 'surveys', label: 'Surveys & Feedback', icon: HelpCircle, path: '/admin' },
                     (isSuperAdmin || hasAssessorRights) && { id: 'marking', label: 'Marking Suite', icon: CheckSquare, path: '/marking' },
                     hasPriv('staff') && { id: 'staff', label: 'Staff Management', icon: UserCheck, path: '/admin' },
                     hasPriv('workplaces') && { id: 'workplaces', label: 'Workplaces', icon: Building2, path: '/admin' },
+                    // 🚀 STRICTLY GATED LINK
+                    isAuthorizedLogbooksAdmin && { id: 'workplace-verification', label: 'Workplace Logbooks', icon: Shield, path: '/admin' },
                     hasPriv('cohorts') && { id: 'cohorts', label: 'Cohorts (Classes)', icon: Layers, path: '/admin' },
                     hasPriv('cohorts') && { id: 'coaching', label: 'Coaching Schedule', icon: MessageSquare, path: '/admin' },
                     hasPriv('studio') && { id: 'studio', label: 'Certificate Studio', icon: Award, path: '/admin' },
@@ -226,20 +227,30 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, currentNav, setCurrentNa
                 return adminMenu;
             }
 
-            case 'assessor':
-                return [
+            case 'assessor': {
+                const assessorMenu: any[] = [
                     { id: 'dashboard', label: 'Marking Queue', icon: CheckSquare, path: '/marking' },
                     { id: 'cohorts', label: 'My Cohorts', icon: Layers, path: '/marking' },
-                    { id: 'coaching', label: 'Coaching Schedule', icon: MessageSquare, path: '/marking' },
-                    { id: 'profile', label: 'My Profile', icon: User, path: '/marking' },
+                    { id: 'coaching', label: 'Coaching Schedule', icon: MessageSquare, path: '/marking' }
                 ];
+                if (isMentor) {
+                    assessorMenu.push({ id: 'workplace-verification', label: 'Workplace Verification', icon: Shield, path: '/marking' });
+                }
+                assessorMenu.push({ id: 'profile', label: 'My Profile', icon: User, path: '/marking' });
+                return assessorMenu;
+            }
 
-            case 'moderator':
-                return [
+            case 'moderator': {
+                const modMenu: any[] = [
                     { id: 'dashboard', label: 'QA Queue', icon: ShieldCheck, path: '/moderation' },
-                    { id: 'cohorts', label: 'Cohorts', icon: Layers, path: '/moderation' },
-                    { id: 'profile', label: 'My Profile', icon: User, path: '/moderation' },
+                    { id: 'cohorts', label: 'Cohorts', icon: Layers, path: '/moderation' }
                 ];
+                if (isMentor) {
+                    modMenu.push({ id: 'workplace-verification', label: 'Workplace Verification', icon: Shield, path: '/moderation' });
+                }
+                modMenu.push({ id: 'profile', label: 'My Profile', icon: User, path: '/moderation' });
+                return modMenu;
+            }
 
             case 'facilitator': {
                 const facUser = user as any;
@@ -248,21 +259,30 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, currentNav, setCurrentNa
                 return [
                     { id: 'dashboard', label: 'Overview', icon: LayoutDashboard, path: '/facilitator' },
                     { id: 'attendance', label: 'Attendance', icon: Users, path: '/facilitator/attendance' },
+                    { id: 'content', label: 'Content Studio', icon: PlayCircle, path: '/facilitator' },
                     { id: 'assessments', label: 'Assessments', icon: ClipboardList, path: '/facilitator/assessments' },
                     { id: 'surveys', label: 'Surveys & Feedback', icon: HelpCircle, path: '/facilitator' },
                     facHasMarking && { id: 'marking', label: 'Marking Suite', icon: CheckSquare, path: '/marking' },
                     { id: 'coaching', label: 'Coaching Schedule', icon: MessageSquare, path: '/facilitator' },
+                    isMentor && { id: 'workplace-verification', label: 'Workplace Verification', icon: Shield, path: '/facilitator' },
                     { id: 'studio', label: 'Certificate Studio', icon: Award, path: '/facilitator' },
                     { id: 'profile', label: 'My Profile', icon: UserCircle, path: '/facilitator/profile' },
                 ].filter(Boolean);
             }
 
+            case 'mentor':
+                return [
+                    { id: 'workplace-verification', label: 'Mentor Dashboard', icon: LayoutDashboard, path: '/mentor' }
+                ];
+
             case 'learner':
                 return [
                     { id: 'dashboard', label: 'My Classes', icon: LayoutDashboard, path: '/portal' },
+                    { id: 'learning_units', label: 'Content Hub', icon: BookOpen, path: '/portal' },
                     { id: 'attendance', label: 'Attendance Log', icon: CalendarCheck, path: '/portal' },
-                    { id: 'profile', label: 'My Profile', icon: User, path: '/portal' },
+                    { id: 'coaching', label: 'Coaching & Support', icon: MessageSquare, path: '/portal' },
                     { id: 'certificates', label: 'My Certificates', icon: Award, path: '/portal' },
+                    { id: 'profile', label: 'My Profile', icon: User, path: '/portal' },
                 ];
 
             default:
@@ -273,12 +293,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, currentNav, setCurrentNa
     const menuItems = getMenuItems();
 
     const checkIsActive = (item: any) => {
-        const isCurrentBasePage = location.pathname === item.path || (location.pathname === '/' && item.path === '/portal');
-        if (isCurrentBasePage) {
+        const isCurrentBaseRoute = location.pathname === item.path ||
+            (location.pathname === '/' && (item.path === '/portal' || item.path === '/admin'));
+
+        if (isCurrentBaseRoute) {
             return activeTabId === item.id;
         }
 
-        if (!tabbedBasePaths.includes(item.path)) {
+        if (item.path !== '/admin' && item.path !== '/portal' && item.path !== '/facilitator' && item.path !== '/mentor') {
             return location.pathname.startsWith(item.path);
         }
 
@@ -286,26 +308,30 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, currentNav, setCurrentNa
     };
 
     const handleNavigation = (item: any) => {
-        if (!tabbedBasePaths.includes(item.path)) {
-            navigate(item.path);
-            return;
-        }
-
-        const isSameBasePage = location.pathname === item.path || location.pathname === `${item.path}/`;
-
         if (setCurrentNav) {
             setCurrentNav(item.id);
         }
 
-        if (isSameBasePage) {
+        const isCurrentBaseRoute = location.pathname === item.path ||
+            (location.pathname === '/' && (item.path === '/portal' || item.path === '/admin'));
+
+        if (isCurrentBaseRoute) {
             setSearchParams((prev) => {
-                prev.set('tab', item.id);
-                return prev;
+                const next = new URLSearchParams(prev);
+                next.set('tab', item.id);
+                return next;
             }, { replace: true });
         } else {
-            const newParams = new URLSearchParams();
-            newParams.set('tab', item.id);
-            navigate(`${item.path}?${newParams.toString()}`, { replace: true });
+            const isSubRoute = item.path.includes('/attendance') ||
+                item.path.includes('/assessments') ||
+                item.path.includes('/profile') ||
+                item.path === '/settings';
+
+            if (isSubRoute) {
+                navigate(item.path);
+            } else {
+                navigate(`${item.path}?tab=${item.id}`);
+            }
         }
     };
 
@@ -332,9 +358,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, currentNav, setCurrentNa
                         : (alerts?.[item.id] || 0);
 
                     return (
-                        <button key={item.id} className={`nav-item ${isActive ? 'active' : ''}`} onClick={() => handleNavigation(item)} style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+                        <button
+                            key={item.id}
+                            className={`nav-item ${isActive ? 'active' : ''}`}
+                            onClick={() => handleNavigation(item)}
+                            style={{ display: 'flex', alignItems: 'center', width: '100%' }}
+                        >
                             <Icon size={20} style={{ flexShrink: 0 }} />
-                            <span style={{ flex: 1, textAlign: 'left', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.label}</span>
+                            <span style={{ flex: 1, textAlign: 'left', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {item.label}
+                            </span>
 
                             {alertCount > 0 && (
                                 <span style={{

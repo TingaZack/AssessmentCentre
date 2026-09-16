@@ -12,7 +12,7 @@ import {
     FileText, Briefcase, AlertTriangle, ClipboardList, HelpCircle, Star, Eye, Link as LinkIcon, Trash2, MinusCircle
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { collection, query, where, onSnapshot, doc, updateDoc, writeBatch, increment, getDoc, deleteDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, updateDoc, writeBatch, increment, getDoc, deleteDoc, getDocs } from 'firebase/firestore';
 
 import { db } from '../../../lib/firebase';
 import { useStore } from '../../../store/useStore';
@@ -23,14 +23,23 @@ import { ModuleProgressCard } from '../../../components/common/ModuleProgressCar
 import { LearnerDropoutModal } from './LearnerDropoutModal';
 import moment from 'moment';
 import Loader from '../../common/Loader/Loader';
-import { WorkplacePlacementModal } from '../../admin/WorkplacePlacementModal/WorkplacePlacementModal';
+import { WorkplacePlacementModal } from '../../../components/admin/WorkplacePlacementModal/WorkplacePlacementModal';
 import { SessionAudienceModal } from '../attendance/SessionAudienceModal';
 import { ZoomAttendanceDropZone } from '../attendance/ZoomAttendanceDropZone';
 import { CohortGeoMap, getLocationString, extractGeoLevels } from '../../../components/common/CohortMap/CohortGeoMap';
 import { AdvancedMapFilters, type AdvancedMapFilterState } from '../../../components/common/CohortMap/AdvancedMapFilters';
 import { ExportAnalyticsModal } from '../../../components/common/ExportModal/ExportAnalyticsModal';
+import { StipendExportModal } from '../../../components/common/StipendExportModal/StipendExportModal';
 
 // ─── UTILS ─────────────────────────────────────────────────────────
+
+const checkIsDropped = (statusVal: any): boolean => {
+    if (typeof statusVal === 'object' && statusVal !== null) {
+        statusVal = statusVal.value || statusVal.label || JSON.stringify(statusVal);
+    }
+    const s = String(statusVal || '').toLowerCase().trim();
+    return s.includes('drop') || s.includes('withdrawn') || s.includes('inactive') || s.includes('exit');
+};
 
 const getTimestampMs = (val: any): number => {
     if (!val) return 0;
@@ -70,7 +79,7 @@ const getAgeFromId = (idNumber: string): number | null => {
 };
 
 const renderWithdrawalEmailBadge = (learner: any) => {
-    if (learner.status !== 'dropped') {
+    if (!checkIsDropped(learner.status)) {
         return <span style={{ color: 'var(--mlab-grey)' }}>—</span>;
     }
 
@@ -125,13 +134,14 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
     }, [fetchLearners]);
 
     // UI & TAB STATES
-    const activeTab = (searchParams.get('tab') as 'learners' | 'calendar' | 'attendance' | 'surveys') || 'learners';
+    const activeTab = (searchParams.get('view') as 'learners' | 'calendar' | 'attendance' | 'surveys') || 'learners';
     const [isMatrixExpanded, setIsMatrixExpanded] = useState(true);
     const [isAssessmentsExpanded, setIsAssessmentsExpanded] = useState(false);
     const [showKPIs, setShowKPIs] = useState(true);
     const [showZoomUploadModal, setShowZoomUploadModal] = useState(false);
     const [isMapFullscreen, setIsMapFullscreen] = useState(false);
     const [showExportAnalyticsModal, setShowExportAnalyticsModal] = useState(false);
+    const [isStipendModalOpen, setIsStipendModalOpen] = useState(false);
 
     // FILTER STATES
     const urlSearchTerm = searchParams.get('search') || '';
@@ -183,8 +193,8 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
         setCurrentPage(1);
     }, [urlSearchTerm, statusFilter, attendanceFilter, activationFilter, locationFilter, customMinPct, customMaxPct, exitEmailFilter]);
 
-    const setActiveTab = (tab: 'learners' | 'calendar' | 'attendance' | 'surveys') => updateUrlParams({ tab });
-    const handleMapLocationSelect = (loc: string | null) => updateUrlParams({ location: loc, tab: 'learners' });
+    const setActiveTab = (view: 'learners' | 'calendar' | 'attendance' | 'surveys') => updateUrlParams({ view });
+    const handleMapLocationSelect = (loc: string | null) => updateUrlParams({ location: loc, view: 'learners' });
 
     // MODAL & ACTION STATES
     const [selectedSessionForAudience, setSelectedSessionForAudience] = useState<any | null>(null);
@@ -209,8 +219,12 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
 
     // DATA STATES
     const [liveEnrollments, setLiveEnrollments] = useState<any[]>([]);
-    const [attendanceLogs, setAttendanceLogs] = useState<any[]>([]);
-    const [attendanceRecords, setAttendanceRecords] = useState<any[]>([]);
+
+    // UNIFIED ATTENDANCE ENGINE STATES
+    const [rawAttendance, setRawAttendance] = useState<any[]>([]);
+    const [rawAttendanceLogs, setRawAttendanceLogs] = useState<any[]>([]);
+    const [rawAttendanceRecords, setRawAttendanceRecords] = useState<any[]>([]);
+
     const [enrolledLearners, setEnrolledLearners] = useState<DashboardLearner[]>([]);
     const [cohortAnalytics, setCohortAnalytics] = useState<any>(null);
     const [ledgerDates, setLedgerDates] = useState<string[]>([]);
@@ -218,7 +232,6 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
     const [isGrantingTime, setIsGrantingTime] = useState(false);
 
     // SURVEY STATES
-    const [surveySubTab, setSurveySubTab] = useState<'templates' | 'responses'>('templates');
     const [rawAllSurveyResponses, setRawAllSurveyResponses] = useState<any[]>([]);
     const [cohortSurveyResponses, setCohortSurveyResponses] = useState<any[]>([]);
     const [surveyTemplates, setSurveyTemplates] = useState<any[]>([]);
@@ -240,25 +253,27 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
     const activeCohorts = storeCohorts.filter(c => !c.isArchived);
 
     // ─── DATA FETCHING EFFECTS ───
+
     useEffect(() => {
         if (!cohort?.id) return;
-        const qRecords = query(collection(db, 'attendance_records'), where('cohortId', '==', cohort.id));
-        const unsubscribeRecords = onSnapshot(qRecords, (snapshot) => {
-            setAttendanceRecords(snapshot.docs.map(doc => doc.data()));
-        });
-        return () => unsubscribeRecords();
-    }, [cohort]);
+        const q = query(collection(db, 'attendance'), where('cohortId', '==', cohort.id));
+        const unsub = onSnapshot(q, snap => setRawAttendance(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+        return () => unsub();
+    }, [cohort?.id]);
 
     useEffect(() => {
         if (!cohort?.id) return;
         const q = query(collection(db, 'attendance_logs'), where('cohortId', '==', cohort.id));
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const logs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            logs.sort((a: any, b: any) => new Date(b.sessionDate).getTime() - new Date(a.sessionDate).getTime());
-            setAttendanceLogs(logs);
-        });
-        return () => unsubscribe();
-    }, [cohort]);
+        const unsub = onSnapshot(q, snap => setRawAttendanceLogs(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+        return () => unsub();
+    }, [cohort?.id]);
+
+    useEffect(() => {
+        if (!cohort?.id) return;
+        const q = query(collection(db, 'attendance_records'), where('cohortId', '==', cohort.id));
+        const unsub = onSnapshot(q, snap => setRawAttendanceRecords(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+        return () => unsub();
+    }, [cohort?.id]);
 
     useEffect(() => {
         if (!cohort?.id) return;
@@ -280,52 +295,108 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
         return () => unsubscribe();
     }, [cohort?.id]);
 
-    // Robust Survey Fetching Strategy
     useEffect(() => {
         const unsubResponses = onSnapshot(collection(db, 'survey_responses'), (snap) => {
             setRawAllSurveyResponses(snap.docs.map(d => ({ id: d.id, ...d.data() })));
         });
-
         const unsubSurveys = onSnapshot(collection(db, 'surveys'), (snap) => {
             setSurveyTemplates(snap.docs.map(d => ({ id: d.id, ...d.data() })));
         });
-
         return () => {
             unsubResponses();
             unsubSurveys();
         };
     }, []);
 
-    // ─── DERIVED DATA & ANALYTICS ───
+    // ─── DERIVED DATA & ROSTER RECONCILIATION ───
     useEffect(() => {
-        if (!cohort?.id || learners.length === 0) return;
+        if (!cohort?.id) return;
 
         const uniqueMap = new Map<string, DashboardLearner>();
 
+        // 1. Process all live enrollments for this cohort
         liveEnrollments.forEach(enrollment => {
-            const profile = learners.find(l => l.id === enrollment.learnerId || l.learnerId === enrollment.learnerId);
+            const targetId = enrollment.learnerId || enrollment.id;
+            const profile = learners.find(l =>
+                l.id === targetId ||
+                l.learnerId === targetId ||
+                l.idNumber === targetId ||
+                (l as any).enrollmentId === enrollment.id
+            );
+
+            const isEnrollmentDropped = checkIsDropped(enrollment.status);
+            const isProfileDropped = checkIsDropped(profile?.status);
+            const isDroppedLearner = isEnrollmentDropped || isProfileDropped;
+
+            const resolvedStatus = isDroppedLearner
+                ? (isEnrollmentDropped ? enrollment.status : profile?.status || 'dropped')
+                : (enrollment.status || profile?.status || 'active');
+
             if (profile) {
-                uniqueMap.set(profile.idNumber || profile.id, {
+                const key = profile.idNumber || profile.id;
+                uniqueMap.set(key, {
                     ...profile,
                     ...enrollment,
                     id: profile.id,
                     demographics: { ...profile.demographics, ...(enrollment.demographics || {}) },
                     enrollmentId: enrollment.id,
                     learnerId: profile.id,
-                    status: enrollment.status || profile.status
+                    status: resolvedStatus
+                } as DashboardLearner);
+            } else {
+                const key = enrollment.idNumber || enrollment.learnerId || enrollment.id;
+                uniqueMap.set(key, {
+                    ...enrollment,
+                    id: enrollment.learnerId || enrollment.id,
+                    fullName: enrollment.fullName || enrollment.learnerName || 'Withdrawn Learner',
+                    idNumber: enrollment.idNumber || enrollment.learnerId || '',
+                    status: resolvedStatus
                 } as DashboardLearner);
             }
         });
 
+        // 2. Also check learners store for any profile attached to cohort.id
         learners.forEach(profile => {
-            if (profile.cohortId === cohort.id && !uniqueMap.has(profile.idNumber || profile.id)) {
-                uniqueMap.set(profile.idNumber || profile.id, { ...profile, enrollmentId: profile.id, learnerId: profile.id } as DashboardLearner);
+            const key = profile.idNumber || profile.id;
+            if (profile.cohortId === cohort.id && !uniqueMap.has(key)) {
+                uniqueMap.set(key, {
+                    ...profile,
+                    enrollmentId: profile.id,
+                    learnerId: profile.id
+                } as DashboardLearner);
+            }
+        });
+
+        // 3. DEEP RECOVERY: Find Orphaned / Dropped Learners 
+        // Search attendance and submissions for ghost signatures of learners removed entirely
+        const historicalIds = new Set<string>();
+        rawAttendanceRecords.forEach(r => r.learnerId && historicalIds.add(r.learnerId));
+        rawAttendance.forEach(r => {
+            if (r.learnerId) historicalIds.add(r.learnerId);
+            if (r.presentLearners) r.presentLearners.forEach((id: string) => historicalIds.add(id));
+            if (r.absentLearners) r.absentLearners.forEach((id: string) => historicalIds.add(id));
+            if (r.partialLearners) r.partialLearners.forEach((id: string) => historicalIds.add(id));
+        });
+        submissions.forEach(s => s.learnerId && historicalIds.add(s.learnerId));
+
+        historicalIds.forEach(hId => {
+            const profile = learners.find(l => l.id === hId || l.idNumber === hId || l.learnerId === hId);
+            if (profile) {
+                const key = profile.idNumber || profile.id;
+                if (!uniqueMap.has(key)) {
+                    uniqueMap.set(key, {
+                        ...profile,
+                        enrollmentId: profile.enrollmentId || `${cohort.id}_${profile.id}`,
+                        learnerId: profile.id,
+                        status: checkIsDropped(profile.status) ? profile.status : 'dropped'
+                    } as DashboardLearner);
+                }
             }
         });
 
         const compiledRoster = Array.from(uniqueMap.values()).sort((a, b) => String(a.fullName || '').localeCompare(String(b.fullName || '')));
         setEnrolledLearners(compiledRoster);
-    }, [learners, liveEnrollments, cohort]);
+    }, [learners, liveEnrollments, cohort?.id, rawAttendanceRecords, rawAttendance, submissions]);
 
     // Match Responses specifically to THIS cohort's roster
     useEffect(() => {
@@ -339,7 +410,7 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
         const matchedResponses = rawAllSurveyResponses.filter(r => {
             if (r.cohortId === cohort.id) return true; // Direct Match
             if (r.learnerId && cohortLearnerIds.has(r.learnerId)) return true; // ID Match
-            if (r.learnerEmail && cohortLearnerEmails.has(String(r.learnerEmail).toLowerCase())) return true; // Email Match (Public links)
+            if (r.learnerEmail && cohortLearnerEmails.has(String(r.learnerEmail).toLowerCase())) return true; // Email Match
             return false;
         });
 
@@ -347,7 +418,7 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
         setCohortSurveyResponses(matchedResponses);
     }, [rawAllSurveyResponses, cohort?.id, enrolledLearners]);
 
-    const activeCount = useMemo(() => cohortAnalytics?.systemActiveCount || enrolledLearners.filter(l => l.status !== 'dropped').length, [cohortAnalytics, enrolledLearners]);
+    const activeCount = useMemo(() => cohortAnalytics?.systemActiveCount || enrolledLearners.filter(l => !checkIsDropped(l.status)).length, [cohortAnalytics, enrolledLearners]);
 
     const calendarGrid = useMemo(() => {
         const startDay = calendarMonth.clone().startOf('month').startOf('week');
@@ -358,9 +429,12 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
         return grid;
     }, [calendarMonth]);
 
+    // 🚀 MERGE AND GROUP ALL ATTENDANCE STRUCTURES INTO A UNIFIED ARRAY
     const processedAttendanceLogs = useMemo(() => {
         const unrolled: any[] = [];
-        attendanceLogs.forEach((log) => {
+
+        // 1. Unroll Nested Zoom Sessions
+        rawAttendanceLogs.forEach((log) => {
             if (Array.isArray(log.sessions) && log.sessions.length > 0) {
                 log.sessions.forEach((sub: any, subIdx: number) => {
                     unrolled.push({
@@ -377,6 +451,62 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
             }
         });
 
+        // 2. Add in Legacy / Ecosystem Individual Records (from 'attendance')
+        const ecoGroupMap = new Map<string, any>();
+
+        rawAttendance.forEach(record => {
+            if (record.presentLearners || record.absentLearners) {
+                unrolled.push({
+                    id: record.id,
+                    sessionDate: record.date || 'Unknown',
+                    expectedDuration: record.expectedDuration || 0,
+                    sessionTitle: record.sessionTitle || 'Legacy Session',
+                    totalEnrolled: record.totalEnrolled || 0,
+                    totalPresent: (record.presentLearners || []).length,
+                    totalAbsent: (record.absentLearners || []).length,
+                    totalPartial: (record.partialLearners || []).length,
+                    totalExempt: (record.exemptLearners || []).length,
+                });
+                return;
+            }
+
+            if (record.learnerId && record.date) {
+                const dateKey = `eco_${record.date}`;
+                if (!ecoGroupMap.has(dateKey)) {
+                    ecoGroupMap.set(dateKey, {
+                        id: dateKey,
+                        sessionDate: record.date,
+                        startTime: record.date,
+                        expectedDuration: record.hoursCredited ? record.hoursCredited * 60 : 480,
+                        sessionTitle: record.eventDetails?.title || record.notes || 'Ecosystem Event',
+                        isEcosystem: true,
+                        totalPresent: 0,
+                        totalAbsent: 0,
+                        totalPartial: 0,
+                        totalExempt: 0,
+                        virtualLearnerMap: new Map()
+                    });
+                }
+                const entry = ecoGroupMap.get(dateKey);
+                const status = String(record.status).toLowerCase();
+
+                if (status.includes('present')) entry.totalPresent++;
+                else if (status.includes('absent')) entry.totalAbsent++;
+                else if (status.includes('partial')) entry.totalPartial++;
+                else entry.totalExempt++;
+
+                entry.virtualLearnerMap.set(record.learnerId, {
+                    status: record.status,
+                    actualDuration: record.hoursCredited ? record.hoursCredited * 60 : 480
+                });
+            }
+        });
+
+        ecoGroupMap.forEach(group => {
+            unrolled.push(group);
+        });
+
+        // 3. Sort and Number the Sessions
         const dayMap = new Map<string, any[]>();
         unrolled.forEach(item => {
             const dateKey = item.sessionDate ? String(item.sessionDate).split('T')[0] : 'unknown';
@@ -406,7 +536,7 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
         });
 
         return unrolled;
-    }, [attendanceLogs]);
+    }, [rawAttendanceLogs, rawAttendance]);
 
     const logsByDate = useMemo(() => {
         const map = new Map<string, any[]>();
@@ -422,15 +552,32 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
     useEffect(() => {
         if (enrolledLearners.length === 0) return;
 
-        const map = new Map<string, { attended: number; totalValid: number; exempt: number; pct: number; totalMinutes: number }>();
-        const totalSessions = processedAttendanceLogs.length;
+        // IRONCLAD ID MAPPING
+        const idToPrimaryKey = new Map<string, string>();
+        enrolledLearners.forEach(l => {
+            const pk = l.idNumber || l.id;
+            if (l.id) idToPrimaryKey.set(l.id, pk);
+            if (l.idNumber) idToPrimaryKey.set(l.idNumber, pk);
+            if (l.enrollmentId) idToPrimaryKey.set(l.enrollmentId, pk);
+            if (l.email) idToPrimaryKey.set(String(l.email).toLowerCase(), pk);
+            if (l.idNumber) idToPrimaryKey.set(String(l.idNumber).toLowerCase(), pk);
+        });
 
-        attendanceRecords.forEach(rec => {
+        const totalSessions = processedAttendanceLogs.length;
+        const aggregatedStats = new Map<string, { attended: number; totalValid: number; exempt: number; pct: number; totalMinutes: number }>();
+
+        enrolledLearners.forEach(l => {
+            const pk = l.idNumber || l.id;
+            aggregatedStats.set(pk, { attended: 0, totalValid: totalSessions, exempt: 0, pct: 0, totalMinutes: 0 });
+        });
+
+        // 1. Process Zoom Records
+        rawAttendanceRecords.forEach(rec => {
             if (!rec.learnerId) return;
-            if (!map.has(rec.learnerId)) {
-                map.set(rec.learnerId, { attended: 0, totalValid: totalSessions, exempt: 0, pct: 0, totalMinutes: 0 });
-            }
-            const entry = map.get(rec.learnerId)!;
+            const pk = idToPrimaryKey.get(rec.learnerId) || idToPrimaryKey.get(String(rec.learnerId).toLowerCase());
+            if (!pk || !aggregatedStats.has(pk)) return;
+
+            const entry = aggregatedStats.get(pk)!;
 
             if (rec.status === 'Exempt' || rec.isExempt === true) {
                 entry.exempt += 1;
@@ -442,7 +589,56 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
             }
         });
 
-        map.forEach(value => {
+        // 2. Process Ecosystem / Legacy Records 
+        processedAttendanceLogs.forEach(log => {
+            if (log.isEcosystem && log.virtualLearnerMap) {
+                log.virtualLearnerMap.forEach((recData: any, learnerId: string) => {
+                    const pk = idToPrimaryKey.get(learnerId) || idToPrimaryKey.get(String(learnerId).toLowerCase());
+                    if (!pk || !aggregatedStats.has(pk)) return;
+                    const entry = aggregatedStats.get(pk)!;
+                    const status = String(recData.status).toLowerCase();
+
+                    if (status.includes('exempt')) {
+                        entry.exempt += 1;
+                    } else {
+                        if (status.includes('present') || status.includes('partial')) {
+                            entry.attended += 1;
+                        }
+                        entry.totalMinutes += (recData.actualDuration || 0);
+                    }
+                });
+            }
+        });
+
+        // 3. Process Legacy Aggregated Array records
+        rawAttendance.forEach(record => {
+            if (record.presentLearners || record.absentLearners) {
+                const processList = (list: string[], isPresent: boolean) => {
+                    (list || []).forEach(identifier => {
+                        const pk = idToPrimaryKey.get(identifier) || idToPrimaryKey.get(String(identifier).toLowerCase());
+                        if (!pk || !aggregatedStats.has(pk)) return;
+                        const entry = aggregatedStats.get(pk)!;
+                        if (isPresent) {
+                            entry.attended += 1;
+                            entry.totalMinutes += (record.expectedDuration || 0);
+                        }
+                    });
+                };
+
+                processList(record.presentLearners, true);
+                processList(record.partialLearners, true);
+                processList(record.absentLearners, false);
+
+                (record.exemptLearners || []).forEach((identifier: string) => {
+                    const pk = idToPrimaryKey.get(identifier) || idToPrimaryKey.get(String(identifier).toLowerCase());
+                    if (!pk || !aggregatedStats.has(pk)) return;
+                    aggregatedStats.get(pk)!.exempt += 1;
+                });
+            }
+        });
+
+        // Finalize calculations based on reliable aggregated map
+        aggregatedStats.forEach((value) => {
             const validDenominator = Math.max(1, totalSessions - value.exempt);
             value.totalValid = validDenominator;
             value.pct = Math.min(100, Math.round((value.attended / validDenominator) * 100));
@@ -455,8 +651,8 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
         const totalExpectedMinutes = processedAttendanceLogs.reduce((acc, log) => acc + (log.expectedDuration || 120), 0);
 
         enrolledLearners.forEach(l => {
-            const stats = map.get(l.learnerId || l.id);
-            const pct = stats ? Math.round(stats.pct) : 0;
+            const stats = aggregatedStats.get(l.idNumber || l.id);
+            const pct = stats ? stats.pct : 0;
             const totalMins = stats ? stats.totalMinutes : 0;
 
             const rawGender = String(l.demographics?.genderCode || (l.demographics as any)?.gender || (l as any).gender || '').trim().toLowerCase();
@@ -467,8 +663,9 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
             if (isFemale) totalFemaleCount++;
 
             const isActivated = totalMins > 0;
+            const isDropped = checkIsDropped(l.status);
 
-            if (isActivated && l.status !== 'dropped') {
+            if (isActivated && !isDropped) {
                 totalActivatedLearners++;
                 totalCohortHours += (totalMins / 60);
                 sumActiveAttendancePct += pct;
@@ -496,8 +693,8 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
             if (isFemale) bandResults[bandIndex].female++;
         });
 
-        const systemActiveCount = enrolledLearners.filter(l => l.status !== 'dropped').length;
-        const droppedCount = enrolledLearners.filter(l => l.status === 'dropped').length;
+        const systemActiveCount = enrolledLearners.filter(l => !checkIsDropped(l.status)).length;
+        const droppedCount = enrolledLearners.filter(l => checkIsDropped(l.status)).length;
         const totalCount = systemActiveCount + droppedCount;
 
         const avgAttendance = totalActivatedLearners > 0 ? Math.round(sumActiveAttendancePct / totalActivatedLearners) : 0;
@@ -510,17 +707,18 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
         const globalRetention = totalCount > 0 ? Math.round((systemActiveCount / totalCount) * 100) : 0;
 
         setCohortAnalytics({
-            rosterAttendanceMap: map, totalCohortHours: Math.round(totalCohortHours), avgAttendance, highPerformers, atRisk, ghosting, avgHoursPerLearner,
+            rosterAttendanceMap: aggregatedStats, totalCohortHours: Math.round(totalCohortHours), avgAttendance, highPerformers, atRisk, ghosting, avgHoursPerLearner,
             totalMaleCount, totalFemaleCount, activeMaleCount, activeFemaleCount, activeFemalePct, activeMalePct, totalFemalePct, totalMalePct, totalActivatedLearners, activationRate,
             systemActiveCount, droppedCount, totalCount, globalRetention, bandResults, baseLength: enrolledLearners.length
         });
-    }, [enrolledLearners, attendanceRecords, processedAttendanceLogs, attendanceBands]);
+    }, [enrolledLearners, rawAttendanceRecords, rawAttendance, processedAttendanceLogs, attendanceBands]);
 
     const dynamicLocations = useMemo(() => extractGeoLevels(enrolledLearners), [enrolledLearners]);
 
     const learnersForMap = useMemo(() => {
         if (!cohortAnalytics) return [];
-        return enrolledLearners.filter(learner => {
+
+        const filtered = enrolledLearners.filter(learner => {
             const searchLower = urlSearchTerm.toLowerCase().trim();
             const dbEmail = (learner.email || learner.demographics?.learnerEmailAddress || '').toLowerCase();
             const locationString = getLocationString(learner);
@@ -531,13 +729,15 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
                 dbEmail.includes(searchLower) ||
                 locationString.toLowerCase().includes(searchLower);
 
+            const isDropped = checkIsDropped(learner.status);
+
             const matchesStatus = statusFilter === 'all' ||
-                (statusFilter === 'active' && learner.status !== 'dropped') ||
-                (statusFilter === 'dropped' && learner.status === 'dropped');
+                (statusFilter === 'active' && !isDropped) ||
+                (statusFilter === 'dropped' && isDropped);
 
             const matchesExitEmail = exitEmailFilter === 'all' || (() => {
-                if (learner.status !== 'dropped') return false;
-                const emailStatus = learner.withdrawalEmailStatus;
+                if (!isDropped) return false;
+                const emailStatus = (learner as any).withdrawalEmailStatus;
                 const targetEmail = learner.email || learner.demographics?.learnerEmailAddress;
                 const hasEmail = Boolean(targetEmail?.trim());
 
@@ -551,7 +751,7 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
 
             if (!matchesSearch || !matchesStatus || !matchesExitEmail) return false;
 
-            const stats = cohortAnalytics.rosterAttendanceMap.get(learner.learnerId || learner.id);
+            const stats = cohortAnalytics.rosterAttendanceMap.get(learner.idNumber || learner.id);
             const pct = stats ? Math.round(stats.pct) : 0;
             const hasStarted = stats ? stats.totalMinutes > 0 : false;
 
@@ -578,10 +778,13 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
 
             return matchesAttendance;
         });
+
+        return filtered;
     }, [enrolledLearners, urlSearchTerm, statusFilter, activationFilter, exitEmailFilter, customMinPct, customMaxPct, attendanceFilter, cohortAnalytics]);
 
     // ADVANCED MAP FILTER STATE
     const [mapFilters, setMapFilters] = useState<AdvancedMapFilterState>({
+        statuses: [],
         genders: [],
         equityGroups: [],
         performance: [],
@@ -590,31 +793,26 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
         geoLevels: ['province', 'district', 'municipality', 'city']
     });
 
-    // 🚀 FULLY ROBUST DATA ENGINE FOR THE MAP SIDEBAR FILTERS
     const advancedFilteredLearners = useMemo(() => {
-        return learnersForMap.filter(l => {
+        const filtered = learnersForMap.filter(l => {
             const demos = l.demographics || (l as any);
 
-            // 1. Safe Gender Filter
             if (mapFilters.genders.length > 0) {
                 const rawGender = String(demos.genderCode || demos.gender || (l as any).gender || '').toUpperCase().trim();
                 const gender = rawGender.startsWith('F') ? 'F' : rawGender.startsWith('M') ? 'M' : 'U';
                 if (!mapFilters.genders.includes(gender)) return false;
             }
 
-            // 2. Equity Filter
             if (mapFilters.equityGroups.length > 0) {
                 const equity = String(demos.equityCode || '');
                 if (!mapFilters.equityGroups.includes(equity)) return false;
             }
 
-            // 3. Age Filter
             const age = getAgeFromId(l.idNumber);
             if (age !== null) {
                 if (age < mapFilters.minAge || age > mapFilters.maxAge) return false;
             }
 
-            // 4. Strict Survey Participation & Answer Drill-down Filter
             if (mapFilters.surveyId) {
                 const learnerEmail = String(l.email || demos.learnerEmailAddress || '').toLowerCase().trim();
                 const learnerId = l.learnerId || l.id;
@@ -649,10 +847,11 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
 
             return true;
         });
+        return filtered;
     }, [learnersForMap, mapFilters, cohortSurveyResponses]);
 
     const fullyFilteredLearners = useMemo(() => {
-        return advancedFilteredLearners.filter(learner => {
+        const filtered = advancedFilteredLearners.filter(learner => {
             if (locationFilter === 'all') return true;
 
             const demos = learner.demographics || (learner as any);
@@ -677,9 +876,10 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
 
             return false;
         });
+
+        return filtered;
     }, [advancedFilteredLearners, locationFilter]);
 
-    // 🚀 NEW: Generate the Hierarchical Geographic Data Tree
     const geoTree = useMemo(() => {
         const tree: Record<string, any> = {};
 
@@ -830,14 +1030,17 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
 
     // ─── ACTION HANDLERS ───
     const handleBack = () => {
-        if (isAdmin) navigate('/admin', { state: { activeTab: 'cohorts' } });
-        else navigate(-1);
+        if (isAdmin) {
+            navigate('/admin?tab=cohorts');
+        } else {
+            navigate(`/${user?.role}?tab=cohorts`);
+        }
     };
 
     const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
         setSelectedIds(prev => {
             const next = new Set(prev);
-            const validPageLearners = paginatedLearners.filter((l: any) => l.status !== 'dropped');
+            const validPageLearners = paginatedLearners.filter((l: any) => !checkIsDropped(l.status));
             if (e.target.checked) validPageLearners.forEach((l: any) => next.add(l.id));
             else validPageLearners.forEach((l: any) => next.delete(l.id));
             return next;
@@ -936,6 +1139,10 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
 
     const handleConfirmDrop = async (data: { date: string, reason: string, notes: string, evidenceUrl: string, resignationUrl: string }) => {
         if (!learnerToDrop) return;
+
+        // Ensure we are targeting the actual user profile ID, not a ghost enrollment ID
+        const humanId = learnerToDrop.learnerId || learnerToDrop.idNumber || learnerToDrop.id;
+
         try {
             const batch = writeBatch(db);
             const routingId = learnerToDrop.enrollmentId || learnerToDrop.id;
@@ -951,13 +1158,22 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
                 updatedAt: new Date().toISOString()
             }, { merge: true });
 
-            const humanId = learnerToDrop.learnerId || learnerToDrop.id;
-            const learnerRef = doc(db, 'learners', humanId);
-
-            batch.set(learnerRef, {
-                status: 'dropped',
-                updatedAt: new Date().toISOString()
-            }, { merge: true });
+            // If we only have an ID number, we have to look up the profile ID
+            if (!learnerToDrop.learnerId && learnerToDrop.idNumber) {
+                const learnersQ = query(collection(db, 'learners'), where("idNumber", "==", learnerToDrop.idNumber));
+                const snap = await getDocs(learnersQ);
+                if (!snap.empty) {
+                    batch.set(doc(db, 'learners', snap.docs[0].id), {
+                        status: 'dropped',
+                        updatedAt: new Date().toISOString()
+                    }, { merge: true });
+                }
+            } else {
+                batch.set(doc(db, 'learners', humanId), {
+                    status: 'dropped',
+                    updatedAt: new Date().toISOString()
+                }, { merge: true });
+            }
 
             await batch.commit();
             toast.success(`${learnerToDrop.fullName} has been officially withdrawn.`);
@@ -998,7 +1214,7 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
                 const label = questionMap.get(qId) || qId;
                 if (val && typeof val === 'object' && 'formattedAddress' in val) {
                     flattenedAnswers[`${label} - Address`] = val.formattedAddress || '';
-                    flattenedAnswers[`${label} - City`] = val.city || '';
+                    flattenedAnswers[`${label} - City`] = (val as any).city || '';
                 } else {
                     flattenedAnswers[label] = val;
                 }
@@ -1132,6 +1348,12 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
                 }
                 .sm-badge-verified { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; font-size: 0.65rem; font-weight: 700; background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; text-transform: uppercase; border-radius: 0; }
                 .sm-badge-unverified { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; font-size: 0.65rem; font-weight: 700; background: #f8fafc; color: #64748b; border: 1px solid #cbd5e1; text-transform: uppercase; border-radius: 0; }
+                
+                /* Keep the calendar boxes scrolling internally without expanding the row */
+                .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+                .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+                .custom-scrollbar::-webkit-scrollbar-thumb { background: var(--mlab-border); border-radius: 4px; }
+                .custom-scrollbar:hover::-webkit-scrollbar-thumb { background: var(--mlab-grey-light); }
             `}</style>
 
             <ToastContainer toasts={toast.toasts} onClose={toast.closeToast} />
@@ -1163,6 +1385,17 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
                 document.body
             )}
 
+            {/* STIPEND EXPORT MODAL */}
+            <StipendExportModal
+                isOpen={isStipendModalOpen}
+                onClose={() => setIsStipendModalOpen(false)}
+                cohortId={cohort?.id || ''}
+                cohortName={cohort?.name || 'Cohort'}
+                learners={enrolledLearners}
+                attendanceMode="bootcamp"
+                initialMonth={calendarMonth.format('YYYY-MM')}
+            />
+
             {editingLog && createPortal(
                 <div className="wm-overlay animate-fade-in" onClick={() => setEditingLog(null)} style={{ zIndex: 99999 }}>
                     <div className="wm-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '500px', borderRadius: 0, border: '2px solid var(--mlab-border)' }}>
@@ -1171,7 +1404,7 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
                             <div>
                                 <h2 className="wm-modal__title">Edit Session Details</h2>
                                 <p className="wm-modal__subtitle">
-                                    {new Date(editingLog?.sessionDate?.split('T')[0] || '').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+                                    {new Date(editingLog?.sessionDate?.split('T')[0] || '').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })!}
                                 </p>
                             </div>
                             <button className="wm-modal__close" onClick={() => setEditingLog(null)}><X size={18} /></button>
@@ -1346,7 +1579,7 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
                 document.body
             )}
 
-            {/* 🚀 FULLSCREEN MAP WITH ADVANCED FILTER SIDEBAR */}
+            {/* FULLSCREEN MAP WITH ADVANCED FILTER SIDEBAR */}
             {isMapFullscreen && createPortal(
                 <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999999, backgroundColor: 'var(--mlab-white)', display: 'flex', flexDirection: 'row' }}>
                     <AdvancedMapFilters
@@ -1451,7 +1684,7 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
                                                 const femalePct = band.total > 0 ? Math.round((band.female / band.total) * 100) : 0;
                                                 const isActive = attendanceFilter === band.id;
                                                 return (
-                                                    <div key={band.id} onClick={() => updateUrlParams({ attendance: isActive ? 'all' : band.id, tab: 'learners' })} style={{ display: 'grid', gap: '8px', padding: '10px 16px', cursor: 'pointer', background: isActive ? `${band.color}15` : 'var(--mlab-bg)', border: '1px solid', borderLeft: `4px solid ${band.color}`, borderColor: isActive ? `${band.color}40` : 'var(--mlab-border)', transition: 'all 0.2s ease' }}>
+                                                    <div key={band.id} onClick={() => updateUrlParams({ attendance: isActive ? 'all' : band.id, view: 'learners' })} style={{ display: 'grid', gap: '8px', padding: '10px 16px', cursor: 'pointer', background: isActive ? `${band.color}15` : 'var(--mlab-bg)', border: '1px solid', borderLeft: `4px solid ${band.color}`, borderColor: isActive ? `${band.color}40` : 'var(--mlab-border)', transition: 'all 0.2s ease' }}>
                                                         <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ fontSize: '0.8rem', fontWeight: 700, color: isActive ? band.color : 'var(--mlab-midnight)' }}>{band.label}</span><span style={{ fontSize: '0.75rem', color: 'var(--mlab-grey)' }}>{band.total} ({totalPct}%)</span></div>
                                                         <div>
                                                             <div style={{ width: '100%', background: '#e2e8f0', height: '6px', overflow: 'hidden' }}><div style={{ width: `${totalPct}%`, background: band.color, height: '100%' }} /></div>
@@ -1483,6 +1716,7 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
                         <div className="mc"><div className="mc-hdr"><div><div className="mc-label">Staff</div><div className="mc-title">Moderator</div></div><ShieldCheck size={20} color="var(--mlab-blue)" /></div><div style={{ display: 'flex', alignItems: 'center', gap: '12px', background: 'var(--mlab-bg)', border: '1px solid var(--mlab-border)', padding: '12px' }}><div style={{ width: '36px', height: '36px', background: 'white', color: 'var(--mlab-blue)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', border: '1px solid var(--mlab-border)' }}>{modName === 'Unassigned' ? '?' : modName.charAt(0)}</div><div><span style={{ fontWeight: 700, color: modName === 'Unassigned' ? 'var(--mlab-grey)' : 'var(--mlab-blue)' }}>{modName}</span><br /><span style={{ fontSize: '0.65rem', color: 'var(--mlab-grey)' }}>QA</span></div></div></div>
                     </div>
 
+                    {/* MASTER ASSESSMENTS ACCORDION */}
                     {assessmentStatsMap.length > 0 && (
                         <div style={{ border: '2px solid var(--mlab-blue)', background: 'var(--mlab-white)', marginBottom: '2rem', borderRadius: 0 }}>
                             <div className="lfm-header" onClick={() => setIsAssessmentsExpanded(!isAssessmentsExpanded)} style={{ cursor: 'pointer' }}>
@@ -1715,7 +1949,7 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
                                     <table className="mlab-table" style={{ margin: 0 }}>
                                         <thead style={{ background: 'var(--mlab-light-blue)' }}>
                                             <tr>
-                                                <th style={{ width: '40px', textAlign: 'center', borderBottom: '1px solid var(--mlab-border)', borderTop: 'none', borderRadius: 0 }}><input type="checkbox" onChange={handleSelectAll} checked={paginatedLearners.length > 0 && paginatedLearners.filter((l: any) => l.status !== 'dropped').length > 0 && paginatedLearners.filter((l: any) => l.status !== 'dropped').every((l: any) => selectedIds.has(l.id))} /></th>
+                                                <th style={{ width: '40px', textAlign: 'center', borderBottom: '1px solid var(--mlab-border)', borderTop: 'none', borderRadius: 0 }}><input type="checkbox" onChange={handleSelectAll} checked={paginatedLearners.length > 0 && paginatedLearners.filter((l: any) => !checkIsDropped(l.status)).length > 0 && paginatedLearners.filter((l: any) => !checkIsDropped(l.status)).every((l: any) => selectedIds.has(l.id))} /></th>
                                                 <th style={{ color: 'var(--mlab-grey)', borderBottom: '1px solid var(--mlab-border)', borderTop: 'none', borderRadius: 0 }}>Learner</th>
                                                 <th style={{ color: 'var(--mlab-grey)', borderBottom: '1px solid var(--mlab-border)', borderTop: 'none', borderRadius: 0 }}>Contact</th>
                                                 <th style={{ color: 'var(--mlab-grey)', borderBottom: '1px solid var(--mlab-border)', borderTop: 'none', borderRadius: 0 }}>Location</th>
@@ -1732,9 +1966,9 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
                                                 <tr><td colSpan={10} style={{ padding: '3rem', textAlign: 'center', color: 'var(--mlab-grey)' }}><Search size={32} style={{ margin: '0 auto 1rem', opacity: 0.4 }} /><p style={{ margin: 0, fontFamily: 'var(--font-body)' }}>No applicants match your current query parameter thresholds.</p></td></tr>
                                             ) : (
                                                 paginatedLearners.map((learner: any, index: number) => {
-                                                    const isDropped = learner.status === 'dropped';
+                                                    const isDropped = checkIsDropped(learner.status);
                                                     const routingId = learner.enrollmentId || learner.id;
-                                                    const stats = cohortAnalytics.rosterAttendanceMap.get(learner.learnerId || learner.id);
+                                                    const stats = cohortAnalytics.rosterAttendanceMap.get(learner.idNumber || learner.id);
                                                     const learnerLogin = learner.lastLoginAt || (learner as any).lastLoginAt || null;
                                                     const pct = stats ? Math.round(stats.pct) : 0;
                                                     const totalMinutes = stats ? stats.totalMinutes : 0;
@@ -1817,10 +2051,21 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
                         <div className="animate-fade-in" style={{ border: '2px solid var(--mlab-blue)', borderRadius: 0, backgroundColor: 'var(--mlab-white)', marginBottom: '2rem' }}>
                             <div className="lfm-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                 <h2 className="lfm-header__title"><Calendar size={18} /> Cohort Session Calendar</h2>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', background: 'rgba(255,255,255,0.1)', padding: '4px', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 0 }}>
-                                    <button onClick={handlePrevMonth} style={{ padding: '4px', background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--mlab-white)', display: 'flex' }}><ChevronLeft size={16} /></button>
-                                    <span style={{ fontFamily: 'var(--font-heading)', fontWeight: '700', width: '130px', textAlign: 'center', color: 'var(--mlab-white)', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{calendarMonth.format('MMMM YYYY')}</span>
-                                    <button onClick={handleNextMonth} style={{ padding: '4px', background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--mlab-white)', display: 'flex' }}><ChevronRight size={16} /></button>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                    {cohort?.id && (
+                                        <button
+                                            className="lfm-btn"
+                                            onClick={() => setIsStipendModalOpen(true)}
+                                            style={{ background: 'var(--mlab-green)', color: 'var(--mlab-blue)', border: 'none', padding: '6px 12px', fontSize: '0.75rem', fontWeight: 700, borderRadius: 0 }}
+                                        >
+                                            <DownloadCloud size={14} style={{ marginRight: '4px' }} /> Export {calendarMonth.format('MMM')} Stipends
+                                        </button>
+                                    )}
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', background: 'rgba(255,255,255,0.1)', padding: '4px', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 0 }}>
+                                        <button onClick={handlePrevMonth} style={{ padding: '4px', background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--mlab-white)', display: 'flex' }}><ChevronLeft size={16} /></button>
+                                        <span style={{ fontFamily: 'var(--font-heading)', fontWeight: '700', width: '130px', textAlign: 'center', color: 'var(--mlab-white)', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{calendarMonth.format('MMMM YYYY')}</span>
+                                        <button onClick={handleNextMonth} style={{ padding: '4px', background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--mlab-white)', display: 'flex' }}><ChevronRight size={16} /></button>
+                                    </div>
                                 </div>
                             </div>
                             <div className="lfm-body" style={{ padding: '1.5rem', background: 'var(--mlab-bg)', borderRadius: 0 }}>
@@ -1834,12 +2079,12 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
                                         const isToday = dateStr === moment().format('YYYY-MM-DD');
                                         const dayLogs = logsByDate.get(dateStr) || [];
                                         return (
-                                            <div key={`${dateStr}-${idx}`} style={{ border: isToday ? '2px solid var(--mlab-blue)' : '1px solid var(--mlab-border)', borderRadius: 0, minHeight: '140px', padding: '10px', backgroundColor: isCurrentMonth ? 'var(--mlab-white)' : 'transparent', opacity: isCurrentMonth ? 1 : 0.4, display: 'flex', flexDirection: 'column' }}>
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                                            <div key={`${dateStr}-${idx}`} style={{ border: isToday ? '2px solid var(--mlab-blue)' : '1px solid var(--mlab-border)', borderRadius: 0, height: '140px', padding: '10px', backgroundColor: isCurrentMonth ? 'var(--mlab-white)' : 'transparent', opacity: isCurrentMonth ? 1 : 0.4, display: 'flex', flexDirection: 'column' }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px', flexShrink: 0 }}>
                                                     <span style={{ fontWeight: '700', fontFamily: 'var(--font-heading)', color: isToday ? 'var(--mlab-white)' : 'var(--mlab-blue)', background: isToday ? 'var(--mlab-blue)' : 'transparent', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.85rem', borderRadius: 0 }}>{day.format('D')}</span>
                                                     {dayLogs.length > 0 && (<span style={{ fontSize: '0.65rem', background: 'var(--mlab-light-blue)', color: 'var(--mlab-blue)', padding: '2px 6px', fontWeight: 'bold', border: '1px solid var(--mlab-border)', borderRadius: 0 }}>{dayLogs.length} Session{dayLogs.length !== 1 && 's'}</span>)}
                                                 </div>
-                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', flex: 1, overflowY: 'auto' }}>
+                                                <div className="custom-scrollbar" style={{ display: 'flex', flexDirection: 'column', gap: '6px', flex: 1, overflowY: 'auto', paddingRight: '4px' }}>
                                                     {dayLogs.map((log: any) => (
                                                         <div key={log.id} onClick={() => navigate(`/facilitator/attendance/${cohort.id}?date=${dateStr}`)} style={{ background: 'var(--mlab-bg)', border: '1px solid var(--mlab-border)', borderLeft: '3px solid var(--mlab-green)', padding: '8px', fontSize: '0.7rem', color: 'var(--mlab-midnight)', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: '6px' }} onMouseOver={(e) => { e.currentTarget.style.borderColor = 'var(--mlab-green)'; e.currentTarget.style.background = 'var(--mlab-white)'; }} onMouseOut={(e) => { e.currentTarget.style.borderColor = 'var(--mlab-border)'; e.currentTarget.style.borderLeftColor = 'var(--mlab-green)'; e.currentTarget.style.background = 'var(--mlab-bg)'; }} title={log.sessionDescription}>
                                                             <span style={{ fontWeight: 700, fontFamily: 'var(--font-heading)', letterSpacing: '0.05em', color: 'var(--mlab-blue)', textTransform: 'uppercase', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{log.sessionTitle || `Session ${log.sessionNumber || 1}`}</span>
@@ -1944,166 +2189,249 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.25rem' }}>
                                 <div style={{ background: '#fff', border: '1px solid var(--mlab-border)', borderTop: '3px solid var(--mlab-green)', padding: '1.25rem' }}>
                                     <div style={{ fontSize: '0.7rem', fontFamily: 'var(--font-heading)', fontWeight: 700, textTransform: 'uppercase', color: 'var(--mlab-grey)' }}>Average Feedback Rating</div>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}><Star size={28} color="#f59e0b" fill="#f59e0b" /><span style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--mlab-blue)' }}>{cohortSurveyMetrics.avgScore}</span><span style={{ color: 'var(--mlab-grey)', fontSize: '0.8rem' }}>/ 5.0</span></div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
+                                        <Star size={28} color="#f59e0b" fill="#f59e0b" />
+                                        <span style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--mlab-blue)' }}>{cohortSurveyMetrics.avgScore}</span>
+                                        <span style={{ color: 'var(--mlab-grey)', fontSize: '0.8rem' }}>/ 5.0</span>
+                                    </div>
                                 </div>
+
                                 <div style={{ background: '#fff', border: '1px solid var(--mlab-border)', borderTop: '3px solid var(--mlab-blue)', padding: '1.25rem' }}>
                                     <div style={{ fontSize: '0.7rem', fontFamily: 'var(--font-heading)', fontWeight: 700, textTransform: 'uppercase', color: 'var(--mlab-grey)' }}>Cohort Participation Rate</div>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}><Users size={24} color="var(--mlab-blue)" /><span style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--mlab-blue)' }}>{cohortSurveyMetrics.completionRate}%</span><span style={{ color: 'var(--mlab-grey)', fontSize: '0.8rem' }}>({cohortSurveyMetrics.totalSubmissions} / {activeCount})</span></div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
+                                        <Users size={24} color="var(--mlab-blue)" />
+                                        <span style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--mlab-blue)' }}>{cohortSurveyMetrics.completionRate}%</span>
+                                        <span style={{ color: 'var(--mlab-grey)', fontSize: '0.8rem' }}>({cohortSurveyMetrics.totalSubmissions} / {activeCount})</span>
+                                    </div>
                                 </div>
+
                                 <div style={{ background: '#fff', border: '1px solid var(--mlab-border)', borderTop: '3px solid var(--mlab-blue)', padding: '1.25rem' }}>
                                     <div style={{ fontSize: '0.7rem', fontFamily: 'var(--font-heading)', fontWeight: 700, textTransform: 'uppercase', color: 'var(--mlab-grey)' }}>Feedback Submissions</div>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}><HelpCircle size={24} color="var(--mlab-green)" /><span style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--mlab-blue)' }}>{cohortSurveyMetrics.totalSubmissions}</span><span style={{ color: 'var(--mlab-grey)', fontSize: '0.8rem' }}>Log Entries</span></div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
+                                        <HelpCircle size={24} color="var(--mlab-green)" />
+                                        <span style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--mlab-blue)' }}>{cohortSurveyMetrics.totalSubmissions}</span>
+                                        <span style={{ color: 'var(--mlab-grey)', fontSize: '0.8rem' }}>Log Entries</span>
+                                    </div>
                                 </div>
                             </div>
 
-                            <div style={{ display: 'flex', gap: '8px', borderBottom: '2px solid var(--mlab-border)', paddingBottom: '0px' }}>
-                                <button onClick={() => setSurveySubTab('templates')} style={{ padding: '8px 16px', fontFamily: 'var(--font-heading)', fontSize: '0.8rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', cursor: 'pointer', background: surveySubTab === 'templates' ? 'var(--mlab-blue)' : 'transparent', color: surveySubTab === 'templates' ? 'var(--mlab-white)' : 'var(--mlab-grey)', border: 'none', borderBottom: surveySubTab === 'templates' ? '3px solid var(--mlab-green)' : '3px solid transparent', display: 'flex', alignItems: 'center', gap: '6px' }}><HelpCircle size={14} /> Assigned Surveys ({cohortTargetedSurveys.length})</button>
-                                <button onClick={() => setSurveySubTab('responses')} style={{ padding: '8px 16px', fontFamily: 'var(--font-heading)', fontSize: '0.8rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', cursor: 'pointer', background: surveySubTab === 'responses' ? 'var(--mlab-blue)' : 'transparent', color: surveySubTab === 'responses' ? 'var(--mlab-white)' : 'var(--mlab-grey)', border: 'none', borderBottom: surveySubTab === 'responses' ? '3px solid var(--mlab-green)' : '3px solid transparent', display: 'flex', alignItems: 'center', gap: '6px' }}><ClipboardList size={14} /> Survey Submissions ({filteredSurveyResponses.length})</button>
+                            <div style={{ border: '2px solid var(--mlab-blue)', background: 'var(--mlab-white)' }}>
+                                <div className="lfm-header">
+                                    <h2 className="lfm-header__title">
+                                        <HelpCircle size={18} /> Assigned Surveys for {cohort.name} ({cohortTargetedSurveys.length})
+                                    </h2>
+                                </div>
+                                <div className="lfm-body" style={{ padding: '1.25rem', background: 'var(--mlab-bg)' }}>
+                                    {cohortTargetedSurveys.length === 0 ? (
+                                        <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--mlab-grey)' }}>
+                                            No native survey forms published for this cohort.
+                                        </div>
+                                    ) : (
+                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem' }}>
+                                            {cohortTargetedSurveys.map(survey => {
+                                                const subCount = cohortSurveyResponses.filter(r => r.surveyId === survey.id).length;
+                                                const isGlobal = !survey.cohortIds || survey.cohortIds.includes('ALL');
+
+                                                return (
+                                                    <div key={survey.id} style={{ background: '#fff', border: '1px solid var(--mlab-border)', borderLeft: '4px solid var(--mlab-green)', padding: '1rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '1rem' }}>
+                                                        <div>
+                                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
+                                                                <strong style={{ fontSize: '0.95rem', color: 'var(--mlab-blue)', fontFamily: 'var(--font-heading)', textTransform: 'uppercase' }}>{survey.title}</strong>
+                                                                <span style={{ fontSize: '0.65rem', fontWeight: 'bold', background: isGlobal ? 'var(--mlab-light-blue)' : 'var(--mlab-green-bg)', color: isGlobal ? 'var(--mlab-blue)' : 'var(--mlab-green-dark)', padding: '2px 6px', border: `1px solid ${isGlobal ? 'var(--mlab-border)' : 'var(--mlab-green)'}` }}>
+                                                                    {isGlobal ? 'All Cohorts' : 'Specific Cohort'}
+                                                                </span>
+                                                            </div>
+                                                            {survey.description && (
+                                                                <p style={{ fontSize: '0.8rem', color: 'var(--mlab-grey)', margin: '0 0 8px 0', lineHeight: 1.4 }}>
+                                                                    {survey.description}
+                                                                </p>
+                                                            )}
+                                                            <div style={{ fontSize: '0.75rem', color: 'var(--mlab-grey)', fontWeight: 'bold' }}>
+                                                                {survey.questions?.length || 0} Questions • {subCount} / {activeCount} Responded
+                                                            </div>
+                                                        </div>
+
+                                                        <div style={{ display: 'flex', gap: '8px' }}>
+                                                            <button
+                                                                onClick={() => handleCopySurveyLink(survey.id)}
+                                                                className="lfm-btn lfm-btn--ghost"
+                                                                style={{ flex: 1, fontSize: '0.72rem', padding: '6px 8px' }}
+                                                            >
+                                                                <LinkIcon size={12} /> Share Link
+                                                            </button>
+                                                            <button
+                                                                onClick={() => window.open(`/survey/${survey.id}`, '_blank')}
+                                                                className="lfm-btn lfm-btn--primary"
+                                                                style={{ flex: 1, fontSize: '0.72rem', padding: '6px 8px' }}
+                                                            >
+                                                                <Eye size={12} /> Preview Form
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
                             </div>
 
-                            {surveySubTab === 'templates' && (
-                                <div className="animate-fade-in" style={{ border: '2px solid var(--mlab-blue)', background: 'var(--mlab-white)' }}>
-                                    <div className="lfm-header"><h2 className="lfm-header__title"><HelpCircle size={18} /> Assigned Survey Forms ({cohortTargetedSurveys.length})</h2></div>
-                                    <div className="lfm-body" style={{ padding: 0 }}>
-                                        <div className="mlab-table-wrap">
+                            <div style={{ border: '2px solid var(--mlab-blue)', background: 'var(--mlab-white)' }}>
+                                <div className="lfm-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+                                    <h2 className="lfm-header__title">
+                                        <HelpCircle size={18} /> Cohort Survey Submissions ({filteredSurveyResponses.length})
+                                    </h2>
+
+                                    <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                        <div style={{ position: 'relative', width: '220px' }}>
+                                            <Search size={14} color="var(--mlab-grey)" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
+                                            <input
+                                                type="text"
+                                                className="lfm-input"
+                                                value={surveySearchQuery}
+                                                onChange={e => setSurveySearchQuery(e.target.value)}
+                                                placeholder="Search participant..."
+                                                style={{ paddingLeft: '32px', height: '34px', fontSize: '0.8rem' }}
+                                            />
+                                        </div>
+
+                                        <button className="lfm-btn" style={{ background: 'var(--mlab-green)', color: 'var(--mlab-blue)', border: 'none' }} onClick={exportCohortSurveyExcel}>
+                                            <DownloadCloud size={14} /> Export Feedback
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="lfm-body" style={{ padding: 0 }}>
+                                    <div className="mlab-table-wrap">
+                                        {filteredSurveyResponses.length === 0 ? (
+                                            <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--mlab-grey)' }}>
+                                                <HelpCircle size={40} style={{ margin: '0 auto 1rem', opacity: 0.5 }} />
+                                                <p style={{ fontFamily: 'var(--font-body)', margin: 0 }}>No survey feedback logs found for this cohort.</p>
+                                            </div>
+                                        ) : (
                                             <table className="mlab-table" style={{ margin: 0 }}>
                                                 <thead style={{ background: 'var(--mlab-light-blue)' }}>
                                                     <tr>
-                                                        <th style={{ color: 'var(--mlab-blue)' }}>Form Title</th>
-                                                        <th style={{ color: 'var(--mlab-blue)' }}>Description</th>
-                                                        <th style={{ color: 'var(--mlab-blue)' }}>Questions</th>
-                                                        <th style={{ color: 'var(--mlab-blue)' }}>Participation</th>
-                                                        <th style={{ textAlign: 'right', color: 'var(--mlab-blue)' }}>Actions</th>
+                                                        <th>Date Submitted</th>
+                                                        <th>Participant</th>
+                                                        <th>Survey Template</th>
+                                                        <th>Contact Status</th>
+                                                        <th style={{ textAlign: 'center' }}>Actions</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
-                                                    {cohortTargetedSurveys.length === 0 ? (
-                                                        <tr><td colSpan={5} style={{ padding: '3rem', textAlign: 'center', color: 'var(--mlab-grey)' }}>No survey forms assigned strictly to this cohort or its assessments.</td></tr>
-                                                    ) : (
-                                                        cohortTargetedSurveys.map(survey => {
-                                                            const subCount = cohortSurveyResponses.filter(r => r.surveyId === survey.id).length;
-                                                            return (
-                                                                <tr key={survey.id}>
-                                                                    <td><div style={{ fontWeight: 'bold', color: 'var(--mlab-blue)' }}>{survey.title}</div></td>
-                                                                    <td><div style={{ fontSize: '0.8rem', color: 'var(--mlab-grey)', maxWidth: '300px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{survey.description || 'No description'}</div></td>
-                                                                    <td style={{ fontWeight: 600 }}>{survey.questions?.length || 0} Questions</td>
-                                                                    <td><span style={{ fontWeight: 700, color: subCount > 0 ? 'var(--mlab-green-dark)' : 'var(--mlab-grey)' }}>{subCount} / {activeCount}</span></td>
-                                                                    <td style={{ textAlign: 'right' }}>
-                                                                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                                                                            <button onClick={() => handleCopySurveyLink(survey.id)} className="lfm-btn lfm-btn--ghost" style={{ fontSize: '0.72rem', padding: '6px 10px' }}><LinkIcon size={12} /> Share Link</button>
-                                                                            <button onClick={() => window.open(`/survey/${survey.id}`, '_blank')} className="lfm-btn lfm-btn--primary" style={{ fontSize: '0.72rem', padding: '6px 10px' }}><Eye size={12} /> Preview</button>
-                                                                        </div>
-                                                                    </td>
-                                                                </tr>
-                                                            );
-                                                        })
-                                                    )}
+                                                    {filteredSurveyResponses.map(resp => {
+                                                        const template = surveyTemplates.find(s => s.id === resp.surveyId);
+
+                                                        return (
+                                                            <tr key={resp.id}>
+                                                                <td style={{ whiteSpace: 'nowrap' }}>
+                                                                    {new Date(resp.submittedAt).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                                                </td>
+                                                                <td>
+                                                                    <div style={{ fontWeight: 'bold', color: 'var(--mlab-blue)' }}>{resp.learnerName || 'Anonymous Participant'}</div>
+                                                                    <div style={{ fontSize: '0.75rem', color: 'var(--mlab-grey)' }}>{resp.learnerEmail || resp.learnerPhone || 'N/A'}</div>
+                                                                </td>
+                                                                <td>
+                                                                    <span style={{ fontWeight: 600, color: 'var(--mlab-blue)' }}>{template?.title || resp.surveyId}</span>
+                                                                </td>
+                                                                <td>
+                                                                    {resp.isVerifiedRespondent
+                                                                        ? <span className="sm-badge-verified"><CheckCircle2 size={12} /> Verified</span>
+                                                                        : <span className="sm-badge-unverified">Unverified</span>
+                                                                    }
+                                                                </td>
+                                                                <td style={{ textAlign: 'center' }}>
+                                                                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+                                                                        <button onClick={() => setViewingSurveyResponse({ response: resp, template })} title="View Submission Details" style={{ background: '#e0f2fe', color: '#0369a1', border: '1px solid #bae6fd', padding: '6px', borderRadius: '4px', cursor: 'pointer' }}>
+                                                                            <Eye size={14} />
+                                                                        </button>
+                                                                        <button onClick={() => handleDeleteCohortResponse(resp.id)} title="Delete Response" style={{ background: '#fef2f2', color: '#b91c1c', border: '1px solid #fecaca', padding: '6px', borderRadius: '4px', cursor: 'pointer' }}>
+                                                                            <Trash2 size={14} />
+                                                                        </button>
+                                                                    </div>
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })}
                                                 </tbody>
                                             </table>
-                                        </div>
+                                        )}
                                     </div>
-                                </div>
-                            )}
-
-                            {surveySubTab === 'responses' && (
-                                <div className="animate-fade-in" style={{ border: '2px solid var(--mlab-blue)', background: 'var(--mlab-white)' }}>
-                                    <div className="lfm-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
-                                        <h2 className="lfm-header__title"><ClipboardList size={18} /> Cohort Survey Submissions ({filteredSurveyResponses.length})</h2>
-                                        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-                                            <div style={{ position: 'relative', width: '220px' }}>
-                                                <Search size={14} color="var(--mlab-grey)" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
-                                                <input type="text" className="lfm-input" value={surveySearchQuery} onChange={e => setSurveySearchQuery(e.target.value)} placeholder="Search participant..." style={{ paddingLeft: '32px', height: '34px', fontSize: '0.8rem' }} />
-                                            </div>
-                                            <button className="lfm-btn" style={{ background: 'var(--mlab-green)', color: 'var(--mlab-blue)', border: 'none' }} onClick={exportCohortSurveyExcel}><DownloadCloud size={14} /> Export Feedback</button>
-                                        </div>
-                                    </div>
-                                    <div className="lfm-body" style={{ padding: 0 }}>
-                                        <div className="mlab-table-wrap">
-                                            {filteredSurveyResponses.length === 0 ? (
-                                                <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--mlab-grey)' }}><HelpCircle size={40} style={{ margin: '0 auto 1rem', opacity: 0.5 }} /><p style={{ fontFamily: 'var(--font-body)', margin: 0 }}>No survey feedback logs found for this cohort.</p></div>
-                                            ) : (
-                                                <table className="mlab-table" style={{ margin: 0 }}>
-                                                    <thead style={{ background: 'var(--mlab-light-blue)' }}>
-                                                        <tr>
-                                                            <th>Date Submitted</th>
-                                                            <th>Participant</th>
-                                                            <th>Survey Template</th>
-                                                            <th>Verification Status</th>
-                                                            <th style={{ textAlign: 'center' }}>Actions</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                        {filteredSurveyResponses.map(resp => {
-                                                            const template = surveyTemplates.find(s => s.id === resp.surveyId);
-                                                            return (
-                                                                <tr key={resp.id}>
-                                                                    <td style={{ whiteSpace: 'nowrap' }}>{new Date(resp.submittedAt).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
-                                                                    <td><div style={{ fontWeight: 'bold', color: 'var(--mlab-blue)' }}>{resp.learnerName || 'Anonymous Participant'}</div><div style={{ fontSize: '0.75rem', color: 'var(--mlab-grey)' }}>{resp.learnerEmail || resp.learnerPhone || 'N/A'}</div></td>
-                                                                    <td><span style={{ fontWeight: 600, color: 'var(--mlab-blue)' }}>{template?.title || resp.surveyId}</span></td>
-                                                                    <td>{resp.isVerifiedRespondent ? <span className="sm-badge-verified"><CheckCircle2 size={12} /> Verified</span> : <span className="sm-badge-unverified">Unverified</span>}</td>
-                                                                    <td style={{ textAlign: 'center' }}>
-                                                                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
-                                                                            <button onClick={() => setViewingSurveyResponse({ response: resp, template })} title="View Submission Details" style={{ background: '#e0f2fe', color: '#0369a1', border: '1px solid #bae6fd', padding: '6px', borderRadius: '4px', cursor: 'pointer' }}><Eye size={14} /></button>
-                                                                            <button onClick={() => handleDeleteCohortResponse(resp.id)} title="Delete Response" style={{ background: '#fef2f2', color: '#b91c1c', border: '1px solid #fecaca', padding: '6px', borderRadius: '4px', cursor: 'pointer' }}><Trash2 size={14} /></button>
-                                                                        </div>
-                                                                    </td>
-                                                                </tr>
-                                                            );
-                                                        })}
-                                                    </tbody>
-                                                </table>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    )}
-
-                    {/* MODAL: VIEW COHORT SURVEY RESPONSE DETAILS */}
-                    {viewingSurveyResponse && createPortal(
-                        <div className="lfm-overlay" onClick={() => setViewingSurveyResponse(null)} style={{ zIndex: 9999 }}>
-                            <div className="lfm-modal animate-fade-in" onClick={e => e.stopPropagation()} style={{ maxWidth: '600px', maxHeight: '85vh' }}>
-                                <div className="lfm-header"><h2 className="lfm-header__title"><HelpCircle size={16} /> Participant Feedback</h2><button className="lfm-close-btn" onClick={() => setViewingSurveyResponse(null)}><X size={20} /></button></div>
-                                <div className="lfm-body" style={{ background: '#f8fafc', padding: 0 }}>
-                                    <div style={{ padding: '1.25rem', background: '#fff', borderBottom: '1px solid var(--mlab-border)' }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
-                                            <h3 style={{ margin: 0, fontFamily: 'var(--font-heading)', color: 'var(--mlab-blue)', fontSize: '1.2rem', textTransform: 'uppercase' }}>{viewingSurveyResponse.response.learnerName || 'Anonymous'}</h3>
-                                            {viewingSurveyResponse.response.isVerifiedRespondent ? <span className="sm-badge-verified"><CheckCircle2 size={12} /> Verified Contact</span> : <span className="sm-badge-unverified">Unverified</span>}
-                                        </div>
-                                        <div style={{ fontSize: '0.85rem', color: 'var(--mlab-grey)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                            <span><strong>Survey Form:</strong> {viewingSurveyResponse.template?.title || viewingSurveyResponse.response.surveyId}</span>
-                                            <span><strong>Submitted:</strong> {new Date(viewingSurveyResponse.response.submittedAt).toLocaleString('en-ZA')}</span>
-                                            {viewingSurveyResponse.response.learnerEmail && <span><strong>Email:</strong> {viewingSurveyResponse.response.learnerEmail}</span>}
-                                        </div>
-                                    </div>
-                                    <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                                        <h4 style={{ margin: '0 0 0.5rem 0', fontFamily: 'var(--font-heading)', color: 'var(--mlab-grey)', textTransform: 'uppercase', fontSize: '0.8rem', letterSpacing: '0.05em' }}>Feedback Breakdown</h4>
-                                        {viewingSurveyResponse.template?.questions?.map((q: any, idx: number) => {
-                                            const answer = viewingSurveyResponse.response.answers?.[q.id];
-                                            return (
-                                                <div key={q.id} style={{ background: '#fff', border: '1px solid var(--mlab-border)', borderLeft: '4px solid var(--mlab-blue)', padding: '1rem' }}>
-                                                    <div style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--mlab-midnight)', marginBottom: '8px' }}>{idx + 1}. {q.label}</div>
-                                                    <div style={{ fontSize: '0.9rem', color: 'var(--mlab-blue)' }}>
-                                                        {answer === undefined || answer === '' ? (<span style={{ color: '#94a3b8', fontStyle: 'italic' }}>Skipped / No Answer</span>)
-                                                            : q.type === 'rating' ? (<div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Star size={16} color="#f59e0b" fill="#f59e0b" /><strong>{answer}</strong> / {q.maxStars || 5}</div>)
-                                                                : q.type === 'address' ? (<div style={{ background: 'var(--mlab-bg)', padding: '8px', border: '1px solid var(--mlab-border)', fontSize: '0.8rem' }}><div style={{ fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px' }}><MapPin size={12} /> {answer.formattedAddress}</div>{answer.localMunicipality && <div style={{ color: 'var(--mlab-grey)' }}>Municipality: {answer.localMunicipality}</div>}{answer.districtOrMetro && <div style={{ color: 'var(--mlab-grey)' }}>District: {answer.districtOrMetro}</div>}{answer.province && <div style={{ color: 'var(--mlab-grey)' }}>Province: {answer.province}</div>}</div>)
-                                                                    : (<span style={{ whiteSpace: 'pre-wrap' }}>{String(answer)}</span>)}
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                                <div className="lfm-footer" style={{ justifyContent: 'flex-end' }}>
-                                    <button type="button" className="lfm-btn lfm-btn--outline" onClick={() => setViewingSurveyResponse(null)} style={{ background: '#fff', border: '1px solid var(--mlab-border)' }}>Close View</button>
                                 </div>
                             </div>
-                        </div>, document.body
+                        </div>
                     )}
                 </div>
             </main>
+
+            {/* MODAL: VIEW COHORT SURVEY RESPONSE DETAILS */}
+            {viewingSurveyResponse && (
+                <div className="lfm-overlay" onClick={() => setViewingSurveyResponse(null)} style={{ zIndex: 9999 }}>
+                    <div className="lfm-modal animate-fade-in" onClick={e => e.stopPropagation()} style={{ maxWidth: '600px', maxHeight: '85vh' }}>
+                        <div className="lfm-header">
+                            <h2 className="lfm-header__title"><HelpCircle size={16} /> Participant Feedback</h2>
+                            <button className="lfm-close-btn" onClick={() => setViewingSurveyResponse(null)}><X size={20} /></button>
+                        </div>
+
+                        <div className="lfm-body" style={{ background: '#f8fafc', padding: 0 }}>
+                            <div style={{ padding: '1.25rem', background: '#fff', borderBottom: '1px solid var(--mlab-border)' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                                    <h3 style={{ margin: 0, fontFamily: 'var(--font-heading)', color: 'var(--mlab-blue)', fontSize: '1.2rem', textTransform: 'uppercase' }}>
+                                        {viewingSurveyResponse.response.learnerName || 'Anonymous'}
+                                    </h3>
+                                    {viewingSurveyResponse.response.isVerifiedRespondent
+                                        ? <span className="sm-badge-verified"><CheckCircle2 size={12} /> Verified Contact</span>
+                                        : <span className="sm-badge-unverified">Unverified</span>
+                                    }
+                                </div>
+                                <div style={{ fontSize: '0.85rem', color: 'var(--mlab-grey)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                    <span><strong>Survey Form:</strong> {viewingSurveyResponse.template?.title || viewingSurveyResponse.response.surveyId}</span>
+                                    <span><strong>Submitted:</strong> {new Date(viewingSurveyResponse.response.submittedAt).toLocaleString('en-ZA')}</span>
+                                    {viewingSurveyResponse.response.learnerEmail && <span><strong>Email:</strong> {viewingSurveyResponse.response.learnerEmail}</span>}
+                                </div>
+                            </div>
+
+                            <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                <h4 style={{ margin: '0 0 0.5rem 0', fontFamily: 'var(--font-heading)', color: 'var(--mlab-grey)', textTransform: 'uppercase', fontSize: '0.8rem', letterSpacing: '0.05em' }}>Feedback Breakdown</h4>
+
+                                {viewingSurveyResponse.template?.questions?.map((q: any, idx: number) => {
+                                    const answer = viewingSurveyResponse.response.answers?.[q.id];
+
+                                    return (
+                                        <div key={q.id} style={{ background: '#fff', border: '1px solid var(--mlab-border)', borderLeft: '4px solid var(--mlab-blue)', padding: '1rem' }}>
+                                            <div style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--mlab-midnight)', marginBottom: '8px' }}>
+                                                {idx + 1}. {q.label}
+                                            </div>
+
+                                            <div style={{ fontSize: '0.9rem', color: 'var(--mlab-blue)' }}>
+                                                {answer === undefined || answer === '' ? (
+                                                    <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>Skipped / No Answer</span>
+                                                ) : q.type === 'rating' ? (
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                        <Star size={16} color="#f59e0b" fill="#f59e0b" />
+                                                        <strong>{answer}</strong> / {q.maxStars || 5}
+                                                    </div>
+                                                ) : q.type === 'address' ? (
+                                                    <div style={{ background: 'var(--mlab-bg)', padding: '8px', border: '1px solid var(--mlab-border)', fontSize: '0.8rem' }}>
+                                                        <div style={{ fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px' }}><MapPin size={12} /> {answer.formattedAddress}</div>
+                                                        {answer.localMunicipality && <div style={{ color: 'var(--mlab-grey)' }}>Municipality: {answer.localMunicipality}</div>}
+                                                    </div>
+                                                ) : (
+                                                    <span style={{ whiteSpace: 'pre-wrap' }}>{String(answer)}</span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        <div className="lfm-footer" style={{ justifyContent: 'flex-end' }}>
+                            <button type="button" className="lfm-btn lfm-btn--outline" onClick={() => setViewingSurveyResponse(null)} style={{ background: '#fff', border: '1px solid var(--mlab-border)' }}>Close View</button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
-

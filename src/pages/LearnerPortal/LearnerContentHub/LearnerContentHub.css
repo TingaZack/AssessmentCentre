@@ -1,0 +1,207 @@
+:root {
+  --mlab-blue: #073f4e;
+  --mlab-midnight: #073f4e;
+  --mlab-green: #94c73d;
+  --mlab-green-dark: #15803d;
+  --mlab-green-bg: #ecfccb;
+  --mlab-light-blue: #e0f2fe;
+  --mlab-border: #cbd5e1;
+  --mlab-white: #ffffff;
+  --mlab-grey: #64748b;
+  --font-heading:
+    system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-body:
+    system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+/* 🚀 FIXED VIEWPORT CONTAINER (NO FULL PAGE SCROLLING) */
+.lch-viewport {
+  height: 100vh;
+  max-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--mlab-bg, #f8fafc);
+  color: var(--mlab-text, #0f172a);
+}
+
+/* 🚀 INTERNAL SCROLLING BODY */
+.lch-scroll-container {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  position: relative;
+  scroll-behavior: smooth;
+}
+
+/* 🚀 STICKY RIGHT SIDEBAR THAT HANGS AT TOP */
+.lch-sidebar-sticky {
+  position: sticky;
+  top: 1rem;
+  align-self: flex-start;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  z-index: 10;
+}
+
+/* 🚀 DYNAMIC SEARCH BAR (HIDES ON SCROLL DOWN, SHOWS ON SCROLL UP) */
+.lch-search-wrapper {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--mlab-white);
+  transition:
+    transform 0.3s ease,
+    opacity 0.3s ease;
+}
+
+.lch-search-wrapper.hidden {
+  transform: translateY(-110%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.lch-search-wrapper.visible {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+/* CARDS & PANELS */
+.qcto-card {
+  background: var(--mlab-white);
+  border: 2px solid var(--mlab-blue);
+  border-radius: 0px !important;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.qcto-hdr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--mlab-blue);
+  color: var(--mlab-white);
+  padding: 0.75rem 1rem;
+  font-family: var(--font-heading);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* BUTTONS */
+.lfm-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  font-family: var(--font-heading);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-radius: 0px !important;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: 2px solid transparent;
+}
+
+.lfm-btn--primary {
+  background: var(--mlab-blue);
+  color: var(--mlab-white);
+  border-color: var(--mlab-blue);
+}
+
+.lfm-btn--primary:hover {
+  background: #03232c;
+}
+
+.lfm-btn--green {
+  background: var(--mlab-green);
+  color: var(--mlab-blue);
+  border-color: var(--mlab-green);
+}
+
+.lfm-btn--green:hover {
+  background: #83b632;
+}
+
+.lfm-btn--ghost {
+  background: transparent;
+  color: var(--mlab-blue);
+  border-color: var(--mlab-border);
+}
+
+.lfm-btn--ghost:hover {
+  background: var(--mlab-light-blue);
+}
+
+.mlab-card-hover {
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.mlab-card-hover:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 6px 16px rgba(7, 63, 78, 0.12);
+}
+
+/* INPUTS & TABS */
+.pfm-input {
+  border: 1px solid var(--mlab-border);
+  border-radius: 0px !important;
+  padding: 6px 10px;
+  font-family: var(--font-body);
+  font-size: 0.82rem;
+  outline: none;
+}
+
+.pfm-input:focus {
+  border-color: var(--mlab-blue);
+}
+
+.lfm-section-hdr {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--mlab-white);
+  border-bottom: 2px solid var(--mlab-blue);
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: 0.85rem;
+  color: var(--mlab-blue);
+  text-transform: uppercase;
+}
+
+.lfm-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 2px solid var(--mlab-blue);
+  background: var(--mlab-white);
+  padding: 4px 4px 0 4px;
+}
+
+.lfm-tab {
+  padding: 10px 16px;
+  font-family: var(--font-heading);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: transparent;
+  color: var(--mlab-grey);
+  border: 1px solid transparent;
+  border-bottom: none;
+  cursor: pointer;
+  border-radius: 0px !important;
+}
+
+.lfm-tab.active {
+  background: var(--mlab-blue);
+  color: var(--mlab-white);
+  border-color: var(--mlab-blue);
+}

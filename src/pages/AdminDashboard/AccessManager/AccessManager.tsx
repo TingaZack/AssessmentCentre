@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import {
     UserPlus, Search, Shield, ShieldCheck, User,
-    Loader2, X, Layers, PenTool, GraduationCap, AlertTriangle
+    Loader2, X, Layers, PenTool, GraduationCap, AlertTriangle, Briefcase
 } from 'lucide-react';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
@@ -18,8 +18,9 @@ const PRIVILEGE_OPTIONS = [
     { key: 'learners', title: 'Course Enrollments', desc: 'Manage learner applications, enrollments, and academic records.' },
     { key: 'staff', title: 'Staff Management', desc: 'Provision and manage facilitators, assessors, and moderators.' },
     { key: 'attendance', title: 'Attendance Hub', desc: 'Monitor campus check-ins and workplace logbook entries.' },
-    { key: 'workplaces', title: 'Workplaces & Employers', desc: 'Manage employer profiles and mentor assignments.' },
+    { key: 'workplaces', title: 'Workplaces & Employers', desc: 'Manage employer profiles, host SMEs, and logbook governance.' },
     { key: 'qualifications', title: 'Qualifications Builder', desc: 'Create and modify qualification templates and modules.' },
+    { key: 'content', title: 'Content Studio', desc: 'Author learning units, video lessons, and interactive checks.' },
     { key: 'assessments', title: 'Assessment Engine', desc: 'Manage rubrics, moderation queues, and grading rules.' },
     { key: 'cohorts', title: 'Cohort Management', desc: 'Manage classes, assign educators, and oversee tracking.' },
     { key: 'ecosystem', title: 'Ecosystem & Events', desc: 'Manage external ecosystem events, sponsors, and campaigns.' },
@@ -42,16 +43,17 @@ export const AccessManager: React.FC = () => {
     const [adminType, setAdminType] = useState<'admin' | 'assistant_admin'>('admin');
     const [isSuperAdmin, setIsSuperAdmin] = useState(false);
 
-    // Practitioner Capabilities (Marking & Facilitation Overrides)
+    // Practitioner Capabilities (Marking, Facilitation & Mentor Overrides)
     const [grantAssessorRights, setGrantAssessorRights] = useState(false);
     const [grantFacilitatorRights, setGrantFacilitatorRights] = useState(false);
+    const [grantMentorRights, setGrantMentorRights] = useState(false);
 
-    // 🚀 NEW: Explicit Marking Suspension / Audit Lock Flag
+    // Explicit Marking Suspension / Audit Lock Flag
     const [isMarkingSuspended, setIsMarkingSuspended] = useState(false);
 
     const [privileges, setPrivileges] = useState({
         directory: false, learners: false, staff: false, attendance: false,
-        workplaces: false, qualifications: false, assessments: false,
+        workplaces: false, qualifications: false, content: false, assessments: false,
         cohorts: false, ecosystem: false, studio: false, settings: false
     });
 
@@ -101,10 +103,11 @@ export const AccessManager: React.FC = () => {
         setIsSuperAdmin(false);
         setGrantAssessorRights(false);
         setGrantFacilitatorRights(false);
+        setGrantMentorRights(false);
         setIsMarkingSuspended(false);
         setPrivileges({
             directory: false, learners: false, staff: false, attendance: false,
-            workplaces: false, qualifications: false, assessments: false,
+            workplaces: false, qualifications: false, content: false, assessments: false,
             cohorts: false, ecosystem: false, studio: false, settings: false
         });
         setShowModal(true);
@@ -121,6 +124,7 @@ export const AccessManager: React.FC = () => {
         const secondary = Array.isArray(admin.secondaryRoles) ? admin.secondaryRoles : [];
         setGrantAssessorRights(admin.canMarkAssessments === true || secondary.includes('assessor'));
         setGrantFacilitatorRights(admin.canFacilitateCohorts === true || secondary.includes('facilitator'));
+        setGrantMentorRights(admin.isMentor === true || admin.canVerifyLogbooks === true || secondary.includes('mentor'));
         setIsMarkingSuspended(admin.isMarkingSuspended === true);
 
         setPrivileges({
@@ -130,6 +134,7 @@ export const AccessManager: React.FC = () => {
             attendance: admin.privileges?.attendance || false,
             workplaces: admin.privileges?.workplaces || false,
             qualifications: admin.privileges?.qualifications || false,
+            content: admin.privileges?.content || false,
             assessments: admin.privileges?.assessments || false,
             cohorts: admin.privileges?.cohorts || false,
             ecosystem: admin.privileges?.ecosystem || false,
@@ -160,11 +165,14 @@ export const AccessManager: React.FC = () => {
             const secondaryRolesList: string[] = [];
             if (grantAssessorRights) secondaryRolesList.push('assessor');
             if (grantFacilitatorRights) secondaryRolesList.push('facilitator');
+            if (grantMentorRights) secondaryRolesList.push('mentor');
 
             const capabilitiesPayload = {
                 secondaryRoles: secondaryRolesList,
                 canMarkAssessments: grantAssessorRights && !isMarkingSuspended,
                 canFacilitateCohorts: grantFacilitatorRights,
+                isMentor: grantMentorRights,
+                canVerifyLogbooks: grantMentorRights,
                 isMarkingSuspended: isMarkingSuspended
             };
 
@@ -275,6 +283,7 @@ export const AccessManager: React.FC = () => {
                             const isSuspended = admin.isMarkingSuspended === true;
                             const hasAssessor = (admin.canMarkAssessments || admin.secondaryRoles?.includes('assessor')) && !isSuspended;
                             const hasFacilitator = admin.canFacilitateCohorts || admin.secondaryRoles?.includes('facilitator');
+                            const hasMentor = admin.isMentor || admin.canVerifyLogbooks || admin.secondaryRoles?.includes('mentor');
 
                             return (
                                 <tr key={admin.id}>
@@ -296,7 +305,7 @@ export const AccessManager: React.FC = () => {
                                         )}
                                     </td>
 
-                                    {/* 🚀 PRACTITIONER CAPABILITY BADGES (WITH SUSPENSION SUPPORT) */}
+                                    {/* PRACTITIONER CAPABILITY BADGES */}
                                     <td>
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                                             {isSuspended && (
@@ -314,7 +323,12 @@ export const AccessManager: React.FC = () => {
                                                     <GraduationCap size={11} /> Facilitator Rights
                                                 </span>
                                             )}
-                                            {!isSuspended && !hasAssessor && !hasFacilitator && (
+                                            {hasMentor && (
+                                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.7rem', fontWeight: 'bold', color: '#7c3aed', background: '#f3e8ff', padding: '2px 8px', borderRadius: '4px', border: '1px solid #ddd6fe', width: 'fit-content' }}>
+                                                    <Briefcase size={11} /> Mentor Rights
+                                                </span>
+                                            )}
+                                            {!isSuspended && !hasAssessor && !hasFacilitator && !hasMentor && (
                                                 <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}>Admin Only</span>
                                             )}
                                         </div>
@@ -448,10 +462,25 @@ export const AccessManager: React.FC = () => {
                                                 </span>
                                             </div>
                                         </label>
+
+                                        <label className="lfm-checkbox-row" style={{ alignItems: 'flex-start', padding: '0.5rem 0', gridColumn: 'span 2' }}>
+                                            <input
+                                                type="checkbox"
+                                                style={{ marginTop: '2px' }}
+                                                checked={grantMentorRights}
+                                                onChange={(e) => setGrantMentorRights(e.target.checked)}
+                                            />
+                                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                                <span style={{ fontWeight: 'bold', color: '#7c3aed' }}>Grant Mentor & Logbook Verification Rights</span>
+                                                <span style={{ fontSize: '0.75rem', color: 'var(--mlab-grey)', lineHeight: '1.4', marginTop: '2px' }}>
+                                                    Allows this user to access the Mentor Dashboard, inspect assigned intern submissions, and digitally sign off workplace logbooks.
+                                                </span>
+                                            </div>
+                                        </label>
                                     </div>
                                 </div>
 
-                                {/* 🚨 COMPLIANCE & AUDIT LOCK (MARKING SUSPENSION TOGGLE) */}
+                                {/* COMPLIANCE & AUDIT LOCK */}
                                 <div>
                                     <div className="lfm-section-hdr" style={{ marginTop: '1.5rem', color: '#b91c1c' }}>
                                         <AlertTriangle size={13} color="#b91c1c" /> Compliance & Audit Controls

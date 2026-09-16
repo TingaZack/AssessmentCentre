@@ -1,49 +1,57 @@
 // src/components/views/CoachingScheduleView/CoachingScheduleView.tsx
 
 import React, { useEffect, useState, useMemo } from 'react';
-import { collection, query, where, onSnapshot, doc, updateDoc, setDoc, deleteField, getDocs } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, updateDoc, setDoc, deleteField, getDocs, addDoc } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
 import { useStore } from '../../../store/useStore';
 import {
     Calendar, Video, MessageSquare, CheckCircle,
     Clock, X, FileText, Search,
-    Trash2, UserX, Loader2, Info, ArrowRight,
+    Trash2, UserX, Loader2, Info,
     Plus, Link, Edit3, ShieldAlert,
-    Save
+    Save, ExternalLink, CheckCircle2, AlertCircle
 } from 'lucide-react';
 import { useToast, ToastContainer } from '../../common/Toast/Toast';
 import { createPortal } from 'react-dom';
 import moment from 'moment';
-import { getFunctions, httpsCallable } from 'firebase/functions';
 import { StatusModal, type StatusModalProps } from '../../common/StatusModal/StatusModal';
 
-// 🚀 IMPORTING THE GLOBALLY REQUESTED STYLES
+// --- STYLES ---
 import '../../../components/admin/LearnerFormModal/LearnerFormModal.css';
 import '../../admin/WorkplacesManager/WorkplacesManager.css';
 import '../CohortsView/CohortsView.css';
+import Loader from '../../common/Loader/Loader';
 
 // --- Interfaces ---
 interface CoachingSession {
     id: string;
-    assessorId: string;
-    assessorName: string;
+    assessorId?: string;
+    assessorName?: string;
+    facilitatorId?: string;
+    facilitatorName?: string;
+    hostId?: string;
+    hostName?: string;
     learnerId: string;
     learnerName: string;
-    assessmentId: string | null;
-    sessionCategory: string;
+    learnerEmail?: string;
+    assessmentId?: string | null;
+    sessionCategory?: string;
     topic: string;
+    reason?: string;
     dateTime: string;
-    meetLink: string;
-    status: 'requested' | 'pending_notes' | 'completed' | 'cancelled';
-    initiatedBy: string;
-    createdAt: any;
+    meetLink?: string;
+    status: 'requested' | 'scheduled' | 'pending_notes' | 'completed' | 'cancelled' | 'declined' | 'missed';
+    initiatedBy?: string;
+    requestedBy?: string;
+    createdAt?: any;
     notes?: string;
     completedAt?: string;
     requiresManualLink?: boolean;
     systemNote?: string;
+    cohortId?: string;
 }
 
-// ─── MANAGE SESSION MODAL (Notes & Link Editor) ───
+// ─── MANAGE SESSION MODAL (Notes & Link Editor for Staff) ───
 const ManageSessionModal: React.FC<{
     session: CoachingSession;
     onClose: () => void;
@@ -72,12 +80,12 @@ const ManageSessionModal: React.FC<{
                 payload.status = 'completed';
                 payload.completedAt = timestampIso;
             } else if (session.status === 'requested' && meetLink.trim()) {
-                payload.status = 'requested';
+                payload.status = 'scheduled';
             }
 
             await updateDoc(doc(db, 'coaching_sessions', session.id), payload);
 
-            // AUTO-UNLOCK THE LINKED ASSESSMENT
+            // 🚀 BIDIRECTIONAL SYNC: AUTO-UNLOCK LINKED ASSESSMENT WITH COMPLETE REMEDIATION PAYLOAD
             if (markComplete && session.assessmentId) {
                 try {
                     const subQ = query(
@@ -85,54 +93,73 @@ const ManageSessionModal: React.FC<{
                         where('learnerId', '==', session.learnerId),
                         where('assessmentId', '==', session.assessmentId)
                     );
-                    const subSnap = await getDocs(subQ);
+                    let subSnap = await getDocs(subQ);
+
+                    if (subSnap.empty) {
+                        const subQAuth = query(
+                            collection(db, 'learner_submissions'),
+                            where('authUid', '==', session.learnerId),
+                            where('assessmentId', '==', session.assessmentId)
+                        );
+                        subSnap = await getDocs(subQAuth);
+                    }
 
                     if (!subSnap.empty) {
                         const submissionDoc = subSnap.docs[0];
                         const subData = submissionDoc.data();
 
-                        // Only run the unlock if the workbook actually needs it
-                        if (['graded', 'moderated', 'returned'].includes(subData.status) && ['NYC', 'DEV', '1', '2'].includes(String(subData.competency || '').toUpperCase())) {
+                        const historyRef = doc(collection(db, 'learner_submissions', submissionDoc.id, 'history'));
+                        await setDoc(historyRef, {
+                            ...subData,
+                            archivedAt: timestampIso,
+                            snapshotReason: `Remediation via Coaching Schedule`,
+                            coachingLog: {
+                                date: timestampIso,
+                                notes: notes.trim(),
+                                facilitatorId: session.facilitatorId || session.assessorId || '',
+                                facilitatorName: session.facilitatorName || session.assessorName || 'Educator',
+                                acknowledged: false
+                            }
+                        });
 
-                            const historyRef = doc(collection(db, 'learner_submissions', submissionDoc.id, 'history'));
-                            await setDoc(historyRef, {
-                                ...subData,
-                                archivedAt: timestampIso,
-                                snapshotReason: `Remediation via Coaching Schedule`,
-                                coachingLog: {
-                                    date: timestampIso,
-                                    notes: notes.trim(),
-                                    facilitatorId: session.assessorId,
-                                    facilitatorName: session.assessorName,
-                                    acknowledged: false
-                                }
-                            });
+                        await updateDoc(doc(db, 'learner_submissions', submissionDoc.id), {
+                            status: 'not_started',
+                            startedAt: deleteField(),
+                            competency: deleteField(),
+                            grading: deleteField(),
+                            moderation: deleteField(),
+                            submittedAt: deleteField(),
+                            learnerDeclaration: deleteField(),
+                            coachingRequested: deleteField(),
+                            coachingRequestedAt: deleteField(),
+                            // Clear termination & breach flags from previous attempt
+                            isTerminated: deleteField(),
+                            terminatedAt: deleteField(),
+                            terminationReason: deleteField(),
+                            invigilationBreached: deleteField(),
+                            isMissed: deleteField(),
+                            missedAt: deleteField(),
+                            timeExpired: deleteField(),
+                            hasOverride: true,
+                            overrideUnlock: true,
+                            attemptNumber: (subData.attemptNumber || 1) + 1,
+                            lastStaffEditAt: timestampIso,
+                            remediationDate: timestampIso,
+                            remediationNotes: notes.trim(),
+                            remediatedBy: session.facilitatorId || session.assessorId || '',
+                            remediatedAt: timestampIso,
+                            latestCoachingLog: {
+                                date: timestampIso,
+                                notes: notes.trim(),
+                                facilitatorId: session.facilitatorId || session.assessorId || '',
+                                facilitatorName: session.facilitatorName || session.assessorName || 'Educator',
+                                acknowledged: false
+                            }
+                        });
 
-                            await updateDoc(doc(db, 'learner_submissions', submissionDoc.id), {
-                                status: 'not_started',
-                                startedAt: deleteField(),
-                                competency: deleteField(),
-                                grading: deleteField(),
-                                moderation: deleteField(),
-                                submittedAt: deleteField(),
-                                learnerDeclaration: deleteField(),
-                                coachingRequested: deleteField(),
-                                coachingRequestedAt: deleteField(),
-                                attemptNumber: (subData.attemptNumber || 1) + 1,
-                                lastStaffEditAt: timestampIso,
-                                latestCoachingLog: {
-                                    date: timestampIso,
-                                    notes: notes.trim(),
-                                    facilitatorId: session.assessorId,
-                                    facilitatorName: session.assessorName,
-                                    acknowledged: false
-                                }
-                            });
-
-                            toast.success("Session saved & linked assessment auto-unlocked!");
-                            onClose();
-                            return;
-                        }
+                        toast.success("Session saved & linked assessment auto-unlocked!");
+                        onClose();
+                        return;
                     }
                 } catch (unlockErr) {
                     console.error("Auto-unlock failed:", unlockErr);
@@ -162,7 +189,7 @@ const ManageSessionModal: React.FC<{
                 <div className="lfm-body">
                     {session.requiresManualLink && !session.meetLink && (
                         <div style={{ background: '#fff1f2', borderLeft: '4px solid #e11d48', padding: '10px 12px', marginBottom: '1rem', borderRadius: '4px', fontSize: '0.8rem', color: '#be123c', display: 'flex', gap: '8px', alignItems: 'center' }}>
-                            <ShieldAlert size={16} /> <span><strong>Action Required:</strong> The automatic calendar link failed to generate. Please paste a manual Google Meet or Zoom link below.</span>
+                            <ShieldAlert size={16} /> <span><strong>Action Required:</strong> Please attach a Google Meet or Zoom link below to schedule this session.</span>
                         </div>
                     )}
 
@@ -187,7 +214,7 @@ const ManageSessionModal: React.FC<{
                                 <input
                                     type="url"
                                     className="lfm-input"
-                                    placeholder="Paste link here..."
+                                    placeholder="Paste https://meet.google.com/... link here"
                                     value={meetLink}
                                     onChange={e => setMeetLink(e.target.value)}
                                     style={{ paddingLeft: '32px', borderColor: (!meetLink && session.requiresManualLink) ? '#fca5a5' : 'var(--mlab-border)' }}
@@ -203,7 +230,7 @@ const ManageSessionModal: React.FC<{
                             <textarea
                                 className="lfm-input"
                                 rows={6}
-                                placeholder="Detail what was discussed, what the learner struggled with, and any agreed upon next steps. Required to complete the session."
+                                placeholder="Detail what was discussed, what the learner struggled with, and agreed next steps..."
                                 value={notes}
                                 onChange={e => setNotes(e.target.value)}
                                 style={{ resize: 'vertical' }}
@@ -216,7 +243,7 @@ const ManageSessionModal: React.FC<{
                     <button type="button" className="lfm-btn lfm-btn--ghost" onClick={onClose} disabled={isSaving}>Cancel</button>
                     <div style={{ display: 'flex', gap: '8px' }}>
                         <button type="button" className="lfm-btn lfm-btn--outline" style={{ color: 'var(--mlab-blue)' }} onClick={() => handleSaveUpdates(false)} disabled={isSaving}>
-                            {isSaving ? <Loader2 size={13} className="lfm-spin" /> : <Save size={13} />} Update Details
+                            {isSaving ? <Loader2 size={13} className="lfm-spin" /> : <Save size={13} />} Save Link & Details
                         </button>
                         <button type="button" className="lfm-btn lfm-btn--primary" onClick={() => handleSaveUpdates(true)} disabled={isSaving}>
                             {isSaving ? <Loader2 size={13} className="lfm-spin" /> : <CheckCircle size={13} />} Mark as Completed
@@ -229,8 +256,120 @@ const ManageSessionModal: React.FC<{
     );
 };
 
-// ─── Create Session Modal (Manual Entry) ───
-const CreateSessionModal: React.FC<{
+// ─── LEARNER REQUEST COACHING MODAL ───
+const LearnerRequestModal: React.FC<{
+    user: any;
+    myLearnerDoc: any;
+    cohorts: any[];
+    onClose: () => void;
+    toast: any;
+}> = ({ user, myLearnerDoc, cohorts, onClose, toast }) => {
+    const [topic, setTopic] = useState('');
+    const [reason, setReason] = useState('');
+    const [preferredDate, setPreferredDate] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    const handleLearnerSubmit = async () => {
+        if (!topic.trim()) {
+            toast.warning("Please provide a topic or subject for the coaching session.");
+            return;
+        }
+
+        setIsSubmitting(true);
+        try {
+            const learnerName = user?.fullName || myLearnerDoc?.fullName || 'Learner';
+            const learnerId = myLearnerDoc?.idNumber || myLearnerDoc?.id || user?.uid;
+            const cohortId = myLearnerDoc?.cohortId || (cohorts.length > 0 ? cohorts[0].id : '');
+
+            await addDoc(collection(db, 'coaching_sessions'), {
+                topic: topic.trim(),
+                reason: reason.trim(),
+                sessionCategory: 'Academic Support & Remediation',
+                dateTime: preferredDate ? new Date(preferredDate).toISOString() : new Date().toISOString(),
+                status: 'requested',
+                learnerId: learnerId,
+                learnerName: learnerName,
+                learnerEmail: user?.email || myLearnerDoc?.email || '',
+                cohortId: cohortId,
+                assessorId: 'Unassigned Staff',
+                assessorName: 'Unassigned Facilitator',
+                requestedBy: user?.uid,
+                createdAt: new Date().toISOString()
+            });
+
+            toast.success("Coaching request submitted successfully!");
+            onClose();
+        } catch (err: any) {
+            console.error("Create coaching error:", err);
+            toast.error("Failed to submit coaching request: " + err.message);
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    return createPortal(
+        <div className="lfm-overlay" onClick={onClose} style={{ zIndex: 99999 }}>
+            <div className="lfm-modal animate-fade-in" onClick={e => e.stopPropagation()} style={{ maxWidth: '520px', width: '90%' }}>
+                <div className="lfm-header">
+                    <h2 className="lfm-header__title"><MessageSquare size={16} /> Request 1-on-1 Coaching</h2>
+                    <button className="lfm-close-btn" type="button" onClick={onClose} disabled={isSubmitting}><X size={20} /></button>
+                </div>
+
+                <div className="lfm-body">
+                    <p style={{ margin: '0 0 1rem 0', fontSize: '0.85rem', color: 'var(--mlab-grey)', lineHeight: 1.5 }}>
+                        Request a 1-on-1 academic or remediation session with a facilitator. Your request will be reviewed and assigned.
+                    </p>
+
+                    <div className="lfm-grid">
+                        <div className="lfm-fg lfm-fg--full">
+                            <label>Session Topic / Subject *</label>
+                            <input
+                                type="text"
+                                className="lfm-input"
+                                value={topic}
+                                onChange={e => setTopic(e.target.value)}
+                                placeholder="e.g. Guidance on Module 2 Practical Assessment"
+                            />
+                        </div>
+
+                        <div className="lfm-fg lfm-fg--full">
+                            <label>Specific Questions / Reasons</label>
+                            <textarea
+                                className="lfm-input"
+                                rows={3}
+                                value={reason}
+                                onChange={e => setReason(e.target.value)}
+                                placeholder="Explain what concepts or topics you would like assistance with..."
+                                style={{ resize: 'vertical' }}
+                            />
+                        </div>
+
+                        <div className="lfm-fg lfm-fg--full">
+                            <label>Preferred Date & Time</label>
+                            <input
+                                type="datetime-local"
+                                className="lfm-input"
+                                value={preferredDate}
+                                onChange={e => setPreferredDate(e.target.value)}
+                            />
+                        </div>
+                    </div>
+                </div>
+
+                <div className="lfm-footer" style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <button type="button" className="lfm-btn lfm-btn--ghost" onClick={onClose} disabled={isSubmitting}>Cancel</button>
+                    <button type="button" className="lfm-btn lfm-btn--primary" onClick={handleLearnerSubmit} disabled={isSubmitting}>
+                        {isSubmitting ? <><Loader2 size={13} className="lfm-spin" /> Submitting…</> : <><CheckCircle size={13} /> Submit Request</>}
+                    </button>
+                </div>
+            </div>
+        </div>,
+        document.body
+    );
+};
+
+// ─── STAFF CREATE SESSION MODAL ───
+const StaffCreateSessionModal: React.FC<{
     user: any;
     learners: any[];
     onClose: () => void;
@@ -243,7 +382,6 @@ const CreateSessionModal: React.FC<{
     const [meetLink, setMeetLink] = useState('');
     const [isSaving, setIsSaving] = useState(false);
 
-    // Sort learners alphabetically for the dropdown
     const activeLearners = useMemo(() => {
         return [...learners]
             .filter(l => l.fullName && !l.isArchived)
@@ -251,8 +389,8 @@ const CreateSessionModal: React.FC<{
     }, [learners]);
 
     const handleSubmit = async () => {
-        if (!selectedLearnerId || !dateTime || !topic || !meetLink) {
-            toast.error("Please fill in all required fields, including the meeting link.");
+        if (!selectedLearnerId || !dateTime || !topic) {
+            toast.error("Please fill in all required fields.");
             return;
         }
 
@@ -267,20 +405,25 @@ const CreateSessionModal: React.FC<{
             const newSessionRef = doc(collection(db, 'coaching_sessions'));
             await setDoc(newSessionRef, {
                 assessorId: user.uid,
-                assessorName: user.fullName,
-                learnerId: learner.learnerId || learner.id,
+                assessorName: user.fullName || 'Staff Member',
+                facilitatorId: user.uid,
+                facilitatorName: user.fullName || 'Staff Member',
+                learnerId: learner.learnerId || learner.idNumber || learner.id,
                 learnerName: learner.fullName,
+                learnerEmail: learner.email || '',
+                cohortId: learner.cohortId || '',
                 assessmentId: null,
                 sessionCategory: category,
                 topic: topic.trim(),
                 dateTime: new Date(dateTime).toISOString(),
                 meetLink: meetLink.trim(),
-                status: 'requested',
+                requiresManualLink: !meetLink.trim(),
+                status: meetLink.trim() ? 'scheduled' : 'requested',
                 initiatedBy: user.uid,
                 createdAt: new Date().toISOString()
             });
 
-            toast.success("Manual session scheduled successfully!");
+            toast.success("Coaching session created successfully!");
             onClose();
         } catch (err: any) {
             toast.error("Failed to schedule session: " + err.message);
@@ -293,22 +436,18 @@ const CreateSessionModal: React.FC<{
         <div className="lfm-overlay" onClick={onClose} style={{ zIndex: 99999 }}>
             <div className="lfm-modal animate-fade-in" onClick={e => e.stopPropagation()} style={{ maxWidth: '600px', width: '90%' }}>
                 <div className="lfm-header">
-                    <h2 className="lfm-header__title"><Calendar size={16} /> Schedule Session Manually</h2>
+                    <h2 className="lfm-header__title"><Calendar size={16} /> Schedule Session</h2>
                     <button className="lfm-close-btn" type="button" onClick={onClose} disabled={isSaving}><X size={20} /></button>
                 </div>
 
                 <div className="lfm-body">
-                    <p style={{ margin: '0 0 1rem 0', fontSize: '0.85rem', color: 'var(--mlab-grey)', lineHeight: 1.5 }}>
-                        Use this form to manually schedule a session if the automatic Google Calendar integration is unavailable. You will need to generate and provide your own Google Meet or Zoom link.
-                    </p>
-
                     <div className="lfm-grid">
                         <div className="lfm-fg lfm-fg--full">
                             <label>Learner *</label>
                             <select className="lfm-input" value={selectedLearnerId} onChange={e => setSelectedLearnerId(e.target.value)}>
                                 <option value="">-- Select Learner --</option>
                                 {activeLearners.map(l => (
-                                    <option key={l.id} value={l.id}>{l.fullName} ({l.idNumber})</option>
+                                    <option key={l.id} value={l.id}>{l.fullName} ({l.idNumber || l.email})</option>
                                 ))}
                             </select>
                         </div>
@@ -327,7 +466,7 @@ const CreateSessionModal: React.FC<{
                             <input type="datetime-local" className="lfm-input" value={dateTime} onChange={e => setDateTime(e.target.value)} />
                         </div>
                         <div className="lfm-fg lfm-fg--full">
-                            <label>Meeting Link (Google Meet / Zoom) *</label>
+                            <label>Meeting Link (Google Meet / Zoom)</label>
                             <div style={{ position: 'relative' }}>
                                 <Link size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--mlab-grey)' }} />
                                 <input type="url" className="lfm-input" placeholder="https://meet.google.com/..." value={meetLink} onChange={e => setMeetLink(e.target.value)} style={{ paddingLeft: '32px' }} />
@@ -352,76 +491,107 @@ const CreateSessionModal: React.FC<{
     );
 };
 
-// --- Main View Component ---
+// ─── MAIN VIEW COMPONENT ───
 export const CoachingScheduleView: React.FC = () => {
-    const { user, learners, fetchLearners, cohorts } = useStore() as any;
+    const { user, learners = [], fetchLearners, cohorts = [], staff = [], fetchStaff, fetchCohorts } = useStore() as any;
     const toast = useToast();
     const [sessions, setSessions] = useState<CoachingSession[]>([]);
     const [loading, setLoading] = useState(true);
-    const [filter, setFilter] = useState<'upcoming' | 'pending_notes' | 'completed' | 'cancelled' | 'all'>('upcoming');
+    const [filter, setFilter] = useState<'upcoming' | 'pending_notes' | 'completed' | 'cancelled' | 'all'>('all');
     const [searchTerm, setSearchTerm] = useState('');
 
     const [selectedSession, setSelectedSession] = useState<CoachingSession | null>(null);
-    const [showCreateModal, setShowCreateModal] = useState(false);
+    const [showStaffModal, setShowStaffModal] = useState(false);
+    const [showLearnerModal, setShowLearnerModal] = useState(false);
     const [statusModal, setStatusModal] = useState<StatusModalProps | null>(null);
 
-    const isSystemAdmin = user?.role === 'admin' || user?.role === 'super_admin' || user?.isSuperAdmin === true;
-    const isLearner = user?.role === 'learner';
-    const isStaff = !isSystemAdmin && !isLearner;
+    const activeRole = (user?.role || '').toLowerCase();
+    const isLearner = activeRole === 'learner';
+    const isSuperAdmin = (user as any)?.isSuperAdmin === true || activeRole.includes('super');
+    const isAdmin = activeRole.includes('admin');
 
     useEffect(() => {
-        if (!isLearner && (!learners || learners.length === 0)) {
-            fetchLearners();
-        }
-    }, [isLearner, learners, fetchLearners]);
+        if (!isLearner && (!learners || learners.length === 0)) fetchLearners();
+        if (staff.length === 0 && fetchStaff) fetchStaff();
+        if (cohorts.length === 0 && fetchCohorts) fetchCohorts();
+    }, [isLearner, learners, fetchLearners, staff.length, fetchStaff, cohorts.length, fetchCohorts]);
 
-    // We create a Set of learner IDs that are assigned to this staff member's cohorts
-    const assignedLearnerIds = useMemo(() => {
-        if (!isStaff || !cohorts || !learners) return new Set<string>();
+    // RESOLVE ALL LEARNER IDENTIFIERS (UID, SA ID, EMAIL, DOC ID)
+    const myLearnerDoc = useMemo(() => {
+        return learners.find((l: any) => l.authUid === user?.uid || l.email === user?.email || l.id === user?.uid);
+    }, [learners, user]);
 
-        const myCohortIds = cohorts
-            .filter((c: any) => c.assessorId === user.uid || c.facilitatorId === user.uid || c.assessorEmail === user.email)
+    const myLearnerIdentifiers = useMemo(() => {
+        const set = new Set<string>();
+        if (user?.uid) set.add(user.uid);
+        if ((user as any)?.id) set.add((user as any).id);
+        if (myLearnerDoc?.id) set.add(myLearnerDoc.id);
+        if (myLearnerDoc?.idNumber) set.add(myLearnerDoc.idNumber);
+        if ((user as any)?.idNumber) set.add((user as any).idNumber);
+        return set;
+    }, [user, myLearnerDoc]);
+
+    const myStaffDoc = useMemo(() => {
+        return staff.find((s: any) => s.authUid === user?.uid || s.email === user?.email || s.id === user?.uid);
+    }, [staff, user]);
+
+    const myStaffId = myStaffDoc?.id;
+    const myEmail = user?.email?.toLowerCase().trim();
+
+    const myCohortIds = useMemo(() => {
+        return cohorts
+            .filter((c: any) =>
+                c.facilitatorId === user?.uid || c.facilitatorId === myStaffId ||
+                c.supportFacilitatorId === user?.uid || c.supportFacilitatorId === myStaffId ||
+                c.assessorId === user?.uid || c.assessorId === myStaffId
+            )
             .map((c: any) => c.id);
+    }, [cohorts, user?.uid, myStaffId]);
 
-        const myLearnerIds = new Set<string>();
-        learners.forEach((l: any) => {
-            if (myCohortIds.includes(l.cohortId)) {
-                myLearnerIds.add(l.id);
-                if (l.learnerId) myLearnerIds.add(l.learnerId);
-            }
-        });
-        return myLearnerIds;
-    }, [isStaff, cohorts, learners, user]);
-
-
+    // REAL-TIME FIRESTORE LISTENER (Client-side matching for multi-ID robustness)
     useEffect(() => {
         if (!user?.uid) return;
 
-        let q;
         const sessionsRef = collection(db, 'coaching_sessions');
 
-        if (isLearner) {
-            // Learner strictly sees their own sessions
-            q = query(sessionsRef, where('learnerId', '==', user.uid));
-        } else {
-            // Admins & Staff fetch ALL sessions and we filter client-side 
-            // to catch sessions scheduled on behalf of the cohort by an Admin.
-            q = query(sessionsRef);
-        }
+        const unsubscribe = onSnapshot(sessionsRef, (snapshot) => {
+            const fetched: CoachingSession[] = [];
 
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            let fetched: CoachingSession[] = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            } as CoachingSession));
+            snapshot.docs.forEach(docSnap => {
+                const data = docSnap.data();
+                const sessionObj = { id: docSnap.id, ...data } as CoachingSession;
 
-            // FILTER OUT SESSIONS THAT DON'T BELONG TO THIS STAFF MEMBER'S COHORT
-            if (isStaff) {
-                fetched = fetched.filter(session =>
-                    session.assessorId === user.uid ||
-                    assignedLearnerIds.has(session.learnerId)
+                const facId = data.facilitatorId;
+                const assId = data.assessorId;
+                const hostId = data.hostId;
+                const learnerId = data.learnerId;
+                const requestedBy = data.requestedBy;
+                const hostEmail = (data.hostEmail || data.facilitatorEmail || '').toLowerCase().trim();
+                const learnerEmail = (data.learnerEmail || '').toLowerCase().trim();
+                const cohortId = data.cohortId;
+
+                const isUnassigned = !assId || assId === 'Unassigned Staff' || !facId || facId === 'Unassigned';
+
+                const isRelevant = isLearner ? (
+                    (learnerId && myLearnerIdentifiers.has(learnerId)) ||
+                    (requestedBy && requestedBy === user.uid) ||
+                    (myEmail && learnerEmail === myEmail) ||
+                    (data.learnerName && user?.fullName && data.learnerName.toLowerCase() === user.fullName.toLowerCase())
+                ) : (
+                    isSuperAdmin ||
+                    isAdmin ||
+                    facId === user.uid || (myStaffId && facId === myStaffId) ||
+                    assId === user.uid || (myStaffId && assId === myStaffId) ||
+                    hostId === user.uid || (myStaffId && hostId === myStaffId) ||
+                    (hostEmail && myEmail && hostEmail === myEmail) ||
+                    (cohortId && myCohortIds.includes(cohortId)) ||
+                    isUnassigned
                 );
-            }
+
+                if (isRelevant) {
+                    fetched.push(sessionObj);
+                }
+            });
 
             setSessions(fetched);
             setLoading(false);
@@ -432,12 +602,12 @@ export const CoachingScheduleView: React.FC = () => {
         });
 
         return () => unsubscribe();
-    }, [user, isLearner, isStaff, assignedLearnerIds, toast]);
+    }, [user, isLearner, isSuperAdmin, isAdmin, myLearnerIdentifiers, myStaffId, myEmail, myCohortIds, toast]);
 
     const handleCancelClick = (session: CoachingSession, isPast: boolean) => {
         const confirmMsg = isPast
             ? "Are you sure you want to mark this session as a No-Show / Missed?"
-            : "Are you sure you want to cancel this upcoming session?";
+            : "Are you sure you want to cancel this session?";
 
         setStatusModal({
             type: 'warning',
@@ -456,96 +626,84 @@ export const CoachingScheduleView: React.FC = () => {
                 status: 'cancelled'
             });
             toast.success(isPast ? "Session marked as missed." : "Session cancelled.");
-
-            setTimeout(() => {
-                setStatusModal({
-                    type: 'info',
-                    title: 'Reschedule Session',
-                    message: `Would you like to duplicate this session to reschedule it with ${session.learnerName}?`,
-                    confirmText: 'Yes, Reschedule',
-                    onCancel: () => setStatusModal(null),
-                    onClose: () => executeReschedule(session)
-                });
-            }, 300);
-
         } catch (err: any) {
             toast.error("Failed to update session.");
         }
     };
 
-    const executeReschedule = async (session: CoachingSession) => {
-        setStatusModal(null);
-        try {
-            const newSessionRef = doc(collection(db, 'coaching_sessions'));
-            await setDoc(newSessionRef, {
-                assessorId: session.assessorId,
-                assessorName: session.assessorName,
-                learnerId: session.learnerId,
-                learnerName: session.learnerName,
-                assessmentId: session.assessmentId,
-                sessionCategory: session.sessionCategory,
-                topic: `${session.topic} (Rescheduled)`,
-                dateTime: moment().add(1, 'days').toISOString(),
-                meetLink: session.meetLink,
-                status: 'requested',
-                initiatedBy: user.uid,
-                createdAt: new Date().toISOString()
-            });
-            toast.success("New session request created! You can now adjust the date in the Upcoming tab.");
-        } catch (err: any) {
-            toast.error("Failed to reschedule session.");
-        }
-    };
-
     const stats = useMemo(() => {
-        const now = new Date().getTime();
+        const nowMs = Date.now();
+        let upcoming = 0, pending_notes = 0, completed = 0, cancelled = 0;
+
+        sessions.forEach(s => {
+            const st = (s.status || '').toLowerCase();
+            const sessionTime = new Date(s.dateTime || s.createdAt || 0).getTime();
+            const isPast = sessionTime <= nowMs;
+
+            if (st === 'completed') {
+                completed++;
+            } else if (st === 'cancelled' || st === 'declined' || st === 'missed') {
+                cancelled++;
+            } else if (st === 'pending_notes' || (st === 'scheduled' && isPast)) {
+                pending_notes++;
+            } else if (st === 'requested' || (st === 'scheduled' && !isPast)) {
+                upcoming++;
+            }
+        });
+
         return {
-            upcoming: sessions.filter(s => (s.status === 'requested' || s.status === 'pending_notes') && new Date(s.dateTime).getTime() > now - (60 * 60000)).length,
-            pending_notes: sessions.filter(s => s.status !== 'completed' && s.status !== 'cancelled' && new Date(s.dateTime).getTime() <= now - (60 * 60000)).length,
-            completed: sessions.filter(s => s.status === 'completed').length,
-            cancelled: sessions.filter(s => s.status === 'cancelled').length,
+            upcoming,
+            pending_notes,
+            completed,
+            cancelled,
             all: sessions.length
         };
     }, [sessions]);
 
-    // 🚀 NEW: Dynamic Tab Config with Indicators
     const tabConfigs = [
-        { id: 'upcoming', label: 'Upcoming', count: stats.upcoming, alert: false },
+        { id: 'all', label: 'All', count: stats.all, alert: false },
+        { id: 'upcoming', label: 'Upcoming / Requested', count: stats.upcoming, alert: false },
         { id: 'pending_notes', label: 'Pending Notes', count: stats.pending_notes, alert: stats.pending_notes > 0 },
         { id: 'completed', label: 'Completed', count: stats.completed, alert: false },
-        { id: 'cancelled', label: 'Cancelled', count: stats.cancelled, alert: false },
-        { id: 'all', label: 'All', count: stats.all, alert: false }
+        { id: 'cancelled', label: 'Cancelled', count: stats.cancelled, alert: false }
     ];
 
     const filteredSessions = useMemo(() => {
-        const now = new Date().getTime();
+        const nowMs = Date.now();
+
         return sessions.filter(s => {
+            const st = (s.status || '').toLowerCase();
+            const sessionTime = new Date(s.dateTime || s.createdAt || 0).getTime();
+            const isPast = sessionTime <= nowMs;
+
             if (filter === 'upcoming') {
-                if (s.status !== 'requested' && s.status !== 'pending_notes') return false;
-                return new Date(s.dateTime).getTime() > now - (60 * 60000);
+                if (st === 'completed' || st === 'cancelled' || st === 'declined' || st === 'missed') return false;
+                if (st === 'pending_notes') return false;
+                if (st === 'scheduled' && isPast) return false;
+                return true;
             }
             if (filter === 'pending_notes') {
-                if (s.status === 'completed' || s.status === 'cancelled') return false;
-                return s.status === 'pending_notes' || new Date(s.dateTime).getTime() <= now - (60 * 60000);
+                if (st === 'completed' || st === 'cancelled' || st === 'declined' || st === 'missed') return false;
+                return st === 'pending_notes' || (st === 'scheduled' && isPast);
             }
-            if (filter === 'completed') return s.status === 'completed';
-            if (filter === 'cancelled') return s.status === 'cancelled';
+            if (filter === 'completed') return st === 'completed';
+            if (filter === 'cancelled') return st === 'cancelled' || st === 'declined' || st === 'missed';
 
-            if (searchTerm) {
-                const term = searchTerm.toLowerCase();
+            if (searchTerm.trim()) {
+                const term = searchTerm.toLowerCase().trim();
                 return (
-                    s.learnerName.toLowerCase().includes(term) ||
-                    s.topic.toLowerCase().includes(term) ||
-                    s.sessionCategory.toLowerCase().includes(term) ||
-                    s.assessorName.toLowerCase().includes(term)
+                    (s.learnerName || '').toLowerCase().includes(term) ||
+                    (s.topic || '').toLowerCase().includes(term) ||
+                    (s.sessionCategory || '').toLowerCase().includes(term) ||
+                    (s.assessorName || s.facilitatorName || '').toLowerCase().includes(term)
                 );
             }
             return true;
         }).sort((a, b) => {
             if (filter === 'upcoming') {
-                return new Date(a.dateTime).getTime() - new Date(b.dateTime).getTime();
+                return new Date(a.dateTime || a.createdAt || 0).getTime() - new Date(b.dateTime || b.createdAt || 0).getTime();
             }
-            return new Date(b.dateTime).getTime() - new Date(a.dateTime).getTime();
+            return new Date(b.dateTime || b.createdAt || 0).getTime() - new Date(a.dateTime || a.createdAt || 0).getTime();
         });
     }, [sessions, filter, searchTerm]);
 
@@ -573,11 +731,21 @@ export const CoachingScheduleView: React.FC = () => {
                 />
             )}
 
-            {showCreateModal && (
-                <CreateSessionModal
+            {showStaffModal && (
+                <StaffCreateSessionModal
                     user={user}
                     learners={learners || []}
-                    onClose={() => setShowCreateModal(false)}
+                    onClose={() => setShowStaffModal(false)}
+                    toast={toast}
+                />
+            )}
+
+            {showLearnerModal && (
+                <LearnerRequestModal
+                    user={user}
+                    myLearnerDoc={myLearnerDoc}
+                    cohorts={cohorts || []}
+                    onClose={() => setShowLearnerModal(false)}
                     toast={toast}
                 />
             )}
@@ -587,44 +755,49 @@ export const CoachingScheduleView: React.FC = () => {
                 <div className="wm-page-header__left">
                     <div className="wm-page-header__icon"><Video size={22} /></div>
                     <div>
-                        <h1 className="wm-page-header__title">Coaching Schedule</h1>
-                        <p className="wm-page-header__desc">Manage 1-on-1 sessions, notes, and upcoming meetings.</p>
+                        <h1 className="wm-page-header__title">Coaching & Support Schedule</h1>
+                        <p className="wm-page-header__desc">
+                            {isLearner ? 'Track your requested 1-on-1 sessions, scheduled meetings, and facilitator notes.' : 'Manage 1-on-1 sessions, notes, and upcoming student meetings.'}
+                        </p>
                     </div>
                 </div>
                 <div style={{ display: 'flex', gap: '10px' }}>
-                    {!isLearner && (
-                        <button className="wm-btn wm-btn--primary" onClick={() => setShowCreateModal(true)}>
-                            <Plus size={14} /> Schedule Session
-                        </button>
-                    )}
+                    <button
+                        type="button"
+                        className="wm-btn wm-btn--primary"
+                        onClick={() => isLearner ? setShowLearnerModal(true) : setShowStaffModal(true)}
+                        style={{ background: 'var(--mlab-green)', color: 'var(--mlab-blue)', border: 'none', fontWeight: 800, padding: '10px 16px', fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}
+                    >
+                        <Plus size={16} /> {isLearner ? 'Request 1-on-1 Session' : 'Schedule Session'}
+                    </button>
                 </div>
             </div>
 
             {/* ── TOP STATS ROW ── */}
             <div style={{ padding: '0 1.5rem', marginBottom: '1.5rem' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.25rem', marginBottom: '1.5rem' }}>
-                    <div className="mlab-cohort-card" style={{ padding: '1.25rem', borderTopColor: '#0ea5e9', display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '1rem', marginBottom: 0 }}>
+                    <div className="mlab-cohort-card" onClick={() => setFilter('upcoming')} style={{ padding: '1.25rem', borderTopColor: '#0ea5e9', display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '1rem', marginBottom: 0, cursor: 'pointer' }}>
                         <div style={{ background: '#e0f2fe', padding: '12px', borderRadius: '8px', color: '#0ea5e9' }}><Calendar size={24} /></div>
                         <div>
-                            <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--mlab-grey)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Upcoming</p>
+                            <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--mlab-grey)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{isLearner ? 'Upcoming & Requested' : 'Upcoming'}</p>
                             <h3 style={{ margin: 0, fontSize: '1.5rem', color: 'var(--mlab-blue)' }}>{stats.upcoming}</h3>
                         </div>
                     </div>
-                    <div className="mlab-cohort-card" style={{ padding: '1.25rem', borderTopColor: '#ea580c', display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '1rem', marginBottom: 0 }}>
+                    <div className="mlab-cohort-card" onClick={() => setFilter('pending_notes')} style={{ padding: '1.25rem', borderTopColor: '#ea580c', display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '1rem', marginBottom: 0, cursor: 'pointer' }}>
                         <div style={{ background: '#ffedd5', padding: '12px', borderRadius: '8px', color: '#ea580c' }}><Clock size={24} /></div>
                         <div>
                             <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--mlab-grey)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Pending Notes</p>
                             <h3 style={{ margin: 0, fontSize: '1.5rem', color: 'var(--mlab-blue)' }}>{stats.pending_notes}</h3>
                         </div>
                     </div>
-                    <div className="mlab-cohort-card" style={{ padding: '1.25rem', borderTopColor: '#16a34a', display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '1rem', marginBottom: 0 }}>
+                    <div className="mlab-cohort-card" onClick={() => setFilter('completed')} style={{ padding: '1.25rem', borderTopColor: '#16a34a', display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '1rem', marginBottom: 0, cursor: 'pointer' }}>
                         <div style={{ background: '#dcfce7', padding: '12px', borderRadius: '8px', color: '#16a34a' }}><CheckCircle size={24} /></div>
                         <div>
                             <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--mlab-grey)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Completed</p>
                             <h3 style={{ margin: 0, fontSize: '1.5rem', color: 'var(--mlab-blue)' }}>{stats.completed}</h3>
                         </div>
                     </div>
-                    <div className="mlab-cohort-card" style={{ padding: '1.25rem', borderTopColor: '#e11d48', display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '1rem', marginBottom: 0 }}>
+                    <div className="mlab-cohort-card" onClick={() => setFilter('cancelled')} style={{ padding: '1.25rem', borderTopColor: '#e11d48', display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '1rem', marginBottom: 0, cursor: 'pointer' }}>
                         <div style={{ background: '#ffe4e6', padding: '12px', borderRadius: '8px', color: '#e11d48' }}><UserX size={24} /></div>
                         <div>
                             <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--mlab-grey)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Missed / Cancelled</p>
@@ -677,7 +850,7 @@ export const CoachingScheduleView: React.FC = () => {
                         <Search size={14} color="var(--mlab-grey)" style={{ marginLeft: '12px', flexShrink: 0 }} />
                         <input
                             type="text"
-                            placeholder="Search by name or topic..."
+                            placeholder="Search by topic or participant..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                             style={{ height: '100%', border: 'none', background: 'transparent', outline: 'none', padding: '0 10px', color: 'var(--mlab-blue)', width: '100%', fontSize: '0.8rem', fontFamily: 'var(--font-body)' }}
@@ -686,24 +859,27 @@ export const CoachingScheduleView: React.FC = () => {
                 </div>
             </div>
 
-            {/* ── CARD GRID ── */}
+            {/* ── SESSIONS LIST ── */}
             {loading ? (
                 <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--mlab-grey)' }}>
-                    <Loader2 size={32} className="lfm-spin" style={{ margin: '0 auto 10px' }} /> Loading schedule...
+                    <Loader />
                 </div>
             ) : filteredSessions.length === 0 ? (
                 <div className="mlab-cohort-empty" style={{ margin: '0 1.5rem' }}>
                     <Calendar size={44} color="var(--mlab-green)" style={{ opacity: 0.5 }} />
                     <p className="mlab-cohort-empty__title">No Sessions Found</p>
-                    <p className="mlab-cohort-empty__desc">There are no sessions matching your current filters.</p>
+                    <p className="mlab-cohort-empty__desc">There are no sessions matching your current filter criteria.</p>
                 </div>
             ) : (
                 <div className="mlab-cohort-grid" style={{ padding: '0 1.5rem', paddingBottom: '2rem' }}>
                     {filteredSessions.map(session => {
-                        const isPast = new Date(session.dateTime).getTime() <= new Date().getTime();
+                        const nowMs = Date.now();
+                        const sessionTime = new Date(session.dateTime || session.createdAt || 0).getTime();
+                        const isPast = sessionTime <= nowMs;
                         const isCompleted = session.status === 'completed';
-                        const isCancelled = session.status === 'cancelled';
-                        const isPending = session.status === 'pending_notes' || (session.status === 'requested' && isPast);
+                        const isCancelled = session.status === 'cancelled' || session.status === 'declined' || session.status === 'missed';
+                        const isPendingNotes = session.status === 'pending_notes' || (session.status === 'scheduled' && isPast);
+                        const isRequested = session.status === 'requested';
                         const needsLink = !session.meetLink || session.requiresManualLink;
 
                         return (
@@ -712,18 +888,23 @@ export const CoachingScheduleView: React.FC = () => {
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
                                         <h3 className="mlab-cohort-card__name" title={session.learnerName}>{session.learnerName}</h3>
 
-                                        {/* Dynamic Badges */}
-                                        {isPending && !isCompleted && !isCancelled && (
-                                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#ffedd5', color: '#ea580c', padding: '2px 6px', borderRadius: '4px', fontSize: '0.65rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', border: '1px solid #fed7aa', flexShrink: 0 }}>
-                                                <Clock size={10} /> Pending
+                                        {isRequested && (
+                                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#fef3c7', color: '#b45309', border: '1px solid #fde68a', padding: '2px 6px', borderRadius: '4px', fontSize: '0.65rem', fontWeight: 800, textTransform: 'uppercase', flexShrink: 0 }}>
+                                                <AlertCircle size={10} /> Requested
+                                            </span>
+                                        )}
+                                        {isPendingNotes && (
+                                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#ffedd5', color: '#ea580c', padding: '2px 6px', borderRadius: '4px', fontSize: '0.65rem', fontWeight: 800, textTransform: 'uppercase', flexShrink: 0 }}>
+                                                <Clock size={10} /> Pending Notes
                                             </span>
                                         )}
                                         {needsLink && !isLearner && !isCompleted && !isCancelled && (
-                                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#fff1f2', color: '#e11d48', padding: '2px 6px', borderRadius: '4px', fontSize: '0.65rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', border: '1px solid #fecdd3', flexShrink: 0 }}>
+                                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#fff1f2', color: '#e11d48', padding: '2px 6px', borderRadius: '4px', fontSize: '0.65rem', fontWeight: 800, textTransform: 'uppercase', flexShrink: 0 }}>
                                                 <ShieldAlert size={10} /> Missing Link
                                             </span>
                                         )}
                                     </div>
+
                                     <div className="mlab-cohort-card__actions">
                                         {!isCompleted && !isCancelled && (
                                             <button
@@ -744,36 +925,40 @@ export const CoachingScheduleView: React.FC = () => {
                                 </div>
 
                                 <div className="mlab-role-row-stack">
-                                    <div className="mlab-role-row">
-                                        <div className="mlab-role-dot mlab-role-dot--blue" />
-                                        <span className="mlab-role-label">Category:</span>
-                                        <span className="mlab-role-name">{session.sessionCategory}</span>
-                                    </div>
+                                    {session.sessionCategory && (
+                                        <div className="mlab-role-row">
+                                            <div className="mlab-role-dot mlab-role-dot--blue" />
+                                            <span className="mlab-role-label">Category:</span>
+                                            <span className="mlab-role-name">{session.sessionCategory}</span>
+                                        </div>
+                                    )}
                                     <div className="mlab-role-row">
                                         <div className="mlab-role-dot mlab-role-dot--red" />
                                         <span className="mlab-role-label">Topic:</span>
                                         <span className="mlab-role-name" title={session.topic}>{session.topic}</span>
                                     </div>
-                                    {(user.role === 'admin' || user.isSuperAdmin) && (
+                                    {session.reason && (
                                         <div className="mlab-role-row">
-                                            <div className="mlab-role-dot mlab-role-dot--green" />
-                                            <span className="mlab-role-label">Staff:</span>
-                                            <span className="mlab-role-name">{session.assessorName}</span>
+                                            <div className="mlab-role-dot" style={{ background: '#0284c7' }} />
+                                            <span className="mlab-role-label">Notes/Questions:</span>
+                                            <span className="mlab-role-name" title={session.reason}>{session.reason}</span>
                                         </div>
                                     )}
-                                    {session.assessmentId && (
+                                    {!isLearner && (
                                         <div className="mlab-role-row">
-                                            <div className="mlab-role-dot" style={{ background: '#8b5cf6' }} />
-                                            <span className="mlab-role-label">Assessment:</span>
-                                            <span className="mlab-role-name">Linked</span>
+                                            <div className="mlab-role-dot mlab-role-dot--green" />
+                                            <span className="mlab-role-label">Staff Host:</span>
+                                            <span className="mlab-role-name">{session.assessorName || session.facilitatorName || 'Assigned Educator'}</span>
                                         </div>
                                     )}
                                 </div>
 
                                 {isCompleted && session.notes && (
-                                    <div style={{ marginTop: '1rem', padding: '0.75rem', background: 'var(--mlab-bg)', border: '1px solid var(--mlab-border)', borderRadius: '4px', fontSize: '0.8rem', color: 'var(--mlab-grey)' }}>
-                                        <strong style={{ color: 'var(--mlab-blue)', display: 'block', marginBottom: '4px' }}>Coach Notes:</strong>
-                                        <div style={{ whiteSpace: 'pre-wrap', maxHeight: '60px', overflowY: 'auto' }}>{session.notes}</div>
+                                    <div style={{ marginTop: '0.75rem', padding: '0.75rem', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '4px', fontSize: '0.8rem', color: '#166534' }}>
+                                        <strong style={{ color: '#15803d', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px' }}>
+                                            <FileText size={13} /> Facilitator Session Notes:
+                                        </strong>
+                                        <div style={{ whiteSpace: 'pre-wrap', maxHeight: '70px', overflowY: 'auto' }}>{session.notes}</div>
                                     </div>
                                 )}
 
@@ -783,29 +968,28 @@ export const CoachingScheduleView: React.FC = () => {
                                             <span style={{ color: 'var(--mlab-green)' }}><CheckCircle size={14} /> <strong>Completed</strong></span>
                                         ) : isCancelled ? (
                                             <span style={{ color: 'var(--mlab-red)' }}><Trash2 size={14} /> <strong>{isPast ? 'Missed' : 'Cancelled'}</strong></span>
-                                        ) : isPending ? (
+                                        ) : isPendingNotes ? (
                                             <span style={{ color: '#ea580c' }}><Clock size={14} /> <strong>Pending Notes</strong></span>
+                                        ) : isRequested ? (
+                                            <span style={{ color: '#b45309' }}><AlertCircle size={14} /> <strong>Requested</strong></span>
                                         ) : (
-                                            <span style={{ color: 'var(--mlab-blue)' }}><Calendar size={14} /> <strong>Upcoming</strong></span>
+                                            <span style={{ color: 'var(--mlab-blue)' }}><Calendar size={14} /> <strong>Scheduled</strong></span>
                                         )}
                                     </div>
 
                                     <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                                        {/* Join Button */}
                                         {session.meetLink && !isCancelled && !isCompleted && (
                                             <a href={session.meetLink} target="_blank" rel="noreferrer" className="wm-btn wm-btn--ghost" style={{ padding: '0.4rem 0.75rem', fontSize: '0.72rem', borderColor: 'var(--mlab-border)', color: 'var(--mlab-blue)' }}>
                                                 <Video size={13} /> Join
                                             </a>
                                         )}
 
-                                        {/* Learner Awaiting Link Indicator */}
                                         {isLearner && needsLink && !isCompleted && !isCancelled && (
                                             <span style={{ fontSize: '0.7rem', color: '#ea580c', display: 'flex', alignItems: 'center', gap: '4px', background: '#ffedd5', padding: '4px 8px', borderRadius: '4px', border: '1px solid #fed7aa' }}>
                                                 <Clock size={12} /> Awaiting Link
                                             </span>
                                         )}
 
-                                        {/* Staff Management Buttons */}
                                         {!isLearner && !isCompleted && !isCancelled && (
                                             <button
                                                 className={`wm-btn ${needsLink ? 'wm-btn--warning' : 'wm-btn--ghost'}`}

@@ -6,26 +6,26 @@
       "**/.*",
       "**/node_modules/**"
     ],
+    "headers": [
+      {
+        "source": "/sandbox.html",
+        "headers": [
+          {
+            "key": "Cross-Origin-Opener-Policy",
+            "value": "same-origin"
+          },
+          {
+            "key": "Cross-Origin-Embedder-Policy",
+            "value": "credentialless"
+          }
+        ]
+      }
+    ],
     "rewrites": [
       {
         "source": "**",
         "destination": "/index.html"
       }
-    ],
-"headers": [
-  {
-    "source": "**",
-    "headers": [
-      {
-        "key": "Cross-Origin-Opener-Policy",
-        "value": "same-origin"
-      },
-      {
-        "key": "Cross-Origin-Embedder-Policy",
-        "value": "credentialless"
-      }
     ]
-  }
-]
   }
 }

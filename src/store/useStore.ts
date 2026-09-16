@@ -585,10 +585,10 @@ export const useStore = create<StoreState>()(
               learnerId: profile.id,
             } as DashboardLearner);
           } else if (!profile) {
-            // Log orphan records for system cleanup but do not show in UI
-            console.warn(
-              ` Orphaned Enrollment found: ${docSnap.id} points to missing idNumber ${enrollment.learnerId}`,
-            );
+            // // Log orphan records for system cleanup but do not show in UI
+            // console.warn(
+            //   ` Orphaned Enrollment found: ${docSnap.id} points to missing idNumber ${enrollment.learnerId}`,
+            // );
           }
         });
 

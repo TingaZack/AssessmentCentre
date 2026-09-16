@@ -286,8 +286,9 @@ export const AssessmentPlayer: React.FC = () => {
         if (baseLimit <= 0) return null;
 
         const extraTime = submission?.extraTimeGranted || 0;
+        const isReattemptOrOverride = (submission?.attemptNumber || 1) > 1 || submission?.overrideUnlock === true || submission?.hasOverride === true;
 
-        if (assessment.isScheduled && assessment.scheduledDate && !submission?.overrideUnlock) {
+        if (assessment.isScheduled && assessment.scheduledDate && !isReattemptOrOverride) {
             return moment(assessment.scheduledDate).valueOf() + ((baseLimit + extraTime) * 60 * 1000);
         }
 
@@ -299,7 +300,7 @@ export const AssessmentPlayer: React.FC = () => {
         return null;
     }, [assessment, submission]);
 
-    // 🚀 STRICT SCOPED SURVEY COMPLETION CHECK
+    // STRICT SCOPED SURVEY COMPLETION CHECK
     useEffect(() => {
         const checkSurveyStatus = async () => {
             const activeSurveyId = assessment?.surveyId || submission?.surveyId;
@@ -613,10 +614,17 @@ export const AssessmentPlayer: React.FC = () => {
         }
     }, [assessment?.scheduledDate, isSubmitted, isAdminIntercept, submission?.overrideUnlock, isMissed, isViolation, getSecureNow]);
 
-    const isScheduledLocked = assessment?.scheduledDate && moment(assessment.scheduledDate).valueOf() > getSecureNow() && !isSubmitted && !isAdminIntercept && !submission?.overrideUnlock && !isMissed && !isViolation;
+    // const isScheduledLocked = assessment?.scheduledDate && moment(assessment.scheduledDate).valueOf() > getSecureNow() && !isSubmitted && !isAdminIntercept && !submission?.overrideUnlock && !isMissed && !isViolation;
+
+    const isReattemptOrOverride = (submission?.attemptNumber || 1) > 1 || submission?.overrideUnlock === true || submission?.hasOverride === true;
+
+    const isScheduledLocked = assessment?.scheduledDate && moment(assessment.scheduledDate).valueOf() > getSecureNow() && !isSubmitted && !isAdminIntercept && !isReattemptOrOverride && !isMissed && !isViolation;
+
 
     useEffect(() => {
-        if (isNotStarted && assessment?.isScheduled && assessment?.scheduledDate && !submission?.overrideUnlock && !isViolation) {
+        const isReattemptOrOverride = (submission?.attemptNumber || 1) > 1 || submission?.overrideUnlock === true || submission?.hasOverride === true;
+
+        if (isNotStarted && assessment?.isScheduled && assessment?.scheduledDate && !isReattemptOrOverride && !isViolation) {
             const interval = setInterval(() => {
                 const endMs = getAssessmentEndMs();
                 if (endMs && getSecureNow() >= endMs) {

@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useTransition } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { createPortal } from 'react-dom';
 import { signOut } from 'firebase/auth';
 import { auth, db } from '../../lib/firebase';
 import { doc, writeBatch, updateDoc, collection } from 'firebase/firestore';
@@ -17,6 +18,7 @@ import { SettingsPage } from '../SettingsPage/SettingsPage';
 import { AccessManager } from './AccessManager/AccessManager';
 import { SystemCrashesManager } from './SystemCrashesManager/SystemCrashesManager';
 import { SurveyManager } from './SurveyManager/SurveyManager';
+import { ContentAuthoring } from './ContentAuthoring/ContentAuthoring';
 
 // --- ENTITY MANAGEMENT VIEWS ---
 import { StaffView } from '../../components/views/StaffView/StaffView';
@@ -48,10 +50,11 @@ import { CoachingScheduleView } from '../../components/views/CoachingScheduleVie
 import { CompanyInsightsView } from '../../components/admin/WorkplacesManager/CompanyInsightsView/CompanyInsightsView';
 
 import './AdminDashboard.css';
+import { MentorDashboard } from '../mentor/MentorDashboard/MentorDashboard';
 
 type NavTabs = 'directory' | 'learners' | 'staff' | 'qualifications' | 'cohorts' |
     'workplaces' | 'studio' | 'dashboard' | 'profile' | 'access' | 'crashes' |
-    'assessments' | 'settings' | 'attendance' | 'ecosystem' | 'company-profile' | 'coaching' | 'surveys' | 'interview-studio';
+    'assessments' | 'settings' | 'attendance' | 'ecosystem' | 'company-profile' | 'coaching' | 'surveys' | 'interview-studio' | 'content' | 'workplace-verification'; // 🚀 Added workplace-verification type
 
 export const AdminDashboard: React.FC = () => {
     const navigate = useNavigate();
@@ -135,6 +138,17 @@ export const AdminDashboard: React.FC = () => {
     const [cohortToDelete, setCohortToDelete] = useState<Cohort | null>(null);
     const [selectedCohort, setSelectedCohort] = useState<Cohort | null>(null);
 
+    const [statusModal, setStatusModal] = useState<{
+        isOpen: boolean;
+        type: 'info' | 'success' | 'error' | 'warning';
+        title: string;
+        message: string;
+        confirmText?: string;
+        cancelText?: string;
+        onConfirm: () => void;
+        onCancel?: () => void;
+    } | null>(null);
+
     // Smart Data Loader
     useEffect(() => {
         const currentUser = user as any;
@@ -165,7 +179,7 @@ export const AdminDashboard: React.FC = () => {
             load(store.cohorts, store.fetchCohorts);
         }
 
-        if (currentNav === 'qualifications' && (isSuper || privs.qualifications)) {
+        if ((currentNav === 'qualifications' || currentNav === 'content') && (isSuper || privs.qualifications)) {
             load(store.programmes, store.fetchProgrammes);
         }
 
@@ -219,10 +233,22 @@ export const AdminDashboard: React.FC = () => {
 
     const handleArchiveLearner = async (learner: DashboardLearner) => setLearnerToProcess({ learner, action: 'archive' });
     const handleDiscardDraft = async (learner: DashboardLearner) => setLearnerToProcess({ learner, action: 'discard' });
+
     const handleRestoreLearner = async (learner: DashboardLearner) => {
-        if (!window.confirm(`Restore ${learner.fullName} to the active list?`)) return;
-        await store.restoreLearner(learner.id);
-        toast.success(`${learner.fullName} has been restored.`);
+        setStatusModal({
+            isOpen: true,
+            type: 'info',
+            title: 'Restore Learner Profile',
+            message: `Restore ${learner.fullName} to the active enrollment list?`,
+            confirmText: 'Yes, Restore',
+            cancelText: 'Cancel',
+            onCancel: () => setStatusModal(null),
+            onConfirm: async () => {
+                setStatusModal(null);
+                await store.restoreLearner(learner.id);
+                toast.success(`${learner.fullName} has been restored.`);
+            }
+        });
     };
 
     const handleBulkApprove = async (learnersToApprove: DashboardLearner[], mode: 'standard' | 'shadow' | 'offline' = 'standard') => {
@@ -232,9 +258,21 @@ export const AdminDashboard: React.FC = () => {
             shadow: `Approve ${learnersToApprove.length} profiles straight into live Bootcamp rosters? This will skip authentication setups.`,
             offline: `Approve ${learnersToApprove.length} profiles as offline RPL records? This skips platform login profiles.`
         };
-        if (!window.confirm(confirmationMessages[mode])) return;
-        await store.approveStagingLearners(learnersToApprove, mode as any);
-        toast.success(`Successfully processed ${learnersToApprove.length} profiles.`);
+
+        setStatusModal({
+            isOpen: true,
+            type: 'info',
+            title: 'Confirm Bulk Approval',
+            message: confirmationMessages[mode],
+            confirmText: 'Yes, Approve All',
+            cancelText: 'Cancel',
+            onCancel: () => setStatusModal(null),
+            onConfirm: async () => {
+                setStatusModal(null);
+                await store.approveStagingLearners(learnersToApprove, mode as any);
+                toast.success(`Successfully processed ${learnersToApprove.length} profiles.`);
+            }
+        });
     };
 
     const handleInviteLearner = (learner: DashboardLearner) => {
@@ -247,28 +285,50 @@ export const AdminDashboard: React.FC = () => {
 
     const handleBulkArchive = async (learnersToArchive: DashboardLearner[]) => {
         const count = learnersToArchive.length;
-        if (!window.confirm(`Archive ${count} enrollments? They will be moved to the Archive tab.`)) return;
-        try {
-            const batch = writeBatch(db);
-            learnersToArchive.forEach(l => {
-                const enrolId = l.enrollmentId || l.id;
-                const ref = doc(db, 'enrollments', enrolId);
-                batch.update(ref, { isArchived: true, updatedAt: new Date().toISOString() });
-            });
-            await batch.commit();
-            await store.fetchLearners(true);
-            toast.success(`Successfully archived ${count} enrollments.`);
-        } catch (e: any) {
-            toast.error("Failed to archive: " + e.message);
-        }
+        setStatusModal({
+            isOpen: true,
+            type: 'warning',
+            title: 'Confirm Bulk Archive',
+            message: `Archive ${count} enrollments? They will be moved to the Archive tab.`,
+            confirmText: 'Yes, Archive All',
+            cancelText: 'Cancel',
+            onCancel: () => setStatusModal(null),
+            onConfirm: async () => {
+                setStatusModal(null);
+                try {
+                    const batch = writeBatch(db);
+                    learnersToArchive.forEach(l => {
+                        const enrolId = l.enrollmentId || l.id;
+                        const ref = doc(db, 'enrollments', enrolId);
+                        batch.update(ref, { isArchived: true, updatedAt: new Date().toISOString() });
+                    });
+                    await batch.commit();
+                    await store.fetchLearners(true);
+                    toast.success(`Successfully archived ${count} enrollments.`);
+                } catch (e: any) {
+                    toast.error("Failed to archive: " + e.message);
+                }
+            }
+        });
     };
 
     const handleBulkDiscard = async (draftsToDiscard: DashboardLearner[]) => {
         const count = draftsToDiscard.length;
-        if (!window.confirm(`Permanently discard ${count} drafts?`)) return;
-        const ids = draftsToDiscard.map(l => l.id);
-        await store.discardStagingLearners(ids);
-        toast.success(`Discarded ${count} drafts.`);
+        setStatusModal({
+            isOpen: true,
+            type: 'error',
+            title: 'Confirm Discard Drafts',
+            message: `Permanently discard ${count} staged draft(s)? This action cannot be undone.`,
+            confirmText: 'Yes, Discard All',
+            cancelText: 'Cancel',
+            onCancel: () => setStatusModal(null),
+            onConfirm: async () => {
+                setStatusModal(null);
+                const ids = draftsToDiscard.map(l => l.id);
+                await store.discardStagingLearners(ids);
+                toast.success(`Discarded ${count} drafts.`);
+            }
+        });
     };
 
     const executeLearnerAction = async () => {
@@ -290,10 +350,20 @@ export const AdminDashboard: React.FC = () => {
     };
 
     const handleLearnerCohortArchive = async (year: string) => {
-        if (window.confirm(`Are you sure you want to ARCHIVE the entire ${year} cohort?`)) {
-            await store.archiveCohort(year);
-            toast.success(`Cohort ${year} has been successfully archived.`);
-        }
+        setStatusModal({
+            isOpen: true,
+            type: 'warning',
+            title: 'Archive Entire Cohort Year',
+            message: `Are you sure you want to ARCHIVE the entire ${year} cohort year? All associated active enrollments will be transferred to archived state.`,
+            confirmText: 'Yes, Archive Cohort',
+            cancelText: 'Cancel',
+            onCancel: () => setStatusModal(null),
+            onConfirm: async () => {
+                setStatusModal(null);
+                await store.archiveCohort(year);
+                toast.success(`Cohort ${year} has been successfully archived.`);
+            }
+        });
     };
 
     const checkAccess = (tab: NavTabs) => {
@@ -308,6 +378,11 @@ export const AdminDashboard: React.FC = () => {
         if (tab === 'dashboard' || tab === 'profile') return true;
         if (tab === 'access' || tab === 'crashes') return false;
 
+        // 🚀 ALWAYS ALLOW INTERNAL STAFF WHO ARE MENTORS TO VIEW THE DASHBOARD
+        if (tab === 'workplace-verification' && (currentUser?.isMentor === true || activeRole === 'mentor')) {
+            return true;
+        }
+
         const adminRoles = ['admin', 'assistant_admin', 'super_admin', 'superadmin'];
         if (adminRoles.includes(activeRole)) {
             const privs = currentUser?.privileges;
@@ -321,6 +396,7 @@ export const AdminDashboard: React.FC = () => {
                 'workplaces': privs.workplaces !== false,
                 'company-profile': privs.workplaces !== false,
                 'qualifications': privs.qualifications !== false,
+                'content': privs.qualifications !== false || privs.content !== false,
                 'assessments': privs.assessments !== false,
                 'surveys': privs.surveys !== false,
                 'cohorts': privs.cohorts !== false,
@@ -364,66 +440,73 @@ export const AdminDashboard: React.FC = () => {
                 <Sidebar currentNav={currentNav} setCurrentNav={setCurrentNav} onLogout={handleLogout} />
             </div>
 
-            <main className="main-wrapper" style={{ padding: 16, paddingBottom: '5%' }}>
-                <header className="dashboard-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', position: 'relative' }}>
-                    <div className="header-title">
-                        <h1>
-                            {currentNav === 'dashboard' && 'Dashboard Overview'}
-                            {currentNav === 'interview-studio' && 'AI Interview Studio & Audit Log'}
-                            {currentNav === 'directory' && 'Master Learner Directory'}
-                            {currentNav === 'learners' && 'Course Enrollments'}
-                            {currentNav === 'attendance' && 'Organization Attendance Hub'}
-                            {currentNav === 'ecosystem' && 'Ecosystem & Event Check-ins'}
-                            {currentNav === 'qualifications' && 'Qualification Templates'}
-                            {currentNav === 'assessments' && 'Assessment Management'}
-                            {currentNav === 'surveys' && 'Surveys & Feedback Engine'}
-                            {currentNav === 'staff' && 'Staff & Mentors'}
-                            {currentNav === 'cohorts' && 'Cohort Management'}
-                            {currentNav === 'workplaces' && 'Workplace Management'}
-                            {currentNav === 'company-profile' && 'Corporate Partner Insights'}
-                            {currentNav === 'profile' && 'My Administrator Profile'}
-                            {currentNav === 'access' && 'Platform Access Control'}
-                            {currentNav === 'crashes' && 'System Crashlytics & Bug Tracker'}
-                            {currentNav === 'settings' && 'Platform Settings'}
-                            {currentNav === 'studio' && 'Certificate Studio'}
-                            {currentNav === 'coaching' && 'Coaching & Support Schedule'}
-                        </h1>
-                        <p>
-                            {currentNav === 'dashboard' && 'Welcome to the administration portal'}
-                            {currentNav === 'interview-studio' && 'Inspect completed mock interviews, review transcripts, and audit AI evaluation metrics.'}
-                            {currentNav === 'directory' && 'View and manage unique learner profiles across the system'}
-                            {currentNav === 'learners' && 'Manage learner enrollments, staging, and statements of results'}
-                            {currentNav === 'attendance' && 'Monitor live check-ins and review historical attendance records across all cohorts.'}
-                            {currentNav === 'ecosystem' && 'Manage public events, capacity gates, and external guest CRM ledger.'}
-                            {currentNav === 'qualifications' && 'Create and manage curriculum blueprints and unit standards'}
-                            {currentNav === 'assessments' && 'Create, distribute, and manage curriculum assessments and tasks'}
-                            {currentNav === 'surveys' && 'Build feedback templates, manage survey questions, and inspect response analytics'}
-                            {currentNav === 'staff' && 'Manage facilitators, assessors, moderators, and support staff'}
-                            {currentNav === 'cohorts' && 'Organize learners into training classes and assign educators'}
-                            {currentNav === 'workplaces' && 'Manage employer partners and workplace mentor allocations'}
-                            {currentNav === 'company-profile' && 'View compliance, placement ledgers, and operational analytics for this host company.'}
-                            {currentNav === 'profile' && 'Manage your institutional compiler and contact details'}
-                            {currentNav === 'access' && 'Manage Super Administrator access and permissions'}
-                            {currentNav === 'crashes' && 'Monitor client-side exceptions, unhandled rejections, and browser diagnostic logs.'}
-                            {currentNav === 'settings' && 'Configure global system preferences and application settings'}
-                            {currentNav === 'studio' && 'Design custom ad-hoc awards and manage document history.'}
-                            {currentNav === 'coaching' && 'Manage upcoming Google Meet sessions and record your coaching notes.'}
-                        </p>
-                    </div>
-                    <div style={{ marginTop: '5px' }}>
-                        <NotificationBell />
-                    </div>
-                </header>
+            <main className={`main-wrapper ${currentNav === 'workplace-verification' ? 'mentor-verify-override' : ''}`} style={{ padding: currentNav === 'workplace-verification' ? 0 : 16, paddingBottom: currentNav === 'workplace-verification' ? 0 : '5%' }}>
 
-                <div className="admin-content" style={{ opacity: isPending ? 0.5 : 1, transition: 'opacity 0.2s ease' }}>
+                {/* 🚀 HIDDEN HEADER FOR MENTOR VERIFICATION TAB (IT USES ITS OWN NAVBAR) */}
+                {currentNav !== 'workplace-verification' && (
+                    <header className="dashboard-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', position: 'relative' }}>
+                        <div className="header-title">
+                            <h1>
+                                {currentNav === 'dashboard' && 'Dashboard Overview'}
+                                {currentNav === 'interview-studio' && 'AI Interview Studio & Audit Log'}
+                                {currentNav === 'directory' && 'Master Learner Directory'}
+                                {currentNav === 'learners' && 'Course Enrollments'}
+                                {currentNav === 'attendance' && 'Organization Attendance Hub'}
+                                {currentNav === 'ecosystem' && 'Ecosystem & Event Check-ins'}
+                                {currentNav === 'qualifications' && 'Qualification Templates'}
+                                {currentNav === 'content' && 'Content Authoring Studio'}
+                                {currentNav === 'assessments' && 'Assessment Management'}
+                                {currentNav === 'surveys' && 'Surveys & Feedback Engine'}
+                                {currentNav === 'staff' && 'Staff & Mentors'}
+                                {currentNav === 'cohorts' && 'Cohort Management'}
+                                {currentNav === 'workplaces' && 'Workplace Management'}
+                                {currentNav === 'company-profile' && 'Corporate Partner Insights'}
+                                {currentNav === 'profile' && 'My Administrator Profile'}
+                                {currentNav === 'access' && 'Platform Access Control'}
+                                {currentNav === 'crashes' && 'System Crashlytics & Bug Tracker'}
+                                {currentNav === 'settings' && 'Platform Settings'}
+                                {currentNav === 'studio' && 'Certificate Studio'}
+                                {currentNav === 'coaching' && 'Coaching & Support Schedule'}
+                            </h1>
+                            <p>
+                                {currentNav === 'dashboard' && 'Welcome to the administration portal'}
+                                {currentNav === 'interview-studio' && 'Inspect completed mock interviews, review transcripts, and audit AI evaluation metrics.'}
+                                {currentNav === 'directory' && 'View and manage unique learner profiles across the system'}
+                                {currentNav === 'learners' && 'Manage learner enrollments, staging, and statements of results'}
+                                {currentNav === 'attendance' && 'Monitor live check-ins and review historical attendance records across all cohorts.'}
+                                {currentNav === 'ecosystem' && 'Manage public events, capacity gates, and external guest CRM ledger.'}
+                                {currentNav === 'qualifications' && 'Create and manage curriculum blueprints and unit standards'}
+                                {currentNav === 'content' && 'Author learning units, video lessons, and active verification checks.'}
+                                {currentNav === 'assessments' && 'Create, distribute, and manage curriculum assessments and tasks'}
+                                {currentNav === 'surveys' && 'Build feedback templates, manage survey questions, and inspect response analytics'}
+                                {currentNav === 'staff' && 'Manage facilitators, assessors, moderators, and support staff'}
+                                {currentNav === 'cohorts' && 'Organize learners into training classes and assign educators'}
+                                {currentNav === 'workplaces' && 'Manage employer partners and workplace mentor allocations'}
+                                {currentNav === 'company-profile' && 'View compliance, placement ledgers, and operational analytics for this host company.'}
+                                {currentNav === 'profile' && 'Manage your institutional compiler and contact details'}
+                                {currentNav === 'access' && 'Manage Super Administrator access and permissions'}
+                                {currentNav === 'crashes' && 'Monitor client-side exceptions, unhandled rejections, and browser diagnostic logs.'}
+                                {currentNav === 'settings' && 'Configure global system preferences and application settings'}
+                                {currentNav === 'studio' && 'Design custom ad-hoc awards and manage document history.'}
+                                {currentNav === 'coaching' && 'Manage upcoming Google Meet sessions and record your coaching notes.'}
+                            </p>
+                        </div>
+                        <div style={{ marginTop: '5px' }}>
+                            <NotificationBell />
+                        </div>
+                    </header>
+                )}
+
+                <div className="admin-content" style={{ opacity: isPending ? 0.5 : 1, transition: 'opacity 0.2s ease', height: currentNav === 'workplace-verification' ? '100%' : 'auto' }}>
                     {!hasAccess ? (
-                        <div style={{ textAlign: 'center', padding: '4rem', color: '#ef4444', border: '1px solid #fecaca', background: '#fef2f2', borderRadius: '8px' }}>
+                        <div style={{ textAlign: 'center', padding: '4rem', color: '#ef4444', border: '1px solid #fecaca', background: '#fef2f2', borderRadius: '8px', margin: 16 }}>
                             <ShieldAlert size={48} style={{ margin: '0 auto 1rem' }} />
                             <h2>Unauthorized Access</h2>
                             <p>You do not have the required privileges to view this module.<br />Please contact a Super Administrator if you believe this is an error.</p>
                         </div>
                     ) : (
                         <>
+                            {currentNav === 'workplace-verification' && <MentorDashboard />}
                             {currentNav === 'coaching' && <CoachingScheduleView />}
                             {currentNav === 'ecosystem' && <EcosystemDashboard />}
                             {currentNav === 'attendance' && <AttendanceHistoryList />}
@@ -464,6 +547,7 @@ export const AdminDashboard: React.FC = () => {
                                 />
                             )}
 
+                            {currentNav === 'content' && <ContentAuthoring />}
                             {currentNav === 'assessments' && <AssessmentManager />}
                             {currentNav === 'surveys' && <SurveyManager />}
 
@@ -563,6 +647,20 @@ export const AdminDashboard: React.FC = () => {
 
             {progToArchive && (
                 <DeleteConfirmModal itemName={progToArchive.name} actionType="Archive" onConfirm={async () => { try { await store.archiveProgramme(progToArchive.id); toast.success(`${progToArchive.name} archived.`); } catch (err: any) { toast.error(`Archive failed: ${err.message}`); } finally { setProgToArchive(null); } }} onCancel={() => setProgToArchive(null)} />
+            )}
+
+            {/* UNIFIED STATUS MODAL RENDERED VIA PORTAL TO SIT ATOP ALL MODALS */}
+            {statusModal?.isOpen && createPortal(
+                <StatusModal
+                    type={statusModal.type}
+                    title={statusModal.title}
+                    message={statusModal.message}
+                    confirmText={statusModal.confirmText}
+                    cancelText={statusModal.cancelText}
+                    onClose={statusModal.onConfirm}
+                    onCancel={statusModal.onCancel}
+                />,
+                document.body
             )}
         </div>
     );

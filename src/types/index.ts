@@ -1,5 +1,7 @@
 // src/types/index.ts
 
+import type { AccreditationSpec } from "./accreditation.types";
+
 // ═════════════════════════════════════════════════════════════════════════════
 // ECOSYSTEM & FORM BUILDER TYPES
 // ═════════════════════════════════════════════════════════════════════════════
@@ -45,6 +47,7 @@ export interface SystemSettings {
   phone: string;
   email: string;
   campuses: CampusLocation[];
+  accreditationBodies?: AccreditationSpec[];
   ecosystem?: {
     eventTypes?: string[];
   };
@@ -92,7 +95,6 @@ export interface SystemSettings {
     credits: string;
   };
 }
-
 export interface BaseModule {
   name: string;
   credits: number;
@@ -273,6 +275,7 @@ export interface DashboardLearner
 
   createdAt: string;
   createdBy: string;
+  lastLoginAt: string;
   updatedAt?: string;
   nextEisaDate?: string;
   updatedBy?: string;
@@ -305,6 +308,7 @@ export interface ProgrammeTemplate {
   id: string;
   name: string;
   saqaId: string;
+  curriculumCode: string;
   credits: number;
   totalNotionalHours: number;
   nqfLevel: number;
@@ -484,8 +488,19 @@ export interface PlacementContract {
     | "absorbed_permanently";
   workArrangement: WorkArrangement;
 
+  // Primary Mentor Assignment (Maintains 100% Backward Compatibility)
+  mentorId?: string;
   assignedMentorName?: string;
   assignedMentorEmail?: string;
+
+  // Secondary / Co-Mentor Assignments
+  secondaryMentorIds?: string[];
+  secondaryMentors?: Array<{
+    id: string;
+    name: string;
+    email?: string;
+    phone?: string;
+  }>;
 
   stipendAmount?: number;
   fundedBy: "SETA" | "mLab" | "Host Employer" | "Unfunded";
@@ -500,7 +515,7 @@ export interface PlacementContract {
   employerRating?: number;
   isAbsorbedPostPlacement: boolean;
 
-  complianceSchema?: any; // Or ComplianceSchema if you imported it
+  complianceSchema?: any; // Or ComplianceSchema if imported
   evidenceMap?: any; // Or Record<string, UploadedEvidence>
 
   createdAt: string;

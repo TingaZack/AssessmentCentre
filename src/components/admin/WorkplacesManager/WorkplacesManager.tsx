@@ -28,7 +28,6 @@ export const WorkplacesManager: React.FC = () => {
     const placements = ((useStore(s => (s as any).placements) || []) as any[]);
     const fetchPlacements = (useStore(s => (s as any).fetchPlacements) || (async () => { })) as any;
 
-    // 🚀 INJECTED MISSING FETCHERS FOR AUDIT LEDGER DATA
     const fetchAttendanceRecords = (useStore(s => (s as any).fetchAttendanceRecords) || (async () => { })) as any;
     const fetchAttendanceLogs = (useStore(s => (s as any).fetchAttendanceLogs) || (async () => { })) as any;
     const fetchWorkplaceLogs = (useStore(s => (s as any).fetchWorkplaceLogs) || (async () => { })) as any;
@@ -53,9 +52,20 @@ export const WorkplacesManager: React.FC = () => {
     const [editingMentor, setEditingMentor] = useState<StaffMember | null>(null);
     const [activeMentorEmpId, setActiveMentorEmpId] = useState('');
 
+    // 🚀 DUAL-ROLE PRESERVING FETCH LOGIC
+    const fetchAllMentorsPreservingRoles = async (): Promise<StaffMember[]> => {
+        const primarySnap = await getDocs(query(collection(db, 'users'), where('role', '==', 'mentor')));
+        const dualRoleSnap = await getDocs(query(collection(db, 'users'), where('isMentor', '==', true)));
+
+        const mentorMap = new Map<string, StaffMember>();
+        primarySnap.docs.forEach(d => mentorMap.set(d.id, { id: d.id, ...d.data() } as StaffMember));
+        dualRoleSnap.docs.forEach(d => mentorMap.set(d.id, { id: d.id, ...d.data() } as StaffMember));
+
+        return Array.from(mentorMap.values());
+    };
+
     const loadData = async () => {
         try {
-            // 🚀 BATCH FETCH ALL COMPLIANCE DATA REQUIRED FOR THE DASHBOARDS
             await Promise.all([
                 fetchEmployers(),
                 fetchLearners(),
@@ -64,12 +74,8 @@ export const WorkplacesManager: React.FC = () => {
                 fetchAttendanceLogs(),
                 fetchWorkplaceLogs()
             ]);
-            const snap = await getDocs(query(collection(db, 'users'), where('role', '==', 'mentor')));
-            const fetchedMentors = snap.docs.map(d => ({ id: d.id, ...d.data() } as StaffMember));
 
-            // 🚀 DEBUG INJECTION: Print mentor UIDs to the console on initial load
-            console.log("🚀 [DEBUG] ALL MENTOR UIDs ON LOAD:", fetchedMentors.map(m => m.id));
-
+            const fetchedMentors = await fetchAllMentorsPreservingRoles();
             setMentors(fetchedMentors);
         } catch {
             toast.error('Failed to load workplace tracking data.');
@@ -81,12 +87,7 @@ export const WorkplacesManager: React.FC = () => {
     useEffect(() => { loadData(); }, []);
 
     const refreshMentors = async () => {
-        const snap = await getDocs(query(collection(db, 'users'), where('role', '==', 'mentor')));
-        const fetchedMentors = snap.docs.map(d => ({ id: d.id, ...d.data() } as StaffMember));
-
-        // 🚀 DEBUG INJECTION: Print mentor UIDs to the console after a refresh/add
-        console.log("🚀 [DEBUG] ALL MENTOR UIDs AFTER REFRESH:", fetchedMentors.map(m => m.id));
-
+        const fetchedMentors = await fetchAllMentorsPreservingRoles();
         setMentors(fetchedMentors);
     };
 
@@ -117,7 +118,7 @@ export const WorkplacesManager: React.FC = () => {
     const handleArchiveMentor = async (id: string, name: string) => {
         if (!window.confirm(`Remove mentor access for ${name}?`)) return;
         try {
-            await updateDoc(doc(db, 'users', id), { status: 'archived' });
+            await updateDoc(doc(db, 'users', id), { status: 'archived', isMentor: false });
             setMentors(p => p.filter(m => m.id !== id));
             toast.info('Mentor access removed.');
         } catch { toast.error('Failed to remove mentor.'); }
@@ -134,13 +135,11 @@ export const WorkplacesManager: React.FC = () => {
         setMentorModalOpen(true);
     };
 
-    // 🚀 Event dispatcher to open Company Insights safely in AdminDashboard
     const handleViewCompanyInsights = (company: Employer) => {
         const event = new CustomEvent('openCompanyInsights', { detail: company });
         window.dispatchEvent(event);
     };
 
-    // Keep backwards compatibility for the active placements "View Ledger" button
     const openViewPlacements = (emp: Employer) => {
         handleViewCompanyInsights(emp);
     };
@@ -160,20 +159,17 @@ export const WorkplacesManager: React.FC = () => {
                 const firstSheetName = workbook.SheetNames[0];
                 const worksheet = workbook.Sheets[firstSheetName];
 
-                // Convert to array of objects (using the first row as keys)
                 const rows = XLSX.utils.sheet_to_json(worksheet, { defval: "" }) as Record<string, any>[];
-
                 let importCount = 0;
 
                 for (const row of rows) {
-                    // Intelligent Mapping: Try to find common column headers regardless of exact casing
                     const getVal = (keywords: string[]) => {
                         const key = Object.keys(row).find(k => keywords.some(kw => k.toLowerCase().includes(kw)));
                         return key ? String(row[key]).trim() : "";
                     };
 
                     const companyName = getVal(['company', 'organisation', 'business', 'employer']);
-                    if (!companyName) continue; // Skip rows without a company name
+                    if (!companyName) continue;
 
                     const contactName = getVal(['contact', 'person', 'name', 'representative']);
                     const contactEmail = getVal(['email', 'e-mail']);
@@ -188,8 +184,8 @@ export const WorkplacesManager: React.FC = () => {
                         contactPhone: contactPhone || "",
                         physicalAddress: physicalAddress || "",
                         registrationNumber: regNumber || "",
-                        status: 'active', // Automatically approve bulk imported partners
-                        internCapacity: 1, // Default baseline
+                        status: 'active',
+                        internCapacity: 1,
                         mlabTier: 'Tier 2 (Established SME)',
                         mlabRiskRating: 'Medium',
                         internalNotes: 'Bulk imported via spreadsheet.',
@@ -202,21 +198,20 @@ export const WorkplacesManager: React.FC = () => {
                 }
 
                 toast.success(`Successfully imported ${importCount} Employer Partners!`);
-                await fetchEmployers(); // Refresh list
+                await fetchEmployers();
 
             } catch (err) {
                 console.error("Import Error", err);
                 toast.error("Failed to parse file. Ensure it is a valid CSV or Excel document with a 'Company Name' column.");
             } finally {
                 setIsImporting(false);
-                if (fileInputRef.current) fileInputRef.current.value = ""; // Reset input
+                if (fileInputRef.current) fileInputRef.current.value = "";
             }
         };
 
         reader.readAsArrayBuffer(file);
     };
 
-    // Filter Lists based on search and status
     const allVisibleEmployers = employers.filter(emp =>
         emp.status !== 'archived' && (
             emp.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -227,7 +222,6 @@ export const WorkplacesManager: React.FC = () => {
     const approvedEmployers = allVisibleEmployers.filter(emp => emp.status === 'active' || emp.status === 'Approved');
     const pendingEmployers = allVisibleEmployers.filter(emp => emp.status === 'Pending Review');
 
-    // Compute Ecosystem KPIs based on APPROVED partners only
     const ecosystemMetrics = useMemo(() => {
         let totalCapacity = 0;
         let highRiskCount = 0;
@@ -246,7 +240,6 @@ export const WorkplacesManager: React.FC = () => {
         <div className="wm-root animate-fade-in">
             <ToastContainer toasts={toast.toasts} onClose={toast.closeToast} />
 
-            {/* Hidden File Input for Bulk Import */}
             <input
                 type="file"
                 accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel"
@@ -272,7 +265,6 @@ export const WorkplacesManager: React.FC = () => {
                     addStaff={addStaff}
                 />
             )}
-            {/* Form Builder Modal rendered properly */}
             {showFormBuilder && (
                 <EmployerFormBuilderModal onClose={() => setShowFormBuilder(false)} />
             )}
@@ -391,7 +383,6 @@ export const WorkplacesManager: React.FC = () => {
                     {(activeTab === 'approved' ? approvedEmployers : pendingEmployers).map(emp => {
                         const isPending = emp.status === 'Pending Review';
 
-                        // Calculate metrics only for approved partners
                         const companyMentors = isPending ? [] : mentors.filter(m => m.employerId === emp.id && m.status !== 'archived');
                         const companyPlacements = isPending ? [] : placements.filter(p => p.employerId === emp.id);
                         const activePlacements = isPending ? [] : companyPlacements.filter(p => p.status === 'active');
@@ -482,7 +473,6 @@ export const WorkplacesManager: React.FC = () => {
                                 </div>
 
                                 {isPending ? (
-                                    /* PENDING APPLICATION ACTIONS */
                                     <div style={{ display: 'flex', gap: '8px', padding: '1rem', background: '#f8fafc', borderTop: '1px solid #e2e8f0', marginTop: 'auto' }}>
                                         <button className="wm-btn wm-btn--primary" style={{ flex: 1, justifyContent: 'center' }} onClick={() => handleApproveEmployer(emp.id, emp.name)}>
                                             <CheckCircle size={14} /> Approve
@@ -492,7 +482,6 @@ export const WorkplacesManager: React.FC = () => {
                                         </button>
                                     </div>
                                 ) : (
-                                    /* APPROVED PARTNER METRICS & MENTORS */
                                     <>
                                         {/* CAPACITY & PLACEMENTS */}
                                         <div style={{ margin: '0 1.25rem', padding: '1rem', background: isOverCapacity ? '#fef2f2' : '#f8fafc', borderRadius: '8px', border: `1px solid ${isOverCapacity ? '#fecaca' : '#e2e8f0'}`, borderLeft: `4px solid ${isOverCapacity ? '#ef4444' : 'var(--mlab-blue)'}` }}>
@@ -575,4 +564,3 @@ export const WorkplacesManager: React.FC = () => {
         </div>
     );
 };
-

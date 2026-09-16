@@ -71,6 +71,29 @@ export const extractGeoLevels = (learners: DashboardLearner[]) => {
 
 // ─── DYNAMIC GEOCODING HOOK ─────────────────────────────────────────────────
 
+// 1. Setup a memory cache so we don't look up the same city twice
+const geoCache = new Map<string, [number, number]>();
+
+// 2. Setup a queue to ensure we only make 1 request per second
+let isGeocoding = false;
+const geoQueue: Array<() => Promise<void>> = [];
+
+const processGeoQueue = async () => {
+    if (isGeocoding || geoQueue.length === 0) return;
+    isGeocoding = true;
+
+    while (geoQueue.length > 0) {
+        const task = geoQueue.shift();
+        if (task) {
+            await task();
+            // IMPORTANT: Wait 1.1 seconds between requests to respect Nominatim's strict usage policy
+            await new Promise(resolve => setTimeout(resolve, 1100));
+        }
+    }
+
+    isGeocoding = false;
+};
+
 const useDynamicGeocoder = (locationsNeedingCoords: string[]) => {
     const [coordsCache, setCoordsCache] = useState<Record<string, [number, number]>>({});
     const isFetchingRef = useRef(false);
@@ -83,19 +106,42 @@ const useDynamicGeocoder = (locationsNeedingCoords: string[]) => {
             const newCache = { ...coordsCache };
 
             for (const locName of locationsNeedingCoords) {
-                if (newCache[locName]) continue;
-                try {
-                    const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(locName + ", South Africa")}&format=json&limit=1`);
-                    const data = await res.json();
-                    if (data && data.length > 0 && data[0].lat && data[0].lon) {
-                        newCache[locName] = [parseFloat(data[0].lat), parseFloat(data[0].lon)];
-                        setCoordsCache({ ...newCache });
+                if (newCache[locName] || geoCache.has(locName)) {
+                    if (geoCache.has(locName)) {
+                        newCache[locName] = geoCache.get(locName)!;
                     }
-                    await new Promise(resolve => setTimeout(resolve, 1100));
-                } catch (e) {
-                    console.error("Geocoding failed for", locName, e);
+                    continue;
                 }
+
+                geoQueue.push(async () => {
+                    try {
+                        if (geoCache.has(locName)) {
+                            newCache[locName] = geoCache.get(locName)!;
+                            setCoordsCache({ ...newCache });
+                            return;
+                        }
+
+                        const response = await fetch(
+                            `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(locName + ', South Africa')}&format=json&limit=1`,
+                            { headers: { 'Accept-Language': 'en' } }
+                        );
+
+                        if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
+
+                        const data = await response.json();
+
+                        if (data && data.length > 0) {
+                            const coords: [number, number] = [parseFloat(data[0].lat), parseFloat(data[0].lon)];
+                            geoCache.set(locName, coords);
+                            newCache[locName] = coords;
+                            setCoordsCache({ ...newCache });
+                        }
+                    } catch (error) {
+                        console.error(`Geocoding failed for ${locName}:`, error);
+                    }
+                });
             }
+            processGeoQueue();
             isFetchingRef.current = false;
         };
 
@@ -477,4 +523,3 @@ export const CohortGeoMap: React.FC<{
         </div>
     );
 };
-

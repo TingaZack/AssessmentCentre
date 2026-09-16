@@ -10,7 +10,8 @@ import {
     RefreshCw,
     Sparkles,
     MessageSquare,
-    AlertTriangle
+    AlertTriangle,
+    RotateCcw
 } from 'lucide-react';
 import { ToastContainer, useToast } from '../../../components/common/Toast/Toast';
 import './SubmissionReview.css';
@@ -137,12 +138,107 @@ const SubmissionProctorEvidenceModal = ({ submission, onClose }: { submission: a
     return <HistoryModal session={session} onClose={onClose} />;
 };
 
+// // ─── REVIEW STAGE CARD COMPONENT ─────────────────────────────────────────────
+// const ReviewStageCard = ({ colorTheme, title, status, lockedMessage, awaitingTitle, awaitingMessage, showScore, scoreAwarded, scoreMax, scorePct, activeControls, feedbackLabel, feedbackValue, onFeedbackChange, feedbackPlaceholder, signatureLabel, signatureUrl, signatureName, signatureDate, signatureMeta, signatureTagline, onSubmit, submitLabel, isSaving, timeOverrideValue, onTimeOverrideChange, autoTimeSeconds, autoSummedMinutes }: any) => {
+//     const colorHex = colorTheme === 'blue' ? 'blue' : colorTheme === 'red' ? 'red' : '#22c55e';
+//     const colorHexDark = colorTheme === 'blue' ? '#1e3a8a' : colorTheme === 'red' ? '#7f1d1d' : '#14532d';
+//     const bgLight = colorTheme === 'blue' ? '#eff6ff' : colorTheme === 'red' ? '#fef2f2' : '#f0fdf4';
+//     const themeVar = colorTheme === 'blue' ? 'blue' : `var(--mlab-${colorTheme})`;
+
+//     return (
+//         <div className="sr-summary-card" style={{ marginBottom: '1.5rem', borderTop: `4px solid ${themeVar}` }}>
+//             <h3 className="sr-summary-title" style={{ color: themeVar }}>{title}</h3>
+//             {status === 'locked' && (
+//                 <div style={{ background: '#f8fafc', padding: '1.5rem', borderRadius: '6px', textAlign: 'center', border: '1px dashed #cbd5e1', marginTop: '1rem' }}>
+//                     <Lock size={24} color="#94a3b8" style={{ margin: '0 auto 10px' }} />
+//                     <strong style={{ color: '#334155', display: 'block', fontSize: '0.9rem' }}>Locked</strong>
+//                     <p style={{ color: '#64748b', fontSize: '0.8rem', margin: '4px 0 0 0', lineHeight: 1.4 }}>{lockedMessage}</p>
+//                 </div>
+//             )}
+//             {status === 'awaiting' && (
+//                 <div style={{ background: '#f8fafc', padding: '1.5rem', borderRadius: '6px', textAlign: 'center', border: '1px dashed #cbd5e1', marginTop: '1rem' }}>
+//                     <Clock size={24} color={colorHex} style={{ margin: '0 auto 10px' }} />
+//                     <strong style={{ color: colorHexDark, display: 'block', fontSize: '0.9rem' }}>{awaitingTitle}</strong>
+//                     <p style={{ color: '#64748b', fontSize: '0.8rem', margin: '4px 0 0 0', lineHeight: 1.4 }}>{awaitingMessage}</p>
+//                 </div>
+//             )}
+//             {(status === 'active' || status === 'done') && (
+//                 <>
+//                     {showScore && (
+//                         <div className="sr-score-display" style={{ marginTop: '1rem', marginBottom: '1rem' }}>
+//                             <div className="sr-score-circle" style={{ borderColor: themeVar }}>
+//                                 <span className="sr-score-val" style={{ color: themeVar }}>{scoreAwarded}</span>
+//                                 <span className="sr-score-max" style={{ color: themeVar }}>/ {scoreMax}</span>
+//                             </div>
+//                             <div className="sr-score-percent" style={{ color: themeVar }}>{scorePct}%</div>
+//                         </div>
+//                     )}
+//                     {activeControls}
+//                     <div className="sr-overall-feedback" style={{ marginTop: showScore || activeControls ? '1.5rem' : '1rem' }}>
+//                         <label className="sr-sidebar-label" style={{ color: themeVar }}>{feedbackLabel}</label>
+//                         {status === 'active' ? (
+//                             <textarea className="sr-textarea" rows={3} style={{ color: themeVar, fontStyle: 'italic', borderColor: themeVar, background: 'whitesmoke', fontWeight: 500 }} placeholder={feedbackPlaceholder} value={feedbackValue} onChange={e => onFeedbackChange(e.target.value)} />
+//                         ) : (
+//                             <div style={{ background: bgLight, padding: '10px', borderRadius: '6px', color: colorHexDark, fontStyle: 'italic', fontSize: '0.85rem', borderLeft: `3px solid ${colorHex}`, whiteSpace: 'pre-wrap' }}>
+//                                 {feedbackValue || "No overall remarks provided."}
+//                             </div>
+//                         )}
+//                     </div>
+//                     {status === 'active' && (
+//                         <div style={{ marginTop: '1rem', background: bgLight, padding: '12px', borderRadius: '6px', border: `1px solid ${colorHex}40` }}>
+//                             <label style={{ fontSize: '0.8rem', fontWeight: 'bold', color: colorHexDark, display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+//                                 <Clock size={14} /> Logged Grading / Review Time (Minutes)
+//                             </label>
+//                             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '10px' }}>
+//                                 <input type="number" min="1" style={{ width: '90px', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.9rem', background: autoSummedMinutes > 0 && timeOverrideValue === '' ? '#e0f2fe' : 'white' }} value={timeOverrideValue} onChange={(e) => onTimeOverrideChange(e.target.value)} placeholder={autoSummedMinutes > 0 ? autoSummedMinutes.toString() : Math.max(1, Math.floor(autoTimeSeconds / 60)).toString()} />
+//                             </div>
+//                         </div>
+//                     )}
+//                     {status === 'active' ? (
+//                         <div className="sr-action-area" style={{ marginTop: '1rem' }}>
+//                             <button className="sr-submit-btn" style={{ background: themeVar }} onClick={onSubmit} disabled={isSaving}>{submitLabel}</button>
+//                         </div>
+//                     ) : (
+//                         <div style={{ background: 'white', padding: '1rem', borderRadius: '8px', border: '1px solid #e2e8f0', marginTop: '1rem' }}>
+//                             <p style={{ margin: '0 0 8px 0', fontSize: '0.75rem', fontWeight: 'bold', color: themeVar, textTransform: 'uppercase' }}>{signatureLabel}</p>
+//                             {signatureUrl ? <img src={signatureUrl} alt="Signature" crossOrigin="anonymous" style={{ height: '40px', objectFit: 'contain', filter: `brightness(0) saturate(100%) ${colorTheme === 'blue' ? 'invert(31%) sepia(94%) saturate(1413%) hue-rotate(185deg) brightness(101%) contrast(101%)' : colorTheme === 'red' ? 'invert(13%) sepia(94%) saturate(7454%) hue-rotate(0deg) brightness(94%) contrast(116%)' : 'invert(29%) sepia(96%) saturate(1352%) hue-rotate(120deg) brightness(92%) contrast(101%)'}`, marginBottom: '8px' }} /> : <div style={{ height: '40px', color: themeVar, display: 'flex', alignItems: 'center', fontSize: '0.8rem', fontStyle: 'italic' }}>System Authenticated</div>}
+//                             <p style={{ margin: '0 0 4px 0', fontSize: '0.85rem', fontWeight: 'bold', color: themeVar }}>{signatureName}</p>
+//                             {signatureMeta && <p style={{ margin: '0 0 4px 0', fontSize: '0.8rem', color: themeVar }}>{signatureMeta}</p>}
+//                             {signatureDate && <p style={{ margin: 0, fontSize: '0.75rem', color: themeVar }}><Clock size={10} style={{ display: 'inline', verticalAlign: 'middle', marginRight: '4px' }} />{signatureDate}</p>}
+//                             {signatureTagline && <div className="sr-sig-line" style={{ borderTop: `1px dashed ${themeVar}`, paddingTop: '6px', marginTop: '6px', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: themeVar }}>{signatureTagline}</div>}
+//                         </div>
+//                     )}
+//                 </>
+//             )}
+//         </div>
+//     );
+// };
+
 // ─── REVIEW STAGE CARD COMPONENT ─────────────────────────────────────────────
-const ReviewStageCard = ({ colorTheme, title, status, lockedMessage, awaitingTitle, awaitingMessage, showScore, scoreAwarded, scoreMax, scorePct, activeControls, feedbackLabel, feedbackValue, onFeedbackChange, feedbackPlaceholder, signatureLabel, signatureUrl, signatureName, signatureDate, signatureMeta, signatureTagline, onSubmit, submitLabel, isSaving, timeOverrideValue, onTimeOverrideChange, autoTimeSeconds, autoSummedMinutes }: any) => {
+const ReviewStageCard = ({
+    colorTheme, title, status, lockedMessage, awaitingTitle, awaitingMessage,
+    showScore, scoreAwarded, scoreMax, scorePct, competencyStatus, activeControls,
+    feedbackLabel, feedbackValue, onFeedbackChange, feedbackPlaceholder,
+    signatureLabel, signatureUrl, signatureName, signatureDate, signatureMeta, signatureTagline,
+    onSubmit, submitLabel, isSaving, timeOverrideValue, onTimeOverrideChange, autoTimeSeconds, autoSummedMinutes
+}: any) => {
     const colorHex = colorTheme === 'blue' ? 'blue' : colorTheme === 'red' ? 'red' : '#22c55e';
     const colorHexDark = colorTheme === 'blue' ? '#1e3a8a' : colorTheme === 'red' ? '#7f1d1d' : '#14532d';
     const bgLight = colorTheme === 'blue' ? '#eff6ff' : colorTheme === 'red' ? '#fef2f2' : '#f0fdf4';
     const themeVar = colorTheme === 'blue' ? 'blue' : `var(--mlab-${colorTheme})`;
+
+    const isPassing = ['C', 'HC', '3', '4'].includes(String(competencyStatus || '').toUpperCase());
+
+    const getCompLabel = (compStr: string) => {
+        if (!compStr) return '';
+        switch (String(compStr).toUpperCase()) {
+            case 'HC': case '4': return 'Highly Competent (HC)';
+            case 'C': case '3': return 'Competent (C)';
+            case 'DEV': case '2': return 'Developing (DEV)';
+            case 'NYC': case '1': return 'Not Yet Competent (NYC)';
+            default: return compStr;
+        }
+    };
 
     return (
         <div className="sr-summary-card" style={{ marginBottom: '1.5rem', borderTop: `4px solid ${themeVar}` }}>
@@ -164,12 +260,35 @@ const ReviewStageCard = ({ colorTheme, title, status, lockedMessage, awaitingTit
             {(status === 'active' || status === 'done') && (
                 <>
                     {showScore && (
-                        <div className="sr-score-display" style={{ marginTop: '1rem', marginBottom: '1rem' }}>
+                        <div className="sr-score-display" style={{ marginTop: '1rem', marginBottom: '1rem', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                             <div className="sr-score-circle" style={{ borderColor: themeVar }}>
                                 <span className="sr-score-val" style={{ color: themeVar }}>{scoreAwarded}</span>
                                 <span className="sr-score-max" style={{ color: themeVar }}>/ {scoreMax}</span>
                             </div>
-                            <div className="sr-score-percent" style={{ color: themeVar }}>{scorePct}%</div>
+                            <div className="sr-score-percent" style={{ color: themeVar, marginBottom: competencyStatus ? '8px' : '0' }}>{scorePct}%</div>
+
+                            {/* 🚀 COMPETENCY OUTCOME BADGE */}
+                            {competencyStatus && (
+                                <div style={{ marginTop: '6px' }}>
+                                    <span style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        padding: '4px 12px',
+                                        borderRadius: '20px',
+                                        fontSize: '0.78rem',
+                                        fontWeight: 800,
+                                        textTransform: 'uppercase',
+                                        letterSpacing: '0.04em',
+                                        background: isPassing ? '#dcfce7' : '#fee2e2',
+                                        color: isPassing ? '#15803d' : '#b91c1c',
+                                        border: `1px solid ${isPassing ? '#bbf7d0' : '#fecaca'}`
+                                    }}>
+                                        <Award size={13} />
+                                        {getCompLabel(competencyStatus)}
+                                    </span>
+                                </div>
+                            )}
                         </div>
                     )}
                     {activeControls}
@@ -212,6 +331,7 @@ const ReviewStageCard = ({ colorTheme, title, status, lockedMessage, awaitingTit
         </div>
     );
 };
+
 
 // 🚀 PREDEFINED AUDIT REASONS FOR TIMED ASSESSMENTS
 const PRESET_EXTRA_TIME_REASONS = [
@@ -1985,6 +2105,13 @@ export const SubmissionReview: React.FC = () => {
 
     const isMissed = currentStatus === 'missed';
     const isViolation = currentStatus === 'violation';
+
+    const hasExistingWork = Boolean(
+        (submission?.answers && Object.keys(submission.answers).length > 0) ||
+        submission?.startedAt ||
+        submission?.rawLogData
+    );
+
     const isAwaitingSignoff = currentStatus === 'awaiting_learner_signoff';
     const isSubmitted = ['submitted', 'awaiting_learner_signoff', 'facilitator_reviewed', 'returned', 'graded', 'moderated', 'appealed'].includes(currentStatus);
     const isFacDone = ['awaiting_learner_signoff', 'facilitator_reviewed', 'returned', 'graded', 'moderated', 'appealed'].includes(currentStatus);
@@ -2012,11 +2139,17 @@ export const SubmissionReview: React.FC = () => {
     const secondaryRoles = Array.isArray(user?.secondaryRoles) ? user.secondaryRoles : [];
     const userAssignedCohorts = Array.isArray(user?.assignedCohortIds) ? user.assignedCohortIds : [];
 
-    // 1. Verify if the user is explicitly assigned to this submission's cohort
+    // // 1. Verify if the user is explicitly assigned to this submission's cohort
+    // const isAssignedToCurrentCohort = Boolean(
+    //     submission?.cohortId && userAssignedCohorts.includes(submission.cohortId)
+    // );
+    // 🚀 Cohort Assignment Check (Grants access if user has no specific cohort restrictions set)
     const isAssignedToCurrentCohort = Boolean(
-        submission?.cohortId && userAssignedCohorts.includes(submission.cohortId)
+        !submission?.cohortId ||
+        userAssignedCohorts.length === 0 || // 🚀 Allow facilitators without strict cohort restrictions
+        userAssignedCohorts.includes(submission.cohortId) ||
+        isSuperAdmin
     );
-
     // 2. Strict QCTO Assessor Accreditation Checks
     const isCertifiedAssessor = isAssessor ||
         secondaryRoles.includes('assessor') ||
@@ -2029,10 +2162,18 @@ export const SubmissionReview: React.FC = () => {
     );
 
     // 3. Enforce Strict Rights (Bypasses SETA Registration number if SECAM / Bootcamp):
-    const hasAssessorRights = isSuperAdmin || isAdmin || (
-        isSECAM
-            ? (isCertifiedAssessor || isFacilitator || isMentor)
-            : (isCertifiedAssessor && hasAssessorReg)
+    // const hasAssessorRights = isSuperAdmin || isAdmin || (
+    //     isSECAM
+    //         ? (isCertifiedAssessor || isFacilitator || isMentor)
+    //         : (isCertifiedAssessor && hasAssessorReg)
+    // );
+    // 3. Enforce Strict Rights (Requires explicit cohort assignment unless SuperAdmin):
+    const hasAssessorRights = isSuperAdmin || (
+        isAssignedToCurrentCohort && (
+            isSECAM
+                ? (isCertifiedAssessor || isFacilitator || isMentor)
+                : (isCertifiedAssessor && hasAssessorReg)
+        )
     );
 
     // cskonst isAssDone = ['graded', 'moderated', 'returned', 'appealed'].includes(currentStatus00-);
@@ -2086,10 +2227,27 @@ export const SubmissionReview: React.FC = () => {
     //         : (isCertifiedAssessor && hasAssessorReg)
     // );
 
-    const hasFacilitatorRights = isSuperAdmin || isAdmin || isFacilitator || Boolean(user?.canFacilitateCohorts) || secondaryRoles.includes('facilitator') || isMentor;
+    // const hasFacilitatorRights = isSuperAdmin || isAdmin || isFacilitator || Boolean(user?.canFacilitateCohorts) || secondaryRoles.includes('facilitator') || isMentor;
+
+    // Enforce Strict Facilitator Rights (Admins inspect in read-only unless explicitly assigned to cohort):
+    const hasFacilitatorRights = isSuperAdmin || (
+        isAssignedToCurrentCohort && (
+            isFacilitator ||
+            isMentor ||
+            Boolean(user?.canFacilitateCohorts) ||
+            secondaryRoles.includes('facilitator')
+        )
+    );
 
     // Bypassed isAssignedToCurrentCohort for Moderators and Admins
-    const hasModeratorRights = isSuperAdmin || isAdmin || isModerator || secondaryRoles.includes('moderator');
+    // const hasModeratorRights = isSuperAdmin || isAdmin || isModerator || secondaryRoles.includes('moderator');
+    //  Enforce Strict Moderator Rights (Admins inspect in read-only unless explicitly assigned to cohort as Moderator):
+    const hasModeratorRights = isSuperAdmin || (
+        isAssignedToCurrentCohort && (
+            isModerator ||
+            secondaryRoles.includes('moderator')
+        )
+    );
 
     const isAdminOrFacilitator = isSuperAdmin || ((isAdmin || isFacilitator || hasFacilitatorRights) && isAssignedToCurrentCohort);
 
@@ -2105,6 +2263,23 @@ export const SubmissionReview: React.FC = () => {
         currentStatus === 'submitted' ||
         (!isPureKnowledge && ['not_started', 'in_progress'].includes(currentStatus))
     );
+
+    // 🚀 DEBUG CONSOLE LOG FOR FACILITATOR PERMISSIONS
+    useEffect(() => {
+        if (!submission || !user) return;
+        console.group('🔍 [DEBUG] Facilitator Marking Permissions');
+        console.log('User Role:', user?.role);
+        console.log('User Secondary Roles:', user?.secondaryRoles);
+        console.log('User Assigned Cohorts:', userAssignedCohorts);
+        console.log('Submission Cohort ID:', submission?.cohortId);
+        console.log('Current Status:', currentStatus);
+        console.log('isAssignedToCurrentCohort:', isAssignedToCurrentCohort);
+        console.log('isFacilitator:', isFacilitator);
+        console.log('isMentor:', isMentor);
+        console.log('hasFacilitatorRights:', hasFacilitatorRights);
+        console.log('canFacilitatorMark:', canFacilitatorMark);
+        console.groupEnd();
+    }, [submission, user, currentStatus, isAssignedToCurrentCohort, isFacilitator, isMentor, hasFacilitatorRights, canFacilitatorMark]);
 
     const canGrade = hasAssessorRights && (currentStatus === 'facilitator_reviewed' || currentStatus === 'returned' || currentStatus === 'missed' || currentStatus === 'violation');
     const canModerate = hasModeratorRights && currentStatus === 'graded';
@@ -2710,8 +2885,17 @@ export const SubmissionReview: React.FC = () => {
             await updateDoc(subRef, {
                 status: 'not_started',
                 overrideUnlock: true,
+                hasOverride: true,
                 startedAt: deleteField(),
                 submittedAt: deleteField(),
+                // Clear termination & breach flags from previous attempt
+                isTerminated: deleteField(),
+                terminatedAt: deleteField(),
+                terminationReason: deleteField(),
+                invigilationBreached: deleteField(),
+                isMissed: deleteField(),
+                missedAt: deleteField(),
+                timeExpired: deleteField(),
                 attemptNumber: (submission.attemptNumber || 1) + 1,
                 systemNote: `Excused & Restarted by ${user?.fullName || 'Staff'}: "${excuseReason}"`,
                 excusedLogs: arrayUnion(excuseLogEntry),
@@ -2733,6 +2917,44 @@ export const SubmissionReview: React.FC = () => {
         } finally {
             setSaving(false);
         }
+    };
+
+    // 🚀 RECOVER WORK & RECONCILE PREMATURE REASSESSMENT BACK TO ATTEMPT 1
+    const handleRecoverToSubmitted = async () => {
+        setModalConfig({
+            isOpen: true,
+            type: 'info',
+            title: 'Recover Attempt 1 Work?',
+            message: "The system detected saved answers for Attempt 1. Because this work was never graded, recovering it will reset the counter back to Attempt 1, clear any premature remediation coaching logs, and submit the work for official grading.",
+            confirmText: 'Recover as Attempt 1',
+            onConfirm: async () => {
+                setModalConfig(null);
+                setSaving(true);
+                try {
+                    await updateDoc(doc(db, 'learner_submissions', submission.id), {
+                        status: 'submitted',
+                        submittedAt: submission.submittedAt || new Date().toISOString(),
+                        isMissed: deleteField(),
+                        missedAt: deleteField(),
+                        // 🚀 Reconcile attempt counter and strip premature coaching log
+                        attemptNumber: 1,
+                        latestCoachingLog: deleteField(),
+                        coachingLog: deleteField(),
+                        coachingRequested: deleteField(),
+                        coachingRequestedAt: deleteField(),
+                        systemNote: `Attempt 1 work recovered from 'missed' state by ${user?.fullName}. Premature Attempt 2 reassessment cleared.`,
+                        lastStaffEditAt: new Date().toISOString()
+                    });
+                    toast.success("Attempt 1 recovered and submitted for grading!");
+                    setTimeout(() => window.location.reload(), 1200);
+                } catch (e) {
+                    toast.error("Failed to recover attempt.");
+                } finally {
+                    setSaving(false);
+                }
+            },
+            onCancel: () => setModalConfig(null)
+        });
     };
 
     const grantExtraTime = async (minutes: number, reason: string = 'Staff granted extra time') => {
@@ -2964,6 +3186,16 @@ export const SubmissionReview: React.FC = () => {
                 moderation: deleteField(),
                 submittedAt: deleteField(),
                 learnerDeclaration: deleteField(),
+                // Clear termination & breach flags from previous attempt
+                isTerminated: deleteField(),
+                terminatedAt: deleteField(),
+                terminationReason: deleteField(),
+                invigilationBreached: deleteField(),
+                isMissed: deleteField(),
+                missedAt: deleteField(),
+                timeExpired: deleteField(),
+                hasOverride: true,
+                overrideUnlock: true,
                 attemptNumber: (submission.attemptNumber || 1) + 1,
                 lastStaffEditAt: new Date().toISOString(),
                 latestCoachingLog: { date: coachingDate, notes: coachingNotes, facilitatorId: user?.uid, facilitatorName: user?.fullName, acknowledged: false }
@@ -3029,6 +3261,53 @@ export const SubmissionReview: React.FC = () => {
     const facTotals = getTotals(facBreakdown);
     const assTotals = getTotals(assBreakdown);
     const modTotals = getTotals(modBreakdown);
+
+    // // AUTO-DECLARE COMPETENCY BASED ON SCORE MARKS
+    // useEffect(() => {
+    //     if (!canGrade || isAssDone) return;
+
+    //     if (assTotals.max > 0) {
+    //         if (assTotals.pct >= 80) {
+    //             const recommendedComp: CompetencyStatus = (isSECAM && assTotals.pct >= 90) ? 'HC' : 'C';
+    //             // Auto-set to passing grade if unselected or if score increased above threshold
+    //             if (!competency || ['NYC', 'DEV', '1', '2'].includes(String(competency).toUpperCase())) {
+    //                 setCompetency(recommendedComp);
+    //             }
+    //         } else {
+    //             // Force to NYC if score drops below 80%
+    //             if (competency !== 'NYC' && competency !== 'DEV') {
+    //                 setCompetency('NYC');
+    //             }
+    //         }
+    //     }
+    // }, [assTotals.pct, assTotals.max, canGrade, isAssDone, isSECAM]);
+
+    // 🚀 AUTO-DECLARE COMPETENCY BASED ON DYNAMIC / DEFAULT PASS MARK
+    useEffect(() => {
+        if (!canGrade || isAssDone) return;
+
+        const minPassPercentage = Number(
+            assessment?.passPercentage ??
+            assessment?.passMark ??
+            assessment?.moduleInfo?.passMark ??
+            80
+        );
+
+        if (assTotals.max > 0) {
+            if (assTotals.pct >= minPassPercentage) {
+                const recommendedComp: CompetencyStatus = (isSECAM && assTotals.pct >= 90) ? 'HC' : 'C';
+                // Auto-set to passing grade if unselected or if score increased above threshold
+                if (!competency || ['NYC', 'DEV', '1', '2'].includes(String(competency).toUpperCase())) {
+                    setCompetency(recommendedComp);
+                }
+            } else {
+                // Force to NYC if score drops below required pass mark
+                if (competency !== 'NYC' && competency !== 'DEV') {
+                    setCompetency('NYC');
+                }
+            }
+        }
+    }, [assTotals.pct, assTotals.max, canGrade, isAssDone, isSECAM, assessment, competency]);
 
     const autoSummedTaskMinutes = useMemo(() => {
         let totalMs = 0;
@@ -3180,6 +3459,15 @@ export const SubmissionReview: React.FC = () => {
                 learnerDeclaration: deleteField(),
                 coachingRequested: deleteField(),
                 coachingRequestedAt: deleteField(),
+                // Clear termination & breach flags from previous attempt
+                isTerminated: deleteField(),
+                terminatedAt: deleteField(),
+                terminationReason: deleteField(),
+                invigilationBreached: deleteField(),
+                isMissed: deleteField(),
+                missedAt: deleteField(),
+                timeExpired: deleteField(),
+                overrideUnlock: true,
                 attemptNumber: (submission.attemptNumber || 1) + 1,
                 lastStaffEditAt: timestampIso,
                 hasOverride: true,
@@ -3390,9 +3678,61 @@ export const SubmissionReview: React.FC = () => {
         });
     };
 
+    // const triggerSubmitGrade = () => {
+    //     if (!validateAllMarked(assBreakdown, false)) return setModalConfig({ isOpen: true, type: 'warning', title: 'Incomplete Grading', message: 'You must evaluate every question and fully complete all checklists and workplace checkpoints (including declarations) before submitting.', confirmText: 'Got it', onConfirm: () => setModalConfig(null) });
+    //     if (!competency) return setModalConfig({ isOpen: true, type: 'warning', title: 'Missing Competency', message: 'You must select a Final Competency (C or NYC) before submitting.', confirmText: 'Got it', onConfirm: () => setModalConfig(null) });
+    //     if (!assOverallFeedback.trim()) return setModalConfig({ isOpen: true, type: 'warning', title: 'Missing Remarks', message: 'You must provide Assessor Remarks justifying your final outcome before submitting.', confirmText: 'Got it', onConfirm: () => setModalConfig(null) });
+
+    //     setModalConfig({
+    //         isOpen: true, type: 'warning', title: 'Finalise Grade?', message: 'This will apply your digital Red Pen signature and notify Internal Moderation. This action cannot be undone.', confirmText: 'Apply Signature & Submit',
+    //         onConfirm: async () => {
+    //             setModalConfig(null); setSaving(true);
+    //             try {
+    //                 const fallbackAssessorReg =
+    //                     (user as any)?.assessorRegNumber ||
+    //                     (user as any)?.assessorRegistrationNumber ||
+    //                     ((user as any)?.idNumber ? `ID: ${(user as any).idNumber}` : `ADMIN-OVERRIDE (${user?.fullName})`);
+
+    //                 await updateDoc(doc(db, 'learner_submissions', submission.id), {
+    //                     status: 'graded', marks: assTotals.score, competency,
+    //                     'grading.assessorBreakdown': assBreakdown, 'grading.assessorOverallFeedback': assOverallFeedback,
+    //                     'grading.gradedBy': user?.uid, 'grading.assessorName': user?.fullName,
+    //                     'grading.assessorSignatureUrl': user?.signatureUrl,
+    //                     'grading.assessorRegNumber': fallbackAssessorReg,
+    //                     'grading.gradedAt': new Date().toISOString(),
+    //                     'grading.assessorTimeSpent': resolveAssTime()
+    //                 });
+    //                 toast.success("Workbook graded and signed successfully!"); setTimeout(() => window.location.reload(), 500);
+    //             } catch (error) { toast.error("Failed to save grades."); } finally { setSaving(false); }
+    //         }, onCancel: () => setModalConfig(null)
+    //     });
+    // };
+
+
     const triggerSubmitGrade = () => {
+        const minPassPercentage = Number(
+            assessment?.passPercentage ??
+            assessment?.passMark ??
+            assessment?.moduleInfo?.passMark ??
+            80
+        );
+
         if (!validateAllMarked(assBreakdown, false)) return setModalConfig({ isOpen: true, type: 'warning', title: 'Incomplete Grading', message: 'You must evaluate every question and fully complete all checklists and workplace checkpoints (including declarations) before submitting.', confirmText: 'Got it', onConfirm: () => setModalConfig(null) });
         if (!competency) return setModalConfig({ isOpen: true, type: 'warning', title: 'Missing Competency', message: 'You must select a Final Competency (C or NYC) before submitting.', confirmText: 'Got it', onConfirm: () => setModalConfig(null) });
+
+        // 🚀 COMPETENCY SAFEGUARD: Block declaring Competent (C/HC) if score < minPassPercentage
+        const isDeclaredCompetent = ['C', 'HC', '3', '4'].includes(String(competency).toUpperCase());
+        if (isDeclaredCompetent && assTotals.pct < minPassPercentage) {
+            return setModalConfig({
+                isOpen: true,
+                type: 'warning',
+                title: 'Competency Mismatch',
+                message: `The awarded score is ${assTotals.pct}% (${assTotals.score}/${assTotals.max}), which is below the required pass mark of ${minPassPercentage}%. You cannot declare the learner Competent (C). Please update the final competency to Not Yet Competent (NYC).`,
+                confirmText: 'Got it',
+                onConfirm: () => setModalConfig(null)
+            });
+        }
+
         if (!assOverallFeedback.trim()) return setModalConfig({ isOpen: true, type: 'warning', title: 'Missing Remarks', message: 'You must provide Assessor Remarks justifying your final outcome before submitting.', confirmText: 'Got it', onConfirm: () => setModalConfig(null) });
 
         setModalConfig({
@@ -3975,10 +4315,44 @@ export const SubmissionReview: React.FC = () => {
                     )}
 
                     {submission?.latestCoachingLog && currentAttempt > 1 && (
-                        <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', padding: '1rem', marginBottom: '1.5rem' }}>
-                            <h4 style={{ margin: '0 0 8px 0', display: 'flex', alignItems: 'center', gap: '8px', color: '#166534', fontSize: '0.9rem', textTransform: 'uppercase' }}><CheckCircle size={16} /> Remediation Coaching Logged</h4>
-                            <p style={{ margin: '0 0 4px 0', fontSize: '0.85rem', color: '#15803d' }}><strong>Date:</strong> {new Date(submission.latestCoachingLog.date).toLocaleDateString()}</p>
-                            <p style={{ margin: 0, fontSize: '0.85rem', color: '#15803d', fontStyle: 'italic', wordBreak: 'break-word' }}>"{submission.latestCoachingLog.notes}" — {submission.latestCoachingLog.facilitatorName}</p>
+                        <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', padding: '1.25rem', marginBottom: '1.5rem', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+                            <div>
+                                <h4 style={{ margin: '0 0 8px 0', display: 'flex', alignItems: 'center', gap: '8px', color: '#166534', fontSize: '0.9rem', textTransform: 'uppercase' }}>
+                                    <CheckCircle size={16} /> Remediation Coaching Logged
+                                </h4>
+                                <p style={{ margin: '0 0 4px 0', fontSize: '0.85rem', color: '#15803d' }}>
+                                    <strong>Date:</strong> {new Date(submission.latestCoachingLog.date).toLocaleDateString()}
+                                </p>
+                                <p style={{ margin: 0, fontSize: '0.85rem', color: '#15803d', fontStyle: 'italic', wordBreak: 'break-word' }}>
+                                    "{submission.latestCoachingLog.notes}" — {submission.latestCoachingLog.facilitatorName}
+                                </p>
+                            </div>
+
+                            {/* 🚀 RECONCILE BUTTON: ONLY SHOW IF ATTEMPT 1 WAS NEVER OFFICIALLY GRADED */}
+                            {(() => {
+                                const isAttempt1Graded = historySnapshots.some((h: any) =>
+                                    (h.attemptNumber === 1 || !h.attemptNumber) &&
+                                    (['graded', 'moderated', 'appealed'].includes(h.status) || h.grading?.gradedAt)
+                                );
+
+                                // Genuine Attempt 2 (Attempt 1 was graded) -> Hide reconcile button!
+                                if (isAttempt1Graded) return null;
+
+                                // Premature Attempt 2 (Attempt 1 was missed/never graded) -> Show reconcile button
+                                if (isAdmin || isSuperAdmin || isFacilitator || hasAssessorRights) {
+                                    return (
+                                        <button
+                                            className="mlab-btn mlab-btn--sm"
+                                            style={{ background: '#0284c7', color: 'white', border: 'none', padding: '8px 14px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}
+                                            onClick={handleRecoverToSubmitted}
+                                            disabled={saving}
+                                        >
+                                            <RotateCcw size={14} /> Reconcile &amp; Submit Attempt 1
+                                        </button>
+                                    );
+                                }
+                                return null;
+                            })()}
                         </div>
                     )}
 
@@ -4052,7 +4426,7 @@ export const SubmissionReview: React.FC = () => {
                         </div>
                     )}
 
-                    {isMissed && !isViolation && (
+                    {/* {isMissed && !isViolation && (
                         <div style={{ background: '#fef2f2', border: '1px solid #fecaca', padding: '1.25rem', borderRadius: '8px', marginBottom: '1.5rem' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
                                 <div>
@@ -4070,6 +4444,40 @@ export const SubmissionReview: React.FC = () => {
                                         </button>
                                     )}
                                     {canGrade && (
+                                        <button className="mlab-btn mlab-btn--sm mlab-btn--error" onClick={executeZeroGrade} disabled={saving}>
+                                            Assign Zero Grade (Unexcused)
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )} */}
+                    {isMissed && !isViolation && (
+                        <div style={{ background: '#fef2f2', border: '1px solid #fecaca', padding: '1.25rem', borderRadius: '8px', marginBottom: '1.5rem' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
+                                <div>
+                                    <h4 style={{ margin: '0 0 8px 0', color: '#991b1b', display: 'flex', alignItems: 'center', gap: '8px', textTransform: 'uppercase', fontSize: '0.95rem' }}>
+                                        <ShieldAlert size={18} /> Assessment Missed {hasExistingWork && '(Saved Answers Detected)'}
+                                    </h4>
+                                    <p style={{ margin: 0, fontSize: '0.9rem', color: '#b91c1c', lineHeight: 1.5, maxWidth: '600px' }}>
+                                        {hasExistingWork
+                                            ? "This assessment was flagged as missed due to deadline expiration, but saved learner answers were found. You can recover and submit this work for grading, excuse the absence, or assign a zero grade."
+                                            : "This learner failed to attend the scheduled assessment window. Please determine if this is an Excused Absence (reopen for the learner) or an Unexcused Absence (assign a zero grade)."
+                                        }
+                                    </p>
+                                </div>
+                                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                                    {hasExistingWork && (isAdmin || isFacilitator || hasAssessorRights) && (
+                                        <button className="mlab-btn mlab-btn--sm" style={{ background: '#2563eb', color: 'white', border: 'none' }} onClick={handleRecoverToSubmitted} disabled={saving}>
+                                            <RotateCcw size={14} style={{ marginRight: '4px' }} /> Recover &amp; Submit Work
+                                        </button>
+                                    )}
+                                    {(isAdmin || isFacilitator) && (
+                                        <button className="mlab-btn mlab-btn--sm" style={{ background: '#10b981', color: 'white', border: 'none' }} onClick={handleReopenMissedAssessment} disabled={saving}>
+                                            <Unlock size={14} style={{ marginRight: '4px' }} /> Excuse Absence &amp; Reopen
+                                        </button>
+                                    )}
+                                    {hasAssessorRights && (
                                         <button className="mlab-btn mlab-btn--sm mlab-btn--error" onClick={executeZeroGrade} disabled={saving}>
                                             Assign Zero Grade (Unexcused)
                                         </button>
@@ -4159,12 +4567,27 @@ export const SubmissionReview: React.FC = () => {
                     />
 
                     <ReviewStageCard
+                        // colorTheme="red" title="Official Assessor Grading" status={assPanelStatus}
+                        // lockedMessage="Awaiting prior steps to be completed before grading can begin."
+                        // awaitingTitle="Awaiting Assessor Grading"
+                        // awaitingMessage="This submission is ready and waiting for the Assessor to assign final marks."
+                        // showScore={!isWorkplaceModule}
+                        // scoreAwarded={assTotals.score} scoreMax={assTotals.max} scorePct={assTotals.pct}
+                        // feedbackLabel="Assessor Remarks" feedbackPlaceholder="Provide holistic feedback..."
+                        // feedbackValue={assOverallFeedback} onFeedbackChange={handleAssOverallFeedbackChange}
+                        // submitLabel="Apply Signature & Finalise" onSubmit={triggerSubmitGrade} isSaving={saving}
+                        // signatureLabel="Assessor Signature" signatureName={submission.grading?.assessorName || 'Assessor'}
+                        // signatureUrl={submission.grading?.assessorSignatureUrl || assessorProfile?.signatureUrl}
+                        // signatureDate={submission.grading?.gradedAt ? new Date(submission.grading.gradedAt).toLocaleDateString() : undefined}
+                        // signatureMeta={`Reg: ${assessorProfile?.assessorRegNumber || submission.grading?.assessorRegNumber || 'N/A'}`}
+                        // signatureTagline="Digital Signature Confirmed"
                         colorTheme="red" title="Official Assessor Grading" status={assPanelStatus}
                         lockedMessage="Awaiting prior steps to be completed before grading can begin."
                         awaitingTitle="Awaiting Assessor Grading"
                         awaitingMessage="This submission is ready and waiting for the Assessor to assign final marks."
                         showScore={!isWorkplaceModule}
                         scoreAwarded={assTotals.score} scoreMax={assTotals.max} scorePct={assTotals.pct}
+                        competencyStatus={submission?.competency || competency} // 🚀 PASS COMPETENCY
                         feedbackLabel="Assessor Remarks" feedbackPlaceholder="Provide holistic feedback..."
                         feedbackValue={assOverallFeedback} onFeedbackChange={handleAssOverallFeedbackChange}
                         submitLabel="Apply Signature & Finalise" onSubmit={triggerSubmitGrade} isSaving={saving}
@@ -4209,6 +4632,7 @@ export const SubmissionReview: React.FC = () => {
                         awaitingTitle="Awaiting Moderation"
                         awaitingMessage="This submission is ready and waiting for QA review by the Moderator."
                         showScore={true} scoreAwarded={modTotals.score} scoreMax={modTotals.max} scorePct={modTotals.pct}
+                        competencyStatus={submission?.moderation?.outcome || submission?.competency} // 🚀 PASS COMPETENCY / OUTCOME
                         feedbackLabel="Moderator Feedback" feedbackPlaceholder="Moderation feedback..."
                         feedbackValue={modFeedback} onFeedbackChange={handleModFeedbackChange}
                         submitLabel="Finalise QA & Endorse" onSubmit={triggerSubmitModeration} isSaving={saving}
@@ -4217,6 +4641,19 @@ export const SubmissionReview: React.FC = () => {
                         signatureDate={submission.moderation?.moderatedAt ? new Date(submission.moderation.moderatedAt).toLocaleDateString() : undefined}
                         signatureMeta={`Outcome: ${submission.moderation?.outcome || modOutcome}`} signatureTagline="QA Sign-off Confirmed"
                         timeOverrideValue={modTimeOverride} onTimeOverrideChange={setModTimeOverride} autoTimeSeconds={getModTime()}
+                        // colorTheme="green" title="Internal Moderation (QA)" status={modPanelStatus}
+                        // lockedMessage="Awaiting Assessor to complete official grading before moderation can occur."
+                        // awaitingTitle="Awaiting Moderation"
+                        // awaitingMessage="This submission is ready and waiting for QA review by the Moderator."
+                        // showScore={true} scoreAwarded={modTotals.score} scoreMax={modTotals.max} scorePct={modTotals.pct}
+                        // feedbackLabel="Moderator Feedback" feedbackPlaceholder="Moderation feedback..."
+                        // feedbackValue={modFeedback} onFeedbackChange={handleModFeedbackChange}
+                        // submitLabel="Finalise QA & Endorse" onSubmit={triggerSubmitModeration} isSaving={saving}
+                        // signatureLabel="Moderator QA" signatureName={submission.moderation?.moderatorName || moderatorProfile?.fullName || 'Moderator'}
+                        // signatureUrl={submission.moderation?.moderatorSignatureUrl || moderatorProfile?.signatureUrl}
+                        // signatureDate={submission.moderation?.moderatedAt ? new Date(submission.moderation.moderatedAt).toLocaleDateString() : undefined}
+                        // signatureMeta={`Outcome: ${submission.moderation?.outcome || modOutcome}`} signatureTagline="QA Sign-off Confirmed"
+                        // timeOverrideValue={modTimeOverride} onTimeOverrideChange={setModTimeOverride} autoTimeSeconds={getModTime()}
                         activeControls={
                             canGrade && !isMissed && !isViolation && (
                                 <div className="sr-competency-section">
@@ -4239,7 +4676,7 @@ export const SubmissionReview: React.FC = () => {
                                         )}
                                     </div>
 
-                                    {/* 🚀 ADDED: REMEDIATION & QUICK UNLOCK CONTROLS */}
+                                    {/* REMEDIATION & QUICK UNLOCK CONTROLS */}
                                     {isAssDone && ['NYC', 'DEV', '1', '2'].includes(String(submission?.competency || '').toUpperCase()) && !isAppealUpheld && (
                                         <div style={{ marginTop: '1.5rem', paddingTop: '1rem', borderTop: '1px dashed #fca5a5', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                                             <label className="sr-sidebar-label" style={{ color: '#b91c1c' }}>Re-assessment Actions</label>
@@ -4277,7 +4714,7 @@ export const SubmissionReview: React.FC = () => {
                     {/* ACADEMIC BOARD ACTIONS PANEL */}
                     {/* {(isAdmin || isSuperAdmin || isModerator) && (
                         <div className="sr-panel" style={{ marginTop: '1.5rem', borderTop: '3px solid #fca5a5', background: '#fef2f2', padding: '1.5rem' }}> */}
-                    {/* ACADEMIC BOARD ACTIONS PANEL */}
+                    {/* ACADEMIC BOARD ACTIONS PANEL
                     {(isAdmin || isSuperAdmin || isModerator) && (submission?.appeal?.status === 'pending' || ['graded', 'moderated', 'appealed', 'missed', 'violation'].includes(currentStatus)) && (
                         <div className="sr-panel" style={{ marginTop: '1.5rem', border: '1px solid #fca5a5', background: '#fef2f2', padding: '1.5rem', borderRadius: '8px' }}>
                             <h3 className="sr-panel-title" style={{ color: '#b91c1c', display: 'flex', alignItems: 'center', gap: '6px', margin: '0 0 10px 0' }}>
@@ -4341,7 +4778,91 @@ export const SubmissionReview: React.FC = () => {
                                 {submission?.appeal?.status === 'pending' ? 'Uphold Appeal & Unlock' : 'Grant Special Override'}
                             </button>
                         </div>
-                    )}
+                    )} */}
+
+                    {/* ACADEMIC BOARD ACTIONS PANEL */}
+                    {(() => {
+                        const maxAllowedAttempts = assessment?.maxAttempts || 2;
+                        const isMaxAttemptsExhausted = currentAttempt >= maxAllowedAttempts;
+                        const isFinalizedNYC = isModDone && ['NYC', 'DEV', '1', '2'].includes(String(submission?.competency || '').toUpperCase());
+                        const hasPendingAppeal = submission?.appeal?.status === 'pending';
+
+                        // 🚀 RESTRICT BOARD ACTIONS TO PENDING APPEALS, EXHAUSTED ATTEMPTS (NYC), OR VIOLATIONS ONLY
+                        const shouldShowBoardActions = (isAdmin || isSuperAdmin) && (
+                            hasPendingAppeal ||
+                            (isFinalizedNYC && isMaxAttemptsExhausted) ||
+                            isViolation
+                        );
+
+                        if (!shouldShowBoardActions) return null;
+
+                        return (
+                            <div className="sr-panel" style={{ marginTop: '1.5rem', border: '1px solid #fca5a5', background: '#fef2f2', padding: '1.5rem', borderRadius: '8px' }}>
+                                <h3 className="sr-panel-title" style={{ color: '#b91c1c', display: 'flex', alignItems: 'center', gap: '6px', margin: '0 0 10px 0' }}>
+                                    <ShieldAlert size={16} /> Academic Board Actions
+                                </h3>
+                                <p style={{ fontSize: '0.8rem', color: '#991b1b', marginBottom: '1rem', lineHeight: 1.4 }}>
+                                    As an Administrator, you have the authority to override system lockouts, uphold learner appeals, and grant special additional attempts.
+                                </p>
+
+                                {hasPendingAppeal && (
+                                    <div style={{ background: '#fff', border: '1px solid #fecaca', padding: '10px', borderRadius: '6px', marginBottom: '1rem' }}>
+                                        <strong style={{ fontSize: '0.75rem', color: '#dc2626', textTransform: 'uppercase' }}>Pending Learner Appeal:</strong>
+                                        <p style={{ fontSize: '0.85rem', color: '#475569', margin: '4px 0 0 0', fontStyle: 'italic' }}>
+                                            "{submission.appeal.reason}"
+                                        </p>
+                                    </div>
+                                )}
+
+                                <button
+                                    className="mlab-btn mlab-btn--warning"
+                                    style={{ width: '100%', justifyContent: 'center', color: 'red' }}
+                                    disabled={saving}
+                                    onClick={() => {
+                                        const overrideReason = window.prompt("Enter the official reason for granting this override (Required for QCTO Auditing):");
+                                        if (overrideReason) {
+                                            setSaving(true);
+                                            const newAttemptNum = (submission.attemptNumber || 1) + 1;
+
+                                            // 1. Archive the old attempt
+                                            setDoc(doc(collection(db, 'learner_submissions', submission.id, 'history')), {
+                                                ...submission,
+                                                archivedAt: new Date().toISOString(),
+                                                archivedReason: 'Admin Override Granted'
+                                            }).then(() => {
+                                                // 2. Reset the main document and unlock
+                                                updateDoc(doc(db, 'learner_submissions', submission.id), {
+                                                    status: 'not_started',
+                                                    competency: deleteField(),
+                                                    grading: deleteField(),
+                                                    moderation: deleteField(),
+                                                    submittedAt: deleteField(),
+                                                    attemptNumber: newAttemptNum,
+                                                    hasOverride: true,
+                                                    'appeal.status': 'upheld',
+                                                    'appeal.grantedBy': user?.uid || 'system',
+                                                    'appeal.grantedReason': overrideReason,
+                                                    'appeal.grantedAt': new Date().toISOString(),
+                                                    lastStaffEditAt: new Date().toISOString()
+                                                }).then(() => {
+                                                    toast.success(`Override granted. Attempt #${newAttemptNum} unlocked.`);
+                                                    setTimeout(() => window.location.reload(), 1500);
+                                                });
+                                            }).catch(() => {
+                                                toast.error("Failed to grant override.");
+                                                setSaving(false);
+                                            });
+                                        }
+                                    }}
+                                >
+                                    {saving ? <Loader2 size={14} className="vp-spin" style={{ marginRight: '6px' }} /> : <Unlock size={14} style={{ marginRight: '6px' }} />}
+                                    {hasPendingAppeal ? 'Uphold Appeal & Unlock' : 'Grant Special Override'}
+                                </button>
+                            </div>
+                        );
+                    })()}
+
+
                     {/* END ACADEMIC BOARD ACTIONS PANEL */}
 
                     <PastAttemptsArchive historySnapshots={historySnapshots} assessment={assessment} />
