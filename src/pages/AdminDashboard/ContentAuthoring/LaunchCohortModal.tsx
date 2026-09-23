@@ -5,19 +5,45 @@ import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
 import {
     X, Rocket, Calendar, Award, Loader2, CheckCircle2, AlertTriangle,
-    ListChecks, Layers, Rows3, Settings2, ArrowRight, Eye, Users, Infinity, Search, ChevronDown, Check,
+    ListChecks, Layers, Rows3, Settings2, ArrowRight, Eye, Users, Infinity as InfinityIcon, Search, ChevronDown, Check,
     Palette, Send, Layout, RefreshCw, Info, Lock, Target, Tag, BookOpen, ExternalLink, ShieldCheck, FileCheck
 } from 'lucide-react';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
 import { useToast } from '../../../components/common/Toast/Toast';
+import Tooltip from '../../../components/common/Tooltip/Tooltip';
 import { finalizeCohortRunLaunch } from '../../../services/contentService';
 import type { CohortRun, AccreditationConfig, AccreditationBody, RunScheduleEntry } from '../../../types/content.types';
-import type { ExtendedLearningUnit } from './ContentAuthoring';
-import { countDistinctDueDates, generatePacingSchedule, type PacingGranularity } from '../../utils/pacingSchedule';
+import type { ExtendedLearningUnit, EnrichedContentContainer } from './ContentAuthoring';
 import { CourseIllustrationGraphic, getThemeStyles } from '../../LearnerPortal/LearnerContentHub/types';
 import { COURSE_LEVELS, DynamicListEditor, STANDARD_ACCREDITATIONS, TagSelector } from '../../../components/common/CourseMetadataSettingsPanel/CourseMetadataSettingsPanel';
 import { createPortal } from 'react-dom';
+import { countDistinctDueDates, generatePacingSchedule, type PacingGranularity } from '../../utils/pacingSchedule';
+
+export interface ExtendedCohortRun extends CohortRun {
+    description?: string;
+    themeColor?: string;
+    illustrationType?: string;
+    applicationStartDate?: string;
+    applicationEndDate?: string;
+    level?: string;
+    cohortIds?: string[]; // Formally defined to eliminate TS(2551)
+    isCertificateAwarded?: boolean;
+    certificateIssuerMode?: 'mlab_internal' | 'external_authority';
+    certificateTemplateId?: string;
+    externalIssuerName?: string;
+    awaitingExternalNotice?: string;
+    learningOutcomes?: string[];
+    prerequisites?: string[];
+    targetAudience?: string[];
+    materialIncludes?: string[];
+    tags?: string[];
+    isAccredited?: boolean;
+    saqaId?: string;
+    nqfLevel?: string | number;
+    credits?: number;
+    framework?: 'qcto' | 'secam';
+}
 
 export const THEME_COLOR_OPTIONS = [
     { hex: '#0284c7', label: 'Ocean Blue' },
@@ -73,9 +99,17 @@ export interface CohortRunSettingsData {
 
 interface CohortRunSettingsFormProps {
     data: CohortRunSettingsData;
-    onChange: (field: keyof CohortRunSettingsData, value: any) => void;
+    onChange: <K extends keyof CohortRunSettingsData>(field: K, value: CohortRunSettingsData[K]) => void;
     onResetToBlueprintDefaults: () => void;
     framework?: 'qcto' | 'secam';
+}
+
+interface CertificateStudioTemplate {
+    id: string;
+    title?: string;
+    programmeName?: string;
+    certType?: string;
+    [key: string]: unknown;
 }
 
 const QUILL_MODULES = {
@@ -104,13 +138,15 @@ export const CohortRunSettingsForm: React.FC<CohortRunSettingsFormProps> = ({
                     <Info size={16} color="#0284c7" />
                     <span>Pre-filled with <strong>Master Blueprint</strong> defaults. Customizations apply exclusively to this batch.</span>
                 </div>
-                <button
-                    type="button"
-                    onClick={onResetToBlueprintDefaults}
-                    style={{ background: '#ffffff', border: '1px solid #7dd3fc', color: '#0284c7', padding: '4px 10px', fontSize: '0.7rem', fontWeight: 800, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px', textTransform: 'uppercase', fontFamily: 'var(--font-heading)' }}
-                >
-                    <RefreshCw size={12} /> Reset Defaults
-                </button>
+                <Tooltip content="Revert all form fields in this section to the master course blueprint values." placement="top">
+                    <button
+                        type="button"
+                        onClick={onResetToBlueprintDefaults}
+                        style={{ background: '#ffffff', border: '1px solid #7dd3fc', color: '#0284c7', padding: '4px 10px', fontSize: '0.7rem', fontWeight: 800, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px', textTransform: 'uppercase', fontFamily: 'var(--font-heading)' }}
+                    >
+                        <RefreshCw size={12} /> Reset Defaults
+                    </button>
+                </Tooltip>
             </div>
 
             {/* RUN IDENTITY & RICH TEXT DESCRIPTION */}
@@ -120,9 +156,11 @@ export const CohortRunSettingsForm: React.FC<CohortRunSettingsFormProps> = ({
                 </div>
 
                 <div className="lfm-fg lfm-fg--full">
-                    <label style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--mlab-grey)', textTransform: 'uppercase', fontFamily: 'var(--font-heading)' }}>
-                        Cohort Batch Title *
-                    </label>
+                    <Tooltip content="The public display title for this specific cohort run or intake batch." placement="top">
+                        <label style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--mlab-grey)', textTransform: 'uppercase', fontFamily: 'var(--font-heading)' }}>
+                            Cohort Batch Title *
+                        </label>
+                    </Tooltip>
                     <input
                         className="lfm-input"
                         type="text"
@@ -134,9 +172,11 @@ export const CohortRunSettingsForm: React.FC<CohortRunSettingsFormProps> = ({
                 </div>
 
                 <div className="lfm-fg lfm-fg--full">
-                    <label style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--mlab-grey)', textTransform: 'uppercase', fontFamily: 'var(--font-heading)', marginBottom: '4px', display: 'block' }}>
-                        Batch Summary / Custom Description (Rich Text)
-                    </label>
+                    <Tooltip content="Detailed instructions, schedule notes, or guidelines specifically for learners enrolled in this batch." placement="top">
+                        <label style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--mlab-grey)', textTransform: 'uppercase', fontFamily: 'var(--font-heading)', marginBottom: '4px', display: 'block' }}>
+                            Batch Summary / Custom Description (Rich Text)
+                        </label>
+                    </Tooltip>
                     <div style={{ background: '#ffffff', border: '1px solid var(--mlab-border)', color: '#0f172a' }}>
                         <ReactQuill
                             theme="snow"
@@ -151,9 +191,11 @@ export const CohortRunSettingsForm: React.FC<CohortRunSettingsFormProps> = ({
 
             {/* DIFFICULTY LEVEL */}
             <div style={{ background: '#ffffff', border: '1px solid var(--mlab-border)', padding: '1rem' }}>
-                <label style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--mlab-grey)', textTransform: 'uppercase', fontFamily: 'var(--font-heading)', display: 'block', marginBottom: '4px' }}>
-                    Course Difficulty Level
-                </label>
+                <Tooltip content="Sets the target skill level displayed on learner course cards." placement="top">
+                    <label style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--mlab-grey)', textTransform: 'uppercase', fontFamily: 'var(--font-heading)', display: 'block', marginBottom: '4px' }}>
+                        Course Difficulty Level
+                    </label>
+                </Tooltip>
                 <select
                     className="lfm-input lfm-select"
                     value={data.level}
@@ -174,9 +216,11 @@ export const CohortRunSettingsForm: React.FC<CohortRunSettingsFormProps> = ({
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                     <div>
-                        <label style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--mlab-grey)', textTransform: 'uppercase', fontFamily: 'var(--font-heading)', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px' }}>
-                            <ListChecks size={13} /> What You Will Learn (Outcomes)
-                        </label>
+                        <Tooltip content="Bullet list of skills and competencies learners will acquire upon completing this batch." placement="top">
+                            <label style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--mlab-grey)', textTransform: 'uppercase', fontFamily: 'var(--font-heading)', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px' }}>
+                                <ListChecks size={13} /> What You Will Learn (Outcomes)
+                            </label>
+                        </Tooltip>
                         <DynamicListEditor
                             items={data.learningOutcomes}
                             placeholder="e.g. Build React component trees..."
@@ -186,9 +230,11 @@ export const CohortRunSettingsForm: React.FC<CohortRunSettingsFormProps> = ({
                     </div>
 
                     <div>
-                        <label style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--mlab-grey)', textTransform: 'uppercase', fontFamily: 'var(--font-heading)', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px' }}>
-                            <Lock size={13} /> Course Prerequisites
-                        </label>
+                        <Tooltip content="Key technical or foundational requirements learners should meet before starting." placement="top">
+                            <label style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--mlab-grey)', textTransform: 'uppercase', fontFamily: 'var(--font-heading)', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px' }}>
+                                <Lock size={13} /> Course Prerequisites
+                            </label>
+                        </Tooltip>
                         <DynamicListEditor
                             items={data.prerequisites}
                             placeholder="e.g. Basic HTML/CSS knowledge..."
@@ -200,9 +246,11 @@ export const CohortRunSettingsForm: React.FC<CohortRunSettingsFormProps> = ({
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                     <div>
-                        <label style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--mlab-grey)', textTransform: 'uppercase', fontFamily: 'var(--font-heading)', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px' }}>
-                            <Target size={13} /> Target Audience
-                        </label>
+                        <Tooltip content="Target demographics, roles, or career tracks suited for this run." placement="top">
+                            <label style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--mlab-grey)', textTransform: 'uppercase', fontFamily: 'var(--font-heading)', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px' }}>
+                                <Target size={13} /> Target Audience
+                            </label>
+                        </Tooltip>
                         <DynamicListEditor
                             items={data.targetAudience}
                             placeholder="e.g. Aspiring Full-Stack Developers..."
@@ -212,9 +260,11 @@ export const CohortRunSettingsForm: React.FC<CohortRunSettingsFormProps> = ({
                     </div>
 
                     <div>
-                        <label style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--mlab-grey)', textTransform: 'uppercase', fontFamily: 'var(--font-heading)', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px' }}>
-                            <Check size={13} color="var(--mlab-green-dark)" /> Material Included
-                        </label>
+                        <Tooltip content="List of learning resources, source code, and assets provided with this course." placement="top">
+                            <label style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--mlab-grey)', textTransform: 'uppercase', fontFamily: 'var(--font-heading)', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px' }}>
+                                <Check size={13} color="var(--mlab-green-dark)" /> Material Included
+                            </label>
+                        </Tooltip>
                         <DynamicListEditor
                             items={data.materialIncludes || []}
                             placeholder="e.g. Downloadable lab guides & assets..."
@@ -225,9 +275,11 @@ export const CohortRunSettingsForm: React.FC<CohortRunSettingsFormProps> = ({
                 </div>
 
                 <div>
-                    <label style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--mlab-grey)', textTransform: 'uppercase', fontFamily: 'var(--font-heading)', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px' }}>
-                        <Tag size={13} /> Batch Tags &amp; Keywords
-                    </label>
+                    <Tooltip content="Keywords used for course search indexing and catalog filtering." placement="top">
+                        <label style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--mlab-grey)', textTransform: 'uppercase', fontFamily: 'var(--font-heading)', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px' }}>
+                            <Tag size={13} /> Batch Tags &amp; Keywords
+                        </label>
+                    </Tooltip>
                     <TagSelector
                         selectedTags={data.tags}
                         onChange={newTags => onChange('tags', newTags)}
@@ -244,9 +296,11 @@ export const CohortRunSettingsForm: React.FC<CohortRunSettingsFormProps> = ({
                 <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '1rem', alignItems: 'center' }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                         <div>
-                            <label style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--mlab-grey)', textTransform: 'uppercase', fontFamily: 'var(--font-heading)', display: 'block', marginBottom: '6px' }}>
-                                Theme Accent Color
-                            </label>
+                            <Tooltip content="Select a primary accent color for course banners, badges, and cards." placement="top">
+                                <label style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--mlab-grey)', textTransform: 'uppercase', fontFamily: 'var(--font-heading)', display: 'block', marginBottom: '6px' }}>
+                                    Theme Accent Color
+                                </label>
+                            </Tooltip>
                             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                                 {THEME_COLOR_OPTIONS.map(opt => {
                                     const isSelected = data.themeColor === opt.hex;
@@ -272,9 +326,11 @@ export const CohortRunSettingsForm: React.FC<CohortRunSettingsFormProps> = ({
                         </div>
 
                         <div>
-                            <label style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--mlab-grey)', textTransform: 'uppercase', fontFamily: 'var(--font-heading)', display: 'block', marginBottom: '4px' }}>
-                                Illustration Graphic Preset
-                            </label>
+                            <Tooltip content="Select the vector illustration style rendered on student portal cards." placement="top">
+                                <label style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--mlab-grey)', textTransform: 'uppercase', fontFamily: 'var(--font-heading)', display: 'block', marginBottom: '4px' }}>
+                                    Illustration Graphic Preset
+                                </label>
+                            </Tooltip>
                             <select
                                 className="lfm-input lfm-select"
                                 value={data.illustrationType}
@@ -317,9 +373,11 @@ export const CohortRunSettingsForm: React.FC<CohortRunSettingsFormProps> = ({
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                     <div className="lfm-fg">
-                        <label style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--mlab-grey)', textTransform: 'uppercase', fontFamily: 'var(--font-heading)' }}>
-                            Applications Open Date
-                        </label>
+                        <Tooltip content="Date when student applications/registration opens for this run." placement="top">
+                            <label style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--mlab-grey)', textTransform: 'uppercase', fontFamily: 'var(--font-heading)' }}>
+                                Applications Open Date
+                            </label>
+                        </Tooltip>
                         <input
                             type="date"
                             className="lfm-input"
@@ -328,9 +386,11 @@ export const CohortRunSettingsForm: React.FC<CohortRunSettingsFormProps> = ({
                         />
                     </div>
                     <div className="lfm-fg">
-                        <label style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--mlab-grey)', textTransform: 'uppercase', fontFamily: 'var(--font-heading)' }}>
-                            Applications Close Date
-                        </label>
+                        <Tooltip content="Date when student applications/registration closes for this run." placement="top">
+                            <label style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--mlab-grey)', textTransform: 'uppercase', fontFamily: 'var(--font-heading)' }}>
+                                Applications Close Date
+                            </label>
+                        </Tooltip>
                         <input
                             type="date"
                             className="lfm-input"
@@ -348,12 +408,12 @@ export const CohortRunSettingsForm: React.FC<CohortRunSettingsFormProps> = ({
 interface LaunchCohortModalProps {
     isOpen: boolean;
     onClose: () => void;
-    run: CohortRun;
+    run: ExtendedCohortRun;
     containerTitle: string;
     containerDescription?: string;
     containerThemeColor?: string;
     containerIllustrationType?: string;
-    containerData?: any;
+    containerData?: EnrichedContentContainer;
     containerDefaultAccreditation?: AccreditationConfig;
     units: ExtendedLearningUnit[];
     cohorts: { id: string; name: string }[];
@@ -376,51 +436,56 @@ export const LaunchCohortModal: React.FC<LaunchCohortModalProps> = ({
 }) => {
     const toast = useToast();
 
-    // 🚀 SAVED STUDIO TEMPLATES STATE
-    const [savedStudioTemplates, setSavedStudioTemplates] = useState<any[]>([]);
+    const [savedStudioTemplates, setSavedStudioTemplates] = useState<CertificateStudioTemplate[]>([]);
 
     useEffect(() => {
         const fetchSavedTemplates = async () => {
             try {
                 const snap = await getDocs(collection(db, 'certificate_templates'));
-                setSavedStudioTemplates(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-            } catch (err: any) {
-                console.warn("Could not fetch certificate_templates for launch modal:", err?.message || err);
+                setSavedStudioTemplates(snap.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() } as CertificateStudioTemplate)));
+            } catch (err: unknown) {
+                const errorMsg = err instanceof Error ? err.message : String(err);
+                console.warn("Could not fetch certificate_templates for launch modal:", errorMsg);
             }
         };
         fetchSavedTemplates();
     }, []);
 
-    const blueprintDefaults = useMemo(() => ({
-        runName: run.name || run.cohortName || containerTitle || '',
-        description: (run as any).description || containerDescription || containerData?.description || containerData?.checkpointMetadata?.courseDescription || '',
-        themeColor: (run as any).themeColor || containerThemeColor || containerData?.themeColor || containerData?.checkpointMetadata?.themeColor || '#0284c7',
-        illustrationType: (run as any).illustrationType || containerIllustrationType || containerData?.illustrationType || containerData?.checkpointMetadata?.illustrationType || 'code',
-        applicationStartDate: (run as any).applicationStartDate || '',
-        applicationEndDate: (run as any).applicationEndDate || '',
-        level: (run as any).level || containerData?.level || containerData?.checkpointMetadata?.courseLevel || 'beginner',
-        isCertificateAwarded: (run as any).isCertificateAwarded ?? containerData?.isCertificateAwarded ?? containerData?.checkpointMetadata?.isCertificateAwarded ?? true,
-        certificateIssuerMode: ((run as any).certificateIssuerMode || 'mlab_internal') as 'mlab_internal' | 'external_authority',
-        certificateTemplateId: (run as any).certificateTemplateId || 'default_completion_template',
-        externalIssuerName: (run as any).externalIssuerName || 'QCTO / SETA Authorized Body',
-        awaitingExternalNotice: (run as any).awaitingExternalNotice || 'Your learner transcript and mLab completion statement have been verified. You will receive an official notification once your parchment is released by the external authorized body.',
-        learningOutcomes: (run as any).learningOutcomes || containerData?.learningOutcomes || containerData?.checkpointMetadata?.learningOutcomes || [],
-        prerequisites: (run as any).prerequisites || containerData?.prerequisites || containerData?.checkpointMetadata?.prerequisites || [],
-        targetAudience: (run as any).targetAudience || containerData?.targetAudience || containerData?.checkpointMetadata?.targetAudience || [],
-        materialIncludes: (run as any).materialIncludes || containerData?.materialIncludes || containerData?.checkpointMetadata?.materialIncludes || [
-            'Hands-on Video Tutorials & Source Code',
-            'Downloadable Lab Guides & Asset Packs',
-            'Interactive AI Peer Reviews & Quizzes',
-            'Industry Certificate of Completion'
-        ],
-        tags: (run as any).tags || containerData?.tags || containerData?.checkpointMetadata?.courseTags || [],
-        isAccredited: (run as any).isAccredited ?? containerDefaultAccreditation?.isAccredited ?? containerData?.defaultAccreditation?.isAccredited ?? true,
-        accreditationBody: run.accreditation?.body || containerDefaultAccreditation?.body || containerData?.defaultAccreditation?.body || 'qcto',
-        customAccreditationText: run.accreditation?.customText || containerDefaultAccreditation?.customText || containerData?.defaultAccreditation?.customText || '',
-        saqaId: (run as any).saqaId || containerDefaultAccreditation?.saqaId || containerData?.defaultAccreditation?.saqaId || '',
-        nqfLevel: (run as any).nqfLevel || containerDefaultAccreditation?.nqfLevel || containerData?.defaultAccreditation?.nqfLevel || 5,
-        credits: (run as any).credits || containerDefaultAccreditation?.credits || containerData?.defaultAccreditation?.credits || 120
-    }), [run, containerTitle, containerDescription, containerThemeColor, containerIllustrationType, containerData, containerDefaultAccreditation]);
+    const blueprintDefaults: CohortRunSettingsData = useMemo(() => {
+        const rawMode = run.certificateIssuerMode || (containerData?.checkpointMetadata?.certificateIssuerMode as string);
+        const normalizedMode: 'mlab_internal' | 'external_authority' = rawMode === 'external_authority' ? 'external_authority' : 'mlab_internal';
+
+        return {
+            runName: run.name || containerTitle || '',
+            description: run.description || containerDescription || containerData?.description || (containerData?.checkpointMetadata?.courseDescription as string) || '',
+            themeColor: run.themeColor || containerThemeColor || containerData?.themeColor || (containerData?.checkpointMetadata?.themeColor as string) || '#0284c7',
+            illustrationType: run.illustrationType || containerIllustrationType || containerData?.illustrationType || (containerData?.checkpointMetadata?.illustrationType as string) || 'code',
+            applicationStartDate: run.applicationStartDate || '',
+            applicationEndDate: run.applicationEndDate || '',
+            level: run.level || containerData?.level || (containerData?.checkpointMetadata?.courseLevel as string) || 'beginner',
+            isCertificateAwarded: run.isCertificateAwarded ?? containerData?.isCertificateAwarded ?? (containerData?.checkpointMetadata?.isCertificateAwarded as boolean) ?? true,
+            certificateIssuerMode: normalizedMode,
+            certificateTemplateId: run.certificateTemplateId || 'default_completion_template',
+            externalIssuerName: run.externalIssuerName || 'QCTO / SETA Authorized Body',
+            awaitingExternalNotice: run.awaitingExternalNotice || 'Your learner transcript and mLab completion statement have been verified. You will receive an official notification once your parchment is released by the external authorized body.',
+            learningOutcomes: run.learningOutcomes || containerData?.learningOutcomes || (containerData?.checkpointMetadata?.learningOutcomes as string[]) || [],
+            prerequisites: run.prerequisites || containerData?.prerequisites || (containerData?.checkpointMetadata?.prerequisites as string[]) || [],
+            targetAudience: run.targetAudience || containerData?.targetAudience || (containerData?.checkpointMetadata?.targetAudience as string[]) || [],
+            materialIncludes: run.materialIncludes || containerData?.materialIncludes || (containerData?.checkpointMetadata?.materialIncludes as string[]) || [
+                'Hands-on Video Tutorials & Source Code',
+                'Downloadable Lab Guides & Asset Packs',
+                'Interactive AI Peer Reviews & Quizzes',
+                'Industry Certificate of Completion'
+            ],
+            tags: run.tags || containerData?.tags || (containerData?.checkpointMetadata?.courseTags as string[]) || [],
+            isAccredited: run.isAccredited ?? containerDefaultAccreditation?.isAccredited ?? containerData?.defaultAccreditation?.isAccredited ?? true,
+            accreditationBody: run.accreditation?.body || containerDefaultAccreditation?.body || containerData?.defaultAccreditation?.body || 'qcto',
+            customAccreditationText: run.accreditation?.customText || containerDefaultAccreditation?.customText || containerData?.defaultAccreditation?.customText || '',
+            saqaId: run.saqaId || containerDefaultAccreditation?.saqaId || containerData?.defaultAccreditation?.saqaId || '',
+            nqfLevel: run.nqfLevel || containerDefaultAccreditation?.nqfLevel || containerData?.defaultAccreditation?.nqfLevel || 5,
+            credits: run.credits || containerDefaultAccreditation?.credits || containerData?.defaultAccreditation?.credits || 120
+        };
+    }, [run, containerTitle, containerDescription, containerThemeColor, containerIllustrationType, containerData, containerDefaultAccreditation]);
 
     const [settingsData, setSettingsData] = useState<CohortRunSettingsData>(blueprintDefaults);
 
@@ -428,7 +493,7 @@ export const LaunchCohortModal: React.FC<LaunchCohortModalProps> = ({
         setSettingsData(blueprintDefaults);
     }, [blueprintDefaults]);
 
-    const handleSettingChange = (field: keyof CohortRunSettingsData, value: any) => {
+    const handleSettingChange = <K extends keyof CohortRunSettingsData>(field: K, value: CohortRunSettingsData[K]) => {
         setSettingsData(prev => ({ ...prev, [field]: value }));
     };
 
@@ -437,7 +502,7 @@ export const LaunchCohortModal: React.FC<LaunchCohortModalProps> = ({
         toast.info("Settings reset to Master Blueprint defaults.");
     };
 
-    const initialCohortIds = (run as any).cohortIds || (run.cohortId ? [run.cohortId] : []);
+    const initialCohortIds = run.cohortIds || (run.cohortId ? [run.cohortId] : []);
     const [selectedCohortIds, setSelectedCohortIds] = useState<string[]>(initialCohortIds);
 
     const [isCohortDropdownOpen, setIsCohortDropdownOpen] = useState(false);
@@ -516,9 +581,10 @@ export const LaunchCohortModal: React.FC<LaunchCohortModalProps> = ({
             setPreviewSchedule(schedule);
             setShowScheduleDetails(true);
             toast.success(`Schedule generated across ${countDistinctDueDates(schedule)} due date(s).`);
-        } catch (err: any) {
+        } catch (err: unknown) {
             setPreviewSchedule(null);
-            setScheduleError(err?.message || 'Could not generate a schedule from these dates.');
+            const errorMsg = err instanceof Error ? err.message : 'Could not generate a schedule from these dates.';
+            setScheduleError(errorMsg);
         }
     };
 
@@ -549,6 +615,9 @@ export const LaunchCohortModal: React.FC<LaunchCohortModalProps> = ({
                 customText: accreditationBody === 'other' ? customAccreditationText.trim() : undefined
             };
 
+            const finalIssuerMode: 'mlab_internal' | 'external_authority' =
+                settingsData.certificateIssuerMode === 'external_authority' ? 'external_authority' : 'mlab_internal';
+
             await finalizeCohortRunLaunch(run.id, {
                 name: settingsData.runName.trim(),
                 description: settingsData.description.trim(),
@@ -563,9 +632,8 @@ export const LaunchCohortModal: React.FC<LaunchCohortModalProps> = ({
                 accreditation: accreditation,
                 enforceStrictDeadline: enforceStrictDeadline,
                 schedule: previewSchedule || [],
-                // DUAL CERTIFICATE FULFILLMENT PAYLOAD
                 isCertificateAwarded: settingsData.isCertificateAwarded,
-                certificateIssuerMode: settingsData.certificateIssuerMode,
+                certificateIssuerMode: finalIssuerMode,
                 certificateTemplateId: settingsData.certificateTemplateId,
                 externalIssuerName: settingsData.externalIssuerName,
                 awaitingExternalNotice: settingsData.awaitingExternalNotice
@@ -574,8 +642,9 @@ export const LaunchCohortModal: React.FC<LaunchCohortModalProps> = ({
             toast.success(`"${settingsData.runName}" is now live and assigned!`);
             onLaunched?.();
             onClose();
-        } catch (err: any) {
-            toast.error(err?.message || "Failed to launch cohort run.");
+        } catch (err: unknown) {
+            const errorMsg = err instanceof Error ? err.message : "Failed to launch cohort run.";
+            toast.error(errorMsg);
         } finally {
             setLaunching(false);
         }
@@ -611,55 +680,65 @@ export const LaunchCohortModal: React.FC<LaunchCohortModalProps> = ({
                             Blueprint: {containerTitle} • <strong style={{ color: '#fff' }}>{units.length}</strong> master lesson{units.length === 1 ? '' : 's'}
                         </div>
                     </div>
-                    <button className="lfm-close-btn" type="button" onClick={onClose} disabled={launching}>
-                        <X size={20} />
-                    </button>
+                    <Tooltip content="Close launch dialog" placement="left">
+                        <button className="lfm-close-btn" type="button" onClick={onClose} disabled={launching}>
+                            <X size={20} />
+                        </button>
+                    </Tooltip>
                 </div>
 
                 {/* TAB BAR */}
                 <div style={{ display: 'flex', background: '#f1f5f9', borderBottom: '1px solid var(--mlab-border)', padding: '0 1.5rem' }}>
-                    <button
-                        type="button"
-                        onClick={() => setActiveTab('branding')}
-                        style={{
-                            padding: '10px 16px', border: 'none',
-                            background: activeTab === 'branding' ? '#ffffff' : 'transparent',
-                            color: activeTab === 'branding' ? 'var(--mlab-blue)' : '#64748b',
-                            fontWeight: 800, fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
-                            borderBottom: activeTab === 'branding' ? '3px solid var(--mlab-blue)' : '3px solid transparent',
-                            fontFamily: 'var(--font-heading)', textTransform: 'uppercase'
-                        }}
-                    >
-                        <Palette size={14} /> 1. Identity &amp; Branding
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => setActiveTab('targeting')}
-                        style={{
-                            padding: '10px 16px', border: 'none',
-                            background: activeTab === 'targeting' ? '#ffffff' : 'transparent',
-                            color: activeTab === 'targeting' ? 'var(--mlab-blue)' : '#64748b',
-                            fontWeight: 800, fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
-                            borderBottom: activeTab === 'targeting' ? '3px solid var(--mlab-blue)' : '3px solid transparent',
-                            fontFamily: 'var(--font-heading)', textTransform: 'uppercase'
-                        }}
-                    >
-                        <Users size={14} /> 2. Target &amp; Certification
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => setActiveTab('schedule')}
-                        style={{
-                            padding: '10px 16px', border: 'none',
-                            background: activeTab === 'schedule' ? '#ffffff' : 'transparent',
-                            color: activeTab === 'schedule' ? 'var(--mlab-blue)' : '#64748b',
-                            fontWeight: 800, fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
-                            borderBottom: activeTab === 'schedule' ? '3px solid var(--mlab-blue)' : '3px solid transparent',
-                            fontFamily: 'var(--font-heading)', textTransform: 'uppercase'
-                        }}
-                    >
-                        <Calendar size={14} /> 3. Delivery &amp; Schedule
-                    </button>
+                    <Tooltip content="Step 1: Configure run title, description, colors and artwork graphic." placement="bottom">
+                        <button
+                            type="button"
+                            onClick={() => setActiveTab('branding')}
+                            style={{
+                                padding: '10px 16px', border: 'none',
+                                background: activeTab === 'branding' ? '#ffffff' : 'transparent',
+                                color: activeTab === 'branding' ? 'var(--mlab-blue)' : '#64748b',
+                                fontWeight: 800, fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
+                                borderBottom: activeTab === 'branding' ? '3px solid var(--mlab-blue)' : '3px solid transparent',
+                                fontFamily: 'var(--font-heading)', textTransform: 'uppercase'
+                            }}
+                        >
+                            <Palette size={14} /> 1. Identity &amp; Branding
+                        </button>
+                    </Tooltip>
+
+                    <Tooltip content="Step 2: Assign cohort availability and set up certificate issuing rules." placement="bottom">
+                        <button
+                            type="button"
+                            onClick={() => setActiveTab('targeting')}
+                            style={{
+                                padding: '10px 16px', border: 'none',
+                                background: activeTab === 'targeting' ? '#ffffff' : 'transparent',
+                                color: activeTab === 'targeting' ? 'var(--mlab-blue)' : '#64748b',
+                                fontWeight: 800, fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
+                                borderBottom: activeTab === 'targeting' ? '3px solid var(--mlab-blue)' : '3px solid transparent',
+                                fontFamily: 'var(--font-heading)', textTransform: 'uppercase'
+                            }}
+                        >
+                            <Users size={14} /> 2. Target &amp; Certification
+                        </button>
+                    </Tooltip>
+
+                    <Tooltip content="Step 3: Define start/end dates and generate automated lesson due date schedules." placement="bottom">
+                        <button
+                            type="button"
+                            onClick={() => setActiveTab('schedule')}
+                            style={{
+                                padding: '10px 16px', border: 'none',
+                                background: activeTab === 'schedule' ? '#ffffff' : 'transparent',
+                                color: activeTab === 'schedule' ? 'var(--mlab-blue)' : '#64748b',
+                                fontWeight: 800, fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
+                                borderBottom: activeTab === 'schedule' ? '3px solid var(--mlab-blue)' : '3px solid transparent',
+                                fontFamily: 'var(--font-heading)', textTransform: 'uppercase'
+                            }}
+                        >
+                            <Calendar size={14} /> 3. Delivery &amp; Schedule
+                        </button>
+                    </Tooltip>
                 </div>
 
                 {/* SCROLLABLE BODY */}
@@ -670,7 +749,7 @@ export const LaunchCohortModal: React.FC<LaunchCohortModalProps> = ({
                             data={settingsData}
                             onChange={handleSettingChange}
                             onResetToBlueprintDefaults={handleResetToBlueprintDefaults}
-                            framework={(run as any).framework || 'secam'}
+                            framework={run.framework || 'secam'}
                         />
                     )}
 
@@ -686,26 +765,28 @@ export const LaunchCohortModal: React.FC<LaunchCohortModalProps> = ({
 
                                     <div className="lfm-fg lfm-fg--full" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                                         <div style={{ position: 'relative', width: '100%' }} ref={cohortDropdownRef}>
-                                            <button
-                                                type="button"
-                                                onClick={() => setIsCohortDropdownOpen(!isCohortDropdownOpen)}
-                                                className="lfm-input"
-                                                style={{
-                                                    display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer',
-                                                    background: '#fff', borderRadius: 0,
-                                                    borderColor: selectedCohortIds.length === 0 ? 'var(--mlab-red)' : 'var(--mlab-border)',
-                                                    padding: '8px 12px'
-                                                }}
-                                            >
-                                                <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 'bold', fontSize: '0.8rem', color: 'var(--mlab-blue)' }}>
-                                                    {selectedCohortIds.includes('ALL')
-                                                        ? 'All Active Cohorts'
-                                                        : selectedCohortIds.length === 0
-                                                            ? '-- Select Cohorts --'
-                                                            : `${selectedCohortIds.length} Cohort(s) Selected`}
-                                                </span>
-                                                <ChevronDown size={14} color="var(--mlab-grey)" />
-                                            </button>
+                                            <Tooltip content="Select which student cohorts have access to this delivery run." placement="top">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setIsCohortDropdownOpen(!isCohortDropdownOpen)}
+                                                    className="lfm-input"
+                                                    style={{
+                                                        display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer',
+                                                        background: '#fff', borderRadius: 0,
+                                                        borderColor: selectedCohortIds.length === 0 ? 'var(--mlab-red)' : 'var(--mlab-border)',
+                                                        padding: '8px 12px'
+                                                    }}
+                                                >
+                                                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 'bold', fontSize: '0.8rem', color: 'var(--mlab-blue)' }}>
+                                                        {selectedCohortIds.includes('ALL')
+                                                            ? 'All Active Cohorts'
+                                                            : selectedCohortIds.length === 0
+                                                                ? '-- Select Cohorts --'
+                                                                : `${selectedCohortIds.length} Cohort(s) Selected`}
+                                                    </span>
+                                                    <ChevronDown size={14} color="var(--mlab-grey)" />
+                                                </button>
+                                            </Tooltip>
 
                                             {isCohortDropdownOpen && (
                                                 <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 60, background: '#fff', border: '1px solid var(--mlab-border)', boxShadow: '0 10px 20px rgba(0,0,0,0.12)', maxHeight: '200px', overflowY: 'auto' }}>
@@ -791,9 +872,11 @@ export const LaunchCohortModal: React.FC<LaunchCohortModalProps> = ({
                                         <Award size={14} /> Certificate Accreditation &amp; Endorsement
                                     </div>
                                     <div className="lfm-fg" style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                        <label style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--mlab-grey)', textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: 'var(--font-heading)' }}>
-                                            Endorsing / Accrediting Body
-                                        </label>
+                                        <Tooltip content="Select the SETA/QCTO or vendor body endorsing completion." placement="top">
+                                            <label style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--mlab-grey)', textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: 'var(--font-heading)' }}>
+                                                Endorsing / Accrediting Body
+                                            </label>
+                                        </Tooltip>
                                         <select
                                             className="lfm-input lfm-select"
                                             value={accreditationBody}
@@ -833,22 +916,24 @@ export const LaunchCohortModal: React.FC<LaunchCohortModalProps> = ({
                                 </div>
                             </div>
 
-                            {/* 🚀 DUAL CERTIFICATE ISSUER & FULFILLMENT STRATEGY */}
+                            {/* DUAL CERTIFICATE ISSUER & FULFILLMENT STRATEGY */}
                             <div style={{ background: '#ffffff', border: '1px solid var(--mlab-border)', borderLeft: '4px solid var(--mlab-blue)', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                     <div className="lfm-section-hdr" style={{ margin: 0, paddingBottom: 0, border: 'none' }}>
                                         <Award size={16} color="var(--mlab-blue)" /> Certificate Distribution &amp; Issuing Strategy
                                     </div>
 
-                                    <label style={{ fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: 'var(--mlab-blue)', fontWeight: 700, fontFamily: 'var(--font-heading)' }}>
-                                        <input
-                                            type="checkbox"
-                                            checked={settingsData.isCertificateAwarded}
-                                            onChange={e => handleSettingChange('isCertificateAwarded', e.target.checked)}
-                                            style={{ accentColor: 'var(--mlab-green)', width: '16px', height: '16px' }}
-                                        />
-                                        Award Certificates for this Run
-                                    </label>
+                                    <Tooltip content="Enable or disable automated certificate generation upon course completion." placement="top">
+                                        <label style={{ fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: 'var(--mlab-blue)', fontWeight: 700, fontFamily: 'var(--font-heading)' }}>
+                                            <input
+                                                type="checkbox"
+                                                checked={settingsData.isCertificateAwarded}
+                                                onChange={e => handleSettingChange('isCertificateAwarded', e.target.checked)}
+                                                style={{ accentColor: 'var(--mlab-green)', width: '16px', height: '16px' }}
+                                            />
+                                            Award Certificates for this Run
+                                        </label>
+                                    </Tooltip>
                                 </div>
 
                                 {settingsData.isCertificateAwarded && (
@@ -856,45 +941,49 @@ export const LaunchCohortModal: React.FC<LaunchCohortModalProps> = ({
 
                                         {/* ISSUER MODE TOGGLE */}
                                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                                            <button
-                                                type="button"
-                                                onClick={() => handleSettingChange('certificateIssuerMode', 'mlab_internal')}
-                                                style={{
-                                                    padding: '12px',
-                                                    border: settingsData.certificateIssuerMode === 'mlab_internal' ? '2px solid var(--mlab-blue)' : '1px solid var(--mlab-border)',
-                                                    background: settingsData.certificateIssuerMode === 'mlab_internal' ? 'var(--mlab-light-blue)' : '#f8fafc',
-                                                    textAlign: 'left',
-                                                    cursor: 'pointer',
-                                                    borderRadius: '0px'
-                                                }}
-                                            >
-                                                <div style={{ fontWeight: 800, fontSize: '0.8rem', color: 'var(--mlab-blue)', display: 'flex', alignItems: 'center', gap: '6px', fontFamily: 'var(--font-heading)', textTransform: 'uppercase', marginBottom: '4px' }}>
-                                                    <ShieldCheck size={15} color="#0284c7" /> mLab Auto-Issued Digital Cert
-                                                </div>
-                                                <div style={{ fontSize: '0.72rem', color: '#64748b', lineHeight: 1.4 }}>
-                                                    Instant digital parchment generated via <strong>Certificate Studio</strong> upon 100% completion &amp; competency sign-off.
-                                                </div>
-                                            </button>
+                                            <Tooltip content="Automated mLab PDF certificate generated instantly upon passing all requirements." placement="top">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleSettingChange('certificateIssuerMode', 'mlab_internal')}
+                                                    style={{
+                                                        padding: '12px',
+                                                        border: settingsData.certificateIssuerMode === 'mlab_internal' ? '2px solid var(--mlab-blue)' : '1px solid var(--mlab-border)',
+                                                        background: settingsData.certificateIssuerMode === 'mlab_internal' ? 'var(--mlab-light-blue)' : '#f8fafc',
+                                                        textAlign: 'left',
+                                                        cursor: 'pointer',
+                                                        borderRadius: '0px'
+                                                    }}
+                                                >
+                                                    <div style={{ fontWeight: 800, fontSize: '0.8rem', color: 'var(--mlab-blue)', display: 'flex', alignItems: 'center', gap: '6px', fontFamily: 'var(--font-heading)', textTransform: 'uppercase', marginBottom: '4px' }}>
+                                                        <ShieldCheck size={15} color="#0284c7" /> mLab Auto-Issued Digital Cert
+                                                    </div>
+                                                    <div style={{ fontSize: '0.72rem', color: '#64748b', lineHeight: 1.4 }}>
+                                                        Instant digital parchment generated via <strong>Certificate Studio</strong> upon 100% completion &amp; competency sign-off.
+                                                    </div>
+                                                </button>
+                                            </Tooltip>
 
-                                            <button
-                                                type="button"
-                                                onClick={() => handleSettingChange('certificateIssuerMode', 'external_authority')}
-                                                style={{
-                                                    padding: '12px',
-                                                    border: settingsData.certificateIssuerMode === 'external_authority' ? '2px solid #7c3aed' : '1px solid var(--mlab-border)',
-                                                    background: settingsData.certificateIssuerMode === 'external_authority' ? '#f3e8ff' : '#f8fafc',
-                                                    textAlign: 'left',
-                                                    cursor: 'pointer',
-                                                    borderRadius: '0px'
-                                                }}
-                                            >
-                                                <div style={{ fontWeight: 800, fontSize: '0.8rem', color: '#6d28d9', display: 'flex', alignItems: 'center', gap: '6px', fontFamily: 'var(--font-heading)', textTransform: 'uppercase', marginBottom: '4px' }}>
-                                                    <FileCheck size={15} color="#7c3aed" /> External Authorized Body (QCTO/SETA/Vendor)
-                                                </div>
-                                                <div style={{ fontSize: '0.72rem', color: '#64748b', lineHeight: 1.4 }}>
-                                                    Learners receive immediate mLab Completion Transcripts while flagged as <em>"Awaiting Official External Certificate"</em>.
-                                                </div>
-                                            </button>
+                                            <Tooltip content="External SETA/QCTO body issues official parchment; mLab provides an interim completion statement." placement="top">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleSettingChange('certificateIssuerMode', 'external_authority')}
+                                                    style={{
+                                                        padding: '12px',
+                                                        border: settingsData.certificateIssuerMode === 'external_authority' ? '2px solid #7c3aed' : '1px solid var(--mlab-border)',
+                                                        background: settingsData.certificateIssuerMode === 'external_authority' ? '#f3e8ff' : '#f8fafc',
+                                                        textAlign: 'left',
+                                                        cursor: 'pointer',
+                                                        borderRadius: '0px'
+                                                    }}
+                                                >
+                                                    <div style={{ fontWeight: 800, fontSize: '0.8rem', color: '#6d28d9', display: 'flex', alignItems: 'center', gap: '6px', fontFamily: 'var(--font-heading)', textTransform: 'uppercase', marginBottom: '4px' }}>
+                                                        <FileCheck size={15} color="#7c3aed" /> External Authorized Body (QCTO/SETA/Vendor)
+                                                    </div>
+                                                    <div style={{ fontSize: '0.72rem', color: '#64748b', lineHeight: 1.4 }}>
+                                                        Learners receive immediate mLab Completion Transcripts while flagged as <em>"Awaiting Official External Certificate"</em>.
+                                                    </div>
+                                                </button>
+                                            </Tooltip>
                                         </div>
 
                                         {/* MODE A: MLAB INTERNAL CERTIFICATE STUDIO LINK */}
@@ -905,53 +994,56 @@ export const LaunchCohortModal: React.FC<LaunchCohortModalProps> = ({
                                                         Certificate Studio Template Selection
                                                     </label>
 
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => window.open('/admin?tab=studio', '_blank')}
-                                                        style={{
-                                                            background: 'transparent',
-                                                            border: 'none',
-                                                            color: '#0284c7',
-                                                            fontSize: '0.72rem',
-                                                            fontWeight: 800,
-                                                            cursor: 'pointer',
-                                                            display: 'inline-flex',
-                                                            alignItems: 'center',
-                                                            gap: '4px',
-                                                            fontFamily: 'var(--font-heading)',
-                                                            textTransform: 'uppercase',
-                                                            padding: 0
-                                                        }}
-                                                    >
-                                                        <ExternalLink size={12} /> Open Certificate Studio
-                                                    </button>
+                                                    <Tooltip content="Open Certificate Studio in a new window to create or edit certificate designs." placement="top">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => window.open('/admin?tab=studio', '_blank')}
+                                                            style={{
+                                                                background: 'transparent',
+                                                                border: 'none',
+                                                                color: '#0284c7',
+                                                                fontSize: '0.72rem',
+                                                                fontWeight: 800,
+                                                                cursor: 'pointer',
+                                                                display: 'inline-flex',
+                                                                alignItems: 'center',
+                                                                gap: '4px',
+                                                                fontFamily: 'var(--font-heading)',
+                                                                textTransform: 'uppercase',
+                                                                padding: 0
+                                                            }}
+                                                        >
+                                                            <ExternalLink size={12} /> Open Certificate Studio
+                                                        </button>
+                                                    </Tooltip>
                                                 </div>
 
-                                                {/* 🚀 DYNAMIC CERTIFICATE STUDIO TEMPLATE DROPDOWN */}
-                                                <select
-                                                    className="lfm-input lfm-select"
-                                                    value={settingsData.certificateTemplateId}
-                                                    onChange={e => handleSettingChange('certificateTemplateId', e.target.value)}
-                                                    style={{ padding: '8px 12px', fontWeight: 700, color: 'var(--mlab-blue)', background: '#ffffff' }}
-                                                >
-                                                    <option value="default_completion_template">Default mLab Standard Certificate Template</option>
+                                                <Tooltip content="Select the visual design template used when generating certificates for this run." placement="top">
+                                                    <select
+                                                        className="lfm-input lfm-select"
+                                                        value={settingsData.certificateTemplateId}
+                                                        onChange={e => handleSettingChange('certificateTemplateId', e.target.value)}
+                                                        style={{ padding: '8px 12px', fontWeight: 700, color: 'var(--mlab-blue)', background: '#ffffff' }}
+                                                    >
+                                                        <option value="default_completion_template">Default mLab Standard Certificate Template</option>
 
-                                                    {savedStudioTemplates.length > 0 && (
-                                                        <optgroup label="Saved Certificate Studio Templates">
-                                                            {savedStudioTemplates.map((tmpl: any) => (
-                                                                <option key={tmpl.id} value={tmpl.id}>
-                                                                    {tmpl.title || tmpl.programmeName || tmpl.id} ({tmpl.certType || 'Certificate'})
-                                                                </option>
-                                                            ))}
+                                                        {savedStudioTemplates.length > 0 && (
+                                                            <optgroup label="Saved Certificate Studio Templates">
+                                                                {savedStudioTemplates.map((tmpl: CertificateStudioTemplate) => (
+                                                                    <option key={tmpl.id} value={tmpl.id}>
+                                                                        {tmpl.title || tmpl.programmeName || tmpl.id} ({tmpl.certType || 'Certificate'})
+                                                                    </option>
+                                                                ))}
+                                                            </optgroup>
+                                                        )}
+
+                                                        <optgroup label="System Preset Templates">
+                                                            <option value="secam_bootcamp_template">SECAM Agile Bootcamp High-Honors Template</option>
+                                                            <option value="qcto_occupational_template">QCTO Occupational Skills Certificate Template</option>
+                                                            <option value="custom_partner_template">Custom Sponsor / Employer Partner Template</option>
                                                         </optgroup>
-                                                    )}
-
-                                                    <optgroup label="System Preset Templates">
-                                                        <option value="secam_bootcamp_template">SECAM Agile Bootcamp High-Honors Template</option>
-                                                        <option value="qcto_occupational_template">QCTO Occupational Skills Certificate Template</option>
-                                                        <option value="custom_partner_template">Custom Sponsor / Employer Partner Template</option>
-                                                    </optgroup>
-                                                </select>
+                                                    </select>
+                                                </Tooltip>
 
                                                 <span style={{ fontSize: '0.7rem', color: '#0284c7' }}>
                                                     ✓ System will automatically verify project competency and email PDF certificates to learners.
@@ -963,9 +1055,11 @@ export const LaunchCohortModal: React.FC<LaunchCohortModalProps> = ({
                                         {settingsData.certificateIssuerMode === 'external_authority' && (
                                             <div style={{ background: '#faf5ff', border: '1px solid #e9d5ff', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                                                 <div>
-                                                    <label style={{ fontSize: '0.7rem', fontWeight: 800, color: '#6d28d9', textTransform: 'uppercase', fontFamily: 'var(--font-heading)', display: 'block', marginBottom: '4px' }}>
-                                                        Authorized External Body Title
-                                                    </label>
+                                                    <Tooltip content="Name of the official SETA or external authority issuing the parchment." placement="top">
+                                                        <label style={{ fontSize: '0.7rem', fontWeight: 800, color: '#6d28d9', textTransform: 'uppercase', fontFamily: 'var(--font-heading)', display: 'block', marginBottom: '4px' }}>
+                                                            Authorized External Body Title
+                                                        </label>
+                                                    </Tooltip>
                                                     <input
                                                         className="lfm-input"
                                                         type="text"
@@ -977,9 +1071,11 @@ export const LaunchCohortModal: React.FC<LaunchCohortModalProps> = ({
                                                 </div>
 
                                                 <div>
-                                                    <label style={{ fontSize: '0.7rem', fontWeight: 800, color: '#6d28d9', textTransform: 'uppercase', fontFamily: 'var(--font-heading)', display: 'block', marginBottom: '4px' }}>
-                                                        Student Status Notice (Displayed while awaiting external parchment)
-                                                    </label>
+                                                    <Tooltip content="Instructional message displayed on the learner's dashboard while external parchment is pending." placement="top">
+                                                        <label style={{ fontSize: '0.7rem', fontWeight: 800, color: '#6d28d9', textTransform: 'uppercase', fontFamily: 'var(--font-heading)', display: 'block', marginBottom: '4px' }}>
+                                                            Student Status Notice (Displayed while awaiting external parchment)
+                                                        </label>
+                                                    </Tooltip>
                                                     <textarea
                                                         className="lfm-input"
                                                         rows={2}
@@ -1010,36 +1106,41 @@ export const LaunchCohortModal: React.FC<LaunchCohortModalProps> = ({
                             </div>
 
                             <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
-                                <button
-                                    type="button"
-                                    onClick={() => setIsTimeBound(true)}
-                                    style={{
-                                        flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-                                        background: isTimeBound ? 'var(--mlab-blue)' : 'var(--mlab-bg)',
-                                        color: isTimeBound ? 'var(--mlab-white)' : 'var(--mlab-grey)',
-                                        border: `2px solid ${isTimeBound ? 'var(--mlab-blue)' : 'var(--mlab-border)'}`,
-                                        padding: '10px 14px', fontSize: '0.75rem', fontFamily: 'var(--font-heading)',
-                                        textTransform: 'uppercase', fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s ease'
-                                    }}
-                                >
-                                    <Calendar size={14} color={isTimeBound ? 'var(--mlab-green)' : 'currentColor'} />
-                                    Time-Bound Cohort
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setIsTimeBound(false)}
-                                    style={{
-                                        flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-                                        background: !isTimeBound ? 'var(--mlab-green)' : 'var(--mlab-bg)',
-                                        color: !isTimeBound ? 'var(--mlab-blue)' : 'var(--mlab-grey)',
-                                        border: `2px solid ${!isTimeBound ? 'var(--mlab-green)' : 'var(--mlab-border)'}`,
-                                        padding: '10px 14px', fontSize: '0.75rem', fontFamily: 'var(--font-heading)',
-                                        textTransform: 'uppercase', fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s ease'
-                                    }}
-                                >
-                                    <Infinity size={15} />
-                                    Self-Paced (Evergreen)
-                                </button>
+                                <Tooltip content="Schedule lessons sequentially between strict start and end dates." placement="top">
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsTimeBound(true)}
+                                        style={{
+                                            flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                                            background: isTimeBound ? 'var(--mlab-blue)' : 'var(--mlab-bg)',
+                                            color: isTimeBound ? 'var(--mlab-white)' : 'var(--mlab-grey)',
+                                            border: `2px solid ${isTimeBound ? 'var(--mlab-blue)' : 'var(--mlab-border)'}`,
+                                            padding: '10px 14px', fontSize: '0.75rem', fontFamily: 'var(--font-heading)',
+                                            textTransform: 'uppercase', fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s ease'
+                                        }}
+                                    >
+                                        <Calendar size={14} color={isTimeBound ? 'var(--mlab-green)' : 'currentColor'} />
+                                        Time-Bound Cohort
+                                    </button>
+                                </Tooltip>
+
+                                <Tooltip content="Open-access delivery with no strict start or end dates." placement="top">
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsTimeBound(false)}
+                                        style={{
+                                            flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                                            background: !isTimeBound ? 'var(--mlab-green)' : 'var(--mlab-bg)',
+                                            color: !isTimeBound ? 'var(--mlab-blue)' : 'var(--mlab-grey)',
+                                            border: `2px solid ${!isTimeBound ? 'var(--mlab-green)' : 'var(--mlab-border)'}`,
+                                            padding: '10px 14px', fontSize: '0.75rem', fontFamily: 'var(--font-heading)',
+                                            textTransform: 'uppercase', fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s ease'
+                                        }}
+                                    >
+                                        <InfinityIcon size={15} />
+                                        Self-Paced (Evergreen)
+                                    </button>
+                                </Tooltip>
                             </div>
 
                             {isTimeBound ? (
@@ -1085,10 +1186,12 @@ export const LaunchCohortModal: React.FC<LaunchCohortModalProps> = ({
                                         )}
 
                                         <div className="lfm-flags-panel" style={{ marginTop: '10px', padding: '8px 12px' }}>
-                                            <label className="lfm-checkbox-row" style={{ margin: 0, fontSize: '0.8rem' }}>
-                                                <input type="checkbox" checked={enforceStrictDeadline} onChange={e => setEnforceStrictDeadline(e.target.checked)} />
-                                                Enforce strict deadline (Lock lessons after due date)
-                                            </label>
+                                            <Tooltip content="When enabled, lesson content locks automatically after its assigned due date passes." placement="top">
+                                                <label className="lfm-checkbox-row" style={{ margin: 0, fontSize: '0.8rem' }}>
+                                                    <input type="checkbox" checked={enforceStrictDeadline} onChange={e => setEnforceStrictDeadline(e.target.checked)} />
+                                                    Enforce strict deadline (Lock lessons after due date)
+                                                </label>
+                                            </Tooltip>
                                         </div>
                                     </div>
 
@@ -1098,49 +1201,56 @@ export const LaunchCohortModal: React.FC<LaunchCohortModalProps> = ({
                                         </div>
 
                                         <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
-                                            <button
-                                                type="button"
-                                                onClick={() => setGranularity('group')}
-                                                style={{
-                                                    flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-                                                    background: granularity === 'group' ? 'var(--mlab-blue)' : 'var(--mlab-bg)',
-                                                    color: granularity === 'group' ? 'var(--mlab-white)' : 'var(--mlab-grey)',
-                                                    border: '1px solid var(--mlab-border)', padding: '8px 12px', fontSize: '0.72rem',
-                                                    fontFamily: 'var(--font-heading)', textTransform: 'uppercase', fontWeight: 700, cursor: 'pointer'
-                                                }}
-                                            >
-                                                <Layers size={13} /> Group by Topic
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => setGranularity('lesson')}
-                                                style={{
-                                                    flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-                                                    background: granularity === 'lesson' ? 'var(--mlab-blue)' : 'var(--mlab-bg)',
-                                                    color: granularity === 'lesson' ? 'var(--mlab-white)' : 'var(--mlab-grey)',
-                                                    border: '1px solid var(--mlab-border)', padding: '8px 12px', fontSize: '0.72rem',
-                                                    fontFamily: 'var(--font-heading)', textTransform: 'uppercase', fontWeight: 700, cursor: 'pointer'
-                                                }}
-                                            >
-                                                <Rows3 size={13} /> Per Lesson
-                                            </button>
+                                            <Tooltip content="Assign same due date to all lessons in the same topic module." placement="top">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setGranularity('group')}
+                                                    style={{
+                                                        flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                                                        background: granularity === 'group' ? 'var(--mlab-blue)' : 'var(--mlab-bg)',
+                                                        color: granularity === 'group' ? 'var(--mlab-white)' : 'var(--mlab-grey)',
+                                                        border: '1px solid var(--mlab-border)', padding: '8px 12px', fontSize: '0.72rem',
+                                                        fontFamily: 'var(--font-heading)', textTransform: 'uppercase', fontWeight: 700, cursor: 'pointer'
+                                                    }}
+                                                >
+                                                    <Layers size={13} /> Group by Topic
+                                                </button>
+                                            </Tooltip>
+
+                                            <Tooltip content="Distribute unique due dates evenly across individual lessons." placement="top">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setGranularity('lesson')}
+                                                    style={{
+                                                        flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                                                        background: granularity === 'lesson' ? 'var(--mlab-blue)' : 'var(--mlab-bg)',
+                                                        color: granularity === 'lesson' ? 'var(--mlab-white)' : 'var(--mlab-grey)',
+                                                        border: '1px solid var(--mlab-border)', padding: '8px 12px', fontSize: '0.72rem',
+                                                        fontFamily: 'var(--font-heading)', textTransform: 'uppercase', fontWeight: 700, cursor: 'pointer'
+                                                    }}
+                                                >
+                                                    <Rows3 size={13} /> Per Lesson
+                                                </button>
+                                            </Tooltip>
                                         </div>
 
-                                        <button
-                                            type="button"
-                                            onClick={handleGeneratePreview}
-                                            disabled={!startDate || !endDate || units.length === 0}
-                                            style={{
-                                                width: '100%',
-                                                background: (!startDate || !endDate) ? 'var(--mlab-border)' : 'var(--mlab-blue-dark)',
-                                                color: (!startDate || !endDate) ? 'var(--mlab-grey-lt)' : 'white',
-                                                border: 'none', padding: '10px 14px', fontSize: '0.78rem', fontFamily: 'var(--font-heading)',
-                                                textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700,
-                                                cursor: (!startDate || !endDate) ? 'not-allowed' : 'pointer'
-                                            }}
-                                        >
-                                            Generate Schedule Preview
-                                        </button>
+                                        <Tooltip content="Auto-calculate calendar due dates for all units based on the start and end dates." placement="top">
+                                            <button
+                                                type="button"
+                                                onClick={handleGeneratePreview}
+                                                disabled={!startDate || !endDate || units.length === 0}
+                                                style={{
+                                                    width: '100%',
+                                                    background: (!startDate || !endDate) ? 'var(--mlab-border)' : 'var(--mlab-blue-dark)',
+                                                    color: (!startDate || !endDate) ? 'var(--mlab-grey-lt)' : 'white',
+                                                    border: 'none', padding: '10px 14px', fontSize: '0.78rem', fontFamily: 'var(--font-heading)',
+                                                    textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700,
+                                                    cursor: (!startDate || !endDate) ? 'not-allowed' : 'pointer'
+                                                }}
+                                            >
+                                                Generate Schedule Preview
+                                            </button>
+                                        </Tooltip>
 
                                         {scheduleError && (
                                             <div className="lfm-error-banner" style={{ marginTop: '10px' }}>
@@ -1201,11 +1311,12 @@ export const LaunchCohortModal: React.FC<LaunchCohortModalProps> = ({
                                                 )}
                                             </div>
                                         )}
+
                                     </div>
                                 </div>
                             ) : (
                                 <div style={{ padding: '24px 20px', background: 'var(--mlab-green-bg)', border: '2px solid var(--mlab-green)', color: 'var(--mlab-green-dark)', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: '8px' }}>
-                                    <Infinity size={36} color="var(--mlab-green-dark)" />
+                                    <InfinityIcon size={36} color="var(--mlab-green-dark)" />
                                     <strong style={{ fontFamily: 'var(--font-heading)', fontSize: '1.05rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                                         Evergreen Mode Active
                                     </strong>
@@ -1225,19 +1336,21 @@ export const LaunchCohortModal: React.FC<LaunchCohortModalProps> = ({
                     <button type="button" className="lfm-btn lfm-btn--ghost" onClick={onClose} disabled={launching}>
                         Cancel
                     </button>
-                    <button
-                        type="button"
-                        onClick={handleLaunch}
-                        disabled={!canLaunch || launching}
-                        className="lfm-btn lfm-btn--primary"
-                        style={{ minWidth: '160px', justifyContent: 'center' }}
-                    >
-                        {launching ? (
-                            <><Loader2 size={14} className="lfm-spin" /> Launching…</>
-                        ) : (
-                            <><Rocket size={14} /> Launch This Run</>
-                        )}
-                    </button>
+                    <Tooltip content={canLaunch ? "Finalize configuration and publish this run to learners." : "Complete required fields (Title, Cohorts, Schedule) to enable launch."} placement="top">
+                        <button
+                            type="button"
+                            onClick={handleLaunch}
+                            disabled={!canLaunch || launching}
+                            className="lfm-btn lfm-btn--primary"
+                            style={{ minWidth: '160px', justifyContent: 'center' }}
+                        >
+                            {launching ? (
+                                <><Loader2 size={14} className="lfm-spin" /> Launching…</>
+                            ) : (
+                                <><Rocket size={14} /> Launch This Run</>
+                            )}
+                        </button>
+                    </Tooltip>
                 </div>
 
             </div>

@@ -14,9 +14,72 @@ import {
     type LearnerUnitProgress
 } from './types';
 import { QuillHTMLViewer } from '../../../components/common/QuillHTMLViewer/QuillHTMLViewer';
+import Tooltip from '../../../components/common/Tooltip/Tooltip';
 
 import { auth, db } from '../../../lib/firebase';
 import { doc, getDoc, collection, query, where, onSnapshot, getDocs } from 'firebase/firestore';
+
+interface CertificateData {
+    id?: string;
+    courseName?: string;
+    pdfUrl: string;
+    [key: string]: unknown;
+}
+
+interface CertificateModalProps {
+    certificate: CertificateData;
+    onClose: () => void;
+}
+
+interface ExtendedCoursePackage extends CoursePackage {
+    allowedProgressKeys?: string[];
+    secamStructure?: Array<{
+        title?: string;
+        days?: Array<{ title?: string;[key: string]: unknown }>;
+        [key: string]: unknown;
+    }>;
+    checkpointMetadata?: {
+        secamStructure?: Array<{
+            title?: string;
+            days?: Array<{ title?: string;[key: string]: unknown }>;
+            [key: string]: unknown;
+        }>;
+        previewVideoUrl?: string;
+        materialIncludes?: string[];
+        pacingScheduleBreakdown?: Array<{ moduleOrSprintTitle?: string; title?: string; targetDate?: string; targetHours?: number }>;
+        [key: string]: unknown;
+    };
+    timelineStartDate?: string;
+    runStartDate?: string;
+    timelineEndDate?: string;
+    runEndDate?: string;
+    pacingScheduleBreakdown?: Array<{ moduleOrSprintTitle?: string; title?: string; targetDate?: string; targetHours?: number }>;
+    [key: string]: unknown;
+}
+
+interface ExtendedLearnerUnitProgress extends LearnerUnitProgress {
+    progressPercent?: number;
+    watchPercentage?: number;
+    [key: string]: unknown;
+}
+
+interface DirectTimelineData {
+    timeBoundConfig?: {
+        startDate?: string;
+        endDate?: string;
+        isTimeBound?: boolean;
+    };
+    startDate?: string;
+    endDate?: string;
+    applicationStartDate?: string;
+    applicationEndDate?: string;
+    pacingScheduleBreakdown?: Array<{ moduleOrSprintTitle?: string; title?: string; targetDate?: string; targetHours?: number }>;
+    checkpointMetadata?: {
+        pacingScheduleBreakdown?: Array<{ moduleOrSprintTitle?: string; title?: string; targetDate?: string; targetHours?: number }>;
+        [key: string]: unknown;
+    };
+    [key: string]: unknown;
+}
 
 interface CourseOverviewViewProps {
     selectedCourse: CoursePackage;
@@ -28,9 +91,10 @@ interface CourseOverviewViewProps {
     onSelectUnit: (unit: LearnerUnitProgress) => void;
 }
 
-const getCourseInstanceId = (c?: CoursePackage | null) => {
+const getCourseInstanceId = (c?: CoursePackage | ExtendedCoursePackage | null) => {
     if (!c) return '';
-    return c.cohortRunId || (c as any).timelineId || (c as any).placementId || c.id;
+    const ext = c as ExtendedCoursePackage;
+    return ext.cohortRunId || ext.timelineId || ext.placementId || ext.id;
 };
 
 const extractYouTubeId = (url: string): string | null => {
@@ -97,7 +161,7 @@ const getEmbedVideoUrl = (url?: string | null): string | null => {
     }
 };
 
-const CertificateModal = ({ certificate, onClose }: any) => {
+const CertificateModal: React.FC<CertificateModalProps> = ({ certificate, onClose }) => {
     return createPortal(
         <div className="lfm-overlay animate-fade-in" onClick={onClose} style={{ zIndex: 100000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
             <div onClick={e => e.stopPropagation()} style={{ background: '#fff', width: '100%', maxWidth: '960px', height: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)', borderRadius: '4px', overflow: 'hidden' }}>
@@ -110,12 +174,16 @@ const CertificateModal = ({ certificate, onClose }: any) => {
                         </div>
                     </div>
                     <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                        <button onClick={() => window.open(certificate.pdfUrl, '_blank')} className="lfm-btn lfm-btn--primary" style={{ background: 'var(--mlab-green)', color: 'var(--mlab-blue)', border: 'none', padding: '6px 14px', borderRadius: '2px' }}>
-                            <Download size={14} /> Download Original PDF
-                        </button>
-                        <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', padding: '6px', color: 'white', cursor: 'pointer', borderRadius: '2px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <X size={18} />
-                        </button>
+                        <Tooltip content="Download official certificate PDF document." placement="bottom">
+                            <button onClick={() => window.open(certificate.pdfUrl, '_blank')} className="lfm-btn lfm-btn--primary" style={{ background: 'var(--mlab-green)', color: 'var(--mlab-blue)', border: 'none', padding: '6px 14px', borderRadius: '2px' }}>
+                                <Download size={14} /> Download Original PDF
+                            </button>
+                        </Tooltip>
+                        <Tooltip content="Close certificate viewer" placement="bottom">
+                            <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', padding: '6px', color: 'white', cursor: 'pointer', borderRadius: '2px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <X size={18} />
+                            </button>
+                        </Tooltip>
                     </div>
                 </div>
                 <div style={{ flex: 1, background: '#e2e8f0', padding: '16px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
@@ -148,48 +216,43 @@ export const CourseOverviewView: React.FC<CourseOverviewViewProps> = ({
 
     const [enrichedCourseUnits, setEnrichedCourseUnits] = useState<LearnerUnitProgress[]>(courseUnits);
 
-    const [learnerCertificate, setLearnerCertificate] = useState<any>(null);
+    const [learnerCertificate, setLearnerCertificate] = useState<CertificateData | null>(null);
     const [isCertModalOpen, setIsCertModalOpen] = useState(false);
     const [isSearchingCert, setIsSearchingCert] = useState(false);
 
-    // 🚀 DIRECT FIREBASE TIMELINE HYDRATION STATE
-    const [directTimelineData, setDirectTimelineData] = useState<any>(null);
+    // DIRECT FIREBASE TIMELINE HYDRATION STATE
+    const [directTimelineData, setDirectTimelineData] = useState<DirectTimelineData | null>(null);
 
     const targetInstanceId = useMemo(() => getCourseInstanceId(selectedCourse), [selectedCourse]);
     const theme = getThemeStyles(selectedCourse.themeColor, selectedCourse.framework);
 
-    // 🚀 1. DIRECT FIREBASE FETCH FOR TIMELINE BLUEPRINT (cohort_runs)
+    // 1. DIRECT FIREBASE FETCH FOR TIMELINE BLUEPRINT (cohort_runs)
     useEffect(() => {
         if (!targetInstanceId) return;
 
         const fetchTimelineDirectly = async () => {
-            console.log('[DEBUG Direct Firebase Timeline] Attempting direct fetch for Cohort Run ID:', targetInstanceId);
             try {
                 const runRef = doc(db, 'cohort_runs', targetInstanceId);
                 const snap = await getDoc(runRef);
 
                 if (snap.exists()) {
-                    const data = snap.data();
-                    console.log('[DEBUG Direct Firebase Timeline] SUCCESS! Fetched cohort_runs document directly from Firestore:', data);
-                    setDirectTimelineData(data);
+                    setDirectTimelineData(snap.data() as DirectTimelineData);
                 } else {
-                    console.warn('[DEBUG Direct Firebase Timeline] No cohort_runs doc found for ID:', targetInstanceId, '— Checking content_containers collection as fallback...');
                     const containerRef = doc(db, 'content_containers', selectedCourse.id);
                     const containerSnap = await getDoc(containerRef);
                     if (containerSnap.exists()) {
-                        console.log('[DEBUG Direct Firebase Timeline] Fetched content_containers doc:', containerSnap.data());
-                        setDirectTimelineData(containerSnap.data());
+                        setDirectTimelineData(containerSnap.data() as DirectTimelineData);
                     }
                 }
             } catch (err) {
-                console.error('[DEBUG Direct Firebase Timeline] Error fetching timeline directly from Firestore:', err);
+                console.error('[Direct Firebase Timeline] Error fetching timeline:', err);
             }
         };
 
         fetchTimelineDirectly();
     }, [targetInstanceId, selectedCourse.id]);
 
-    // 🚀 2. REAL-TIME SNAPSHOT QUERY FOR PROGRESS
+    // 2. REAL-TIME SNAPSHOT QUERY FOR PROGRESS
     useEffect(() => {
         const currentUser = auth.currentUser;
         if (!currentUser?.uid || !selectedCourse) {
@@ -197,7 +260,8 @@ export const CourseOverviewView: React.FC<CourseOverviewViewProps> = ({
             return;
         }
 
-        const targetKeys = (selectedCourse as any).allowedProgressKeys || [targetInstanceId];
+        const extCourse = selectedCourse as ExtendedCoursePackage;
+        const targetKeys = extCourse.allowedProgressKeys || [targetInstanceId];
 
         const q = query(
             collection(db, 'learner_content_progress'),
@@ -206,9 +270,10 @@ export const CourseOverviewView: React.FC<CourseOverviewViewProps> = ({
         );
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
-            const progressMap = new Map<string, any>();
+            const progressMap = new Map<string, { isCompleted?: boolean; watchPct?: number }>();
             snapshot.docs.forEach(d => {
-                progressMap.set(d.data().unitId, d.data());
+                const data = d.data();
+                progressMap.set(data.unitId as string, data);
             });
 
             setEnrichedCourseUnits(courseUnits.map(unit => {
@@ -258,7 +323,8 @@ export const CourseOverviewView: React.FC<CourseOverviewViewProps> = ({
     const dynamicCompletedCount = useMemo(() => {
         return gatedCourseUnits.reduce((sum, u) => {
             if (u.isCompleted) return sum + 1;
-            const pct = Math.max(0, (u as any).progressPercent ?? (u as any).watchPercentage ?? 0);
+            const extUnit = u as ExtendedLearnerUnitProgress;
+            const pct = Math.max(0, extUnit.progressPercent ?? extUnit.watchPercentage ?? 0);
             return sum + (pct / 100);
         }, 0);
     }, [gatedCourseUnits]);
@@ -278,7 +344,8 @@ export const CourseOverviewView: React.FC<CourseOverviewViewProps> = ({
         if (isCourseComplete && currentUser && !learnerCertificate) {
             setIsSearchingCert(true);
 
-            const targetKeys = (selectedCourse as any).allowedProgressKeys || [targetInstanceId];
+            const extCourse = selectedCourse as ExtendedCoursePackage;
+            const targetKeys = extCourse.allowedProgressKeys || [targetInstanceId];
 
             const fetchCertificate = async () => {
                 try {
@@ -290,7 +357,7 @@ export const CourseOverviewView: React.FC<CourseOverviewViewProps> = ({
                     const snap = await getDocs(q);
 
                     if (!snap.empty) {
-                        setLearnerCertificate({ id: snap.docs[0].id, ...snap.docs[0].data() });
+                        setLearnerCertificate({ id: snap.docs[0].id, ...snap.docs[0].data() } as CertificateData);
                     }
                 } catch (error) {
                     console.error("Failed to fetch learner certificate:", error);
@@ -322,8 +389,8 @@ export const CourseOverviewView: React.FC<CourseOverviewViewProps> = ({
         });
     };
 
-    const previewVideoUrl = selectedCourse.previewVideoUrl ||
-        (selectedCourse as any).checkpointMetadata?.previewVideoUrl || null;
+    const extCourse = selectedCourse as ExtendedCoursePackage;
+    const previewVideoUrl = selectedCourse.previewVideoUrl || extCourse.checkpointMetadata?.previewVideoUrl || null;
 
     const openPopoutPlayer = (videoUrl: string) => {
         const cleanUrl = videoUrl.trim();
@@ -358,11 +425,11 @@ export const CourseOverviewView: React.FC<CourseOverviewViewProps> = ({
     };
 
     const targetAudienceList = selectedCourse.targetAudience || [];
-    const requirementsList = selectedCourse.requirements || (selectedCourse as any).prerequisites || [];
+    const requirementsList = selectedCourse.requirements || extCourse.prerequisites || [];
     const learningOutcomesList = selectedCourse.whatYouWillLearn || [];
     const instructorsList = selectedCourse.instructors || [];
 
-    const rawMaterials = selectedCourse.materialIncludes || (selectedCourse as any).checkpointMetadata?.materialIncludes;
+    const rawMaterials = selectedCourse.materialIncludes || extCourse.checkpointMetadata?.materialIncludes;
     const materialsList = (Array.isArray(rawMaterials) && rawMaterials.length > 0)
         ? rawMaterials
         : [
@@ -372,22 +439,22 @@ export const CourseOverviewView: React.FC<CourseOverviewViewProps> = ({
             'Verified Certificate of Completion'
         ];
 
-    // 🚀 DIRECT FIREBASE-HYDRATED PACING & TIMELINE RESOLUTION
+    // DIRECT FIREBASE-HYDRATED PACING & TIMELINE RESOLUTION
     const timeConfig = directTimelineData?.timeBoundConfig || {};
 
-    const startDateVal = timeConfig.startDate ||
+    const startDateVal = (timeConfig.startDate ||
         directTimelineData?.startDate ||
         directTimelineData?.applicationStartDate ||
         selectedCourse.startDate ||
-        (selectedCourse as any).timelineStartDate ||
-        (selectedCourse as any).runStartDate;
+        extCourse.timelineStartDate ||
+        extCourse.runStartDate) as string | undefined;
 
-    const endDateVal = timeConfig.endDate ||
+    const endDateVal = (timeConfig.endDate ||
         directTimelineData?.endDate ||
         directTimelineData?.applicationEndDate ||
         selectedCourse.endDate ||
-        (selectedCourse as any).timelineEndDate ||
-        (selectedCourse as any).runEndDate;
+        extCourse.timelineEndDate ||
+        extCourse.runEndDate) as string | undefined;
 
     const isTimeBoundVal = timeConfig.isTimeBound !== undefined
         ? timeConfig.isTimeBound
@@ -398,11 +465,11 @@ export const CourseOverviewView: React.FC<CourseOverviewViewProps> = ({
     const pacingScheduleBreakdownVal = useMemo(() => {
         const raw = directTimelineData?.pacingScheduleBreakdown ||
             directTimelineData?.checkpointMetadata?.pacingScheduleBreakdown ||
-            (selectedCourse as any).pacingScheduleBreakdown ||
-            (selectedCourse as any).checkpointMetadata?.pacingScheduleBreakdown ||
+            extCourse.pacingScheduleBreakdown ||
+            extCourse.checkpointMetadata?.pacingScheduleBreakdown ||
             [];
         return Array.isArray(raw) ? raw : [];
-    }, [directTimelineData, selectedCourse]);
+    }, [directTimelineData, extCourse]);
 
     // MULTI-TIERED SYLLABUS BUILDER
     const nestedSyllabus = useMemo(() => {
@@ -410,13 +477,13 @@ export const CourseOverviewView: React.FC<CourseOverviewViewProps> = ({
         const sortedUnits = [...gatedCourseUnits].sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
         const mainGroupMap = new Map<string, Map<string, LearnerUnitProgress[]>>();
 
-        const secamMeta = (selectedCourse as any).secamStructure || (selectedCourse as any).checkpointMetadata?.secamStructure;
+        const secamMeta = extCourse.secamStructure || extCourse.checkpointMetadata?.secamStructure;
         if (isSecam && Array.isArray(secamMeta) && secamMeta.length > 0) {
-            secamMeta.forEach((sprint: any) => {
+            secamMeta.forEach((sprint) => {
                 if (sprint.title) {
                     const subMap = new Map<string, LearnerUnitProgress[]>();
                     if (Array.isArray(sprint.days)) {
-                        sprint.days.forEach((day: any) => {
+                        sprint.days.forEach((day) => {
                             if (day.title) {
                                 subMap.set(day.title, []);
                             }
@@ -464,7 +531,8 @@ export const CourseOverviewView: React.FC<CourseOverviewViewProps> = ({
 
                 const groupCompletedFraction = allGroupUnits.reduce((sum, u) => {
                     if (u.isCompleted) return sum + 1;
-                    const pct = Math.max(0, (u as any).progressPercent ?? (u as any).watchPercentage ?? 0);
+                    const extUnit = u as ExtendedLearnerUnitProgress;
+                    const pct = Math.max(0, extUnit.progressPercent ?? extUnit.watchPercentage ?? 0);
                     return sum + (pct / 100);
                 }, 0);
 
@@ -480,7 +548,7 @@ export const CourseOverviewView: React.FC<CourseOverviewViewProps> = ({
                 };
             })
             .filter(mg => mg.subGroups.length > 0);
-    }, [gatedCourseUnits, selectedCourse]);
+    }, [gatedCourseUnits, selectedCourse, extCourse]);
 
     return (
         <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -489,14 +557,16 @@ export const CourseOverviewView: React.FC<CourseOverviewViewProps> = ({
                 <CertificateModal certificate={learnerCertificate} onClose={() => setIsCertModalOpen(false)} />
             )}
 
-            <button
-                type="button"
-                onClick={onBackToCatalog}
-                className="lfm-btn lfm-btn--ghost"
-                style={{ alignSelf: 'flex-start' }}
-            >
-                <ArrowLeft size={15} /> Return to Catalog
-            </button>
+            <Tooltip content="Return to course catalog overview." placement="right">
+                <button
+                    type="button"
+                    onClick={onBackToCatalog}
+                    className="lfm-btn lfm-btn--ghost"
+                    style={{ alignSelf: 'flex-start' }}
+                >
+                    <ArrowLeft size={15} /> Return to Catalog
+                </button>
+            </Tooltip>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: '20px', alignItems: 'start' }}>
 
@@ -510,50 +580,51 @@ export const CourseOverviewView: React.FC<CourseOverviewViewProps> = ({
                                     style={{ width: '100%', height: '100%', border: 'none' }}
                                     title="Course Stream Preview Trailer"
                                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
-                                    // @ts-ignore
-                                    credentialless="true"
                                 />
 
                                 <div style={{ position: 'absolute', top: '12px', right: '12px', display: 'flex', gap: '6px', zIndex: 10 }}>
-                                    <button
-                                        type="button"
-                                        onClick={() => openPopoutPlayer(previewVideoUrl)}
-                                        style={{
-                                            background: '#0284c7',
-                                            color: 'white',
-                                            border: '1px solid rgba(255,255,255,0.4)',
-                                            padding: '4px 10px',
-                                            fontSize: '0.72rem',
-                                            fontWeight: 800,
-                                            cursor: 'pointer',
-                                            display: 'inline-flex',
-                                            alignItems: 'center',
-                                            gap: '4px',
-                                            fontFamily: 'var(--font-heading)'
-                                        }}
-                                        title="Launch Standalone Popout Window"
-                                    >
-                                        <ExternalLink size={12} /> Popout Window
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setIsPreviewPlaying(false)}
-                                        style={{
-                                            background: 'rgba(15, 23, 42, 0.9)',
-                                            color: 'white',
-                                            border: '1px solid rgba(255,255,255,0.3)',
-                                            padding: '4px 10px',
-                                            fontSize: '0.72rem',
-                                            fontWeight: 800,
-                                            cursor: 'pointer',
-                                            display: 'inline-flex',
-                                            alignItems: 'center',
-                                            gap: '4px',
-                                            fontFamily: 'var(--font-heading)'
-                                        }}
-                                    >
-                                        <X size={14} /> Close
-                                    </button>
+                                    <Tooltip content="Launch preview in a standalone window." placement="bottom">
+                                        <button
+                                            type="button"
+                                            onClick={() => openPopoutPlayer(previewVideoUrl)}
+                                            style={{
+                                                background: '#0284c7',
+                                                color: 'white',
+                                                border: '1px solid rgba(255,255,255,0.4)',
+                                                padding: '4px 10px',
+                                                fontSize: '0.72rem',
+                                                fontWeight: 800,
+                                                cursor: 'pointer',
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                gap: '4px',
+                                                fontFamily: 'var(--font-heading)'
+                                            }}
+                                        >
+                                            <ExternalLink size={12} /> Popout Window
+                                        </button>
+                                    </Tooltip>
+                                    <Tooltip content="Close trailer player" placement="bottom">
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsPreviewPlaying(false)}
+                                            style={{
+                                                background: 'rgba(15, 23, 42, 0.9)',
+                                                color: 'white',
+                                                border: '1px solid rgba(255,255,255,0.3)',
+                                                padding: '4px 10px',
+                                                fontSize: '0.72rem',
+                                                fontWeight: 800,
+                                                cursor: 'pointer',
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                gap: '4px',
+                                                fontFamily: 'var(--font-heading)'
+                                            }}
+                                        >
+                                            <X size={14} /> Close
+                                        </button>
+                                    </Tooltip>
                                 </div>
                             </div>
                         ) : (
@@ -591,15 +662,17 @@ export const CourseOverviewView: React.FC<CourseOverviewViewProps> = ({
                                 </span>
 
                                 {previewVideoUrl && (
-                                    <div style={{
-                                        position: 'relative',
-                                        width: '68px', height: '68px', borderRadius: '0px',
-                                        background: 'var(--mlab-white)', border: '2px solid var(--mlab-blue)',
-                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                        boxShadow: '0 6px 24px rgba(0,0,0,0.35)'
-                                    }}>
-                                        <Play size={26} fill="var(--mlab-blue)" color="var(--mlab-blue)" style={{ marginLeft: '3px' }} />
-                                    </div>
+                                    <Tooltip content="Play course stream trailer video." placement="bottom">
+                                        <div style={{
+                                            position: 'relative',
+                                            width: '68px', height: '68px', borderRadius: '0px',
+                                            background: 'var(--mlab-white)', border: '2px solid var(--mlab-blue)',
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                            boxShadow: '0 6px 24px rgba(0,0,0,0.35)'
+                                        }}>
+                                            <Play size={26} fill="var(--mlab-blue)" color="var(--mlab-blue)" style={{ marginLeft: '3px' }} />
+                                        </div>
+                                    </Tooltip>
                                 )}
 
                                 <div style={{ position: 'absolute', bottom: '14px', left: '14px', right: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
@@ -644,13 +717,15 @@ export const CourseOverviewView: React.FC<CourseOverviewViewProps> = ({
 
                             <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap', position: 'relative', zIndex: 2 }}>
                                 {learnerCertificate ? (
-                                    <button
-                                        onClick={() => setIsCertModalOpen(true)}
-                                        className="lfm-btn lfm-btn--primary animate-fade-in"
-                                        style={{ background: '#f59e0b', color: '#78350f', border: 'none', padding: '10px 18px', fontSize: '0.85rem' }}
-                                    >
-                                        <Award size={16} /> View &amp; Download Certificate
-                                    </button>
+                                    <Tooltip content="Open and download your official PDF completion certificate." placement="top">
+                                        <button
+                                            onClick={() => setIsCertModalOpen(true)}
+                                            className="lfm-btn lfm-btn--primary animate-fade-in"
+                                            style={{ background: '#f59e0b', color: '#78350f', border: 'none', padding: '10px 18px', fontSize: '0.85rem' }}
+                                        >
+                                            <Award size={16} /> View &amp; Download Certificate
+                                        </button>
+                                    </Tooltip>
                                 ) : isSearchingCert ? (
                                     <span style={{ fontSize: '0.78rem', color: '#fde68a', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '5px', background: 'rgba(0,0,0,0.2)', padding: '6px 10px', border: '1px solid rgba(255,255,255,0.2)', fontFamily: 'var(--font-heading)', textTransform: 'uppercase' }}>
                                         <Loader2 size={13} className="lfm-spin" /> Verifying &amp; Generating Document...
@@ -695,19 +770,23 @@ export const CourseOverviewView: React.FC<CourseOverviewViewProps> = ({
                             </div>
 
                             <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
-                                <button
-                                    type="button"
-                                    onClick={onStartOrResume}
-                                    className="lfm-btn lfm-btn--green"
-                                >
-                                    <Play size={16} fill="var(--mlab-blue)" />
-                                    {hasCourseProgress ? 'Resume Active Lesson' : 'Begin Course Content'}
-                                </button>
+                                <Tooltip content={hasCourseProgress ? "Continue with your next uncompleted lesson." : "Start lesson 1 in the course player."} placement="top">
+                                    <button
+                                        type="button"
+                                        onClick={onStartOrResume}
+                                        className="lfm-btn lfm-btn--green"
+                                    >
+                                        <Play size={16} fill="var(--mlab-blue)" />
+                                        {hasCourseProgress ? 'Resume Active Lesson' : 'Begin Course Content'}
+                                    </button>
+                                </Tooltip>
 
                                 {minutesToNextMilestone > 0 && (
-                                    <span style={{ fontSize: '0.78rem', color: '#e2e8f0', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '5px', background: 'rgba(255,255,255,0.1)', padding: '6px 10px', border: '1px solid rgba(255,255,255,0.2)', fontFamily: 'var(--font-heading)', textTransform: 'uppercase' }}>
-                                        <Clock size={13} color="var(--mlab-green)" /> ~{minutesToNextMilestone} min to next milestone
-                                    </span>
+                                    <Tooltip content="Estimated duration to complete the next active lesson." placement="top">
+                                        <span style={{ fontSize: '0.78rem', color: '#e2e8f0', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '5px', background: 'rgba(255,255,255,0.1)', padding: '6px 10px', border: '1px solid rgba(255,255,255,0.2)', fontFamily: 'var(--font-heading)', textTransform: 'uppercase' }}>
+                                            <Clock size={13} color="var(--mlab-green)" /> ~{minutesToNextMilestone} min to next milestone
+                                        </span>
+                                    </Tooltip>
                                 )}
                             </div>
                         </div>
@@ -726,14 +805,16 @@ export const CourseOverviewView: React.FC<CourseOverviewViewProps> = ({
                             </p>
                         )}
 
-                        <button
-                            type="button"
-                            onClick={() => setIsAboutExpanded(prev => !prev)}
-                            style={{ marginTop: '12px', background: 'transparent', border: 'none', color: 'var(--mlab-blue)', fontSize: '0.8rem', fontWeight: 800, cursor: 'pointer', padding: 0, display: 'inline-flex', alignItems: 'center', gap: '4px', fontFamily: 'var(--font-heading)', textTransform: 'uppercase' }}
-                        >
-                            {isAboutExpanded ? 'Show Less' : 'Show More'}
-                            <ChevronDown size={14} style={{ transform: isAboutExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s ease' }} />
-                        </button>
+                        <Tooltip content="Expand or collapse detailed course background information." placement="top">
+                            <button
+                                type="button"
+                                onClick={() => setIsAboutExpanded(prev => !prev)}
+                                style={{ marginTop: '12px', background: 'transparent', border: 'none', color: 'var(--mlab-blue)', fontSize: '0.8rem', fontWeight: 800, cursor: 'pointer', padding: 0, display: 'inline-flex', alignItems: 'center', gap: '4px', fontFamily: 'var(--font-heading)', textTransform: 'uppercase' }}
+                            >
+                                {isAboutExpanded ? 'Show Less' : 'Show More'}
+                                <ChevronDown size={14} style={{ transform: isAboutExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s ease' }} />
+                            </button>
+                        </Tooltip>
                     </div>
 
                     {learningOutcomesList.length > 0 && (
@@ -753,7 +834,7 @@ export const CourseOverviewView: React.FC<CourseOverviewViewProps> = ({
                     )}
 
                     <div className="qcto-card">
-                        <div className="qcto-hdr" style={{ borderBottom: '3px solid var(--mlab-green)', }}>
+                        <div className="qcto-hdr" style={{ borderBottom: '3px solid var(--mlab-green)' }}>
                             <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                 <Layers size={18} color="white" /> Course Curriculum Modules
                             </span>
@@ -778,64 +859,66 @@ export const CourseOverviewView: React.FC<CourseOverviewViewProps> = ({
 
                                     return (
                                         <div key={mainGroup.title} style={{ marginBottom: '16px', border: '2px solid var(--mlab-border)', borderRadius: '0px', overflow: 'hidden', background: '#ffffff' }}>
-                                            <div
-                                                onClick={() => toggleMainKey(mainGroup.title)}
-                                                style={{
-                                                    background: 'var(--mlab-light-blue)',
-                                                    padding: '12px 16px',
-                                                    borderBottom: isMainCollapsed ? 'none' : '2px solid var(--mlab-border)',
-                                                    display: 'flex',
-                                                    justifyContent: 'space-between',
-                                                    alignItems: 'center',
-                                                    cursor: 'pointer',
-                                                    userSelect: 'none',
-                                                    flexWrap: 'wrap',
-                                                    gap: '10px'
-                                                }}
-                                            >
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: '180px' }}>
-                                                    {selectedCourse.framework === 'secam' ? (
-                                                        <Zap size={16} color="var(--mlab-blue)" />
-                                                    ) : (
-                                                        <GraduationCap size={16} color="var(--mlab-blue)" />
-                                                    )}
-                                                    <span style={{ fontWeight: 800, fontSize: '0.88rem', color: 'var(--mlab-blue)', fontFamily: 'var(--font-heading)', textTransform: 'uppercase' }}>
-                                                        {mainGroup.title}
-                                                    </span>
-                                                </div>
-
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginLeft: 'auto' }}>
-                                                    <div style={{ width: '120px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.62rem', fontWeight: 800, color: 'var(--mlab-blue)', fontFamily: 'var(--font-heading)' }}>
-                                                            <span>PROGRESS</span>
-                                                            <span>{mainPercent}%</span>
-                                                        </div>
-                                                        <div style={{ width: '100%', height: '5px', background: 'rgba(2, 132, 199, 0.15)', borderRadius: '0px', overflow: 'hidden' }}>
-                                                            <div style={{ width: `${mainPercent}%`, height: '100%', background: mainPercent === 100 ? 'var(--mlab-green)' : 'var(--mlab-blue)', transition: 'width 0.3s ease' }} />
-                                                        </div>
+                                            <Tooltip content="Click to expand or collapse module sections." placement="top">
+                                                <div
+                                                    onClick={() => toggleMainKey(mainGroup.title)}
+                                                    style={{
+                                                        background: 'var(--mlab-light-blue)',
+                                                        padding: '12px 16px',
+                                                        borderBottom: isMainCollapsed ? 'none' : '2px solid var(--mlab-border)',
+                                                        display: 'flex',
+                                                        justifyContent: 'space-between',
+                                                        alignItems: 'center',
+                                                        cursor: 'pointer',
+                                                        userSelect: 'none',
+                                                        flexWrap: 'wrap',
+                                                        gap: '10px'
+                                                    }}
+                                                >
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: '180px' }}>
+                                                        {selectedCourse.framework === 'secam' ? (
+                                                            <Zap size={16} color="var(--mlab-blue)" />
+                                                        ) : (
+                                                            <GraduationCap size={16} color="var(--mlab-blue)" />
+                                                        )}
+                                                        <span style={{ fontWeight: 800, fontSize: '0.88rem', color: 'var(--mlab-blue)', fontFamily: 'var(--font-heading)', textTransform: 'uppercase' }}>
+                                                            {mainGroup.title}
+                                                        </span>
                                                     </div>
 
-                                                    <span style={{
-                                                        fontSize: '0.68rem',
-                                                        fontWeight: 800,
-                                                        padding: '3px 8px',
-                                                        color: mainGroup.isComplete ? '#15803d' : 'var(--mlab-blue)',
-                                                        background: mainGroup.isComplete ? 'var(--mlab-green-bg)' : '#ffffff',
-                                                        border: `1px solid ${mainGroup.isComplete ? 'var(--mlab-green)' : 'var(--mlab-border)'}`,
-                                                        fontFamily: 'var(--font-heading)'
-                                                    }}>
-                                                        {mainGroup.completedUnits} / {mainGroup.totalUnits} DONE
-                                                    </span>
-                                                    <ChevronDown
-                                                        size={18}
-                                                        color="var(--mlab-blue)"
-                                                        style={{
-                                                            transform: isMainCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
-                                                            transition: 'transform 0.2s ease'
-                                                        }}
-                                                    />
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginLeft: 'auto' }}>
+                                                        <div style={{ width: '120px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.62rem', fontWeight: 800, color: 'var(--mlab-blue)', fontFamily: 'var(--font-heading)' }}>
+                                                                <span>PROGRESS</span>
+                                                                <span>{mainPercent}%</span>
+                                                            </div>
+                                                            <div style={{ width: '100%', height: '5px', background: 'rgba(2, 132, 199, 0.15)', borderRadius: '0px', overflow: 'hidden' }}>
+                                                                <div style={{ width: `${mainPercent}%`, height: '100%', background: mainPercent === 100 ? 'var(--mlab-green)' : 'var(--mlab-blue)', transition: 'width 0.3s ease' }} />
+                                                            </div>
+                                                        </div>
+
+                                                        <span style={{
+                                                            fontSize: '0.68rem',
+                                                            fontWeight: 800,
+                                                            padding: '3px 8px',
+                                                            color: mainGroup.isComplete ? '#15803d' : 'var(--mlab-blue)',
+                                                            background: mainGroup.isComplete ? 'var(--mlab-green-bg)' : '#ffffff',
+                                                            border: `1px solid ${mainGroup.isComplete ? 'var(--mlab-green)' : 'var(--mlab-border)'}`,
+                                                            fontFamily: 'var(--font-heading)'
+                                                        }}>
+                                                            {mainGroup.completedUnits} / {mainGroup.totalUnits} DONE
+                                                        </span>
+                                                        <ChevronDown
+                                                            size={18}
+                                                            color="var(--mlab-blue)"
+                                                            style={{
+                                                                transform: isMainCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
+                                                                transition: 'transform 0.2s ease'
+                                                            }}
+                                                        />
+                                                    </div>
                                                 </div>
-                                            </div>
+                                            </Tooltip>
 
                                             {!isMainCollapsed && (
                                                 <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '12px', background: '#f8fafc' }}>
@@ -846,144 +929,148 @@ export const CourseOverviewView: React.FC<CourseOverviewViewProps> = ({
 
                                                         return (
                                                             <div key={subKey} style={{ border: '1px solid var(--mlab-border)', background: '#ffffff', borderRadius: '0px' }}>
-                                                                <div
-                                                                    onClick={() => toggleSubKey(subKey)}
-                                                                    style={{
-                                                                        background: '#ffffff',
-                                                                        padding: '8px 12px',
-                                                                        borderBottom: isSubCollapsed ? 'none' : '1px solid var(--mlab-border)',
-                                                                        borderLeft: '4px solid var(--mlab-blue)',
-                                                                        display: 'flex',
-                                                                        justifyContent: 'space-between',
-                                                                        alignItems: 'center',
-                                                                        cursor: 'pointer',
-                                                                        userSelect: 'none',
-                                                                        flexWrap: 'wrap',
-                                                                        gap: '8px'
-                                                                    }}
-                                                                >
-                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                                        <Bookmark size={14} color="var(--mlab-blue)" />
-                                                                        <span style={{ fontWeight: 700, fontSize: '0.8rem', color: '#334155', fontFamily: 'var(--font-heading)', textTransform: 'uppercase' }}>
-                                                                            {subGroup.title}
-                                                                        </span>
-                                                                    </div>
+                                                                <Tooltip content="Click to expand or collapse topic lessons." placement="top">
+                                                                    <div
+                                                                        onClick={() => toggleSubKey(subKey)}
+                                                                        style={{
+                                                                            background: '#ffffff',
+                                                                            padding: '8px 12px',
+                                                                            borderBottom: isSubCollapsed ? 'none' : '1px solid var(--mlab-border)',
+                                                                            borderLeft: '4px solid var(--mlab-blue)',
+                                                                            display: 'flex',
+                                                                            justifyContent: 'space-between',
+                                                                            alignItems: 'center',
+                                                                            cursor: 'pointer',
+                                                                            userSelect: 'none',
+                                                                            flexWrap: 'wrap',
+                                                                            gap: '8px'
+                                                                        }}
+                                                                    >
+                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                            <Bookmark size={14} color="var(--mlab-blue)" />
+                                                                            <span style={{ fontWeight: 700, fontSize: '0.8rem', color: '#334155', fontFamily: 'var(--font-heading)', textTransform: 'uppercase' }}>
+                                                                                {subGroup.title}
+                                                                            </span>
+                                                                        </div>
 
-                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                                                        <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#64748b' }}>
-                                                                            {subGroup.units.length} Lesson{subGroup.units.length === 1 ? '' : 's'} ({subDone} Done)
-                                                                        </span>
-                                                                        <ChevronDown
-                                                                            size={16}
-                                                                            color="#64748b"
-                                                                            style={{
-                                                                                transform: isSubCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
-                                                                                transition: 'transform 0.2s ease'
-                                                                            }}
-                                                                        />
+                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                                            <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#64748b' }}>
+                                                                                {subGroup.units.length} Lesson{subGroup.units.length === 1 ? '' : 's'} ({subDone} Done)
+                                                                            </span>
+                                                                            <ChevronDown
+                                                                                size={16}
+                                                                                color="#64748b"
+                                                                                style={{
+                                                                                    transform: isSubCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
+                                                                                    transition: 'transform 0.2s ease'
+                                                                                }}
+                                                                            />
+                                                                        </div>
                                                                     </div>
-                                                                </div>
+                                                                </Tooltip>
 
                                                                 {!isSubCollapsed && (
                                                                     <div>
                                                                         {subGroup.units.map((u) => {
+                                                                            const extUnit = u as ExtendedLearnerUnitProgress;
                                                                             const unitProgressPercent = u.isCompleted
                                                                                 ? 100
-                                                                                : Math.min(100, Math.max(0, (u as any).progressPercent ?? (u as any).watchPercentage ?? 0));
+                                                                                : Math.min(100, Math.max(0, extUnit.progressPercent ?? extUnit.watchPercentage ?? 0));
 
                                                                             const hasStartedUnit = unitProgressPercent > 0 && unitProgressPercent < 100;
                                                                             const isClickable = !u.isLocked;
 
                                                                             return (
-                                                                                <div
-                                                                                    key={u.id}
-                                                                                    onClick={() => {
-                                                                                        if (isClickable) onSelectUnit(u);
-                                                                                    }}
-                                                                                    style={{
-                                                                                        display: 'flex',
-                                                                                        alignItems: 'center',
-                                                                                        justifyContent: 'space-between',
-                                                                                        padding: '10px 14px',
-                                                                                        borderBottom: '1px solid #f1f5f9',
-                                                                                        cursor: isClickable ? 'pointer' : 'not-allowed',
-                                                                                        background: u.isLocked ? '#f8fafc' : '#ffffff',
-                                                                                        opacity: u.isLocked ? 0.75 : 1,
-                                                                                        transition: 'background-color 0.15s ease',
-                                                                                        flexWrap: 'wrap',
-                                                                                        gap: '10px'
-                                                                                    }}
-                                                                                >
-                                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: '220px', flex: '1 1 240px' }}>
-                                                                                        <div style={{
-                                                                                            width: '24px', height: '24px', flexShrink: 0,
-                                                                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                                                            fontSize: '0.7rem', fontWeight: 800,
-                                                                                            border: `1px solid ${u.isCompleted ? '#15803d' : isClickable ? 'var(--mlab-blue)' : '#cbd5e1'}`,
-                                                                                            color: u.isCompleted ? '#15803d' : isClickable ? 'var(--mlab-blue)' : '#94a3b8',
-                                                                                            background: u.isCompleted ? 'var(--mlab-green-bg)' : 'white',
-                                                                                            fontFamily: 'var(--font-heading)'
-                                                                                        }}>
-                                                                                            {u.isCompleted ? <CheckCircle2 size={14} /> : u.isLocked ? <Lock size={12} /> : u.orderIndex}
-                                                                                        </div>
-
-                                                                                        <div style={{ minWidth: 0, flex: 1 }}>
-                                                                                            <div style={{ fontWeight: 700, fontSize: '0.82rem', color: isClickable ? 'var(--mlab-blue)' : '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                                                                                {u.title}
-                                                                                            </div>
-                                                                                            <div style={{ fontSize: '0.68rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
-                                                                                                <span style={{ textTransform: 'uppercase', fontWeight: 800, color: isClickable ? 'var(--mlab-blue)' : '#94a3b8', fontFamily: 'var(--font-heading)' }}>{u.unitType}</span>
-                                                                                                <span>•</span>
-                                                                                                <span>{u.estimatedMinutes} mins</span>
-                                                                                            </div>
-                                                                                        </div>
-                                                                                    </div>
-
-                                                                                    {!u.isLocked && (
-                                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: '130px', flex: '0 1 150px' }}>
-                                                                                            <div style={{ flex: 1, height: '6px', background: '#e2e8f0', borderRadius: '0px', overflow: 'hidden', position: 'relative' }}>
-                                                                                                <div
-                                                                                                    style={{
-                                                                                                        width: `${unitProgressPercent}%`,
-                                                                                                        height: '100%',
-                                                                                                        background: u.isCompleted ? '#15803d' : 'linear-gradient(90deg, #0284c7 0%, #38bdf8 100%)',
-                                                                                                        transition: 'width 0.4s ease'
-                                                                                                    }}
-                                                                                                />
-                                                                                            </div>
-                                                                                            <span style={{
-                                                                                                fontSize: '0.65rem',
-                                                                                                fontWeight: 800,
-                                                                                                color: u.isCompleted ? '#15803d' : hasStartedUnit ? '#0284c7' : '#94a3b8',
-                                                                                                fontFamily: 'monospace',
-                                                                                                minWidth: '32px',
-                                                                                                textAlign: 'right'
+                                                                                <Tooltip key={u.id} content={u.isLocked ? "Complete preceding required lessons to unlock." : "Click to launch lesson player."} placement="left">
+                                                                                    <div
+                                                                                        onClick={() => {
+                                                                                            if (isClickable) onSelectUnit(u);
+                                                                                        }}
+                                                                                        style={{
+                                                                                            display: 'flex',
+                                                                                            alignItems: 'center',
+                                                                                            justifyContent: 'space-between',
+                                                                                            padding: '10px 14px',
+                                                                                            borderBottom: '1px solid #f1f5f9',
+                                                                                            cursor: isClickable ? 'pointer' : 'not-allowed',
+                                                                                            background: u.isLocked ? '#f8fafc' : '#ffffff',
+                                                                                            opacity: u.isLocked ? 0.75 : 1,
+                                                                                            transition: 'background-color 0.15s ease',
+                                                                                            flexWrap: 'wrap',
+                                                                                            gap: '10px'
+                                                                                        }}
+                                                                                    >
+                                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: '220px', flex: '1 1 240px' }}>
+                                                                                            <div style={{
+                                                                                                width: '24px', height: '24px', flexShrink: 0,
+                                                                                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                                                                fontSize: '0.7rem', fontWeight: 800,
+                                                                                                border: `1px solid ${u.isCompleted ? '#15803d' : isClickable ? 'var(--mlab-blue)' : '#cbd5e1'}`,
+                                                                                                color: u.isCompleted ? '#15803d' : isClickable ? 'var(--mlab-blue)' : '#94a3b8',
+                                                                                                background: u.isCompleted ? 'var(--mlab-green-bg)' : 'white',
+                                                                                                fontFamily: 'var(--font-heading)'
                                                                                             }}>
-                                                                                                {unitProgressPercent}%
-                                                                                            </span>
-                                                                                        </div>
-                                                                                    )}
+                                                                                                {u.isCompleted ? <CheckCircle2 size={14} /> : u.isLocked ? <Lock size={12} /> : u.orderIndex}
+                                                                                            </div>
 
-                                                                                    <div style={{ flexShrink: 0, marginLeft: 'auto' }}>
-                                                                                        {u.isCompleted ? (
-                                                                                            <span style={{ fontSize: '0.65rem', color: '#15803d', background: 'var(--mlab-green-bg)', padding: '2px 8px', fontWeight: 800, border: '1px solid var(--mlab-green)', fontFamily: 'var(--font-heading)' }}>
-                                                                                                DONE
-                                                                                            </span>
-                                                                                        ) : u.isLocked ? (
-                                                                                            <span style={{ fontSize: '0.65rem', color: '#64748b', background: '#e2e8f0', padding: '2px 8px', fontWeight: 800, border: '1px solid #cbd5e1', fontFamily: 'var(--font-heading)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                                                                                <Lock size={10} /> LOCKED
-                                                                                            </span>
-                                                                                        ) : hasStartedUnit ? (
-                                                                                            <button type="button" className="lfm-btn lfm-btn--primary" style={{ padding: '3px 10px', fontSize: '0.68rem', background: '#0284c7' }}>
-                                                                                                RESUME
-                                                                                            </button>
-                                                                                        ) : (
-                                                                                            <button type="button" className="lfm-btn lfm-btn--ghost" style={{ padding: '3px 10px', fontSize: '0.68rem' }}>
-                                                                                                START
-                                                                                            </button>
+                                                                                            <div style={{ minWidth: 0, flex: 1 }}>
+                                                                                                <div style={{ fontWeight: 700, fontSize: '0.82rem', color: isClickable ? 'var(--mlab-blue)' : '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                                                                    {u.title}
+                                                                                                </div>
+                                                                                                <div style={{ fontSize: '0.68rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
+                                                                                                    <span style={{ textTransform: 'uppercase', fontWeight: 800, color: isClickable ? 'var(--mlab-blue)' : '#94a3b8', fontFamily: 'var(--font-heading)' }}>{u.unitType}</span>
+                                                                                                    <span>•</span>
+                                                                                                    <span>{u.estimatedMinutes} mins</span>
+                                                                                                </div>
+                                                                                            </div>
+                                                                                        </div>
+
+                                                                                        {!u.isLocked && (
+                                                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: '130px', flex: '0 1 150px' }}>
+                                                                                                <div style={{ flex: 1, height: '6px', background: '#e2e8f0', borderRadius: '0px', overflow: 'hidden', position: 'relative' }}>
+                                                                                                    <div
+                                                                                                        style={{
+                                                                                                            width: `${unitProgressPercent}%`,
+                                                                                                            height: '100%',
+                                                                                                            background: u.isCompleted ? '#15803d' : 'linear-gradient(90deg, #0284c7 0%, #38bdf8 100%)',
+                                                                                                            transition: 'width 0.4s ease'
+                                                                                                        }}
+                                                                                                    />
+                                                                                                </div>
+                                                                                                <span style={{
+                                                                                                    fontSize: '0.65rem',
+                                                                                                    fontWeight: 800,
+                                                                                                    color: u.isCompleted ? '#15803d' : hasStartedUnit ? '#0284c7' : '#94a3b8',
+                                                                                                    fontFamily: 'monospace',
+                                                                                                    minWidth: '32px',
+                                                                                                    textAlign: 'right'
+                                                                                                }}>
+                                                                                                    {unitProgressPercent}%
+                                                                                                </span>
+                                                                                            </div>
                                                                                         )}
+
+                                                                                        <div style={{ flexShrink: 0, marginLeft: 'auto' }}>
+                                                                                            {u.isCompleted ? (
+                                                                                                <span style={{ fontSize: '0.65rem', color: '#15803d', background: 'var(--mlab-green-bg)', padding: '2px 8px', fontWeight: 800, border: '1px solid var(--mlab-green)', fontFamily: 'var(--font-heading)' }}>
+                                                                                                    DONE
+                                                                                                </span>
+                                                                                            ) : u.isLocked ? (
+                                                                                                <span style={{ fontSize: '0.65rem', color: '#64748b', background: '#e2e8f0', padding: '2px 8px', fontWeight: 800, border: '1px solid #cbd5e1', fontFamily: 'var(--font-heading)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                                                                                    <Lock size={10} /> LOCKED
+                                                                                                </span>
+                                                                                            ) : hasStartedUnit ? (
+                                                                                                <button type="button" className="lfm-btn lfm-btn--primary" style={{ padding: '3px 10px', fontSize: '0.68rem', background: '#0284c7' }}>
+                                                                                                    RESUME
+                                                                                                </button>
+                                                                                            ) : (
+                                                                                                <button type="button" className="lfm-btn lfm-btn--ghost" style={{ padding: '3px 10px', fontSize: '0.68rem' }}>
+                                                                                                    START
+                                                                                                </button>
+                                                                                            )}
+                                                                                        </div>
                                                                                     </div>
-                                                                                </div>
+                                                                                </Tooltip>
                                                                             );
                                                                         })}
                                                                     </div>
@@ -1006,102 +1093,116 @@ export const CourseOverviewView: React.FC<CourseOverviewViewProps> = ({
                 <div className="lch-sidebar-sticky">
 
                     {/* PROGRAMME TIMELINE & PACING SCHEDULE CARD */}
-                    <div className="qcto-card" style={{ marginBottom: '12px' }}>
-                        <div className="qcto-hdr" style={{ fontSize: '0.75rem', display: 'flex', borderBottom: '3px solid var(--mlab-green)', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span>Programme Timeline &amp; Pacing</span>
-                            <span style={{ fontSize: '0.65rem', background: '#e0f2fe', color: '#0369a1', padding: '2px 6px', fontWeight: 800 }}>
-                                {pacingModelVal === 'individual_self_paced' ? 'Self-Paced' : 'Cohort Scheduled'}
-                            </span>
-                        </div>
-
-                        <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', background: '#f8fafc', padding: '10px', border: '1px solid #cbd5e1' }}>
-                                <div>
-                                    <span style={{ fontSize: '0.65rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', display: 'block' }}>
-                                        Start Date
-                                    </span>
-                                    <strong style={{ fontSize: '0.8rem', color: 'var(--mlab-blue)' }}>
-                                        {startDateVal ? moment(startDateVal).format('DD MMM YYYY') : 'Flexible Start'}
-                                    </strong>
-                                </div>
-                                <div>
-                                    <span style={{ fontSize: '0.65rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', display: 'block' }}>
-                                        Target End Date
-                                    </span>
-                                    <strong style={{ fontSize: '0.8rem', color: endDateVal && moment(endDateVal).isBefore(moment()) ? '#dc2626' : 'var(--mlab-blue)' }}>
-                                        {endDateVal ? moment(endDateVal).format('DD MMM YYYY') : 'Open Ending'}
-                                    </strong>
-                                </div>
+                    <Tooltip content="Delivery timeline and schedule structure assigned to this intake run." placement="left">
+                        <div className="qcto-card" style={{ marginBottom: '12px' }}>
+                            <div className="qcto-hdr" style={{ fontSize: '0.75rem', display: 'flex', borderBottom: '3px solid var(--mlab-green)', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span>Programme Timeline &amp; Pacing</span>
+                                <span style={{ fontSize: '0.65rem', background: '#e0f2fe', color: '#0369a1', padding: '2px 6px', fontWeight: 800 }}>
+                                    {pacingModelVal === 'individual_self_paced' ? 'Self-Paced' : 'Cohort Scheduled'}
+                                </span>
                             </div>
 
-                            <div>
-                                <div style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--mlab-blue)', textTransform: 'uppercase', marginBottom: '6px', fontFamily: 'var(--font-heading)' }}>
-                                    Lesson Pacing Model
+                            <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', background: '#f8fafc', padding: '10px', border: '1px solid #cbd5e1' }}>
+                                    <div>
+                                        <span style={{ fontSize: '0.65rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', display: 'block' }}>
+                                            Start Date
+                                        </span>
+                                        <strong style={{ fontSize: '0.8rem', color: 'var(--mlab-blue)' }}>
+                                            {startDateVal ? moment(startDateVal).format('DD MMM YYYY') : 'Flexible Start'}
+                                        </strong>
+                                    </div>
+                                    <div>
+                                        <span style={{ fontSize: '0.65rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', display: 'block' }}>
+                                            Target End Date
+                                        </span>
+                                        <strong style={{ fontSize: '0.8rem', color: endDateVal && moment(endDateVal).isBefore(moment()) ? '#dc2626' : 'var(--mlab-blue)' }}>
+                                            {endDateVal ? moment(endDateVal).format('DD MMM YYYY') : 'Open Ending'}
+                                        </strong>
+                                    </div>
                                 </div>
-                                <p style={{ fontSize: '0.78rem', color: '#475569', margin: 0, lineHeight: 1.4 }}>
-                                    {pacingModelVal === 'individual_self_paced' ? (
-                                        '⚡ Individual Self-Paced: Complete lessons at your own speed. Gated lessons require completion before unlocking subsequent units.'
-                                    ) : (
-                                        '🔒 Fixed Cohort Schedule: Lessons unlock according to the master cohort delivery timetable.'
-                                    )}
-                                </p>
-                            </div>
 
-                            {pacingScheduleBreakdownVal.length > 0 && (
-                                <div style={{ borderTop: '1px solid #cbd5e1', paddingTop: '10px' }}>
-                                    <div style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--mlab-blue)', textTransform: 'uppercase', marginBottom: '8px', fontFamily: 'var(--font-heading)' }}>
-                                        Module Milestone Schedule
+                                <div>
+                                    <div style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--mlab-blue)', textTransform: 'uppercase', marginBottom: '6px', fontFamily: 'var(--font-heading)' }}>
+                                        Lesson Pacing Model
                                     </div>
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                        {pacingScheduleBreakdownVal.map((item: any, idx: number) => (
-                                            <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', background: '#ffffff', padding: '6px 8px', border: '1px solid #e2e8f0' }}>
-                                                <span style={{ fontWeight: 700, color: '#334155' }}>{item.moduleOrSprintTitle || item.title || `Module ${idx + 1}`}</span>
-                                                <span style={{ color: '#0284c7', fontWeight: 800 }}>{item.targetDate ? moment(item.targetDate).format('DD MMM') : `${item.targetHours || 0}h target`}</span>
-                                            </div>
-                                        ))}
-                                    </div>
+                                    <p style={{ fontSize: '0.78rem', color: '#475569', margin: 0, lineHeight: 1.4 }}>
+                                        {pacingModelVal === 'individual_self_paced' ? (
+                                            '⚡ Individual Self-Paced: Complete lessons at your own speed. Gated lessons require completion before unlocking subsequent units.'
+                                        ) : (
+                                            '🔒 Fixed Cohort Schedule: Lessons unlock according to the master cohort delivery timetable.'
+                                        )}
+                                    </p>
                                 </div>
-                            )}
+
+                                {pacingScheduleBreakdownVal.length > 0 && (
+                                    <div style={{ borderTop: '1px solid #cbd5e1', paddingTop: '10px' }}>
+                                        <div style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--mlab-blue)', textTransform: 'uppercase', marginBottom: '8px', fontFamily: 'var(--font-heading)' }}>
+                                            Module Milestone Schedule
+                                        </div>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                            {pacingScheduleBreakdownVal.map((item, idx) => (
+                                                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', background: '#ffffff', padding: '6px 8px', border: '1px solid #e2e8f0' }}>
+                                                    <span style={{ fontWeight: 700, color: '#334155' }}>{item.moduleOrSprintTitle || item.title || `Module ${idx + 1}`}</span>
+                                                    <span style={{ color: '#0284c7', fontWeight: 800 }}>{item.targetDate ? moment(item.targetDate).format('DD MMM') : `${item.targetHours || 0}h target`}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
                         </div>
-                    </div>
+                    </Tooltip>
 
                     <div className="qcto-card">
-                        <div className="qcto-hdr" style={{ fontSize: '0.75rem', borderBottom: '3px solid var(--mlab-green)', }}>
+                        <div className="qcto-hdr" style={{ fontSize: '0.75rem', borderBottom: '3px solid var(--mlab-green)' }}>
                             Course Specifications
                         </div>
                         <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', color: '#334155' }}>
-                                <BarChart3 size={14} color="var(--mlab-blue)" /> {selectedCourse.level || 'Beginner'} Level
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', color: '#334155' }}>
-                                <Users size={14} color="var(--mlab-blue)" /> {(selectedCourse.enrolledCount || 0).toLocaleString()} Enrolled Learners
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', color: '#334155' }}>
-                                <Clock size={14} color="var(--mlab-blue)" />
-                                {selectedCourse.courseworkHours && selectedCourse.courseworkHours > 0 ? (
-                                    <span><strong>{selectedCourse.estimatedTotalHours} Hours Total</strong> ({selectedCourse.contentHours}h content + {selectedCourse.courseworkHours}h projects)</span>
-                                ) : (
-                                    <span>{selectedCourse.estimatedTotalHours || 0} Hours Duration</span>
-                                )}
-                            </div>
+                            <Tooltip content="Target skill level for this course." placement="left">
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', color: '#334155' }}>
+                                    <BarChart3 size={14} color="var(--mlab-blue)" /> {selectedCourse.level || 'Beginner'} Level
+                                </div>
+                            </Tooltip>
+
+                            <Tooltip content="Total learners enrolled in this delivery intake." placement="left">
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', color: '#334155' }}>
+                                    <Users size={14} color="var(--mlab-blue)" /> {(selectedCourse.enrolledCount || 0).toLocaleString()} Enrolled Learners
+                                </div>
+                            </Tooltip>
+
+                            <Tooltip content="Total estimated learning duration including practical coursework." placement="left">
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', color: '#334155' }}>
+                                    <Clock size={14} color="var(--mlab-blue)" />
+                                    {selectedCourse.courseworkHours && selectedCourse.courseworkHours > 0 ? (
+                                        <span><strong>{selectedCourse.estimatedTotalHours} Hours Total</strong> ({selectedCourse.contentHours}h content + {selectedCourse.courseworkHours}h projects)</span>
+                                    ) : (
+                                        <span>{selectedCourse.estimatedTotalHours || 0} Hours Duration</span>
+                                    )}
+                                </div>
+                            </Tooltip>
+
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', color: '#334155' }}>
                                 <Calendar size={14} color="var(--mlab-blue)" /> Updated {selectedCourse.lastUpdatedLabel || 'Recently'}
                             </div>
+
                             {selectedCourse.hasCertificate && (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', color: '#334155' }}>
-                                    <Award size={14} color="var(--mlab-blue)" /> Certificate Granted
-                                </div>
+                                <Tooltip content="Official certificate issued upon successfully passing all required modules." placement="left">
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', color: '#334155' }}>
+                                        <Award size={14} color="var(--mlab-blue)" /> Certificate Granted
+                                    </div>
+                                </Tooltip>
                             )}
                         </div>
                     </div>
 
                     {instructorsList.length > 0 && (
                         <div className="qcto-card">
-                            <div className="qcto-hdr" style={{ fontSize: '0.75rem', borderBottom: '3px solid var(--mlab-green)', }}>
+                            <div className="qcto-hdr" style={{ fontSize: '0.75rem', borderBottom: '3px solid var(--mlab-green)' }}>
                                 Assigned Facilitators
                             </div>
                             <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                                {instructorsList.map((instructor: any) => (
+                                {instructorsList.map((instructor) => (
                                     <div key={instructor.name} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                         <div style={{
                                             width: '34px', height: '34px', borderRadius: '0px', flexShrink: 0,
@@ -1123,7 +1224,7 @@ export const CourseOverviewView: React.FC<CourseOverviewViewProps> = ({
 
                     {materialsList.length > 0 && (
                         <div className="qcto-card">
-                            <div className="qcto-hdr" style={{ fontSize: '0.75rem', borderBottom: '3px solid var(--mlab-green)', }}>
+                            <div className="qcto-hdr" style={{ fontSize: '0.75rem', borderBottom: '3px solid var(--mlab-green)' }}>
                                 Material Included
                             </div>
                             <div style={{ padding: '16px' }}>

@@ -1,3 +1,5 @@
+// src/types/content.types.ts
+
 export type FrameworkType = "qcto" | "secam";
 
 export type UnitFormatType =
@@ -21,20 +23,25 @@ export type AccreditationBody =
   | "iitpsa"
   | "mlab"
   | "iitpsa_mlab"
-  | "other";
+  | "other"
+  | "none";
 
 export type DripPacingMode = "all_at_once" | "weekly_drip" | "fixed_dates";
+
+export type DueDateType = "hard" | "soft";
+
+export type LateSubmissionPolicy = "block" | "flag_late";
 
 // ─── ACCREDITATION & PACING CONFIGURATIONS ───
 
 export interface AccreditationConfig {
   body: AccreditationBody;
-  customText?: string; // Used when body === 'other'
-  saqaId?: string; // SAQA Qualification ID for certificate generation
-  nqfLevel?: string | number;
+  customText?: string | null; // Used when body === 'other'
+  saqaId?: string | null; // SAQA Qualification ID for certificate generation
+  nqfLevel?: string | number | null;
   isAccredited?: boolean;
-  credits?: number;
-  certificateTemplateId?: string;
+  credits?: number | null;
+  certificateTemplateId?: string | null;
   coBrandingLogos?: string[];
 }
 
@@ -44,6 +51,13 @@ export interface TimeBoundConfig {
   endDate?: string; // ISO date string
   enforceStrictDeadline?: boolean;
   pacingStrategy?: "even" | "manual"; // 'even' = auto-distribute across date range, 'manual' = author set
+}
+
+export interface DueDateConfig {
+  type: DueDateType;
+  offsetDays?: number; // Relative days from cohort start date
+  dueDateIso?: string; // Hard absolute ISO timestamp
+  latePolicy?: LateSubmissionPolicy;
 }
 
 export interface LessonAttachment {
@@ -72,6 +86,19 @@ export interface ContentContainer {
   createdAt?: string;
   updatedAt?: string;
 
+  // Visual & Presentation Metadata
+  illustrationType?: string;
+  themeColor?: string;
+  level?: string;
+  tags?: string[];
+  courseworkHours?: number;
+  contentHours?: number;
+  estimatedTotalHours?: number;
+  materialIncludes?: string[];
+  previewVideoUrl?: string;
+  isCertificateAwarded?: boolean;
+  checkpointScope?: "per_lesson" | "per_day" | "per_sprint";
+
   // Defaults for newly launched Cohort Runs
   defaultAccreditation?: AccreditationConfig;
   defaultTimeBoundConfig?: TimeBoundConfig;
@@ -89,6 +116,8 @@ export interface RunScheduleEntry {
   unitId: string; // References LearningUnit.id in the master container
   dueDate: string; // ISO date string computed/overridden for this run
   availableFromDate?: string;
+  linkedAssessmentId?: string | null;
+  dueDateConfig?: DueDateConfig;
 }
 
 export interface CohortRun {
@@ -150,12 +179,22 @@ export interface LearningUnit {
   dayOrLessonTitle?: string;
 
   // Verification Check
-  interactiveCheck?: InteractiveCheckConfig;
+  interactiveCheck?: InteractiveCheckConfig | null;
+
+  // Formal SETA / QCTO Assessment Linkage & Gating
+  linkedAssessmentId?: string | null;
+  unlinkedPolicy?: "soft_gate" | "hard_gate";
+  passingCompetencyRequired?: boolean;
+
+  // Pacing & Due Date Configurations
+  dueDateConfig?: DueDateConfig;
 
   // Supplementary & Gating Extensions
   attachments?: LessonAttachment[];
   isRequiredForNextUnit?: boolean;
   tags?: string[];
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 // ─── VERIFICATION & LEARNER PROGRESS ───
@@ -175,6 +214,8 @@ export interface LearnerContentProgress {
   learnerId: string;
   authUid: string;
   cohortId: string;
+  containerId?: string;
+  cohortRunId?: string;
   programmeId?: string;
   unitId: string;
   framework: FrameworkType;
@@ -182,12 +223,20 @@ export interface LearnerContentProgress {
   topicId?: string;
   sprintTitle?: string;
   status: "not_started" | "in_progress" | "completed";
+  isCompleted?: boolean;
   timeSpentSeconds: number;
+  watchedMins?: number;
+  watchPct?: number;
   lastWatchPositionSeconds?: number;
   maxWatchPercentageReached?: number;
+  score?: number;
+  passed?: boolean;
+  attempts?: number;
+  submittedAnswer?: string;
   verificationReceipt?: VerificationReceipt | null;
   lastAccessedAt: string;
   completedAt?: string;
+  updatedAt?: any;
 }
 
 // ─── REVISIONS & AUDIT SNAPSHOTS ───
@@ -199,7 +248,26 @@ export interface CurriculumRevisionSnapshot {
   committedAt: string;
   snapshotNote?: string;
   unitCount: number;
+  illustrationType?: string;
+  themeColor?: string;
+  level?: string;
+  description?: string;
+  prerequisites?: string[];
+  learningOutcomes?: string[];
+  targetAudience?: string[];
+  isCertificateAwarded?: boolean;
+  tags?: string[];
+  instructors?: any[];
+  contentHours?: number;
+  courseworkHours?: number;
+  estimatedTotalHours?: number;
+  materialIncludes?: string[];
+  previewVideoUrl?: string;
+  checkpointScope?: string;
   secamStructure?: any[];
   qctoModuleCheckpoints?: Record<string, any>;
   qctoTopicCheckpoints?: Record<string, any>;
+  defaultAccreditation?: AccreditationConfig;
+  accreditationBody?: string;
+  customAccreditationText?: string;
 }

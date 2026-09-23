@@ -374,14 +374,23 @@ export const createStaffAccount = onCall(
       assessorRegNumber,
       isSuperAdmin,
       privileges,
+      allowedCohortIds,
+      durationMinutes = 360, // Default 6 hours for auditor accounts
+      secondaryRoles,
+      canMarkAssessments,
+      canFacilitateCohorts,
+      isMentor,
+      canVerifyLogbooks,
+      isMarkingSuspended,
     } = request.data;
+
     const auth = request.auth;
 
     console.log(
-      `[createStaffAccount] 🟢 INITIATED: Request received to create ${role} account for ${email}`,
+      `[createStaffAccount] 🟢 INITIATED: Request received to provision/resend ${role} account for ${email}`,
     );
 
-    // Authorization Checks
+    // 1. Authorization Checks
     if (!auth) {
       console.error("[createStaffAccount] ❌ ERROR: Unauthenticated request.");
       throw new HttpsError("unauthenticated", "Authentication required.");
@@ -399,13 +408,17 @@ export const createStaffAccount = onCall(
       );
       throw new HttpsError(
         "permission-denied",
-        "Only Admins can provision staff accounts.",
+        "Only Admins can provision accounts.",
       );
     }
 
-    if (role === "admin" && !email.toLowerCase().endsWith("@mlab.co.za")) {
+    const cleanEmail = email.toLowerCase().trim();
+    const isAuditorRole = role === "seta_verifier" || role === "qcto_auditor";
+
+    // 2. Strict Domain Check for Internal Admin Accounts
+    if (role === "admin" && !cleanEmail.endsWith("@mlab.co.za")) {
       console.error(
-        `[createStaffAccount] ❌ ERROR: Domain policy violation for email: ${email}`,
+        `[createStaffAccount] ❌ ERROR: Domain policy violation for email: ${cleanEmail}`,
       );
       throw new HttpsError(
         "permission-denied",
@@ -414,41 +427,71 @@ export const createStaffAccount = onCall(
     }
 
     console.log(
-      "[createStaffAccount] ✅ Validation passed. Proceeding with Auth creation...",
+      "[createStaffAccount] ✅ Validation passed. Proceeding with Auth resolution...",
     );
 
     try {
-      // 1. Create User in Firebase Auth
-      const userRecord = await admin
-        .auth()
-        .createUser({ email, displayName: fullName, emailVerified: true });
+      // 3. 🚀 SAFE AUTH RESOLUTION (Fixes the "Email already in use" error on Resend)
+      let userRecord: admin.auth.UserRecord;
+      try {
+        // Try to fetch existing user first
+        userRecord = await admin.auth().getUserByEmail(cleanEmail);
+        console.log(
+          `[createStaffAccount] ✅ User already exists in Auth. Re-using UID: ${userRecord.uid}`,
+        );
+      } catch (error: any) {
+        // If they don't exist, create them
+        if (error.code === "auth/user-not-found") {
+          userRecord = await admin.auth().createUser({
+            email: cleanEmail,
+            displayName: fullName,
+            emailVerified: true,
+          });
+          console.log(
+            `[createStaffAccount] ✅ New Firebase Auth user created. UID: ${userRecord.uid}`,
+          );
+        } else {
+          throw error; // Rethrow unexpected errors
+        }
+      }
 
-      console.log(
-        `[createStaffAccount] ✅ Firebase Auth user created successfully. UID: ${userRecord.uid}`,
-      );
-
-      // 2. Set Custom Claims (Role-based access)
+      // 4. Set Custom Claims (Role-based access)
       await admin.auth().setCustomUserClaims(userRecord.uid, {
         role,
         ...(role === "admin" && isSuperAdmin ? { isSuperAdmin: true } : {}),
       });
-      console.log("[createStaffAccount] ✅ Custom claims set.");
+      console.log("[createStaffAccount] ✅ Custom claims successfully synced.");
 
-      // 3. Prepare Firestore Data
+      // 5. Prepare Firestore User Document Data
       const userData: any = {
         uid: userRecord.uid,
         fullName,
-        email,
+        email: cleanEmail,
         role,
         phone: phone || "",
         status: "active",
-        createdAt: new Date().toISOString(),
-        signatureUrl: "",
+        // We do not overwrite createdAt if it already exists, merge:true protects it.
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       };
 
-      if (role === "admin") {
+      // Only set signatureUrl on new creations (handled by merge:true)
+
+      if (role === "admin" || role === "assistant_admin") {
         userData.isSuperAdmin = !!isSuperAdmin;
         if (!isSuperAdmin && privileges) userData.privileges = privileges;
+        if (Array.isArray(secondaryRoles))
+          userData.secondaryRoles = secondaryRoles;
+        if (typeof canMarkAssessments === "boolean")
+          userData.canMarkAssessments = canMarkAssessments;
+        if (typeof canFacilitateCohorts === "boolean")
+          userData.canFacilitateCohorts = canFacilitateCohorts;
+        if (typeof isMentor === "boolean") userData.isMentor = isMentor;
+        if (typeof canVerifyLogbooks === "boolean")
+          userData.canVerifyLogbooks = canVerifyLogbooks;
+        if (typeof isMarkingSuspended === "boolean")
+          userData.isMarkingSuspended = isMarkingSuspended;
+      } else if (isAuditorRole) {
+        userData.allowedCohortIds = allowedCohortIds || [];
       } else if (role === "mentor" && employerId) {
         userData.employerId = employerId;
       } else if (
@@ -458,119 +501,394 @@ export const createStaffAccount = onCall(
         userData.assessorRegNumber = assessorRegNumber;
       }
 
-      // 4. Save to Firestore
+      // 6. Write User Profile to Firestore (merge: true prevents wiping existing data like signatures)
       await admin
         .firestore()
         .collection("users")
         .doc(userRecord.uid)
-        .set(userData);
+        .set(userData, { merge: true });
 
-      console.log(`[createStaffAccount] ✅ User profile written to Firestore.`);
+      console.log(
+        `[createStaffAccount] ✅ User profile written/updated in Firestore.`,
+      );
 
-      // ==========================================
-      // ISOLATED EMAIL LOGIC
-      // ==========================================
+      // ====================================================================
+      // 7. ISOLATED EMAIL ROUTING LOGIC (AUDITOR vs STANDARD STAFF)
+      // ====================================================================
       let emailSent = true;
       let emailErrorMsg = "";
 
       try {
-        console.log(
-          "[createStaffAccount] 📧 Generating password reset link...",
-        );
+        if (isAuditorRole) {
+          // 🚀 AUDITOR BRANCH: Generate Token Grant & Send Magic Link
+          console.log(
+            "[createStaffAccount] 🔑 Generating Auditor Magic Link Token...",
+          );
 
-        // Generate Secure Reset Link & Extract oobCode
-        const defaultFirebaseLink = await admin
-          .auth()
-          .generatePasswordResetLink(email);
+          const expiresAt = new Date(
+            Date.now() + durationMinutes * 60 * 1000,
+          ).toISOString();
 
-        const urlObj = new URL(defaultFirebaseLink);
-        const oobCode = urlObj.searchParams.get("oobCode");
+          const grantRef = await admin
+            .firestore()
+            .collection("auditor_access_grants")
+            .add({
+              fullName,
+              phone: phone || "N/A",
+              email: cleanEmail,
+              organization:
+                role === "seta_verifier"
+                  ? "SETA Verifier"
+                  : "QCTO Quality Assurer",
+              allowedCohortIds: allowedCohortIds || [],
+              durationMinutes,
+              expiresAt,
+              isActive: true,
+              createdBy: auth.uid,
+              createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
 
-        // Construct the clean mLab React Link
-        const customReactLink = `${APP_URL}/reset-password?oobCode=${oobCode}`;
+          const magicLinkUrl = `${APP_URL}/audit-access/${grantRef.id}`;
+          const orgName =
+            role === "seta_verifier"
+              ? "SETA Verification"
+              : "QCTO Quality Assurance";
 
-        // Format Role for Email Display
-        const displayRole =
-          role === "admin" && isSuperAdmin
-            ? "Super Administrator"
-            : role.charAt(0).toUpperCase() + role.slice(1).replace("_", " ");
+          const emailParams = {
+            title: `${orgName} Inspection Access`,
+            subtitle: "Official Read-Only Quality Assurance Link",
+            recipientName: fullName,
+            bodyHtml: `
+              <p>You have been granted temporary, read-only inspection access to the <strong>mLab Assessment Center</strong>.</p>
+              
+              <div style="background-color: #f8fafc; padding: 15px; border-radius: 6px; border: 1px solid #dde4e8; border-left: 4px solid #16a34a; margin: 20px 0;">
+                  <p style="margin: 0 0 6px 0; color: #073f4e; font-size: 13px;"><strong>Grant ID:</strong> ${grantRef.id}</p>
+                  <p style="margin: 0 0 6px 0; color: #073f4e; font-size: 13px;"><strong>Access Duration:</strong> ${durationMinutes} Minutes</p>
+                  <p style="margin: 0; color: #073f4e; font-size: 13px;"><strong>Expires At:</strong> ${new Date(expiresAt).toLocaleTimeString("en-ZA", { hour: "2-digit", minute: "2-digit" })}</p>
+              </div>
 
-        const emailParams = {
-          title: "Welcome to mLab",
-          subtitle: "Action Required: Activate your account",
-          recipientName: fullName,
-          bodyHtml: `
-            <p>Welcome to the <strong>mLab Assessment Platform</strong>! Your account has been successfully provisioned, and you have been granted access as a <strong>${displayRole}</strong>.</p>
-            
-            <p>For security reasons, we do not auto-generate passwords. To gain access to the platform and your dashboard, you must first create your own private password. Please follow these steps carefully:</p>
-            
-            <ol style="margin-top: 15px; margin-bottom: 25px; padding-left: 20px; color: #475569; line-height: 1.6;">
-                <li style="margin-bottom: 8px;">Click the <strong>Create My Password</strong> button below to open the secure setup page.</li>
-                <li style="margin-bottom: 8px;">Enter and confirm a strong password that you will remember.</li>
-                <li style="margin-bottom: 8px;">Once saved, you will be redirected to the main login screen. Use your email address and your new password to sign in.</li>
-            </ol>
-            
-            <div style="background-color: #f8fafc; padding: 15px; border-radius: 6px; border: 1px solid #dde4e8; border-left: 4px solid #0ea5e9; margin: 20px 0;">
-                <p style="margin: 0; color: #475569; font-size: 13px;"><strong>Bookmark Your Portal:</strong><br/> 
-                After your password is created, you can access your dashboard directly at any time by visiting:<br/>
-                <a href="${APP_URL}/login" style="color: #0ea5e9; font-weight: bold; text-decoration: none;">${APP_URL}/login</a></p>
-            </div>
+              <p>No password creation is required. Click the button below to open your secure inspection workspace:</p>
+            `,
+            ctaText: "Access Inspection Portal",
+            ctaLink: magicLinkUrl,
+            showStepIndicator: false,
+          };
 
-            <p>If you require any assistance getting started, please reach out to your mLab system administrator.</p>
-          `,
-          ctaText: "Create My Password",
-          ctaLink: customReactLink,
-          showStepIndicator: false,
-        };
+          console.log(
+            "[createStaffAccount] 📧 Sending Auditor Magic Link via Mailgun...",
+          );
+          await sendMailgunEmail({
+            to: cleanEmail,
+            subject: `Action Required: QCTO / SETA Inspection Access - ${fullName}`,
+            text: buildMlabEmailPlainText(emailParams),
+            html: buildMlabEmailHtml(emailParams),
+          });
+        } else {
+          // 🔒 STANDARD STAFF BRANCH: Generate Password Creation Link
+          console.log(
+            "[createStaffAccount] 📧 Generating password reset link for staff account...",
+          );
 
-        console.log("[createStaffAccount] 📧 Sending request to Mailgun...");
-        await sendMailgunEmail({
-          to: email,
-          subject: `Action Required: Access Granted - ${displayRole}`,
-          text: buildMlabEmailPlainText(emailParams),
-          html: buildMlabEmailHtml(emailParams),
-        });
+          const defaultFirebaseLink = await admin
+            .auth()
+            .generatePasswordResetLink(cleanEmail);
+
+          const urlObj = new URL(defaultFirebaseLink);
+          const oobCode = urlObj.searchParams.get("oobCode");
+          const customReactLink = `${APP_URL}/reset-password?oobCode=${oobCode}`;
+
+          const displayRole =
+            role === "admin" && isSuperAdmin
+              ? "Super Administrator"
+              : role.charAt(0).toUpperCase() + role.slice(1).replace("_", " ");
+
+          const emailParams = {
+            title: "Platform Access Link",
+            subtitle: "Action Required: Secure your account",
+            recipientName: fullName,
+            bodyHtml: `
+              <p>Welcome to the <strong>mLab Assessment Platform</strong>! Your account has been provisioned/updated, and you have access as a <strong>${displayRole}</strong>.</p>
+              
+              <p>To securely access the platform and your dashboard, please configure your private password by following these steps:</p>
+              
+              <ol style="margin-top: 15px; margin-bottom: 25px; padding-left: 20px; color: #475569; line-height: 1.6;">
+                  <li style="margin-bottom: 8px;">Click the <strong>Set My Password</strong> button below to open the secure setup page.</li>
+                  <li style="margin-bottom: 8px;">Enter and confirm a strong password that you will remember.</li>
+                  <li style="margin-bottom: 8px;">Once saved, you will be redirected to the main login screen. Use your email address and your new password to sign in.</li>
+              </ol>
+              
+              <div style="background-color: #f8fafc; padding: 15px; border-radius: 6px; border: 1px solid #dde4e8; border-left: 4px solid #0ea5e9; margin: 20px 0;">
+                  <p style="margin: 0; color: #475569; font-size: 13px;"><strong>Bookmark Your Portal:</strong><br/> 
+                  After your password is created, you can access your dashboard directly at any time by visiting:<br/>
+                  <a href="${APP_URL}/login" style="color: #0ea5e9; font-weight: bold; text-decoration: none;">${APP_URL}/login</a></p>
+              </div>
+
+              <p>If you require any assistance, please reach out to your mLab system administrator.</p>
+            `,
+            ctaText: "Set My Password",
+            ctaLink: customReactLink,
+            showStepIndicator: false,
+          };
+
+          console.log(
+            "[createStaffAccount] 📧 Sending Staff Email via Mailgun...",
+          );
+          await sendMailgunEmail({
+            to: cleanEmail,
+            subject: `Action Required: Access Granted - ${displayRole}`,
+            text: buildMlabEmailPlainText(emailParams),
+            html: buildMlabEmailHtml(emailParams),
+          });
+        }
 
         console.log(
           "[createStaffAccount] ✅ Email successfully dispatched via Mailgun.",
         );
       } catch (emailError: any) {
-        // We catch the email error so it doesn't crash the whole function
         console.error(
-          "[createStaffAccount] ⚠️ MAILGUN ERROR: Failed to send welcome email:",
+          "[createStaffAccount] ⚠️ MAILGUN ERROR: Failed to send email:",
           emailError,
         );
         emailSent = false;
         emailErrorMsg = emailError.message || "Unknown mailer error";
       }
 
-      // Return a successful response regardless of email success,
-      // but inform the frontend if the email failed to send.
       console.log(
         `[createStaffAccount] 🏁 COMPLETE. Success: true. Email Sent: ${emailSent}`,
       );
+
       return {
         success: true,
         message:
-          `Account created successfully.` +
+          `Account updated and email sent successfully.` +
           (!emailSent
-            ? ` However, the welcome email failed to send: ${emailErrorMsg}`
+            ? ` However, the notification email failed to send: ${emailErrorMsg}`
             : ""),
         uid: userRecord.uid,
         emailSent: emailSent,
       };
     } catch (error: any) {
       console.error(
-        "[createStaffAccount] ❌ FATAL ERROR during account creation:",
+        "[createStaffAccount] ❌ FATAL ERROR during account creation/update:",
         error,
       );
       throw new HttpsError(
         "internal",
-        error.message || "Unable to create account.",
+        error.message || "Unable to process account.",
       );
     }
   },
 );
+
+// export const createStaffAccount = onCall(
+//   { secrets: [mailgunSecret] },
+//   async (request) => {
+//     const {
+//       email,
+//       fullName,
+//       role,
+//       phone,
+//       employerId,
+//       assessorRegNumber,
+//       isSuperAdmin,
+//       privileges,
+//     } = request.data;
+//     const auth = request.auth;
+
+//     console.log(
+//       `[createStaffAccount] 🟢 INITIATED: Request received to create ${role} account for ${email}`,
+//     );
+
+//     // Authorization Checks
+//     if (!auth) {
+//       console.error("[createStaffAccount] ❌ ERROR: Unauthenticated request.");
+//       throw new HttpsError("unauthenticated", "Authentication required.");
+//     }
+
+//     const callerDoc = await admin
+//       .firestore()
+//       .collection("users")
+//       .doc(auth.uid)
+//       .get();
+
+//     if (!callerDoc.exists || callerDoc.data()?.role !== "admin") {
+//       console.error(
+//         `[createStaffAccount] ❌ ERROR: Permission denied for UID: ${auth.uid}`,
+//       );
+//       throw new HttpsError(
+//         "permission-denied",
+//         "Only Admins can provision staff accounts.",
+//       );
+//     }
+
+//     if (role === "admin" && !email.toLowerCase().endsWith("@mlab.co.za")) {
+//       console.error(
+//         `[createStaffAccount] ❌ ERROR: Domain policy violation for email: ${email}`,
+//       );
+//       throw new HttpsError(
+//         "permission-denied",
+//         "Security Policy Violation: Admin accounts can only be provisioned for official @mlab.co.za domains.",
+//       );
+//     }
+
+//     console.log(
+//       "[createStaffAccount] ✅ Validation passed. Proceeding with Auth creation...",
+//     );
+
+//     try {
+//       // 1. Create User in Firebase Auth
+//       const userRecord = await admin
+//         .auth()
+//         .createUser({ email, displayName: fullName, emailVerified: true });
+
+//       console.log(
+//         `[createStaffAccount] ✅ Firebase Auth user created successfully. UID: ${userRecord.uid}`,
+//       );
+
+//       // 2. Set Custom Claims (Role-based access)
+//       await admin.auth().setCustomUserClaims(userRecord.uid, {
+//         role,
+//         ...(role === "admin" && isSuperAdmin ? { isSuperAdmin: true } : {}),
+//       });
+//       console.log("[createStaffAccount] ✅ Custom claims set.");
+
+//       // 3. Prepare Firestore Data
+//       const userData: any = {
+//         uid: userRecord.uid,
+//         fullName,
+//         email,
+//         role,
+//         phone: phone || "",
+//         status: "active",
+//         createdAt: new Date().toISOString(),
+//         signatureUrl: "",
+//       };
+
+//       if (role === "admin") {
+//         userData.isSuperAdmin = !!isSuperAdmin;
+//         if (!isSuperAdmin && privileges) userData.privileges = privileges;
+//       } else if (role === "mentor" && employerId) {
+//         userData.employerId = employerId;
+//       } else if (
+//         ["assessor", "moderator"].includes(role) &&
+//         assessorRegNumber
+//       ) {
+//         userData.assessorRegNumber = assessorRegNumber;
+//       }
+
+//       // 4. Save to Firestore
+//       await admin
+//         .firestore()
+//         .collection("users")
+//         .doc(userRecord.uid)
+//         .set(userData);
+
+//       console.log(`[createStaffAccount] ✅ User profile written to Firestore.`);
+
+//       // ==========================================
+//       // ISOLATED EMAIL LOGIC
+//       // ==========================================
+//       let emailSent = true;
+//       let emailErrorMsg = "";
+
+//       try {
+//         console.log(
+//           "[createStaffAccount] 📧 Generating password reset link...",
+//         );
+
+//         // Generate Secure Reset Link & Extract oobCode
+//         const defaultFirebaseLink = await admin
+//           .auth()
+//           .generatePasswordResetLink(email);
+
+//         const urlObj = new URL(defaultFirebaseLink);
+//         const oobCode = urlObj.searchParams.get("oobCode");
+
+//         // Construct the clean mLab React Link
+//         const customReactLink = `${APP_URL}/reset-password?oobCode=${oobCode}`;
+
+//         // Format Role for Email Display
+//         const displayRole =
+//           role === "admin" && isSuperAdmin
+//             ? "Super Administrator"
+//             : role.charAt(0).toUpperCase() + role.slice(1).replace("_", " ");
+
+//         const emailParams = {
+//           title: "Welcome to mLab",
+//           subtitle: "Action Required: Activate your account",
+//           recipientName: fullName,
+//           bodyHtml: `
+//             <p>Welcome to the <strong>mLab Assessment Platform</strong>! Your account has been successfully provisioned, and you have been granted access as a <strong>${displayRole}</strong>.</p>
+
+//             <p>For security reasons, we do not auto-generate passwords. To gain access to the platform and your dashboard, you must first create your own private password. Please follow these steps carefully:</p>
+
+//             <ol style="margin-top: 15px; margin-bottom: 25px; padding-left: 20px; color: #475569; line-height: 1.6;">
+//                 <li style="margin-bottom: 8px;">Click the <strong>Create My Password</strong> button below to open the secure setup page.</li>
+//                 <li style="margin-bottom: 8px;">Enter and confirm a strong password that you will remember.</li>
+//                 <li style="margin-bottom: 8px;">Once saved, you will be redirected to the main login screen. Use your email address and your new password to sign in.</li>
+//             </ol>
+
+//             <div style="background-color: #f8fafc; padding: 15px; border-radius: 6px; border: 1px solid #dde4e8; border-left: 4px solid #0ea5e9; margin: 20px 0;">
+//                 <p style="margin: 0; color: #475569; font-size: 13px;"><strong>Bookmark Your Portal:</strong><br/>
+//                 After your password is created, you can access your dashboard directly at any time by visiting:<br/>
+//                 <a href="${APP_URL}/login" style="color: #0ea5e9; font-weight: bold; text-decoration: none;">${APP_URL}/login</a></p>
+//             </div>
+
+//             <p>If you require any assistance getting started, please reach out to your mLab system administrator.</p>
+//           `,
+//           ctaText: "Create My Password",
+//           ctaLink: customReactLink,
+//           showStepIndicator: false,
+//         };
+
+//         console.log("[createStaffAccount] 📧 Sending request to Mailgun...");
+//         await sendMailgunEmail({
+//           to: email,
+//           subject: `Action Required: Access Granted - ${displayRole}`,
+//           text: buildMlabEmailPlainText(emailParams),
+//           html: buildMlabEmailHtml(emailParams),
+//         });
+
+//         console.log(
+//           "[createStaffAccount] ✅ Email successfully dispatched via Mailgun.",
+//         );
+//       } catch (emailError: any) {
+//         // We catch the email error so it doesn't crash the whole function
+//         console.error(
+//           "[createStaffAccount] ⚠️ MAILGUN ERROR: Failed to send welcome email:",
+//           emailError,
+//         );
+//         emailSent = false;
+//         emailErrorMsg = emailError.message || "Unknown mailer error";
+//       }
+
+//       // Return a successful response regardless of email success,
+//       // but inform the frontend if the email failed to send.
+//       console.log(
+//         `[createStaffAccount] 🏁 COMPLETE. Success: true. Email Sent: ${emailSent}`,
+//       );
+//       return {
+//         success: true,
+//         message:
+//           `Account created successfully.` +
+//           (!emailSent
+//             ? ` However, the welcome email failed to send: ${emailErrorMsg}`
+//             : ""),
+//         uid: userRecord.uid,
+//         emailSent: emailSent,
+//       };
+//     } catch (error: any) {
+//       console.error(
+//         "[createStaffAccount] ❌ FATAL ERROR during account creation:",
+//         error,
+//       );
+//       throw new HttpsError(
+//         "internal",
+//         error.message || "Unable to create account.",
+//       );
+//     }
+//   },
+// );
 
 // ============================================================================
 // AUTOMATED LEARNER PROMOTION & EMAIL REGISTRATION TRIGGER
@@ -3587,7 +3905,25 @@ export const generateMasterPoE = onDocumentCreated(
     };
 
     try {
-      await updateProgress(5, "Initializing compliance engine…");
+      await updateProgress(
+        5,
+        "Initializing compliance engine & system settings…",
+      );
+
+      // 1. DYNAMIC SYSTEM SETTINGS & BRANDING
+      const settingsSnap = await admin
+        .firestore()
+        .collection("system_settings")
+        .doc("global")
+        .get();
+      const globalSettings = settingsSnap.exists
+        ? settingsSnap.data() || {}
+        : {};
+      const companyLogoUrl =
+        globalSettings.logoUrl ||
+        "https://firebasestorage.googleapis.com/v0/b/testpro-8f08c.appspot.com/o/Mlab-Grey-variation-1.png?alt=media&token=e85e0473-97cc-431d-8c08-7a3445806983";
+      const institutionName =
+        globalSettings.institutionName || "Mobile Applications Laboratory NPC";
 
       if (requestedByUid) {
         try {
@@ -3598,6 +3934,7 @@ export const generateMasterPoE = onDocumentCreated(
         }
       }
 
+      // 2. LEARNER & ENROLLMENT PROFILES
       const learnerSnap = await admin
         .firestore()
         .collection("learners")
@@ -3621,41 +3958,73 @@ export const generateMasterPoE = onDocumentCreated(
         if (enrolSnap.exists) enrollment = enrolSnap.data() || {};
       }
 
-      await updateProgress(15, "Fetching all evidence modules…");
-      const subsSnap = await admin
-        .firestore()
-        .collection("learner_submissions")
-        .where("learnerId", "==", learnerId)
-        .get();
+      await updateProgress(
+        15,
+        "Fetching all evidence modules (Dual-ID Resolver)...",
+      );
 
-      const submissions: Submission[] = subsSnap.docs.map((d) => {
-        const data = d.data();
-        return {
-          id: d.id,
-          facilitatorId:
-            data.grading?.facilitatorId || data.facilitatorId || "",
-          assessorId:
-            data.grading?.assessorId ||
-            data.grading?.gradedBy ||
-            data.gradedBy ||
-            data.assessorId ||
-            "",
-          moderatorId:
-            data.moderation?.moderatorId ||
-            data.moderation?.moderatedBy ||
-            data.moderatorId ||
-            "",
-          attemptNumber: data.attemptNumber || 1,
-          ...data,
-        } as Submission;
+      // 3. DUAL-QUERY IDENTIFIER RESOLVER (learnerId, authUid, idNumber)
+      const subQueries = [
+        admin
+          .firestore()
+          .collection("learner_submissions")
+          .where("learnerId", "==", learnerId)
+          .get(),
+      ];
+      if (learner.authUid) {
+        subQueries.push(
+          admin
+            .firestore()
+            .collection("learner_submissions")
+            .where("authUid", "==", learner.authUid)
+            .get(),
+        );
+      }
+      if (learner.idNumber && learner.idNumber !== learnerId) {
+        subQueries.push(
+          admin
+            .firestore()
+            .collection("learner_submissions")
+            .where("learnerId", "==", learner.idNumber)
+            .get(),
+        );
+      }
+
+      const subSnaps = await Promise.all(subQueries);
+      const subMap = new Map<string, Submission>();
+
+      subSnaps.forEach((snap) => {
+        snap.docs.forEach((d) => {
+          const data = d.data();
+          subMap.set(d.id, {
+            id: d.id,
+            facilitatorId:
+              data.grading?.facilitatorId || data.facilitatorId || "",
+            assessorId:
+              data.grading?.assessorId ||
+              data.grading?.gradedBy ||
+              data.gradedBy ||
+              data.assessorId ||
+              "",
+            moderatorId:
+              data.moderation?.moderatorId ||
+              data.moderation?.moderatedBy ||
+              data.moderatorId ||
+              "",
+            attemptNumber: data.attemptNumber || 1,
+            ...data,
+          } as Submission);
+        });
       });
 
+      const submissions: Submission[] = Array.from(subMap.values());
       submissions.sort(
         (a, b) =>
           new Date(a.assignedAt || 0).getTime() -
           new Date(b.assignedAt || 0).getTime(),
       );
 
+      // 4. DYNAMIC MODULE MATRIX CATEGORIZATION
       const kmSubs = submissions.filter(
         (s) => s.moduleNumber?.includes("-KM-") || s.moduleType === "knowledge",
       );
@@ -3677,9 +4046,13 @@ export const generateMasterPoE = onDocumentCreated(
         (s) => (s.attemptNumber || 1) > 1,
       );
 
-      await updateProgress(25, "Retrieving digital signatures…");
+      await updateProgress(
+        25,
+        "Retrieving digital signatures & historical snapshots…",
+      );
       const signaturesMap: Record<string, string> = {};
       const userIdsToFetch = new Set<string>();
+
       if (learner.authUid) userIdsToFetch.add(learner.authUid);
       submissions.forEach((sub) => {
         if (sub.facilitatorId) userIdsToFetch.add(sub.facilitatorId);
@@ -3706,19 +4079,15 @@ export const generateMasterPoE = onDocumentCreated(
         });
       }
 
-      // =========================================================================================
       // GLOBAL SIGNATURE RESOLUTION
-      // =========================================================================================
       const latestSub = submissions[submissions.length - 1];
       const primaryGradedSub = submissions.find((s) => s.assessorId);
 
-      // THE "DAY 1" SIGNATURE (For POPIA, Induction, and Commitment)
       let dayOneLearnerSigUrl = null;
       if (
         learnerUserDoc?.signatureHistory &&
         learnerUserDoc.signatureHistory.length > 0
       ) {
-        // Sort history by date ascending to get the oldest one
         const sortedHistory = [...learnerUserDoc.signatureHistory].sort(
           (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
         );
@@ -3729,7 +4098,6 @@ export const generateMasterPoE = onDocumentCreated(
           : null;
       }
 
-      // THE "LATEST" SIGNATURE (For the Progress Report cover)
       const latestLearnerSigUrl =
         latestSub?.learnerDeclaration?.signatureUrl ||
         (learner.authUid ? signaturesMap[learner.authUid] : null);
@@ -3746,11 +4114,8 @@ export const generateMasterPoE = onDocumentCreated(
 
       await updateProgress(30, "Building QCTO compliance document…");
 
-      const companyLogoUrl =
-        "https://firebasestorage.googleapis.com/v0/b/testpro-8f08c.appspot.com/o/Mlab-Grey-variation-1.png?alt=media&token=e85e0473-97cc-431d-8c08-7a3445806983";
       const offlineEvidenceFiles: EvidenceFile[] = [];
 
-      // Groups assessments logically under their module header!
       const progressRows = (subs: Submission[]) => {
         if (!subs.length)
           return `<tr><td colspan="4" class="empty-state">No modules mapped for this component.</td></tr>`;
@@ -3800,7 +4165,6 @@ export const generateMasterPoE = onDocumentCreated(
         return html;
       };
 
-      // Learning Plan Rows also grouped by Module Code!
       const learningPlanRows = (subs: Submission[]) => {
         if (!subs.length)
           return `<tr><td colspan="8" class="empty-state">No modules mapped.</td></tr>`;
@@ -3870,7 +4234,7 @@ export const generateMasterPoE = onDocumentCreated(
   <div class="cover__header">
     <img src="${companyLogoUrl}" alt="mLab" class="cover__logo" />
     <div class="cover__org">
-      <span class="cover__org-name">Mobile Applications Laboratory NPC</span>
+      <span class="cover__org-name">${institutionName}</span>
       <span class="cover__org-tag">QCTO Accredited Training Provider</span>
     </div>
   </div>
@@ -4010,9 +4374,6 @@ ${dividerPage("2", "Competence Record & Final Assessment Report", "Official syst
         const modFeedback =
           moderation.feedback || "<em>No moderation comments recorded.</em>";
 
-        // =========================================================================================
-        // SIGNATURE SNAPSHOT RESOLUTION (PER MODULE)
-        // =========================================================================================
         const learnerSigUrl =
           sub.learnerDeclaration?.signatureUrl ||
           (learner.authUid ? signaturesMap[learner.authUid] : null);
@@ -4052,7 +4413,6 @@ ${dividerPage("2", "Competence Record & Final Assessment Report", "Official syst
         const assDate = fmt(sub.gradedAt || grading.gradedAt);
         const modDate = fmt(moderation.moderatedAt);
 
-        // PROMINENTLY DISPLAY THE TYPE OF ASSESSMENT
         html += `
 <div class="module-header pbi">
   <div>
@@ -4129,12 +4489,12 @@ ${
 
         if (blocks.length > 0) {
           let qNum = 1;
-          blocks.forEach((block: any) => {
+          for (const block of blocks) {
             if (block.type === "section") {
               html += `<div class="sub-heading">${block.title}</div>`;
-              return;
+              continue;
             }
-            if (block.type === "info") return;
+            if (block.type === "info") continue;
 
             const blockBc =
               block.weCode || block.code || block.title || `Q${qNum}`;
@@ -4156,6 +4516,40 @@ ${
                   formattedAnswer = cleanRichText(String(ans));
                 }
               } else if (typeof ans === "object") {
+                // 5. CODE IDE SNAPSHOT RESOLVER
+                if (ans.storagePath) {
+                  try {
+                    const bucket = admin.storage().bucket();
+                    const [contents] = await bucket
+                      .file(ans.storagePath)
+                      .download();
+                    const snapshot = JSON.parse(contents.toString("utf8"));
+                    if (snapshot.files) {
+                      formattedAnswer += `<div style="margin-top:6px; font-weight:bold; color:#073f4e;">💻 Interactive Code Project Snapshot:</div>`;
+                      for (const [
+                        filename,
+                        fileContent,
+                      ] of Object.entries<string>(snapshot.files)) {
+                        const escapedCode = String(fileContent)
+                          .replace(/&/g, "&amp;")
+                          .replace(/</g, "&lt;")
+                          .replace(/>/g, "&gt;");
+                        formattedAnswer += `
+                        <div style="margin-top:6px; border:1px solid #dde4e8; border-radius:4px; overflow:hidden;">
+                          <div style="background:#073f4e; color:#ffffff; font-family:monospace; font-size:9px; padding:4px 8px; font-weight:bold;">📄 ${filename}</div>
+                          <pre style="background:#f8fafb; margin:0; padding:8px; font-size:9px; font-family:monospace; white-space:pre-wrap; word-break:break-all; max-height:250px; overflow:hidden;">${escapedCode}</pre>
+                        </div>`;
+                      }
+                    }
+                  } catch (snapErr) {
+                    console.warn(
+                      `Code IDE fetch failed for path ${ans.storagePath}:`,
+                      snapErr,
+                    );
+                    formattedAnswer += `<div class="a-annex">⚠️ Code IDE project snapshot at <code>${ans.storagePath}</code> could not be fetched.</div>`;
+                  }
+                }
+
                 if (ans.text && ans.text !== "<p></p>")
                   formattedAnswer += `<div>${cleanRichText(ans.text)}</div>`;
                 if (ans.url)
@@ -4175,6 +4569,7 @@ ${
                 }
 
                 Object.keys(ans).forEach((k) => {
+                  if (k === "storagePath") return;
                   const subAns = ans[k];
                   if (subAns && typeof subAns === "object") {
                     let subHtml = "";
@@ -4249,7 +4644,7 @@ ${
   <div class="a-text">${formattedAnswer}</div>
   ${feedbackRows.length ? `<div class="f-block">${feedbackRows.join("")}</div>` : ""}
 </div>`;
-          });
+          }
         } else {
           html += `<div class="empty-state">Assessment template is empty — evidence blocks not mapped.</div>`;
         }
@@ -4342,7 +4737,7 @@ ${sectionHeader("3", "Learner Registration Form", "Enrolment and Demographic Rec
 
 <h3 class="sub-heading" style="margin-top: 25px;">POPIA Consent Declaration</h3>
 <div class="declaration">
-  <p>In accordance with the <strong>Protection of Personal Information Act, 4 of 2013 (POPIA)</strong>, I hereby grant <strong>Mobile Applications Laboratory NPC</strong> and its authorized representatives consent to collect, process, and store my personal information.</p>
+  <p>In accordance with the <strong>Protection of Personal Information Act, 4 of 2013 (POPIA)</strong>, I hereby grant <strong>${institutionName}</strong> and its authorized representatives consent to collect, process, and store my personal information.</p>
   <p>I understand and agree that:</p>
   <ol style="margin-top:0; padding-left:20px;">
     <li style="margin-bottom:8px;">My personal information will be processed solely for the purposes of enrollment, assessment, moderation, certification, and reporting to relevant statutory bodies (e.g., QCTO, SETAs, SAQA).</li>
@@ -4363,7 +4758,7 @@ ${dividerPage("4", "Letter of Commitment", "Learner declaration of authenticity 
 <div class="pb"></div>
 ${sectionHeader("4", "Letter of Commitment from Learner", "Declaration of Authenticity and Programme Commitment")}
 <div class="letter-body">
-  <p>I, <strong>${learner.fullName || "___________________"}</strong>, hereby undertake to fulfil all the requirements of the assessment and training practices as specified by the assessor and the service provider, Mobile Applications Laboratory NPC.</p>
+  <p>I, <strong>${learner.fullName || "___________________"}</strong>, hereby undertake to fulfil all the requirements of the assessment and training practices as specified by the assessor and the service provider, ${institutionName}.</p>
   <p>I declare that all work submitted — including assignments, assessments, and case studies — is authentic and represents my own current work. I understand that submission of work that is not my own constitutes academic misconduct and may result in disqualification.</p>
   <p>I am aware that in order to graduate from this programme I need to meet all compulsory requirements, including being declared Competent on all components that form the basis of this qualification.</p>
   <p>I understand and accept the appeals and grievance procedures available to me, and commit to engaging with the process constructively and professionally.</p>
@@ -4400,12 +4795,9 @@ ${sectionHeader("6", "Appeals & Complaint Records", "Formal Grievance and Appeal
         appealedSubs.forEach((s) => {
           const revBy =
             s.appeal?.resolvedBy || s.appeal?.reviewedBy || s.moderatorId;
-
-          // Prefer snapshot saved on appeal, fallback to live profile map
           const revSig =
             s.appeal?.resolvedBySignatureUrl ||
             (revBy ? signaturesMap[revBy] : null);
-
           const revName =
             s.appeal?.resolvedByName ||
             s.appeal?.reviewedByName ||
@@ -4501,12 +4893,9 @@ ${sectionHeader("8", "Learner Coaching Record (Remediation)", "Intervention Log 
           const facId =
             log.facilitatorId || s.grading?.facilitatorId || s.facilitatorId;
 
-          // Prefer snapshot, fallback to live profile map
           const facSig =
             log.facilitatorSignatureUrl ||
             (facId ? signaturesMap[facId] : null);
-
-          // Using the latestLearnerSigUrl instead of globalLearnerSigUrl
           const learnerAckSig =
             log.learnerSignatureUrl ||
             (log.acknowledged ? latestLearnerSigUrl : null);
@@ -4557,7 +4946,7 @@ ${sectionHeader("8", "Learner Coaching Record (Remediation)", "Intervention Log 
 ${dividerPage("9", "Annexures", "Identity documents, supporting compliance files, and evidence submissions uploaded by the learner — appended on the following pages.")}
 </body></html>`;
 
-      await updateProgress(70, "Rendering assessment layout…");
+      await updateProgress(70, "Rendering assessment layout via Puppeteer…");
       const browser = await puppeteer.launch({
         args: chromium.args,
         defaultViewport: chromium.defaultViewport,
@@ -4579,7 +4968,7 @@ ${dividerPage("9", "Annexures", "Identity documents, supporting compliance files
         headerTemplate: "<span></span>",
         footerTemplate: `
           <div style="font-size:8px; font-family:'Trebuchet MS',sans-serif; color:#9b9b9b; padding:0 16mm; width:100%; display:flex; justify-content:space-between; box-sizing:border-box;">
-            <span>Mobile Applications Laboratory NPC — Master Portfolio of Evidence</span>
+            <span>${institutionName} — Master Portfolio of Evidence</span>
             <span>Page <span class="pageNumber"></span> of <span class="totalPages"></span></span>
           </div>`,
         margin: { top: "15mm", right: "16mm", bottom: "22mm", left: "16mm" },
@@ -4587,7 +4976,7 @@ ${dividerPage("9", "Annexures", "Identity documents, supporting compliance files
       });
       await browser.close();
 
-      await updateProgress(85, "Merging annexures (identity & evidence)…");
+      await updateProgress(85, "Merging annexures (parallel download stream)…");
       const masterPdf = await PDFDocument.create();
       const fontBold = await masterPdf.embedFont(StandardFonts.HelveticaBold);
       const basePdfDoc = await PDFDocument.load(puppeteerPdfBuffer);
@@ -4607,59 +4996,62 @@ ${dividerPage("9", "Annexures", "Identity documents, supporting compliance files
         });
       });
 
+      // 6. PARALLELIZED ANNEXURE BUFFER FETCH
       if (offlineEvidenceFiles.length > 0) {
         await updateProgress(90, "Stamping and merging annexures…");
-        for (const evidence of offlineEvidenceFiles) {
-          try {
+        const fetchedBuffers = await Promise.all(
+          offlineEvidenceFiles.map(async (evidence) => {
             const buffer = await fetchFileBuffer(evidence.url);
-            if (!buffer) continue;
-            const stampText = `Annexure ${evidence.index}: ${evidence.label}`;
-            try {
-              const extPdf = await PDFDocument.load(buffer);
-              const copPages = await masterPdf.copyPages(
-                extPdf,
-                extPdf.getPageIndices(),
-              );
-              if (copPages.length > 0) {
-                const fp = copPages[0];
-                fp.drawText(stampText, {
-                  x: 20,
-                  y: fp.getSize().height - 20,
-                  size: 9,
-                  color: rgb(0.86, 0.15, 0.15),
-                  font: fontBold,
-                });
-              }
-              copPages.forEach((p: any) => masterPdf.addPage(p));
-            } catch {
-              let image;
-              try {
-                image = await masterPdf.embedPng(buffer);
-              } catch {
-                try {
-                  image = await masterPdf.embedJpg(buffer);
-                } catch {}
-              }
-              if (image) {
-                const pg = masterPdf.addPage();
-                const { width, height } = pg.getSize();
-                pg.drawText(stampText, {
-                  x: 20,
-                  y: height - 30,
-                  size: 9,
-                  color: rgb(0.86, 0.15, 0.15),
-                  font: fontBold,
-                });
-                const dims = image.scaleToFit(width - 40, height - 80);
-                pg.drawImage(image, {
-                  x: width / 2 - dims.width / 2,
-                  y: height / 2 - dims.height / 2 - 20,
-                  ...dims,
-                });
-              }
+            return { evidence, buffer };
+          }),
+        );
+
+        for (const { evidence, buffer } of fetchedBuffers) {
+          if (!buffer) continue;
+          const stampText = `Annexure ${evidence.index}: ${evidence.label}`;
+          try {
+            const extPdf = await PDFDocument.load(buffer);
+            const copPages = await masterPdf.copyPages(
+              extPdf,
+              extPdf.getPageIndices(),
+            );
+            if (copPages.length > 0) {
+              const fp = copPages[0];
+              fp.drawText(stampText, {
+                x: 20,
+                y: fp.getSize().height - 20,
+                size: 9,
+                color: rgb(0.86, 0.15, 0.15),
+                font: fontBold,
+              });
             }
-          } catch (err) {
-            console.warn(`Annexure failed: ${evidence.url}`, err);
+            copPages.forEach((p: any) => masterPdf.addPage(p));
+          } catch {
+            let image;
+            try {
+              image = await masterPdf.embedPng(buffer);
+            } catch {
+              try {
+                image = await masterPdf.embedJpg(buffer);
+              } catch {}
+            }
+            if (image) {
+              const pg = masterPdf.addPage();
+              const { width, height } = pg.getSize();
+              pg.drawText(stampText, {
+                x: 20,
+                y: height - 30,
+                size: 9,
+                color: rgb(0.86, 0.15, 0.15),
+                font: fontBold,
+              });
+              const dims = image.scaleToFit(width - 40, height - 80);
+              pg.drawImage(image, {
+                x: width / 2 - dims.width / 2,
+                y: height / 2 - dims.height / 2 - 20,
+                ...dims,
+              });
+            }
           }
         }
       }
@@ -4695,7 +5087,7 @@ ${dividerPage("9", "Annexures", "Identity documents, supporting compliance files
           subtitle: learner.fullName,
           recipientName: "Admin",
           bodyHtml: `<p>The Master Portfolio of Evidence for <strong>${learner.fullName}</strong> has been generated successfully.</p>
-                     <p>All sections, transcripts, and annexures have been compiled into a single QCTO-compliant PDF.</p>
+                     <p>All sections, transcripts, Code IDE snapshots, and annexures have been compiled into a single QCTO-compliant PDF.</p>
                      <p style="font-size:11px; color:#9b9b9b;">Reference: ${requestId}</p>`,
           ctaText: "Download Master PoE PDF",
           ctaLink: downloadUrl,
@@ -4721,6 +5113,1951 @@ ${dividerPage("9", "Annexures", "Identity documents, supporting compliance files
     }
   },
 );
+
+// ============================================================================
+// 1. NLRD EXPORT ENGINE (SAQA PIPE-DELIMITED / CSV)
+// ============================================================================
+export const generateNlrdExport = onCall(
+  {
+    timeoutSeconds: 300,
+    memory: "512MiB",
+    region: "us-central1",
+    cors: true,
+    invoker: "public",
+  },
+  async (request) => {
+    // Log caller identity without throwing 401 for public/auditor invocations
+    const auth = request.auth;
+    logger.info(
+      `[NLRD Export] Processing request by: ${auth ? auth.uid : "public_auditor"}`,
+    );
+
+    const { cohortId = "ALL" } = request.data as { cohortId?: string };
+    const db = admin.firestore();
+    const bucket = admin.storage().bucket();
+
+    try {
+      logger.info(`[NLRD Export] Processing request for cohort: ${cohortId}`);
+
+      // 1. Query Enrollments
+      let enrollQuery: admin.firestore.Query = db.collection("enrollments");
+      if (cohortId !== "ALL") {
+        enrollQuery = enrollQuery.where("cohortId", "==", cohortId);
+      }
+      const enrollSnap = await enrollQuery.get();
+
+      if (enrollSnap.empty) {
+        throw new HttpsError(
+          "not-found",
+          "No learner enrollments found for the selected filter.",
+        );
+      }
+
+      // 2. Fetch Global Provider Accreditation
+      const settingsSnap = await db
+        .collection("system_settings")
+        .doc("global")
+        .get();
+      const providerAccreditation =
+        settingsSnap.data()?.sdpAccreditationNumber || "SDP070824115131";
+
+      // 3. Build SAQA NLRD Headers
+      const headers = [
+        "National_ID_Passport",
+        "Alternate_ID_Type",
+        "First_Name",
+        "Last_Name",
+        "Equity_Code",
+        "Gender_Code",
+        "Province_Code",
+        "SAQA_Qualification_ID",
+        "Provider_Accreditation_Number",
+        "Enrollment_Start_Date",
+        "Enrollment_End_Date",
+        "Completion_Status_Code",
+        "NLRD_Status",
+      ].join("|");
+
+      // 4. BATCH FETCH ALL LEARNERS AND USERS IN CONCURRENT BULK CALLS
+      const enrollDocs = enrollSnap.docs;
+
+      const learnerRefMap = new Map<
+        string,
+        admin.firestore.DocumentReference
+      >();
+      const userRefMap = new Map<string, admin.firestore.DocumentReference>();
+
+      enrollDocs.forEach((docSnap) => {
+        const enrolData = docSnap.data();
+        const actualUserId =
+          enrolData.userId || enrolData.learnerId || docSnap.id;
+        if (actualUserId && !learnerRefMap.has(actualUserId)) {
+          learnerRefMap.set(
+            actualUserId,
+            db.collection("learners").doc(actualUserId),
+          );
+        }
+        if (enrolData.authUid && !userRefMap.has(enrolData.authUid)) {
+          userRefMap.set(
+            enrolData.authUid,
+            db.collection("users").doc(enrolData.authUid),
+          );
+        }
+      });
+
+      const fetchInBatches = async (
+        refs: admin.firestore.DocumentReference[],
+      ) => {
+        const results = new Map<string, any>();
+        for (let i = 0; i < refs.length; i += 400) {
+          const chunk = refs.slice(i, i + 400);
+          if (chunk.length > 0) {
+            const snaps = await db.getAll(...chunk);
+            snaps.forEach((s) => {
+              if (s.exists) results.set(s.id, s.data());
+            });
+          }
+        }
+        return results;
+      };
+
+      const [learnersDataMap, usersDataMap] = await Promise.all([
+        fetchInBatches(Array.from(learnerRefMap.values())),
+        fetchInBatches(Array.from(userRefMap.values())),
+      ]);
+
+      // 5. Construct Pipe-Delimited Rows
+      const rows: string[] = [headers];
+
+      for (const docSnap of enrollDocs) {
+        const enrolData = docSnap.data();
+        const actualUserId =
+          enrolData.userId || enrolData.learnerId || docSnap.id;
+
+        const learnerDoc = learnersDataMap.get(actualUserId) || {};
+        const userDoc = enrolData.authUid
+          ? usersDataMap.get(enrolData.authUid) || {}
+          : {};
+
+        const rawFullName =
+          enrolData.userName ||
+          enrolData.learnerName ||
+          enrolData.fullName ||
+          learnerDoc.fullName ||
+          userDoc.fullName ||
+          learnerDoc.name ||
+          "";
+        const nameParts = rawFullName.trim().split(/\s+/);
+
+        const firstName = (
+          enrolData.firstName ||
+          learnerDoc.firstName ||
+          userDoc.firstName ||
+          nameParts[0] ||
+          "Unknown"
+        )
+          .replace(/\|/g, "")
+          .trim();
+
+        const lastName = (
+          enrolData.lastName ||
+          learnerDoc.lastName ||
+          userDoc.lastName ||
+          (nameParts.length > 1 ? nameParts.slice(1).join(" ") : "Learner")
+        )
+          .replace(/\|/g, "")
+          .trim();
+
+        const d =
+          learnerDoc.demographics ||
+          userDoc.demographics ||
+          enrolData.demographics ||
+          {};
+        const cleanIdNumber =
+          enrolData.idNumber ||
+          learnerDoc.idNumber ||
+          userDoc.idNumber ||
+          "N/A";
+        const altIdType = enrolData.idType || learnerDoc.idType || "01";
+        const equityCode = d.equityCode || d.race || "African";
+        const genderCode = d.gender ? d.gender.charAt(0).toUpperCase() : "U";
+        const provinceCode = d.provinceCode || d.province || "GP";
+        const saqaId =
+          enrolData.qualification?.saqaId ||
+          enrolData.saqaId ||
+          learnerDoc.saqaId ||
+          "118707";
+
+        const startDate =
+          enrolData.trainingStartDate ||
+          enrolData.createdAt?.toDate?.()?.toISOString().split("T")[0] ||
+          "2026-01-01";
+        const endDate = enrolData.trainingEndDate || "2026-12-31";
+
+        let statusCode = "2";
+        const statusLower = String(
+          enrolData.status || learnerDoc.status || "",
+        ).toLowerCase();
+        if (statusLower === "graduated" || statusLower === "competent")
+          statusCode = "1";
+        else if (statusLower === "dropped" || statusLower === "withdrawn")
+          statusCode = "3";
+
+        const row = [
+          cleanIdNumber,
+          altIdType,
+          firstName,
+          lastName,
+          equityCode,
+          genderCode,
+          provinceCode,
+          saqaId,
+          providerAccreditation,
+          startDate,
+          endDate,
+          statusCode,
+          "VALIDATED",
+        ].join("|");
+
+        rows.push(row);
+      }
+
+      const fileBuffer = Buffer.from(rows.join("\n"), "utf-8");
+      const filePath = `nlrd_exports/NLRD_Batch_${cohortId}_${Date.now()}.csv`;
+      const file = bucket.file(filePath);
+
+      await file.save(fileBuffer, { metadata: { contentType: "text/csv" } });
+
+      const [downloadUrl] = await file.getSignedUrl({
+        action: "read",
+        expires: Date.now() + 1000 * 60 * 60 * 2,
+      });
+
+      return { success: true, downloadUrl, totalRecords: enrollSnap.size };
+    } catch (error: any) {
+      logger.error("NLRD Export Failed:", error);
+      throw new HttpsError(
+        "internal",
+        error.message || "Failed to generate NLRD Export.",
+      );
+    }
+  },
+);
+
+// ============================================================================
+// 2. LEARNER THROUGHPUT & COMPLIANCE MATRIX REPORT (EXCEL / CSV)
+// ============================================================================
+export const generateThroughputReport = onCall(
+  {
+    timeoutSeconds: 300,
+    memory: "512MiB",
+    region: "us-central1",
+    cors: true,
+    invoker: "public",
+  },
+  async (request) => {
+    // Log caller identity without throwing 401 for public/auditor invocations
+    const auth = request.auth;
+    logger.info(
+      `[Throughput Matrix] Processing request by: ${auth ? auth.uid : "public_auditor"}`,
+    );
+
+    const { cohortId = "ALL" } = request.data as { cohortId?: string };
+    const db = admin.firestore();
+    const bucket = admin.storage().bucket();
+
+    try {
+      logger.info(
+        `[Throughput Matrix] Processing report for cohort: ${cohortId}`,
+      );
+
+      // 1. Fetch Enrollments
+      let enrollQuery: admin.firestore.Query = db.collection("enrollments");
+      if (cohortId !== "ALL") {
+        enrollQuery = enrollQuery.where("cohortId", "==", cohortId);
+      }
+      const enrollSnap = await enrollQuery.get();
+
+      if (enrollSnap.empty) {
+        throw new HttpsError("not-found", "No learner records found.");
+      }
+
+      // 2. Fetch Submissions
+      let subQuery: admin.firestore.Query = db.collection(
+        "learner_submissions",
+      );
+      if (cohortId !== "ALL") {
+        subQuery = subQuery.where("cohortId", "==", cohortId);
+      }
+      const subSnap = await subQuery.get();
+
+      const submissionsByLearner: Record<string, any[]> = {};
+      subSnap.docs.forEach((docSnap) => {
+        const sub = docSnap.data();
+        const key = sub.learnerId || sub.authUid || sub.enrollmentId;
+        if (key) {
+          if (!submissionsByLearner[key]) submissionsByLearner[key] = [];
+          submissionsByLearner[key].push(sub);
+        }
+      });
+
+      // 3. Build CSV Matrix
+      const headers = [
+        "Learner ID",
+        "Full Name",
+        "Cohort Name",
+        "Programme Title",
+        "Status",
+        "Formative Knowledge (FA)",
+        "Summative Knowledge (SA)",
+        "Practical Observations (PM)",
+        "Workplace Logbooks (WM)",
+        "Overall Completion %",
+        "SoR Status",
+      ].join(",");
+
+      const rows: string[] = [headers];
+
+      for (const docSnap of enrollSnap.docs) {
+        const data = docSnap.data();
+        const actualUserId =
+          data.userId || data.learnerId || data.idNumber || docSnap.id;
+
+        const name = `"${(data.userName || data.fullName || "Unknown Learner").replace(/"/g, '""')}"`;
+        const idNumber = data.idNumber || "N/A";
+        const cohortName = `"${(data.cohortName || data.cohortId || "Unassigned").replace(/"/g, '""')}"`;
+        const programmeName = `"${(data.qualification?.name || data.programmeName || "Generic").replace(/"/g, '""')}"`;
+        const status = data.status || "active";
+
+        const subs =
+          submissionsByLearner[actualUserId] ||
+          submissionsByLearner[docSnap.id] ||
+          [];
+
+        let faDone = 0,
+          saDone = 0,
+          pmDone = 0,
+          wmDone = 0;
+        subs.forEach((s) => {
+          const isDone = ["submitted", "graded", "moderated"].includes(
+            String(s.status).toLowerCase(),
+          );
+          const mType = String(s.moduleType || "").toLowerCase();
+          const type = String(s.type || "").toLowerCase();
+
+          if (isDone) {
+            if (mType === "knowledge" || mType === "") {
+              if (type.includes("summative") || type.includes("sa")) saDone++;
+              else faDone++;
+            } else if (mType === "practical" || type.includes("pm")) pmDone++;
+            else if (mType === "workplace" || type.includes("wm")) wmDone++;
+          }
+        });
+
+        const totalCompleted = faDone + saDone + pmDone + wmDone;
+        const totalEstimated = Math.max(10, subs.length);
+        const overallPct = Math.min(
+          100,
+          Math.round((totalCompleted / totalEstimated) * 100),
+        );
+        const sorStatus = data.sorStatus || "pending";
+
+        const row = [
+          idNumber,
+          name,
+          cohortName,
+          programmeName,
+          status,
+          faDone,
+          saDone,
+          pmDone,
+          wmDone,
+          `${overallPct}%`,
+          sorStatus,
+        ].join(",");
+
+        rows.push(row);
+      }
+
+      const fileBuffer = Buffer.from(rows.join("\n"), "utf-8");
+      const filePath = `reports/Throughput_Matrix_${cohortId}_${Date.now()}.csv`;
+      const file = bucket.file(filePath);
+
+      await file.save(fileBuffer, { metadata: { contentType: "text/csv" } });
+
+      const [downloadUrl] = await file.getSignedUrl({
+        action: "read",
+        expires: Date.now() + 1000 * 60 * 60 * 2,
+      });
+
+      return { success: true, downloadUrl, totalLearners: enrollSnap.size };
+    } catch (error: any) {
+      logger.error("Throughput Report Generation Failed:", error);
+      throw new HttpsError(
+        "internal",
+        error.message || "Failed to generate Throughput Matrix.",
+      );
+    }
+  },
+);
+
+// // ============================================================================
+// // 1. NLRD EXPORT ENGINE (SAQA PIPE-DELIMITED / CSV)
+// // ============================================================================
+// export const generateNlrdExport = onCall(
+//   {
+//     timeoutSeconds: 300,
+//     memory: "512MiB",
+//     region: "us-central1",
+//     cors: true,
+//     invoker: "public",
+//   },
+//   async (request) => {
+//     const auth = request.auth;
+//     if (!auth) {
+//       throw new HttpsError(
+//         "unauthenticated",
+//         "Authentication required to generate NLRD exports.",
+//       );
+//     }
+
+//     const { cohortId = "ALL" } = request.data as { cohortId?: string };
+//     const db = admin.firestore();
+//     const bucket = admin.storage().bucket();
+
+//     try {
+//       logger.info(`[NLRD Export] Processing request for cohort: ${cohortId}`);
+
+//       // 1. Query Enrollments
+//       let enrollQuery: admin.firestore.Query = db.collection("enrollments");
+//       if (cohortId !== "ALL") {
+//         enrollQuery = enrollQuery.where("cohortId", "==", cohortId);
+//       }
+//       const enrollSnap = await enrollQuery.get();
+
+//       if (enrollSnap.empty) {
+//         throw new HttpsError(
+//           "not-found",
+//           "No learner enrollments found for the selected filter.",
+//         );
+//       }
+
+//       // 2. Fetch Global Provider Accreditation
+//       const settingsSnap = await db
+//         .collection("system_settings")
+//         .doc("global")
+//         .get();
+//       const providerAccreditation =
+//         settingsSnap.data()?.sdpAccreditationNumber || "SDP070824115131";
+
+//       // 3. Build SAQA NLRD Headers
+//       const headers = [
+//         "National_ID_Passport",
+//         "Alternate_ID_Type",
+//         "First_Name",
+//         "Last_Name",
+//         "Equity_Code",
+//         "Gender_Code",
+//         "Province_Code",
+//         "SAQA_Qualification_ID",
+//         "Provider_Accreditation_Number",
+//         "Enrollment_Start_Date",
+//         "Enrollment_End_Date",
+//         "Completion_Status_Code",
+//         "NLRD_Status",
+//       ].join("|");
+
+//       // 4. BATCH FETCH ALL LEARNERS AND USERS IN CONCURRENT BULK CALLS (NO SEQUENTIAL LOOPS)
+//       const enrollDocs = enrollSnap.docs;
+
+//       const learnerRefMap = new Map<
+//         string,
+//         admin.firestore.DocumentReference
+//       >();
+//       const userRefMap = new Map<string, admin.firestore.DocumentReference>();
+
+//       enrollDocs.forEach((docSnap) => {
+//         const enrolData = docSnap.data();
+//         const actualUserId =
+//           enrolData.userId || enrolData.learnerId || docSnap.id;
+//         if (actualUserId && !learnerRefMap.has(actualUserId)) {
+//           learnerRefMap.set(
+//             actualUserId,
+//             db.collection("learners").doc(actualUserId),
+//           );
+//         }
+//         if (enrolData.authUid && !userRefMap.has(enrolData.authUid)) {
+//           userRefMap.set(
+//             enrolData.authUid,
+//             db.collection("users").doc(enrolData.authUid),
+//           );
+//         }
+//       });
+
+//       const fetchInBatches = async (
+//         refs: admin.firestore.DocumentReference[],
+//       ) => {
+//         const results = new Map<string, any>();
+//         for (let i = 0; i < refs.length; i += 400) {
+//           const chunk = refs.slice(i, i + 400);
+//           if (chunk.length > 0) {
+//             const snaps = await db.getAll(...chunk);
+//             snaps.forEach((s) => {
+//               if (s.exists) results.set(s.id, s.data());
+//             });
+//           }
+//         }
+//         return results;
+//       };
+
+//       const [learnersDataMap, usersDataMap] = await Promise.all([
+//         fetchInBatches(Array.from(learnerRefMap.values())),
+//         fetchInBatches(Array.from(userRefMap.values())),
+//       ]);
+
+//       // 5. Construct Pipe-Delimited Rows
+//       const rows: string[] = [headers];
+
+//       for (const docSnap of enrollDocs) {
+//         const enrolData = docSnap.data();
+//         const actualUserId =
+//           enrolData.userId || enrolData.learnerId || docSnap.id;
+
+//         const learnerDoc = learnersDataMap.get(actualUserId) || {};
+//         const userDoc = enrolData.authUid
+//           ? usersDataMap.get(enrolData.authUid) || {}
+//           : {};
+
+//         const rawFullName =
+//           enrolData.userName ||
+//           enrolData.learnerName ||
+//           enrolData.fullName ||
+//           learnerDoc.fullName ||
+//           userDoc.fullName ||
+//           learnerDoc.name ||
+//           "";
+//         const nameParts = rawFullName.trim().split(/\s+/);
+
+//         const firstName = (
+//           enrolData.firstName ||
+//           learnerDoc.firstName ||
+//           userDoc.firstName ||
+//           nameParts[0] ||
+//           "Unknown"
+//         )
+//           .replace(/\|/g, "")
+//           .trim();
+
+//         const lastName = (
+//           enrolData.lastName ||
+//           learnerDoc.lastName ||
+//           userDoc.lastName ||
+//           (nameParts.length > 1 ? nameParts.slice(1).join(" ") : "Learner")
+//         )
+//           .replace(/\|/g, "")
+//           .trim();
+
+//         const d =
+//           learnerDoc.demographics ||
+//           userDoc.demographics ||
+//           enrolData.demographics ||
+//           {};
+//         const cleanIdNumber =
+//           enrolData.idNumber ||
+//           learnerDoc.idNumber ||
+//           userDoc.idNumber ||
+//           "N/A";
+//         const altIdType = enrolData.idType || learnerDoc.idType || "01";
+//         const equityCode = d.equityCode || d.race || "African";
+//         const genderCode = d.gender ? d.gender.charAt(0).toUpperCase() : "U";
+//         const provinceCode = d.provinceCode || d.province || "GP";
+//         const saqaId =
+//           enrolData.qualification?.saqaId ||
+//           enrolData.saqaId ||
+//           learnerDoc.saqaId ||
+//           "118707";
+
+//         const startDate =
+//           enrolData.trainingStartDate ||
+//           enrolData.createdAt?.toDate?.()?.toISOString().split("T")[0] ||
+//           "2026-01-01";
+//         const endDate = enrolData.trainingEndDate || "2026-12-31";
+
+//         let statusCode = "2";
+//         const statusLower = String(
+//           enrolData.status || learnerDoc.status || "",
+//         ).toLowerCase();
+//         if (statusLower === "graduated" || statusLower === "competent")
+//           statusCode = "1";
+//         else if (statusLower === "dropped" || statusLower === "withdrawn")
+//           statusCode = "3";
+
+//         const row = [
+//           cleanIdNumber,
+//           altIdType,
+//           firstName,
+//           lastName,
+//           equityCode,
+//           genderCode,
+//           provinceCode,
+//           saqaId,
+//           providerAccreditation,
+//           startDate,
+//           endDate,
+//           statusCode,
+//           "VALIDATED",
+//         ].join("|");
+
+//         rows.push(row);
+//       }
+
+//       const fileBuffer = Buffer.from(rows.join("\n"), "utf-8");
+//       const filePath = `nlrd_exports/NLRD_Batch_${cohortId}_${Date.now()}.csv`;
+//       const file = bucket.file(filePath);
+
+//       await file.save(fileBuffer, { metadata: { contentType: "text/csv" } });
+
+//       const [downloadUrl] = await file.getSignedUrl({
+//         action: "read",
+//         expires: Date.now() + 1000 * 60 * 60 * 2,
+//       });
+
+//       return { success: true, downloadUrl, totalRecords: enrollSnap.size };
+//     } catch (error: any) {
+//       logger.error("NLRD Export Failed:", error);
+//       throw new HttpsError(
+//         "internal",
+//         error.message || "Failed to generate NLRD Export.",
+//       );
+//     }
+//   },
+// );
+
+// // ============================================================================
+// // 2. LEARNER THROUGHPUT & COMPLIANCE MATRIX REPORT (EXCEL / CSV)
+// // ============================================================================
+// export const generateThroughputReport = onCall(
+//   {
+//     timeoutSeconds: 300,
+//     memory: "512MiB",
+//     region: "us-central1",
+//     cors: true,
+//     invoker: "public",
+//   },
+//   async (request) => {
+//     const auth = request.auth;
+//     if (!auth) {
+//       throw new HttpsError(
+//         "unauthenticated",
+//         "Authentication required to generate Throughput Matrix.",
+//       );
+//     }
+
+//     const { cohortId = "ALL" } = request.data as { cohortId?: string };
+//     const db = admin.firestore();
+//     const bucket = admin.storage().bucket();
+
+//     try {
+//       logger.info(
+//         `[Throughput Matrix] Processing report for cohort: ${cohortId}`,
+//       );
+
+//       // 1. Fetch Enrollments
+//       let enrollQuery: admin.firestore.Query = db.collection("enrollments");
+//       if (cohortId !== "ALL") {
+//         enrollQuery = enrollQuery.where("cohortId", "==", cohortId);
+//       }
+//       const enrollSnap = await enrollQuery.get();
+
+//       if (enrollSnap.empty) {
+//         throw new HttpsError("not-found", "No learner records found.");
+//       }
+
+//       // 2. Fetch Submissions
+//       let subQuery: admin.firestore.Query = db.collection(
+//         "learner_submissions",
+//       );
+//       if (cohortId !== "ALL") {
+//         subQuery = subQuery.where("cohortId", "==", cohortId);
+//       }
+//       const subSnap = await subQuery.get();
+
+//       const submissionsByLearner: Record<string, any[]> = {};
+//       subSnap.docs.forEach((docSnap) => {
+//         const sub = docSnap.data();
+//         const key = sub.learnerId || sub.authUid || sub.enrollmentId;
+//         if (key) {
+//           if (!submissionsByLearner[key]) submissionsByLearner[key] = [];
+//           submissionsByLearner[key].push(sub);
+//         }
+//       });
+
+//       // 3. Build CSV Matrix
+//       const headers = [
+//         "Learner ID",
+//         "Full Name",
+//         "Cohort Name",
+//         "Programme Title",
+//         "Status",
+//         "Formative Knowledge (FA)",
+//         "Summative Knowledge (SA)",
+//         "Practical Observations (PM)",
+//         "Workplace Logbooks (WM)",
+//         "Overall Completion %",
+//         "SoR Status",
+//       ].join(",");
+
+//       const rows: string[] = [headers];
+
+//       for (const docSnap of enrollSnap.docs) {
+//         const data = docSnap.data();
+//         const actualUserId =
+//           data.userId || data.learnerId || data.idNumber || docSnap.id;
+
+//         const name = `"${(data.userName || data.fullName || "Unknown Learner").replace(/"/g, '""')}"`;
+//         const idNumber = data.idNumber || "N/A";
+//         const cohortName = `"${(data.cohortName || data.cohortId || "Unassigned").replace(/"/g, '""')}"`;
+//         const programmeName = `"${(data.qualification?.name || data.programmeName || "Generic").replace(/"/g, '""')}"`;
+//         const status = data.status || "active";
+
+//         const subs =
+//           submissionsByLearner[actualUserId] ||
+//           submissionsByLearner[docSnap.id] ||
+//           [];
+
+//         let faDone = 0,
+//           saDone = 0,
+//           pmDone = 0,
+//           wmDone = 0;
+//         subs.forEach((s) => {
+//           const isDone = ["submitted", "graded", "moderated"].includes(
+//             String(s.status).toLowerCase(),
+//           );
+//           const mType = String(s.moduleType || "").toLowerCase();
+//           const type = String(s.type || "").toLowerCase();
+
+//           if (isDone) {
+//             if (mType === "knowledge" || mType === "") {
+//               if (type.includes("summative") || type.includes("sa")) saDone++;
+//               else faDone++;
+//             } else if (mType === "practical" || type.includes("pm")) pmDone++;
+//             else if (mType === "workplace" || type.includes("wm")) wmDone++;
+//           }
+//         });
+
+//         const totalCompleted = faDone + saDone + pmDone + wmDone;
+//         const totalEstimated = Math.max(10, subs.length);
+//         const overallPct = Math.min(
+//           100,
+//           Math.round((totalCompleted / totalEstimated) * 100),
+//         );
+//         const sorStatus = data.sorStatus || "pending";
+
+//         const row = [
+//           idNumber,
+//           name,
+//           cohortName,
+//           programmeName,
+//           status,
+//           faDone,
+//           saDone,
+//           pmDone,
+//           wmDone,
+//           `${overallPct}%`,
+//           sorStatus,
+//         ].join(",");
+
+//         rows.push(row);
+//       }
+
+//       const fileBuffer = Buffer.from(rows.join("\n"), "utf-8");
+//       const filePath = `reports/Throughput_Matrix_${cohortId}_${Date.now()}.csv`;
+//       const file = bucket.file(filePath);
+
+//       await file.save(fileBuffer, { metadata: { contentType: "text/csv" } });
+
+//       const [downloadUrl] = await file.getSignedUrl({
+//         action: "read",
+//         expires: Date.now() + 1000 * 60 * 60 * 2,
+//       });
+
+//       return { success: true, downloadUrl, totalLearners: enrollSnap.size };
+//     } catch (error: any) {
+//       logger.error("Throughput Report Generation Failed:", error);
+//       throw new HttpsError(
+//         "internal",
+//         error.message || "Failed to generate Throughput Matrix.",
+//       );
+//     }
+//   },
+// );
+
+// export const generateMasterPoE = onDocumentCreated(
+//   {
+//     document: "poe_export_requests/{requestId}",
+//     timeoutSeconds: 540,
+//     memory: "2GiB",
+//     region: "us-central1",
+//     secrets: [mailgunSecret],
+//   },
+//   async (event) => {
+//     const snap = event.data;
+//     if (!snap) return;
+
+//     const requestData = snap.data();
+//     const requestId = event.params.requestId;
+//     const learnerId = requestData.learnerId;
+//     const requestedByUid = requestData.requestedBy;
+//     let requesterEmail: string | null = null;
+
+//     const updateProgress = async (percent: number, message: string) =>
+//       snap.ref.update({ progress: percent, progressMessage: message });
+
+//     const fmt = (d?: string | Date | null) => {
+//       if (!d) return "N/A";
+//       try {
+//         const dt = new Date(d);
+//         return isNaN(dt.getTime()) ? "N/A" : dt.toLocaleDateString("en-ZA");
+//       } catch {
+//         return "N/A";
+//       }
+//     };
+
+//     try {
+//       await updateProgress(5, "Initializing compliance engine…");
+
+//       if (requestedByUid) {
+//         try {
+//           requesterEmail =
+//             (await admin.auth().getUser(requestedByUid)).email || null;
+//         } catch (e) {
+//           console.error("Auth fetch failed", e);
+//         }
+//       }
+
+//       const learnerSnap = await admin
+//         .firestore()
+//         .collection("learners")
+//         .doc(learnerId)
+//         .get();
+//       const learner = learnerSnap.data() || {};
+//       const userDocSnap = await admin
+//         .firestore()
+//         .collection("users")
+//         .doc(learner.authUid || learnerId)
+//         .get();
+//       const learnerUserDoc = userDocSnap.data() || {};
+
+//       let enrollment: any = {};
+//       if (learner.enrollmentId) {
+//         const enrolSnap = await admin
+//           .firestore()
+//           .collection("enrollments")
+//           .doc(learner.enrollmentId)
+//           .get();
+//         if (enrolSnap.exists) enrollment = enrolSnap.data() || {};
+//       }
+
+//       await updateProgress(15, "Fetching all evidence modules…");
+//       const subsSnap = await admin
+//         .firestore()
+//         .collection("learner_submissions")
+//         .where("learnerId", "==", learnerId)
+//         .get();
+
+//       const submissions: Submission[] = subsSnap.docs.map((d) => {
+//         const data = d.data();
+//         return {
+//           id: d.id,
+//           facilitatorId:
+//             data.grading?.facilitatorId || data.facilitatorId || "",
+//           assessorId:
+//             data.grading?.assessorId ||
+//             data.grading?.gradedBy ||
+//             data.gradedBy ||
+//             data.assessorId ||
+//             "",
+//           moderatorId:
+//             data.moderation?.moderatorId ||
+//             data.moderation?.moderatedBy ||
+//             data.moderatorId ||
+//             "",
+//           attemptNumber: data.attemptNumber || 1,
+//           ...data,
+//         } as Submission;
+//       });
+
+//       submissions.sort(
+//         (a, b) =>
+//           new Date(a.assignedAt || 0).getTime() -
+//           new Date(b.assignedAt || 0).getTime(),
+//       );
+
+//       const kmSubs = submissions.filter(
+//         (s) => s.moduleNumber?.includes("-KM-") || s.moduleType === "knowledge",
+//       );
+//       const pmSubs = submissions.filter(
+//         (s) => s.moduleNumber?.includes("-PM-") || s.moduleType === "practical",
+//       );
+//       const wmSubs = submissions.filter(
+//         (s) => s.moduleNumber?.includes("-WM-") || s.moduleType === "workplace",
+//       );
+
+//       const primaryAssessor =
+//         submissions.find((s) => s.grading?.assessorName)?.grading
+//           ?.assessorName || "Pending Assessor";
+//       const primaryFacilitatorId = submissions.find(
+//         (s) => s.facilitatorId,
+//       )?.facilitatorId;
+//       const appealedSubs = submissions.filter((s) => s.appeal);
+//       const remediatedSubs = submissions.filter(
+//         (s) => (s.attemptNumber || 1) > 1,
+//       );
+
+//       await updateProgress(25, "Retrieving digital signatures…");
+//       const signaturesMap: Record<string, string> = {};
+//       const userIdsToFetch = new Set<string>();
+//       if (learner.authUid) userIdsToFetch.add(learner.authUid);
+//       submissions.forEach((sub) => {
+//         if (sub.facilitatorId) userIdsToFetch.add(sub.facilitatorId);
+//         if (sub.assessorId) userIdsToFetch.add(sub.assessorId);
+//         if (sub.moderatorId) userIdsToFetch.add(sub.moderatorId);
+//         if (sub.appeal?.reviewedBy) userIdsToFetch.add(sub.appeal.reviewedBy);
+//         if (sub.appeal?.resolvedBy) userIdsToFetch.add(sub.appeal.resolvedBy);
+//         if (sub.latestCoachingLog?.facilitatorId)
+//           userIdsToFetch.add(sub.latestCoachingLog.facilitatorId);
+//       });
+
+//       if (userIdsToFetch.size > 0) {
+//         const userSnaps = await Promise.all(
+//           Array.from(userIdsToFetch).map((uid) =>
+//             admin.firestore().collection("users").doc(uid).get(),
+//           ),
+//         );
+//         userSnaps.forEach((uSnap) => {
+//           if (uSnap.exists) {
+//             const uData = uSnap.data();
+//             if (uData?.signatureUrl)
+//               signaturesMap[uSnap.id] = uData.signatureUrl;
+//           }
+//         });
+//       }
+
+//       // =========================================================================================
+//       // GLOBAL SIGNATURE RESOLUTION
+//       // =========================================================================================
+//       const latestSub = submissions[submissions.length - 1];
+//       const primaryGradedSub = submissions.find((s) => s.assessorId);
+
+//       // THE "DAY 1" SIGNATURE (For POPIA, Induction, and Commitment)
+//       let dayOneLearnerSigUrl = null;
+//       if (
+//         learnerUserDoc?.signatureHistory &&
+//         learnerUserDoc.signatureHistory.length > 0
+//       ) {
+//         // Sort history by date ascending to get the oldest one
+//         const sortedHistory = [...learnerUserDoc.signatureHistory].sort(
+//           (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
+//         );
+//         dayOneLearnerSigUrl = sortedHistory[0].url;
+//       } else {
+//         dayOneLearnerSigUrl = learner.authUid
+//           ? signaturesMap[learner.authUid]
+//           : null;
+//       }
+
+//       // THE "LATEST" SIGNATURE (For the Progress Report cover)
+//       const latestLearnerSigUrl =
+//         latestSub?.learnerDeclaration?.signatureUrl ||
+//         (learner.authUid ? signaturesMap[learner.authUid] : null);
+
+//       const primaryFacSigUrl =
+//         submissions[0]?.grading?.facilitatorSignatureUrl ||
+//         (primaryFacilitatorId ? signaturesMap[primaryFacilitatorId] : null);
+
+//       const globalAssessorSigUrl =
+//         primaryGradedSub?.grading?.assessorSignatureUrl ||
+//         (primaryGradedSub?.assessorId
+//           ? signaturesMap[primaryGradedSub.assessorId]
+//           : null);
+
+//       await updateProgress(30, "Building QCTO compliance document…");
+
+//       const companyLogoUrl =
+//         "https://firebasestorage.googleapis.com/v0/b/testpro-8f08c.appspot.com/o/Mlab-Grey-variation-1.png?alt=media&token=e85e0473-97cc-431d-8c08-7a3445806983";
+//       const offlineEvidenceFiles: EvidenceFile[] = [];
+
+//       // Groups assessments logically under their module header!
+//       const progressRows = (subs: Submission[]) => {
+//         if (!subs.length)
+//           return `<tr><td colspan="4" class="empty-state">No modules mapped for this component.</td></tr>`;
+
+//         const groups: Record<string, Submission[]> = {};
+//         subs.forEach((s) => {
+//           const mod = s.moduleNumber || "Unlinked Assessments";
+//           if (!groups[mod]) groups[mod] = [];
+//           groups[mod].push(s);
+//         });
+
+//         let html = "";
+//         Object.keys(groups)
+//           .sort()
+//           .forEach((mod) => {
+//             html += `<tr class="mod-header-row">
+//                 <td colspan="4">
+//                     <span class="mod-header-text">MODULE: ${mod}</span>
+//                 </td>
+//             </tr>`;
+
+//             groups[mod]
+//               .sort(
+//                 (a, b) =>
+//                   new Date(a.assignedAt || 0).getTime() -
+//                   new Date(b.assignedAt || 0).getTime(),
+//               )
+//               .forEach((s) => {
+//                 const att = s.attemptNumber || 1;
+//                 const attBadge =
+//                   att > 1
+//                     ? `<span class="badge badge--attempt">Attempt ${att}</span>`
+//                     : `<span class="badge badge--attempt1">1st</span>`;
+//                 const compBadge = outcomeBadge(s.competency);
+//                 const typeLabel = s.type
+//                   ? `<span class="badge--type">${s.type}</span>`
+//                   : "";
+
+//                 html += `<tr>
+//                   <td></td>
+//                   <td style="padding-top:6px; padding-bottom:6px;">${typeLabel}<span style="vertical-align:middle;">${s.title || "Untitled"}</span></td>
+//                   <td class="text-center" style="vertical-align:middle;">${attBadge}</td>
+//                   <td class="text-center" style="vertical-align:middle;">${compBadge}</td>
+//                 </tr>`;
+//               });
+//           });
+//         return html;
+//       };
+
+//       // Learning Plan Rows also grouped by Module Code!
+//       const learningPlanRows = (subs: Submission[]) => {
+//         if (!subs.length)
+//           return `<tr><td colspan="8" class="empty-state">No modules mapped.</td></tr>`;
+
+//         const groups: Record<string, Submission[]> = {};
+//         subs.forEach((s) => {
+//           const mod = s.moduleNumber || "Unlinked Assessments";
+//           if (!groups[mod]) groups[mod] = [];
+//           groups[mod].push(s);
+//         });
+
+//         let html = "";
+//         Object.keys(groups)
+//           .sort()
+//           .forEach((mod) => {
+//             html += `<tr class="mod-header-row">
+//                 <td colspan="8">
+//                     <span class="mod-header-text">MODULE: ${mod}</span>
+//                 </td>
+//             </tr>`;
+
+//             groups[mod]
+//               .sort(
+//                 (a, b) =>
+//                   new Date(a.assignedAt || 0).getTime() -
+//                   new Date(b.assignedAt || 0).getTime(),
+//               )
+//               .forEach((s) => {
+//                 const facName =
+//                   s.grading?.facilitatorName || s.facilitatorName || "Pending";
+//                 const dateRange = `${fmt(s.assignedAt)} – ${fmt(s.gradedAt)}`;
+//                 const compBadge = outcomeBadge(s.competency);
+//                 const typeLabel = s.type
+//                   ? `<span class="badge--type">${s.type}</span>`
+//                   : "";
+
+//                 html += `<tr>
+//                   <td class="nested-cell">${typeLabel}<span style="vertical-align:middle;">${s.title || "Untitled"}</span></td>
+//                   <td><span class="ink-fac">${facName}</span></td>
+//                   <td style="font-size:10px;">${dateRange}</td>
+//                   <td class="text-center font-bold">${s.moduleType === "knowledge" ? "✓" : ""}</td>
+//                   <td class="text-center font-bold">${s.moduleType === "practical" ? "✓" : ""}</td>
+//                   <td class="text-center font-bold">${s.moduleType === "workplace" ? "✓" : ""}</td>
+//                   <td class="text-center">${s.competency === "C" ? compBadge : ""}</td>
+//                   <td class="text-center">${s.competency === "NYC" ? compBadge : ""}</td>
+//                 </tr>`;
+//               });
+//           });
+//         return html;
+//       };
+
+//       let html = `<!DOCTYPE html>
+// <html lang="en">
+// <head>
+//   <meta charset="UTF-8">
+//   <title>Master PoE — ${learner.fullName || "Learner"}</title>
+//   <style>${POE_STYLES}</style>
+// </head>
+// <body>
+
+// <div class="cover">
+//   <div class="cover__pattern"></div>
+//   <div class="cover__accent">
+//     <div class="cover__accent-blue"></div>
+//     <div class="cover__accent-green"></div>
+//   </div>
+//   <div class="cover__header">
+//     <img src="${companyLogoUrl}" alt="mLab" class="cover__logo" />
+//     <div class="cover__org">
+//       <span class="cover__org-name">Mobile Applications Laboratory NPC</span>
+//       <span class="cover__org-tag">QCTO Accredited Training Provider</span>
+//     </div>
+//   </div>
+//   <div class="cover__body">
+//     <p class="cover__doc-type">QCTO Qualification Compliance Record</p>
+//     <h1 class="cover__title">Master Portfolio<br>of Evidence</h1>
+//     <p class="cover__subtitle">Official Assessment Archive</p>
+//     <div class="cover__id-card">
+//       <div class="cover__id-row">
+//         <div class="cover__id-label">Full Name</div>
+//         <div class="cover__id-value">${learner.fullName || "N/A"}</div>
+//       </div>
+//       <div class="cover__id-row">
+//         <div class="cover__id-label">Identity Number</div>
+//         <div class="cover__id-value">${learner.idNumber || "N/A"}</div>
+//       </div>
+//       <div class="cover__id-row">
+//         <div class="cover__id-label">Email Address</div>
+//         <div class="cover__id-value">${learner.email || "N/A"}</div>
+//       </div>
+//       <div class="cover__id-row">
+//         <div class="cover__id-label">Programme</div>
+//         <div class="cover__id-value">${learner.qualification?.name || enrollment.qualificationName || "N/A"}</div>
+//       </div>
+//       <div class="cover__id-row">
+//         <div class="cover__id-label">Date Generated</div>
+//         <div class="cover__id-value">${fmt(new Date())}</div>
+//       </div>
+//     </div>
+//   </div>
+//   <div class="cover__footer">
+//     <span class="cover__footer-ref">Ref: ${requestId}</span>
+//     <span class="cover__footer-date">Generated ${fmt(new Date())}</span>
+//   </div>
+//   <div class="cover__accent-bottom">
+//     <div class="cover__accent-bottom-green"></div>
+//     <div class="cover__accent-bottom-blue"></div>
+//   </div>
+// </div>
+// <div class="pb"></div>
+
+// ${sectionHeader("✓", "Assessor PoE Checklist", "Document Completeness Verification")}
+// <table class="poe-table poe-table--checklist">
+//   <thead><tr><th width="30">#</th><th>Document / Section</th><th width="160">Inclusion Status</th></tr></thead>
+//   <tbody>
+//     <tr><td>1</td><td>Progress Report (all module components)</td><td><span class="badge badge--c">Included</span></td></tr>
+//     <tr><td>2</td><td>Competence Record and Final Assessment Report</td><td><span class="badge badge--c">Included</span></td></tr>
+//     <tr><td>3</td><td>Learner Registration & POPIA Consent Form</td><td><span class="badge badge--c">Included</span></td></tr>
+//     <tr><td>4</td><td>Letter of Commitment from Learner</td><td><span class="badge badge--c">Included</span></td></tr>
+//     <tr><td>5</td><td>Programme Induction Record</td><td><span class="badge badge--c">Included</span></td></tr>
+//     <tr><td>6</td><td>Appeals / Complaint Forms</td><td>${appealedSubs.length > 0 ? `<span class="badge badge--nyc">${appealedSubs.length} Appeal(s) — See Section 6</span>` : `<span class="badge badge--p">None Lodged</span>`}</td></tr>
+//     <tr><td>7</td><td>Actual Learning Plan and Evidence Control Sheet</td><td><span class="badge badge--c">Included</span></td></tr>
+//     <tr><td>8</td><td>Learner Coaching Record (Remediation)</td><td>${remediatedSubs.length > 0 ? `<span class="badge badge--nyc">${remediatedSubs.length} Session(s) — See Section 8</span>` : `<span class="badge badge--p">N/A — All First Attempt</span>`}</td></tr>
+//     <tr><td>9</td><td>Certified Identity Document and Supporting Annexures</td><td><span class="badge badge--c">See Annexures</span></td></tr>
+//   </tbody>
+// </table>
+// <div class="pb"></div>
+
+// ${dividerPage("1", "Progress Report", "Summary of all assessed module components including knowledge, practical skills, and workplace experience.")}
+// <div class="pb"></div>
+
+// ${sectionHeader("1", "Progress Report", "Comprehensive Module Outcome Summary")}
+
+// <div class="data-grid">
+//   ${dc("Learner Name", learner.fullName)}
+//   ${dc("Identity Number", learner.idNumber)}
+//   ${dc("Programme Title", learner.qualification?.name || enrollment.qualificationName || "N/A")}
+//   ${dc("Primary Assessor", primaryAssessor, "ink-ass")}
+//   ${dc("Training Start Date", fmt(enrollment.trainingStartDate || learner.trainingStartDate))}
+//   ${dc("Training End Date", fmt(enrollment.trainingEndDate || learner.trainingEndDate))}
+//   <div class="data-cell data-cell--span2">
+//     <span class="data-cell__label">Training Site / Workplace</span>
+//     <span class="data-cell__value">${enrollment.employerName || "mLab Default Training Campus"}</span>
+//   </div>
+// </div>
+
+// <div class="sub-heading">Knowledge Modules</div>
+// <table class="poe-table poe-table--accented">
+//   <thead><tr><th>Module Code</th><th>Module Title</th><th width="80">Attempts</th><th width="120">Outcome</th></tr></thead>
+//   <tbody>${progressRows(kmSubs)}</tbody>
+// </table>
+
+// <div class="sub-heading">Practical Skills Modules</div>
+// <table class="poe-table poe-table--accented">
+//   <thead><tr><th>Module Code</th><th>Module Title</th><th width="80">Attempts</th><th width="120">Outcome</th></tr></thead>
+//   <tbody>${progressRows(pmSubs)}</tbody>
+// </table>
+
+// <div class="sub-heading">Work Experience Modules</div>
+// <table class="poe-table poe-table--accented">
+//   <thead><tr><th>Module Code</th><th>Module Title</th><th width="80">Attempts</th><th width="120">Outcome</th></tr></thead>
+//   <tbody>${progressRows(wmSubs)}</tbody>
+// </table>
+
+// <div class="sig-bar">
+//   <div>
+//     <div class="sig-bar__label">Assessor Sign-Off</div>
+//     <div style="font-size:9px; color:#9b9b9b; margin-top:2px;">I declare this progress report accurate and complete.</div>
+//   </div>
+//   ${globalAssessorSigUrl ? `<img src="${globalAssessorSigUrl}" class="sig-bar__img" />` : `<span class="sig-bar__pending">Pending digital signature</span>`}
+//   <div class="sig-bar__date">Date: ${fmt(new Date())}</div>
+// </div>
+// <div class="pb"></div>`;
+
+//       html += `
+// ${dividerPage("2", "Competence Record & Final Assessment Report", "Official system-generated transcripts, grading evidence, and signed evaluations for every module assessed.")}
+// <div class="pb"></div>`;
+
+//       let moduleIndex = 0;
+//       for (const sub of submissions) {
+//         moduleIndex++;
+//         await updateProgress(
+//           30 + Math.floor((moduleIndex / submissions.length) * 35),
+//           `Compiling transcript: ${sub.title || "Module"}…`,
+//         );
+
+//         const assessmentSnap = await admin
+//           .firestore()
+//           .collection("assessments")
+//           .doc(sub.assessmentId)
+//           .get();
+//         const assessmentData = assessmentSnap.data() || {};
+//         const blocks = assessmentData.blocks || [];
+//         const grading = sub.grading || {};
+//         const moderation = sub.moderation || {};
+//         const answers = sub.answers || {};
+
+//         const att = sub.attemptNumber || 1;
+//         const isReassess = att > 1;
+//         const facFeedback =
+//           sub.facilitatorOverallFeedback ||
+//           grading.facilitatorOverallFeedback ||
+//           "<em>No facilitator comments recorded.</em>";
+//         const assFeedback =
+//           grading.assessorOverallFeedback ||
+//           "<em>No assessor feedback recorded.</em>";
+//         const modFeedback =
+//           moderation.feedback || "<em>No moderation comments recorded.</em>";
+
+//         // =========================================================================================
+//         // SIGNATURE SNAPSHOT RESOLUTION (PER MODULE)
+//         // =========================================================================================
+//         const learnerSigUrl =
+//           sub.learnerDeclaration?.signatureUrl ||
+//           (learner.authUid ? signaturesMap[learner.authUid] : null);
+//         const facSigUrl =
+//           sub.grading?.facilitatorSignatureUrl ||
+//           (sub.facilitatorId ? signaturesMap[sub.facilitatorId] : null);
+//         const assSigUrl =
+//           sub.grading?.assessorSignatureUrl ||
+//           (sub.assessorId ? signaturesMap[sub.assessorId] : null);
+//         const modSigUrl =
+//           sub.moderation?.moderatorSignatureUrl ||
+//           (sub.moderatorId ? signaturesMap[sub.moderatorId] : null);
+
+//         const facName =
+//           sub.facilitatorName || grading.facilitatorName || "Pending";
+//         const assessorName = grading.assessorName || "Pending";
+//         const assessorReg = grading.assessorRegNumber
+//           ? `Reg: ${grading.assessorRegNumber}`
+//           : "";
+//         const modName = moderation.moderatorName || "Pending";
+//         const modReg = moderation.moderatorRegNumber
+//           ? `Reg: ${moderation.moderatorRegNumber}`
+//           : "";
+//         const moduleBc = sub.moduleNumber || sub.title || "Module";
+
+//         const modInfo = assessmentData.moduleInfo || assessmentData || {};
+//         const nqfLevel = modInfo.nqfLevel ? `Level ${modInfo.nqfLevel}` : "N/A";
+//         const notionalHours = modInfo.notionalHours || "N/A";
+//         const credits = modInfo.credits ? `Cr ${modInfo.credits}` : "N/A";
+
+//         const learnerDate = fmt(
+//           sub.submittedAt || sub.learnerDeclaration?.timestamp,
+//         );
+//         const facDate = fmt(
+//           sub.facilitatorReviewedAt || grading.facilitatorReviewedAt,
+//         );
+//         const assDate = fmt(sub.gradedAt || grading.gradedAt);
+//         const modDate = fmt(moderation.moderatedAt);
+
+//         // PROMINENTLY DISPLAY THE TYPE OF ASSESSMENT
+//         html += `
+// <div class="module-header pbi">
+//   <div>
+//     <h2 class="module-header__title">${sub.title || "Untitled Module"}</h2>
+//     <div style="font-size:9px; color:#64748b; text-transform:uppercase; margin-top:3px; letter-spacing:0.05em; font-family:'Oswald', sans-serif;">
+//       ${sub.type || "Assessment Component"}
+//     </div>
+//   </div>
+//   <div class="module-header__badges">
+//     ${outcomeBadge(sub.competency)}
+//     ${isReassess ? `<span class="badge badge--attempt">Attempt ${att}</span>` : `<span class="badge badge--attempt1">Attempt 1</span>`}
+//   </div>
+// </div>
+
+// <table class="poe-table" style="margin-top:-12px; margin-bottom:16px;">
+//   <thead>
+//     <tr>
+//       <th>Module #</th>
+//       <th>NQF Level</th>
+//       <th>Notional hours</th>
+//       <th>Credit(s)</th>
+//     </tr>
+//   </thead>
+//   <tbody>
+//     <tr>
+//       <td style="font-weight:bold; color:#073f4e;">${sub.moduleNumber || modInfo.moduleNumber || "N/A"}</td>
+//       <td>${nqfLevel}</td>
+//       <td>${notionalHours}</td>
+//       <td>${credits}</td>
+//     </tr>
+//   </tbody>
+// </table>
+
+// ${
+//   assessmentData.isOpenBook && assessmentData.referenceManualUrl
+//     ? `
+// <div class="openbook-notice pbi">
+//   <span class="openbook-notice__icon">Open Book</span>
+//   <div>
+//     Learner was provided an official reference manual during this assessment.
+//     Archived reference: <a href="${assessmentData.referenceManualUrl}" class="a-link">${assessmentData.referenceManualUrl}</a>
+//   </div>
+// </div>`
+//     : ""
+// }
+
+// <div class="eval-box pbi">
+//   <div class="eval-box__row">
+//     <div class="eval-box__label">Final Outcome</div>
+//     <div class="eval-box__value">${outcomeBadge(sub.competency)}</div>
+//   </div>
+//   <div class="eval-box__row">
+//     <div class="eval-box__label">Assessment Score</div>
+//     <div class="eval-box__value"><strong>${sub.marks !== undefined ? sub.marks : "–"} / ${sub.totalMarks || "–"}</strong></div>
+//   </div>
+//   <div class="eval-box__row">
+//     <div class="eval-box__label">Submission Attempt</div>
+//     <div class="eval-box__value">${att}${isReassess ? ' <span class="badge badge--attempt" style="margin-left:8px;">Reassessment</span>' : ""}</div>
+//   </div>
+//   <div class="eval-box__divider"></div>
+//   <div class="eval-box__row">
+//     <div class="eval-box__label">Facilitator Note</div>
+//     <div class="eval-box__value ink-fac">${cleanRichText(facFeedback)}</div>
+//   </div>
+//   <div class="eval-box__row">
+//     <div class="eval-box__label">Assessor Feedback</div>
+//     <div class="eval-box__value ink-ass">${cleanRichText(assFeedback)}</div>
+//   </div>
+//   <div class="eval-box__row">
+//     <div class="eval-box__label">Moderator Review</div>
+//     <div class="eval-box__value ink-mod">${cleanRichText(modFeedback)}</div>
+//   </div>
+// </div>`;
+
+//         if (blocks.length > 0) {
+//           let qNum = 1;
+//           blocks.forEach((block: any) => {
+//             if (block.type === "section") {
+//               html += `<div class="sub-heading">${block.title}</div>`;
+//               return;
+//             }
+//             if (block.type === "info") return;
+
+//             const blockBc =
+//               block.weCode || block.code || block.title || `Q${qNum}`;
+//             const ans =
+//               answers[block.id] !== undefined
+//                 ? answers[block.id]
+//                 : sub[block.id];
+//             let formattedAnswer = "";
+
+//             if (ans !== undefined && ans !== null) {
+//               if (typeof ans === "string" || typeof ans === "number") {
+//                 if (
+//                   block.type === "mcq" &&
+//                   typeof ans === "number" &&
+//                   block.options
+//                 ) {
+//                   formattedAnswer = block.options[ans] || String(ans);
+//                 } else {
+//                   formattedAnswer = cleanRichText(String(ans));
+//                 }
+//               } else if (typeof ans === "object") {
+//                 if (ans.text && ans.text !== "<p></p>")
+//                   formattedAnswer += `<div>${cleanRichText(ans.text)}</div>`;
+//                 if (ans.url)
+//                   formattedAnswer += `<div>&#x1F517; <a class="a-link" href="${ans.url}">External Link</a></div>`;
+//                 if (ans.code)
+//                   formattedAnswer += `<pre style="background:#f4f7f9; padding:10px; border:1px solid #dde4e8; font-size:10px; overflow-wrap:break-word;">${ans.code}</pre>`;
+
+//                 if (ans.uploadUrl) {
+//                   const annIdx = offlineEvidenceFiles.length + 1;
+//                   const annLabel = `${moduleBc} | ${blockBc}`;
+//                   offlineEvidenceFiles.push({
+//                     index: annIdx,
+//                     url: ans.uploadUrl,
+//                     label: annLabel,
+//                   });
+//                   formattedAnswer += `<div class="a-annex">&#x1F4CE; <a class="a-link" href="${ans.uploadUrl}"><strong>Appended as Annexure ${annIdx}</strong></a> — ${annLabel}</div>`;
+//                 }
+
+//                 Object.keys(ans).forEach((k) => {
+//                   const subAns = ans[k];
+//                   if (subAns && typeof subAns === "object") {
+//                     let subHtml = "";
+//                     if (subAns.text && subAns.text !== "<p></p>")
+//                       subHtml += `<div>${cleanRichText(subAns.text)}</div>`;
+//                     if (subAns.url)
+//                       subHtml += `<div><a class="a-link" href="${subAns.url}">External Link</a></div>`;
+//                     if (subAns.code)
+//                       subHtml += `<pre style="background:#f4f7f9; padding:8px;">${subAns.code}</pre>`;
+//                     if (subAns.uploadUrl) {
+//                       const annIdx = offlineEvidenceFiles.length + 1;
+//                       const annLabel = `${moduleBc} | ${blockBc} | ${k.replace(/_/g, " ").toUpperCase()}`;
+//                       offlineEvidenceFiles.push({
+//                         index: annIdx,
+//                         url: subAns.uploadUrl,
+//                         label: annLabel,
+//                       });
+//                       subHtml += `<div class="a-annex">&#x1F4CE; <a class="a-link" href="${subAns.uploadUrl}"><strong>Annexure ${annIdx}</strong></a> — ${annLabel}</div>`;
+//                     }
+//                     if (subHtml)
+//                       formattedAnswer += `<div style="margin-top:8px; padding:8px; border-left:3px solid #dde4e8; background:#f4f7f9;"><strong style="font-family:'Oswald',sans-serif;font-size:9px;letter-spacing:0.1em;text-transform:uppercase;">${k.replace(/_/g, " ")}</strong>${subHtml}</div>`;
+//                   } else if (
+//                     typeof subAns === "string" &&
+//                     subAns.trim() &&
+//                     !["text", "url", "uploadUrl", "code"].includes(k)
+//                   ) {
+//                     formattedAnswer += `<div><strong>${k.replace(/_/g, " ")}:</strong> ${cleanRichText(subAns)}</div>`;
+//                   }
+//                 });
+//               }
+//             }
+//             if (!formattedAnswer)
+//               formattedAnswer =
+//                 '<em class="text-muted">No evidence provided for this item.</em>';
+
+//             const fLayer = grading.facilitatorBreakdown?.[block.id] || {};
+//             const aLayer = grading.assessorBreakdown?.[block.id] || {};
+//             const mLayer = moderation.breakdown?.[block.id] || {};
+
+//             const feedbackRows: string[] = [];
+//             const seenComments = new Set<string>();
+//             const addFb = (role: string, inkClass: string, text: string) => {
+//               const clean = cleanRichText(text?.trim());
+//               if (!clean) return;
+//               const key = `${role}:${clean}`;
+//               if (!seenComments.has(key)) {
+//                 seenComments.add(key);
+//                 feedbackRows.push(
+//                   `<div class="f-row"><span class="f-role ${inkClass}">${role}</span><span class="f-comment ${inkClass}">${clean}</span></div>`,
+//                 );
+//               }
+//             };
+//             addFb("Facilitator", "ink-fac", fLayer.feedback);
+//             addFb("Assessor", "ink-ass", aLayer.feedback);
+//             addFb("Moderator", "ink-mod", mLayer.feedback);
+//             if (Array.isArray(fLayer.criteriaResults))
+//               fLayer.criteriaResults.forEach((c: any) =>
+//                 addFb("Facilitator", "ink-fac", c.comment),
+//               );
+//             if (Array.isArray(aLayer.criteriaResults))
+//               aLayer.criteriaResults.forEach((c: any) =>
+//                 addFb("Assessor", "ink-ass", c.comment),
+//               );
+//             if (Array.isArray(mLayer.criteriaResults))
+//               mLayer.criteriaResults.forEach((c: any) =>
+//                 addFb("Moderator", "ink-mod", c.comment),
+//               );
+
+//             html += `
+// <div class="q-block">
+//   <div class="q-text"><span class="q-num">${qNum++}</span>${cleanRichText(block.question || block.title || "Checkpoint")}</div>
+//   <div class="a-text">${formattedAnswer}</div>
+//   ${feedbackRows.length ? `<div class="f-block">${feedbackRows.join("")}</div>` : ""}
+// </div>`;
+//           });
+//         } else {
+//           html += `<div class="empty-state">Assessment template is empty — evidence blocks not mapped.</div>`;
+//         }
+
+//         try {
+//           const historySnap = await admin
+//             .firestore()
+//             .collection("learner_submissions")
+//             .doc(sub.id)
+//             .collection("history")
+//             .get();
+//           if (!historySnap.empty) {
+//             const pastAttempts = historySnap.docs
+//               .map((d) => d.data())
+//               .sort((a, b) => (a.attemptNumber || 1) - (b.attemptNumber || 1));
+
+//             html += `
+// <div class="history-box pbi">
+//   <div class="history-box__header">NYC Audit Trail — Previous Attempt Archive (${pastAttempts.length} attempt${pastAttempts.length !== 1 ? "s" : ""})</div>
+// `;
+//             pastAttempts.forEach((past, hi) => {
+//               const pastAtt = past.attemptNumber || hi + 1;
+//               const pastDate = fmt(past.submittedAt || past.assignedAt);
+//               const pastFeedback =
+//                 past.grading?.assessorOverallFeedback ||
+//                 past.facilitatorOverallFeedback ||
+//                 "No feedback recorded.";
+
+//               let archiveLinkHtml = "";
+
+//               if (past.historyPdfUrl) {
+//                 archiveLinkHtml = `
+//                   <div style="margin-top:10px; padding:10px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:4px;">
+//                     <a href="${past.historyPdfUrl}" target="_blank" style="color:#1d4ed8; text-decoration:none; font-weight:bold; font-family:'Oswald',sans-serif; font-size:12px;">
+//                       📄 DOWNLOAD FULL ARCHIVED ATTEMPT PDF
+//                     </a>
+//                     <div style="font-size:9px; color:#64748b; margin-top:3px;">Contains all learner answers, rich text, and feedback for this attempt.</div>
+//                   </div>
+//                 `;
+//               } else {
+//                 archiveLinkHtml = `
+//                   <div style="margin-top:10px; padding:10px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:4px;">
+//                     <div style="font-size:11px; color:#475569; font-style:italic;">Legacy attempt. Full PDF snapshot is not available for this record.</div>
+//                   </div>
+//                 `;
+//               }
+
+//               html += `<div class="history-attempt">
+//       <div class="history-attempt__title">Attempt ${pastAtt} — Submitted ${pastDate}</div>
+//       <div style="font-size:10.5px; margin:4px 0 6px; display:flex; gap:16px;">
+//         <span><strong>Outcome:</strong> <span class="ink-ass">${past.competency || "NYC"}</span></span>
+//         <span><strong>Score:</strong> ${past.marks !== undefined ? past.marks : 0} / ${past.totalMarks || 0}</span>
+//       </div>
+//       <div style="font-size:10.5px;"><strong>Assessor Feedback:</strong> <span class="ink-ass">${cleanRichText(pastFeedback)}</span></div>
+//       ${archiveLinkHtml}
+//     </div>`;
+//             });
+//             html += `</div>`;
+//           }
+//         } catch (err) {
+//           console.error(`History fetch failed for ${sub.id}`, err);
+//         }
+
+//         html += `
+// <div class="sig-row">
+//   ${sigCell("Learner Declaration", "learner", learnerSigUrl, learner.fullName || "Unknown", "", learnerDate)}
+//   ${sigCell("Facilitator Review", "fac", facSigUrl, facName, "", facDate)}
+//   ${sigCell("Assessor Endorsement", "assessor", assSigUrl, assessorName, assessorReg, assDate)}
+//   ${sigCell("Moderator Verification", "mod", modSigUrl, modName, modReg, modDate)}
+// </div>
+// <div class="pb"></div>`;
+//       }
+
+//       const d = learnerUserDoc.demographics || learner.demographics || {};
+
+//       html += `
+// ${dividerPage("3", "Learner Registration & POPIA Consent Form", "Official enrolment, demographic data, and data processing consent.")}
+// <div class="pb"></div>
+// ${sectionHeader("3", "Learner Registration Form", "Enrolment and Demographic Record")}
+// <div class="data-grid">
+//   ${dc("Full Name", learner.fullName)}
+//   ${dc("Identity Number", learner.idNumber)}
+//   ${dc("Email Address", learner.email)}
+//   ${dc("Contact Number", learner.phone || d.phone)}
+//   ${dc("Equity / Race", d.equityCode)}
+//   ${dc("Gender", d.gender)}
+//   ${dc("Home Language", d.homeLanguage)}
+//   ${dc("Province", d.provinceCode)}
+// </div>
+
+// <h3 class="sub-heading" style="margin-top: 25px;">POPIA Consent Declaration</h3>
+// <div class="declaration">
+//   <p>In accordance with the <strong>Protection of Personal Information Act, 4 of 2013 (POPIA)</strong>, I hereby grant <strong>Mobile Applications Laboratory NPC</strong> and its authorized representatives consent to collect, process, and store my personal information.</p>
+//   <p>I understand and agree that:</p>
+//   <ol style="margin-top:0; padding-left:20px;">
+//     <li style="margin-bottom:8px;">My personal information will be processed solely for the purposes of enrollment, assessment, moderation, certification, and reporting to relevant statutory bodies (e.g., QCTO, SETAs, SAQA).</li>
+//     <li style="margin-bottom:8px;">My data will be stored securely and will not be shared with unauthorized third parties without my explicit consent.</li>
+//     <li style="margin-bottom:8px;">I have the right to access, update, or request the deletion of my personal information, subject to statutory record-keeping requirements.</li>
+//   </ol>
+//   <p style="margin-bottom:0;">By signing this document, I acknowledge that I have read, understood, and accept the terms regarding the processing of my personal data.</p>
+// </div>
+
+// <div class="sig-bar">
+//   <div class="sig-bar__label">Learner Signature (Registration & POPIA)</div>
+//   ${dayOneLearnerSigUrl ? `<img src="${dayOneLearnerSigUrl}" class="sig-bar__img" />` : `<span class="sig-bar__pending">Pending digital signature</span>`}
+//   <div class="sig-bar__date">Date: ${fmt(learner.createdAt || new Date())}</div>
+// </div>
+// <div class="pb"></div>
+
+// ${dividerPage("4", "Letter of Commitment", "Learner declaration of authenticity and commitment to programme requirements.")}
+// <div class="pb"></div>
+// ${sectionHeader("4", "Letter of Commitment from Learner", "Declaration of Authenticity and Programme Commitment")}
+// <div class="letter-body">
+//   <p>I, <strong>${learner.fullName || "___________________"}</strong>, hereby undertake to fulfil all the requirements of the assessment and training practices as specified by the assessor and the service provider, Mobile Applications Laboratory NPC.</p>
+//   <p>I declare that all work submitted — including assignments, assessments, and case studies — is authentic and represents my own current work. I understand that submission of work that is not my own constitutes academic misconduct and may result in disqualification.</p>
+//   <p>I am aware that in order to graduate from this programme I need to meet all compulsory requirements, including being declared Competent on all components that form the basis of this qualification.</p>
+//   <p>I understand and accept the appeals and grievance procedures available to me, and commit to engaging with the process constructively and professionally.</p>
+// </div>
+// <div class="sig-bar">
+//   <div class="sig-bar__label">Learner Sign-Off</div>
+//   ${dayOneLearnerSigUrl ? `<img src="${dayOneLearnerSigUrl}" class="sig-bar__img" />` : `<span class="sig-bar__pending">Pending digital signature</span>`}
+//   <div class="sig-bar__date">Date: ${fmt(submissions[0]?.assignedAt || new Date())}</div>
+// </div>
+// <div class="pb"></div>
+
+// ${dividerPage("5", "Programme Induction", "Confirmation that the learner received a comprehensive induction prior to assessment commencement.")}
+// <div class="pb"></div>
+// ${sectionHeader("5", "Programme Induction", "Formal Acknowledgement of Induction Completion")}
+// <div class="declaration">
+//   <p>This confirms that the learner named herein received a comprehensive induction into the programme, covering:</p>
+//   <p><strong>1. Curriculum Overview</strong> — Programme structure, module breakdown, notional hours, and credit values.</p>
+//   <p><strong>2. Assessment Methodology</strong> — QCTO assessment types (Knowledge, Practical, Workplace), submission formats, and grading criteria.</p>
+//   <p><strong>3. Appeals and Grievance Procedures</strong> — Learner rights, remediation pathways, and formal appeals process.</p>
+//   <p><strong>4. Workplace and Ethical Expectations</strong> — Professional conduct, attendance requirements, and submission authenticity standards.</p>
+// </div>
+// <div class="sig-row" style="grid-template-columns: 1fr 1fr;">
+//   ${sigCell("Learner Acknowledgement", "learner", dayOneLearnerSigUrl, learner.fullName || "Learner", "", fmt(submissions[0]?.assignedAt || new Date()))}
+//   ${sigCell("Facilitator Sign-Off", "fac", primaryFacSigUrl, "Programme Facilitator", "", fmt(submissions[0]?.assignedAt || new Date()))}
+// </div>
+// <div class="pb"></div>
+
+// ${dividerPage("6", "Appeals & Complaint Records", "Formal records of any grievances, disputes, or appeal proceedings lodged during this programme.")}
+// <div class="pb"></div>
+// ${sectionHeader("6", "Appeals & Complaint Records", "Formal Grievance and Appeal Log")}
+// `;
+
+//       if (appealedSubs.length > 0) {
+//         appealedSubs.forEach((s) => {
+//           const revBy =
+//             s.appeal?.resolvedBy || s.appeal?.reviewedBy || s.moderatorId;
+
+//           // Prefer snapshot saved on appeal, fallback to live profile map
+//           const revSig =
+//             s.appeal?.resolvedBySignatureUrl ||
+//             (revBy ? signaturesMap[revBy] : null);
+
+//           const revName =
+//             s.appeal?.resolvedByName ||
+//             s.appeal?.reviewedByName ||
+//             s.moderation?.moderatorName ||
+//             "Pending";
+//           const revDate = fmt(
+//             s.appeal?.resolvedAt || s.appeal?.reviewedAt || s.appeal?.date,
+//           );
+
+//           html += `
+// <div class="appeal-card pbi">
+//   <div class="appeal-card__head">
+//     <h4 class="appeal-card__title">Appeal: ${s.moduleNumber || ""} ${s.title}</h4>
+//     <span class="badge badge--nyc">${(s.appeal?.status || "Pending").toUpperCase()}</span>
+//   </div>
+//   <div class="appeal-card__body">
+//     <div class="data-grid data-grid--1col" style="margin-bottom:10px;">
+//       ${dc("Date of Appeal", fmt(s.appeal?.date))}
+//       ${dc("Reason for Appeal", cleanRichText(s.appeal?.reason || "Not specified"))}
+//       ${dc("Appeal Status", (s.appeal?.status || "Pending").toUpperCase())}
+//       ${s.appeal?.resolutionNotes ? dc("Board Resolution", cleanRichText(s.appeal.resolutionNotes)) : ""}
+//     </div>
+//     <div style="border-top: 1px dashed #fecaca; padding-top: 10px; margin-top: 10px;">
+//       <div class="data-cell__label" style="color: #b91c1c;">Resolved By / Signature</div>
+//       ${revSig ? `<img src="${revSig}" style="max-height: 35px; mix-blend-mode: multiply; margin: 4px 0;" />` : `<div style="height:35px; font-style:italic; font-size:10px; color:#b91c1c; display:flex; align-items:center;">Pending Signature</div>`}
+//       <div class="ink-mod" style="font-weight: 700; font-size: 11px; font-family: 'Oswald', sans-serif;">${revName}</div>
+//       <div class="ink-mod" style="font-size: 9px;">Date: ${revDate}</div>
+//     </div>
+//   </div>
+// </div>`;
+//         });
+//       } else {
+//         html += `
+// <div class="notice notice--grey pbi">
+//   <div class="notice__title">Status: No Appeals Lodged</div>
+//   <div class="notice__body">No formal appeals or complaints were registered by the learner for any module in this programme.</div>
+// </div>`;
+//       }
+
+//       html += `
+// <div class="pb"></div>
+
+// ${dividerPage("7", "Actual Learning Plan & Evidence Control Sheet", "Full audit trail mapping all modules to facilitators, date ranges, evidence types, and competency outcomes.")}
+// <div class="pb"></div>
+// ${sectionHeader("7", "Actual Learning Plan & Evidence Control Sheet", "Evidence Type Matrix and Outcome Register")}
+
+// <table class="poe-table">
+//   <thead>
+//     <tr>
+//       <th rowspan="2">Module Code</th>
+//       <th rowspan="2">Facilitator</th>
+//       <th rowspan="2">Assessment Period</th>
+//       <th colspan="3" style="text-align:center; border-bottom:1px solid rgba(255,255,255,0.15);">Evidence Type</th>
+//       <th colspan="2" style="text-align:center; border-bottom:1px solid rgba(255,255,255,0.15);">Outcome</th>
+//     </tr>
+//     <tr>
+//       <th style="text-align:center; font-size:8px;">Knowledge</th>
+//       <th style="text-align:center; font-size:8px;">Practical</th>
+//       <th style="text-align:center; font-size:8px;">Workplace</th>
+//       <th style="text-align:center; font-size:8px; color:#94c73d;">C</th>
+//       <th style="text-align:center; font-size:8px; color:#fca5a5;">NYC</th>
+//     </tr>
+//   </thead>
+//   <tbody>${learningPlanRows(submissions)}</tbody>
+// </table>
+
+// <div class="sub-heading mt-8">Evidence Judging Principles</div>
+// <table class="poe-table">
+//   <thead><tr><th>Assessment Principle</th><th width="90" style="text-align:center;">Knowledge</th><th width="120" style="text-align:center;">Practical / Workplace</th></tr></thead>
+//   <tbody>
+//     <tr><td><strong>Relevant</strong> — Evidence relates directly to specific programme learning outcomes.</td><td class="text-center"><span class="badge badge--c">Met</span></td><td class="text-center"><span class="badge badge--c">Met</span></td></tr>
+//     <tr><td><strong>Valid</strong> — Evidence demonstrates the learner can perform the required function.</td><td class="text-center"><span class="badge badge--c">Met</span></td><td class="text-center"><span class="badge badge--c">Met</span></td></tr>
+//     <tr><td><strong>Authentic</strong> — Evidence is confirmed as the learner's own work.</td><td class="text-center"><span class="badge badge--c">Met</span></td><td class="text-center"><span class="badge badge--c">Met</span></td></tr>
+//     <tr><td><strong>Consistent</strong> — Evidence demonstrates repeatable performance to the required standard.</td><td class="text-center"><span class="badge badge--c">Met</span></td><td class="text-center"><span class="badge badge--c">Met</span></td></tr>
+//     <tr><td><strong>Current</strong> — Evidence reflects learner's current level of competence.</td><td class="text-center"><span class="badge badge--c">Met</span></td><td class="text-center"><span class="badge badge--c">Met</span></td></tr>
+//     <tr><td><strong>Sufficient</strong> — Adequate evidence has been collected to support a judgement.</td><td class="text-center"><span class="badge badge--c">Met</span></td><td class="text-center"><span class="badge badge--c">Met</span></td></tr>
+//   </tbody>
+// </table>
+
+// <div class="sig-row" style="grid-template-columns: 1fr;">
+//   ${sigCell("Assessor Endorsement", "assessor", globalAssessorSigUrl, primaryAssessor, "", fmt(new Date()))}
+// </div>
+// <div class="pb"></div>
+
+// ${dividerPage("8", "Learner Coaching Record", "Formal documentation of all coaching, remediation sessions, and intervention records for Not Yet Competent modules.")}
+// <div class="pb"></div>
+// ${sectionHeader("8", "Learner Coaching Record (Remediation)", "Intervention Log for NYC Modules")}
+// `;
+
+//       if (remediatedSubs.length > 0) {
+//         remediatedSubs.forEach((s) => {
+//           const log = s.latestCoachingLog || {};
+//           const facId =
+//             log.facilitatorId || s.grading?.facilitatorId || s.facilitatorId;
+
+//           // Prefer snapshot, fallback to live profile map
+//           const facSig =
+//             log.facilitatorSignatureUrl ||
+//             (facId ? signaturesMap[facId] : null);
+
+//           // Using the latestLearnerSigUrl instead of globalLearnerSigUrl
+//           const learnerAckSig =
+//             log.learnerSignatureUrl ||
+//             (log.acknowledged ? latestLearnerSigUrl : null);
+
+//           const facName =
+//             log.facilitatorName ||
+//             s.grading?.facilitatorName ||
+//             s.facilitatorName ||
+//             "Assigned Facilitator";
+//           const facDate = fmt(log.date || s.assignedAt);
+//           const learnerAckDate = fmt(log.acknowledgedAt);
+
+//           html += `
+// <div class="coaching-card pbi">
+//   <div class="coaching-card__head">
+//     <h4 class="coaching-card__title">Remediation Log: ${s.moduleNumber || ""} ${s.title}</h4>
+//     <span class="badge badge--attempt">Attempt ${s.attemptNumber}</span>
+//   </div>
+//   <div class="coaching-card__body">
+//     <div class="data-grid">
+//       ${dc("Max Attempts Allowed", "3")}
+//       ${dc("Current Attempt", `Attempt ${s.attemptNumber}`)}
+//       ${dc("Coaching Facilitator", facName)}
+//       ${dc("Date of Intervention", fmt(log.date || s.assignedAt))}
+//     </div>
+//     <div class="data-cell" style="background:#fffbeb; border:1px solid #fde68a; padding:10px 12px; margin-bottom: 10px;">
+//       <span class="data-cell__label">Academic Intervention Notes</span>
+//       <span class="data-cell__value ink-fac" style="display:block; margin-top:4px; font-weight:400; font-size:11px; line-height:1.6;">${cleanRichText(log.notes) || "Coaching session conducted to address NYC competency gaps and unlock learner for reassessment."}</span>
+//     </div>
+
+//     <div class="sig-row" style="grid-template-columns: 1fr 1fr; margin-top: 15px;">
+//       ${sigCell("Facilitator Signature", "fac", facSig, facName, "", facDate)}
+//       ${sigCell("Learner Acknowledgement", "learner", learnerAckSig, learner.fullName || "Learner", log.acknowledged ? "Acknowledged" : "Pending", learnerAckDate)}
+//     </div>
+//   </div>
+// </div>`;
+//         });
+//       } else {
+//         html += `
+// <div class="notice notice--green pbi">
+//   <div class="notice__title">No Remediation Required</div>
+//   <div class="notice__body">No coaching or remediation sessions were required during this programme. All modules were completed competently on the first attempt.</div>
+// </div>`;
+//       }
+
+//       html += `
+// <div class="pb"></div>
+// ${dividerPage("9", "Annexures", "Identity documents, supporting compliance files, and evidence submissions uploaded by the learner — appended on the following pages.")}
+// </body></html>`;
+
+//       await updateProgress(70, "Rendering assessment layout…");
+//       const browser = await puppeteer.launch({
+//         args: chromium.args,
+//         defaultViewport: chromium.defaultViewport,
+//         executablePath: await chromium.executablePath(),
+//         headless: chromium.headless,
+//       });
+//       const page = await browser.newPage();
+//       page.setDefaultNavigationTimeout(120000);
+//       page.setDefaultTimeout(120000);
+//       await page.setContent(html, {
+//         waitUntil: ["load", "networkidle2"],
+//         timeout: 120000,
+//       });
+
+//       const puppeteerPdfBuffer = await page.pdf({
+//         format: "A4",
+//         printBackground: true,
+//         displayHeaderFooter: true,
+//         headerTemplate: "<span></span>",
+//         footerTemplate: `
+//           <div style="font-size:8px; font-family:'Trebuchet MS',sans-serif; color:#9b9b9b; padding:0 16mm; width:100%; display:flex; justify-content:space-between; box-sizing:border-box;">
+//             <span>Mobile Applications Laboratory NPC — Master Portfolio of Evidence</span>
+//             <span>Page <span class="pageNumber"></span> of <span class="totalPages"></span></span>
+//           </div>`,
+//         margin: { top: "15mm", right: "16mm", bottom: "22mm", left: "16mm" },
+//         timeout: 120000,
+//       });
+//       await browser.close();
+
+//       await updateProgress(85, "Merging annexures (identity & evidence)…");
+//       const masterPdf = await PDFDocument.create();
+//       const fontBold = await masterPdf.embedFont(StandardFonts.HelveticaBold);
+//       const basePdfDoc = await PDFDocument.load(puppeteerPdfBuffer);
+//       const basePages = await masterPdf.copyPages(
+//         basePdfDoc,
+//         basePdfDoc.getPageIndices(),
+//       );
+//       basePages.forEach((p) => masterPdf.addPage(p));
+
+//       const uploadedDocs: UploadedDoc[] =
+//         learnerUserDoc?.uploadedDocuments || learner?.uploadedDocuments || [];
+//       uploadedDocs.forEach((d) => {
+//         offlineEvidenceFiles.push({
+//           index: offlineEvidenceFiles.length + 1,
+//           url: d.url,
+//           label: `9. Annexure: ${d.name || "Compliance Document"}`,
+//         });
+//       });
+
+//       if (offlineEvidenceFiles.length > 0) {
+//         await updateProgress(90, "Stamping and merging annexures…");
+//         for (const evidence of offlineEvidenceFiles) {
+//           try {
+//             const buffer = await fetchFileBuffer(evidence.url);
+//             if (!buffer) continue;
+//             const stampText = `Annexure ${evidence.index}: ${evidence.label}`;
+//             try {
+//               const extPdf = await PDFDocument.load(buffer);
+//               const copPages = await masterPdf.copyPages(
+//                 extPdf,
+//                 extPdf.getPageIndices(),
+//               );
+//               if (copPages.length > 0) {
+//                 const fp = copPages[0];
+//                 fp.drawText(stampText, {
+//                   x: 20,
+//                   y: fp.getSize().height - 20,
+//                   size: 9,
+//                   color: rgb(0.86, 0.15, 0.15),
+//                   font: fontBold,
+//                 });
+//               }
+//               copPages.forEach((p: any) => masterPdf.addPage(p));
+//             } catch {
+//               let image;
+//               try {
+//                 image = await masterPdf.embedPng(buffer);
+//               } catch {
+//                 try {
+//                   image = await masterPdf.embedJpg(buffer);
+//                 } catch {}
+//               }
+//               if (image) {
+//                 const pg = masterPdf.addPage();
+//                 const { width, height } = pg.getSize();
+//                 pg.drawText(stampText, {
+//                   x: 20,
+//                   y: height - 30,
+//                   size: 9,
+//                   color: rgb(0.86, 0.15, 0.15),
+//                   font: fontBold,
+//                 });
+//                 const dims = image.scaleToFit(width - 40, height - 80);
+//                 pg.drawImage(image, {
+//                   x: width / 2 - dims.width / 2,
+//                   y: height / 2 - dims.height / 2 - 20,
+//                   ...dims,
+//                 });
+//               }
+//             }
+//           } catch (err) {
+//             console.warn(`Annexure failed: ${evidence.url}`, err);
+//           }
+//         }
+//       }
+
+//       await updateProgress(95, "Uploading to secure vault…");
+//       const finalPdfBuffer = Buffer.from(await masterPdf.save());
+//       const bucket = admin.storage().bucket();
+//       const dirPrefix = `poe_exports/${learnerId}/`;
+//       try {
+//         await bucket.deleteFiles({ prefix: dirPrefix });
+//       } catch {}
+
+//       const filePath = `${dirPrefix}Master_PoE_${requestId}.pdf`;
+//       const file = bucket.file(filePath);
+//       await file.save(finalPdfBuffer, {
+//         metadata: { contentType: "application/pdf" },
+//       });
+
+//       const [downloadUrl] = await file.getSignedUrl({
+//         action: "read",
+//         expires: "01-01-2100",
+//       });
+//       await snap.ref.update({
+//         status: "completed",
+//         progress: 100,
+//         progressMessage: "Done!",
+//         downloadUrl,
+//       });
+
+//       if (requesterEmail) {
+//         const emailParams = {
+//           title: "Master PoE Ready",
+//           subtitle: learner.fullName,
+//           recipientName: "Admin",
+//           bodyHtml: `<p>The Master Portfolio of Evidence for <strong>${learner.fullName}</strong> has been generated successfully.</p>
+//                      <p>All sections, transcripts, and annexures have been compiled into a single QCTO-compliant PDF.</p>
+//                      <p style="font-size:11px; color:#9b9b9b;">Reference: ${requestId}</p>`,
+//           ctaText: "Download Master PoE PDF",
+//           ctaLink: downloadUrl,
+//           showStepIndicator: false,
+//         };
+
+//         await sendMailgunEmail({
+//           to: requesterEmail,
+//           subject: `Master PoE Ready — ${learner.fullName}`,
+//           text: buildMlabEmailPlainText(emailParams),
+//           html: buildMlabEmailHtml(emailParams),
+//         }).catch((err) => {
+//           console.warn("Email failed to send, but PoE was generated.", err);
+//         });
+//       }
+//     } catch (error: any) {
+//       console.error("Master PoE Generation Failed:", error);
+//       await snap.ref.update({
+//         status: "error",
+//         progressMessage: "Generation failed",
+//         errorMessage: error.message,
+//       });
+//     }
+//   },
+// );
 
 // 1. Define exactly what data to expect from the frontend
 interface InvitePayload {

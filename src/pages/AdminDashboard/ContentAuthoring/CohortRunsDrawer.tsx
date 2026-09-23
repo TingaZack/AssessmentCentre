@@ -6,6 +6,7 @@ import { createPortal } from 'react-dom';
 import { db } from '../../../lib/firebase';
 import { useToast } from '../../../components/common/Toast/Toast';
 import { StatusModal, type StatusType } from '../../../components/common/StatusModal/StatusModal';
+import Tooltip from '../../../components/common/Tooltip/Tooltip';
 import {
     createDraftCohortRun,
     updateCohortRunStatus,
@@ -13,19 +14,20 @@ import {
 } from '../../../services/contentService';
 import {
     X, Calendar, PlayCircle, Ban, Clock, Users, ArrowRight, Settings2,
-    Trash2, Rocket, Plus, AlertTriangle, BarChart3, Infinity, Search, ChevronDown
+    Trash2, Rocket, Plus, AlertTriangle, BarChart3, Infinity as InfinityIcon, Search, ChevronDown
 } from 'lucide-react';
 import type { CohortRun } from '../../../types/content.types';
-import { CohortRunSettingsForm, type CohortRunSettingsData } from './LaunchCohortModal';
+import type { EnrichedContentContainer } from './ContentAuthoring';
+import { CohortRunSettingsForm, type CohortRunSettingsData, type ExtendedCohortRun } from './LaunchCohortModal';
 
 interface CohortRunsDrawerProps {
     isOpen: boolean;
     onClose: () => void;
     containerId: string;
     containerName: string;
-    containerData?: any; // Optional parent container metadata
+    containerData?: EnrichedContentContainer;
     cohorts: { id: string; name: string }[];
-    onLaunchNew?: (run: CohortRun, containerData?: any) => void;
+    onLaunchNew?: (run: ExtendedCohortRun, containerData?: EnrichedContentContainer) => void;
     onAnalyticsClick?: (runId: string) => void;
 }
 
@@ -40,15 +42,13 @@ export const CohortRunsDrawer: React.FC<CohortRunsDrawerProps> = ({
     onAnalyticsClick
 }) => {
     const toast = useToast();
-    const [runs, setRuns] = useState<CohortRun[]>([]);
-    const [fetchedContainerData, setFetchedContainerData] = useState<any>(null);
+    const [runs, setRuns] = useState<ExtendedCohortRun[]>([]);
+    const [fetchedContainerData, setFetchedContainerData] = useState<EnrichedContentContainer | null>(null);
     const [loading, setLoading] = useState(true);
     const [editingRunId, setEditingRunId] = useState<string | null>(null);
 
-    // Active master container blueprint data (prioritizes props, falls back to live Firestore snapshot)
-    const masterContainer = propContainerData || fetchedContainerData || {};
+    const masterContainer: Partial<EnrichedContentContainer> = propContainerData || fetchedContainerData || {};
 
-    // Full Cohort Run Configuration State for Drawer Editing (Includes materialIncludes)
     const [editConfig, setEditConfig] = useState<CohortRunSettingsData & {
         start: string;
         end: string;
@@ -63,6 +63,10 @@ export const CohortRunsDrawer: React.FC<CohortRunsDrawerProps> = ({
         applicationEndDate: '',
         level: 'beginner',
         isCertificateAwarded: true,
+        certificateIssuerMode: 'mlab_internal',
+        certificateTemplateId: '',
+        externalIssuerName: '',
+        awaitingExternalNotice: '',
         learningOutcomes: [],
         prerequisites: [],
         targetAudience: [],
@@ -88,7 +92,6 @@ export const CohortRunsDrawer: React.FC<CohortRunsDrawerProps> = ({
     const [newTimelineName, setNewTimelineName] = useState('');
     const [isCreating, setIsCreating] = useState(false);
 
-    // Target Cohorts Multi-Select Dropdown State
     const [isCohortDropdownOpen, setIsCohortDropdownOpen] = useState(false);
     const [cohortSearchQuery, setCohortSearchQuery] = useState('');
     const cohortDropdownRef = useRef<HTMLDivElement>(null);
@@ -103,7 +106,6 @@ export const CohortRunsDrawer: React.FC<CohortRunsDrawerProps> = ({
         cancelText?: string;
     }>({ isOpen: false, type: 'warning', title: '', message: '' });
 
-    // 1. Click outside listener to auto-close the custom cohort dropdown
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (cohortDropdownRef.current && !cohortDropdownRef.current.contains(event.target as Node)) {
@@ -114,14 +116,13 @@ export const CohortRunsDrawer: React.FC<CohortRunsDrawerProps> = ({
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    // 2. Live Firestore Listener for Parent Content Container (Master Blueprint Defaults)
     useEffect(() => {
         if (!isOpen || !containerId || propContainerData) return;
 
         const containerRef = doc(db, 'content_containers', containerId);
         const unsubContainer = onSnapshot(containerRef, (docSnap) => {
             if (docSnap.exists()) {
-                setFetchedContainerData({ id: docSnap.id, ...docSnap.data() });
+                setFetchedContainerData({ id: docSnap.id, ...docSnap.data() } as EnrichedContentContainer);
             }
         }, (err) => {
             console.warn("Error fetching parent content container defaults:", err);
@@ -130,7 +131,6 @@ export const CohortRunsDrawer: React.FC<CohortRunsDrawerProps> = ({
         return () => unsubContainer();
     }, [isOpen, containerId, propContainerData]);
 
-    // 3. Live Firestore Listener for Cohort Timeline Runs
     useEffect(() => {
         if (!isOpen || !containerId) return;
 
@@ -138,7 +138,7 @@ export const CohortRunsDrawer: React.FC<CohortRunsDrawerProps> = ({
         const q = query(collection(db, 'cohort_runs'), where('containerId', '==', containerId));
 
         const unsub = onSnapshot(q, (snap) => {
-            const fetched = snap.docs.map(d => ({ id: d.id, ...d.data() } as CohortRun));
+            const fetched = snap.docs.map(d => ({ id: d.id, ...d.data() } as ExtendedCohortRun));
             fetched.sort((a, b) => {
                 const dateA = a.timeBoundConfig?.startDate ? new Date(a.timeBoundConfig.startDate).getTime() : 0;
                 const dateB = b.timeBoundConfig?.startDate ? new Date(b.timeBoundConfig.startDate).getTime() : 0;
@@ -205,12 +205,12 @@ export const CohortRunsDrawer: React.FC<CohortRunsDrawerProps> = ({
         }
     };
 
-    const requestDeleteRun = (run: CohortRun) => {
+    const requestDeleteRun = (run: ExtendedCohortRun) => {
         setConfirmModal({
             isOpen: true,
             type: 'warning',
             title: 'Delete Timeline',
-            message: `Are you sure you want to permanently delete "${run.cohortName}"? This cannot be undone.`,
+            message: `Are you sure you want to permanently delete "${run.cohortName || run.name}"? This cannot be undone.`,
             confirmText: 'Delete Timeline',
             cancelText: 'Cancel',
             onConfirm: async () => {
@@ -225,34 +225,40 @@ export const CohortRunsDrawer: React.FC<CohortRunsDrawerProps> = ({
         });
     };
 
-    const handleStartEditing = (run: CohortRun) => {
-        const linkedCohortIds: string[] = (run as any).cohortIds || (run.cohortId ? [run.cohortId] : []);
+    const handleStartEditing = (run: ExtendedCohortRun) => {
+        const linkedCohortIds: string[] = run.cohortIds || (run.cohortId ? [run.cohortId] : []);
+        const rawIssuerMode = run.certificateIssuerMode || (masterContainer.checkpointMetadata?.certificateIssuerMode as string);
+        const normalizedMode: 'mlab_internal' | 'external_authority' = rawIssuerMode === 'external_authority' ? 'external_authority' : 'mlab_internal';
 
         setEditConfig({
             runName: run.name || run.cohortName || masterContainer.title || '',
-            description: (run as any).description || masterContainer.description || masterContainer.checkpointMetadata?.courseDescription || '',
-            themeColor: (run as any).themeColor || masterContainer.themeColor || masterContainer.checkpointMetadata?.themeColor || '#0284c7',
-            illustrationType: (run as any).illustrationType || masterContainer.illustrationType || masterContainer.checkpointMetadata?.illustrationType || 'code',
-            applicationStartDate: (run as any).applicationStartDate || '',
-            applicationEndDate: (run as any).applicationEndDate || '',
-            level: (run as any).level || masterContainer.level || masterContainer.checkpointMetadata?.courseLevel || 'beginner',
-            isCertificateAwarded: (run as any).isCertificateAwarded ?? masterContainer.isCertificateAwarded ?? masterContainer.checkpointMetadata?.isCertificateAwarded ?? true,
-            learningOutcomes: (run as any).learningOutcomes || masterContainer.learningOutcomes || masterContainer.checkpointMetadata?.learningOutcomes || [],
-            prerequisites: (run as any).prerequisites || masterContainer.prerequisites || masterContainer.checkpointMetadata?.prerequisites || [],
-            targetAudience: (run as any).targetAudience || masterContainer.targetAudience || masterContainer.checkpointMetadata?.targetAudience || [],
-            materialIncludes: (run as any).materialIncludes || masterContainer.materialIncludes || masterContainer.checkpointMetadata?.materialIncludes || [
+            description: run.description || masterContainer.description || (masterContainer.checkpointMetadata?.courseDescription as string) || '',
+            themeColor: run.themeColor || masterContainer.themeColor || (masterContainer.checkpointMetadata?.themeColor as string) || '#0284c7',
+            illustrationType: run.illustrationType || masterContainer.illustrationType || (masterContainer.checkpointMetadata?.illustrationType as string) || 'code',
+            applicationStartDate: run.applicationStartDate || '',
+            applicationEndDate: run.applicationEndDate || '',
+            level: run.level || masterContainer.level || (masterContainer.checkpointMetadata?.courseLevel as string) || 'beginner',
+            isCertificateAwarded: run.isCertificateAwarded ?? masterContainer.isCertificateAwarded ?? (masterContainer.checkpointMetadata?.isCertificateAwarded as boolean) ?? true,
+            certificateIssuerMode: normalizedMode,
+            certificateTemplateId: run.certificateTemplateId || '',
+            externalIssuerName: run.externalIssuerName || '',
+            awaitingExternalNotice: run.awaitingExternalNotice || '',
+            learningOutcomes: run.learningOutcomes || masterContainer.learningOutcomes || (masterContainer.checkpointMetadata?.learningOutcomes as string[]) || [],
+            prerequisites: run.prerequisites || masterContainer.prerequisites || (masterContainer.checkpointMetadata?.prerequisites as string[]) || [],
+            targetAudience: run.targetAudience || masterContainer.targetAudience || (masterContainer.checkpointMetadata?.targetAudience as string[]) || [],
+            materialIncludes: run.materialIncludes || masterContainer.materialIncludes || (masterContainer.checkpointMetadata?.materialIncludes as string[]) || [
                 'Hands-on Video Tutorials & Source Code',
                 'Downloadable Lab Guides & Asset Packs',
                 'Interactive AI Peer Reviews & Quizzes',
                 'Industry Certificate of Completion'
             ],
-            tags: (run as any).tags || masterContainer.tags || masterContainer.checkpointMetadata?.courseTags || [],
-            isAccredited: (run as any).isAccredited ?? masterContainer.defaultAccreditation?.isAccredited ?? true,
+            tags: run.tags || masterContainer.tags || (masterContainer.checkpointMetadata?.courseTags as string[]) || [],
+            isAccredited: run.isAccredited ?? masterContainer.defaultAccreditation?.isAccredited ?? true,
             accreditationBody: run.accreditation?.body || masterContainer.defaultAccreditation?.body || 'qcto',
             customAccreditationText: run.accreditation?.customText || masterContainer.defaultAccreditation?.customText || '',
-            saqaId: (run as any).saqaId || masterContainer.defaultAccreditation?.saqaId || '',
-            nqfLevel: (run as any).nqfLevel || masterContainer.defaultAccreditation?.nqfLevel || 5,
-            credits: (run as any).credits || masterContainer.defaultAccreditation?.credits || 120,
+            saqaId: run.saqaId || masterContainer.defaultAccreditation?.saqaId || '',
+            nqfLevel: run.nqfLevel || masterContainer.defaultAccreditation?.nqfLevel || 5,
+            credits: run.credits || masterContainer.defaultAccreditation?.credits || 120,
             start: run.timeBoundConfig?.startDate || '',
             end: run.timeBoundConfig?.endDate || '',
             isTimeBound: run.timeBoundConfig?.isTimeBound ?? true,
@@ -261,31 +267,41 @@ export const CohortRunsDrawer: React.FC<CohortRunsDrawerProps> = ({
         setEditingRunId(run.id);
     };
 
-    const handleSettingChange = (field: keyof CohortRunSettingsData, value: any) => {
+    const handleSettingChange = <K extends keyof CohortRunSettingsData>(
+        field: K,
+        value: CohortRunSettingsData[K]
+    ) => {
         setEditConfig(prev => ({ ...prev, [field]: value }));
     };
 
-    const handleResetDefaults = (run: CohortRun) => {
+    const handleResetDefaults = (run: ExtendedCohortRun) => {
+        const rawIssuerMode = masterContainer.checkpointMetadata?.certificateIssuerMode as string;
+        const normalizedMode: 'mlab_internal' | 'external_authority' = rawIssuerMode === 'external_authority' ? 'external_authority' : 'mlab_internal';
+
         setEditConfig(prev => ({
             ...prev,
             runName: masterContainer.title || run.cohortName || '',
-            description: masterContainer.description || masterContainer.checkpointMetadata?.courseDescription || '',
-            themeColor: masterContainer.themeColor || masterContainer.checkpointMetadata?.themeColor || '#0284c7',
-            illustrationType: masterContainer.illustrationType || masterContainer.checkpointMetadata?.illustrationType || 'code',
+            description: masterContainer.description || (masterContainer.checkpointMetadata?.courseDescription as string) || '',
+            themeColor: masterContainer.themeColor || (masterContainer.checkpointMetadata?.themeColor as string) || '#0284c7',
+            illustrationType: masterContainer.illustrationType || (masterContainer.checkpointMetadata?.illustrationType as string) || 'code',
             applicationStartDate: '',
             applicationEndDate: '',
-            level: masterContainer.level || masterContainer.checkpointMetadata?.courseLevel || 'beginner',
-            isCertificateAwarded: masterContainer.isCertificateAwarded ?? masterContainer.checkpointMetadata?.isCertificateAwarded ?? true,
-            learningOutcomes: masterContainer.learningOutcomes || masterContainer.checkpointMetadata?.learningOutcomes || [],
-            prerequisites: masterContainer.prerequisites || masterContainer.checkpointMetadata?.prerequisites || [],
-            targetAudience: masterContainer.targetAudience || masterContainer.checkpointMetadata?.targetAudience || [],
-            materialIncludes: masterContainer.materialIncludes || masterContainer.checkpointMetadata?.materialIncludes || [
+            level: masterContainer.level || (masterContainer.checkpointMetadata?.courseLevel as string) || 'beginner',
+            isCertificateAwarded: masterContainer.isCertificateAwarded ?? (masterContainer.checkpointMetadata?.isCertificateAwarded as boolean) ?? true,
+            certificateIssuerMode: normalizedMode,
+            certificateTemplateId: '',
+            externalIssuerName: '',
+            awaitingExternalNotice: '',
+            learningOutcomes: masterContainer.learningOutcomes || (masterContainer.checkpointMetadata?.learningOutcomes as string[]) || [],
+            prerequisites: masterContainer.prerequisites || (masterContainer.checkpointMetadata?.prerequisites as string[]) || [],
+            targetAudience: masterContainer.targetAudience || (masterContainer.checkpointMetadata?.targetAudience as string[]) || [],
+            materialIncludes: masterContainer.materialIncludes || (masterContainer.checkpointMetadata?.materialIncludes as string[]) || [
                 'Hands-on Video Tutorials & Source Code',
                 'Downloadable Lab Guides & Asset Packs',
                 'Interactive AI Peer Reviews & Quizzes',
                 'Industry Certificate of Completion'
             ],
-            tags: masterContainer.tags || masterContainer.checkpointMetadata?.courseTags || [],
+            tags: masterContainer.tags || (masterContainer.checkpointMetadata?.courseTags as string[]) || [],
             isAccredited: masterContainer.defaultAccreditation?.isAccredited ?? true,
             accreditationBody: masterContainer.defaultAccreditation?.body || 'qcto',
             customAccreditationText: masterContainer.defaultAccreditation?.customText || '',
@@ -296,7 +312,7 @@ export const CohortRunsDrawer: React.FC<CohortRunsDrawerProps> = ({
         toast.info("Inline settings reset to Master Blueprint defaults.");
     };
 
-    const handleSaveConfig = async (run: CohortRun) => {
+    const handleSaveConfig = async (run: ExtendedCohortRun) => {
         if (!editConfig.runName.trim()) {
             toast.warning("Please enter a Title for this cohort batch.");
             return;
@@ -322,10 +338,14 @@ export const CohortRunsDrawer: React.FC<CohortRunsDrawerProps> = ({
                     applicationEndDate: editConfig.applicationEndDate,
                     level: editConfig.level,
                     isCertificateAwarded: editConfig.isCertificateAwarded,
+                    certificateIssuerMode: editConfig.certificateIssuerMode,
+                    certificateTemplateId: editConfig.certificateTemplateId,
+                    externalIssuerName: editConfig.externalIssuerName,
+                    awaitingExternalNotice: editConfig.awaitingExternalNotice,
                     learningOutcomes: editConfig.learningOutcomes,
                     prerequisites: editConfig.prerequisites,
                     targetAudience: editConfig.targetAudience,
-                    materialIncludes: editConfig.materialIncludes, // 👈 Saved directly to Firestore
+                    materialIncludes: editConfig.materialIncludes,
                     tags: editConfig.tags,
                     isAccredited: editConfig.isAccredited,
                     accreditationBody: editConfig.accreditationBody,
@@ -335,15 +355,19 @@ export const CohortRunsDrawer: React.FC<CohortRunsDrawerProps> = ({
                     credits: editConfig.credits,
                     cohortIds: editConfig.cohortIds,
                     cohortId: editConfig.cohortIds.length > 0 ? editConfig.cohortIds[0] : null,
-                    "timeBoundConfig.isTimeBound": editConfig.isTimeBound,
-                    "timeBoundConfig.startDate": editConfig.isTimeBound ? editConfig.start : "",
-                    "timeBoundConfig.endDate": editConfig.isTimeBound ? editConfig.end : "",
+                    timeBoundConfig: {
+                        ...(run.timeBoundConfig || {}),
+                        isTimeBound: editConfig.isTimeBound,
+                        startDate: editConfig.isTimeBound ? editConfig.start : '',
+                        endDate: editConfig.isTimeBound ? editConfig.end : ''
+                    },
                     updatedAt: new Date().toISOString()
                 });
                 toast.success("Timeline settings, material includes & branding updated!");
                 setEditingRunId(null);
-            } catch (error: any) {
-                toast.error(error?.message || "Failed to update settings.");
+            } catch (error: unknown) {
+                const errorMsg = error instanceof Error ? error.message : "Failed to update settings.";
+                toast.error(errorMsg);
             }
         };
 
@@ -352,7 +376,7 @@ export const CohortRunsDrawer: React.FC<CohortRunsDrawerProps> = ({
                 isOpen: true,
                 type: 'warning',
                 title: 'This Will Clear the Generated Schedule',
-                message: `"${run.cohortName}" already has a lesson schedule generated. Changing these settings will clear it — you'll need to regenerate it in Launch Cohort before this run can go active.`,
+                message: `"${run.cohortName || run.name}" already has a lesson schedule generated. Changing these settings will clear it — you'll need to regenerate it in Launch Cohort before this run can go active.`,
                 confirmText: 'Update Settings',
                 cancelText: 'Cancel',
                 onConfirm: () => {
@@ -365,17 +389,17 @@ export const CohortRunsDrawer: React.FC<CohortRunsDrawerProps> = ({
         }
     };
 
-    const handleLaunchRun = (run: CohortRun) => {
-        const enrichedRun: CohortRun = {
+    const handleLaunchRun = (run: ExtendedCohortRun) => {
+        const enrichedRun: ExtendedCohortRun = {
             ...run,
-            description: (run as any).description || masterContainer.description || masterContainer.checkpointMetadata?.courseDescription || '',
-            themeColor: (run as any).themeColor || masterContainer.themeColor || masterContainer.checkpointMetadata?.themeColor || '#0284c7',
-            illustrationType: (run as any).illustrationType || masterContainer.illustrationType || masterContainer.checkpointMetadata?.illustrationType || 'code',
-            materialIncludes: (run as any).materialIncludes || masterContainer.materialIncludes || masterContainer.checkpointMetadata?.materialIncludes || [],
-            accreditation: run.accreditation || masterContainer.defaultAccreditation || masterContainer.checkpointMetadata?.defaultAccreditation || null
-        } as any;
+            description: run.description || masterContainer.description || (masterContainer.checkpointMetadata?.courseDescription as string) || '',
+            themeColor: run.themeColor || masterContainer.themeColor || (masterContainer.checkpointMetadata?.themeColor as string) || '#0284c7',
+            illustrationType: run.illustrationType || masterContainer.illustrationType || (masterContainer.checkpointMetadata?.illustrationType as string) || 'code',
+            materialIncludes: run.materialIncludes || masterContainer.materialIncludes || (masterContainer.checkpointMetadata?.materialIncludes as string[]) || [],
+            accreditation: run.accreditation || masterContainer.defaultAccreditation || (masterContainer.checkpointMetadata?.defaultAccreditation as any) || null
+        };
 
-        onLaunchNew?.(enrichedRun, masterContainer);
+        onLaunchNew?.(enrichedRun, masterContainer as EnrichedContentContainer);
     };
 
     const getStatusColor = (status: string) => {
@@ -384,7 +408,7 @@ export const CohortRunsDrawer: React.FC<CohortRunsDrawerProps> = ({
             case 'completed': return { bg: '#f3e8ff', text: '#6d28d9', border: '#e9d5ff' };
             case 'archived': return { bg: '#f1f5f9', text: '#475569', border: '#cbd5e1' };
             case 'draft': return { bg: 'var(--mlab-light-blue)', text: 'var(--mlab-blue)', border: 'var(--mlab-border)' };
-            default: return { bg: '#fef3c7', text: '#92400e', border: '#fde68a' }; // paused
+            default: return { bg: '#fef3c7', text: '#92400e', border: '#fde68a' };
         }
     };
 
@@ -393,7 +417,6 @@ export const CohortRunsDrawer: React.FC<CohortRunsDrawerProps> = ({
     return (
         <div className="lfm-overlay" onClick={onClose} style={{ zIndex: 99999, justifyContent: 'flex-end', padding: 0 }}>
 
-            {/* CONFIRMATION MODAL PORTAL */}
             {confirmModal.isOpen && createPortal(
                 <StatusModal
                     type={confirmModal.type}
@@ -423,7 +446,7 @@ export const CohortRunsDrawer: React.FC<CohortRunsDrawerProps> = ({
                 }}
                 onClick={e => e.stopPropagation()}
             >
-                {/* ── DRAWER HEADER ── */}
+                {/* DRAWER HEADER */}
                 <div className="lfm-header">
                     <div>
                         <div style={{ fontSize: '0.72rem', color: 'var(--mlab-green)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
@@ -433,12 +456,14 @@ export const CohortRunsDrawer: React.FC<CohortRunsDrawerProps> = ({
                             {containerName}
                         </h2>
                     </div>
-                    <button type="button" className="lfm-close-btn" onClick={onClose}>
-                        <X size={20} />
-                    </button>
+                    <Tooltip content="Close drawer" placement="left">
+                        <button type="button" className="lfm-close-btn" onClick={onClose}>
+                            <X size={20} />
+                        </button>
+                    </Tooltip>
                 </div>
 
-                {/* ── DRAWER BODY ── */}
+                {/* DRAWER BODY */}
                 <div className="lfm-body" style={{ padding: '1.5rem', overflowY: 'auto' }}>
 
                     {/* CREATE NEW TIMELINE ACTION BAR */}
@@ -447,24 +472,28 @@ export const CohortRunsDrawer: React.FC<CohortRunsDrawerProps> = ({
                             <Plus size={13} /> Draft New Timeline Blueprint
                         </div>
                         <div style={{ display: 'flex', gap: '8px' }}>
-                            <input
-                                type="text"
-                                className="lfm-input"
-                                style={{ flex: 1 }}
-                                placeholder="e.g. Spring 2026 Intake"
-                                value={newTimelineName}
-                                onChange={(e) => setNewTimelineName(e.target.value)}
-                                onKeyDown={(e) => e.key === 'Enter' && handleCreateTimeline()}
-                            />
-                            <button
-                                type="button"
-                                className="lfm-btn lfm-btn--primary"
-                                onClick={handleCreateTimeline}
-                                disabled={!newTimelineName.trim() || isCreating}
-                                style={{ minWidth: '100px', justifyContent: 'center' }}
-                            >
-                                {isCreating ? <Clock className="lfm-spin" size={14} /> : 'Create'}
-                            </button>
+                            <Tooltip content="Enter a title for this delivery run (e.g., 'Spring 2026 Cohort Intake')." placement="top">
+                                <input
+                                    type="text"
+                                    className="lfm-input"
+                                    style={{ flex: 1 }}
+                                    placeholder="e.g. Spring 2026 Intake"
+                                    value={newTimelineName}
+                                    onChange={(e) => setNewTimelineName(e.target.value)}
+                                    onKeyDown={(e) => e.key === 'Enter' && handleCreateTimeline()}
+                                />
+                            </Tooltip>
+                            <Tooltip content="Draft a new timeline run linked to this master package." placement="top">
+                                <button
+                                    type="button"
+                                    className="lfm-btn lfm-btn--primary"
+                                    onClick={handleCreateTimeline}
+                                    disabled={!newTimelineName.trim() || isCreating}
+                                    style={{ minWidth: '100px', justifyContent: 'center' }}
+                                >
+                                    {isCreating ? <Clock className="lfm-spin" size={14} /> : 'Create'}
+                                </button>
+                            </Tooltip>
                         </div>
                     </div>
 
@@ -485,7 +514,7 @@ export const CohortRunsDrawer: React.FC<CohortRunsDrawerProps> = ({
                             const isEditing = editingRunId === run.id;
                             const hasSchedule = run.generatedSchedule && run.generatedSchedule.length > 0;
 
-                            const linkedCohortIds: string[] = (run as any).cohortIds || (run.cohortId ? [run.cohortId] : []);
+                            const linkedCohortIds: string[] = run.cohortIds || (run.cohortId ? [run.cohortId] : []);
 
                             const linkedCohortNames = linkedCohortIds.includes('ALL')
                                 ? 'All Active Cohorts'
@@ -503,11 +532,13 @@ export const CohortRunsDrawer: React.FC<CohortRunsDrawerProps> = ({
                                     <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--mlab-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--mlab-light-blue)' }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                             <PlayCircle size={16} color="var(--mlab-blue)" />
-                                            <strong style={{ fontSize: '0.9rem', color: 'var(--mlab-blue)', fontFamily: 'var(--font-heading)' }}>{run.cohortName}</strong>
+                                            <strong style={{ fontSize: '0.9rem', color: 'var(--mlab-blue)', fontFamily: 'var(--font-heading)' }}>{run.cohortName || run.name}</strong>
                                         </div>
-                                        <span style={{ background: colors.bg, color: colors.text, border: `1px solid ${colors.border}`, padding: '2px 8px', fontSize: '0.65rem', fontWeight: 800, textTransform: 'uppercase', fontFamily: 'var(--font-body)' }}>
-                                            {run.status}
-                                        </span>
+                                        <Tooltip content={`Current status: ${run.status.toUpperCase()}`} placement="left">
+                                            <span style={{ background: colors.bg, color: colors.text, border: `1px solid ${colors.border}`, padding: '2px 8px', fontSize: '0.65rem', fontWeight: 800, textTransform: 'uppercase', fontFamily: 'var(--font-body)' }}>
+                                                {run.status}
+                                            </span>
+                                        </Tooltip>
                                     </div>
 
                                     {/* Run Details */}
@@ -517,19 +548,20 @@ export const CohortRunsDrawer: React.FC<CohortRunsDrawerProps> = ({
                                         {isEditing ? (
                                             <div style={{ background: '#f8fafc', padding: '16px', border: '1px solid var(--mlab-border)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
-                                                {/* REUSABLE BRANDING, TITLE, RICH DESCRIPTION, ARTWORK & MATERIAL INCLUDED FORM */}
                                                 <CohortRunSettingsForm
                                                     data={editConfig}
                                                     onChange={handleSettingChange}
                                                     onResetToBlueprintDefaults={() => handleResetDefaults(run)}
-                                                    framework={(run as any).framework || 'secam'}
+                                                    framework={run.framework || 'secam'}
                                                 />
 
                                                 {/* MULTI-SELECT DROPDOWN FOR TARGET COHORTS */}
                                                 <div className="lfm-fg lfm-fg--full" style={{ background: '#ffffff', border: '1px solid var(--mlab-border)', padding: '1rem' }}>
-                                                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', fontWeight: 700, fontFamily: 'var(--font-heading)', textTransform: 'uppercase', marginBottom: '8px', color: 'var(--mlab-blue)' }}>
-                                                        <Users size={14} color="var(--mlab-green)" /> Target Cohort Availability
-                                                    </label>
+                                                    <Tooltip content="Select specific learner cohorts that can access this run." placement="top">
+                                                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', fontWeight: 700, fontFamily: 'var(--font-heading)', textTransform: 'uppercase', marginBottom: '8px', color: 'var(--mlab-blue)' }}>
+                                                            <Users size={14} color="var(--mlab-green)" /> Target Cohort Availability
+                                                        </label>
+                                                    </Tooltip>
 
                                                     <div style={{ position: 'relative', width: '100%' }} ref={cohortDropdownRef}>
                                                         <button
@@ -622,23 +654,29 @@ export const CohortRunsDrawer: React.FC<CohortRunsDrawerProps> = ({
 
                                                 {/* TIME-BOUND PACING WINDOW DATES */}
                                                 <div style={{ background: '#ffffff', border: '1px solid var(--mlab-border)', padding: '1rem' }}>
-                                                    <label className="lfm-checkbox-row" style={{ margin: '0 0 12px 0', fontWeight: 700, fontSize: '0.8rem' }}>
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={editConfig.isTimeBound}
-                                                            onChange={e => setEditConfig({ ...editConfig, isTimeBound: e.target.checked })}
-                                                        />
-                                                        Time-Bound Delivery Mode
-                                                    </label>
+                                                    <Tooltip content="Toggle between fixed start/end date pacing or open self-paced learning access." placement="top">
+                                                        <label className="lfm-checkbox-row" style={{ margin: '0 0 12px 0', fontWeight: 700, fontSize: '0.8rem' }}>
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={editConfig.isTimeBound}
+                                                                onChange={e => setEditConfig({ ...editConfig, isTimeBound: e.target.checked })}
+                                                            />
+                                                            Time-Bound Delivery Mode
+                                                        </label>
+                                                    </Tooltip>
 
                                                     {editConfig.isTimeBound && (
                                                         <div className="lfm-grid" style={{ gap: '1rem', marginBottom: '12px' }}>
                                                             <div className="lfm-fg">
-                                                                <label>Batch Start Date</label>
+                                                                <Tooltip content="The starting date of this delivery timeline." placement="top">
+                                                                    <label>Batch Start Date</label>
+                                                                </Tooltip>
                                                                 <input type="date" value={editConfig.start} onChange={e => setEditConfig({ ...editConfig, start: e.target.value })} className="lfm-input" />
                                                             </div>
                                                             <div className="lfm-fg">
-                                                                <label>Batch End Date</label>
+                                                                <Tooltip content="The target completion date of this delivery timeline." placement="top">
+                                                                    <label>Batch End Date</label>
+                                                                </Tooltip>
                                                                 <input type="date" value={editConfig.end} onChange={e => setEditConfig({ ...editConfig, end: e.target.value })} className="lfm-input" />
                                                             </div>
                                                         </div>
@@ -654,7 +692,9 @@ export const CohortRunsDrawer: React.FC<CohortRunsDrawerProps> = ({
 
                                                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '4px' }}>
                                                     <button type="button" onClick={() => setEditingRunId(null)} className="lfm-btn lfm-btn--ghost" style={{ padding: '6px 12px' }}>Cancel</button>
-                                                    <button type="button" onClick={() => handleSaveConfig(run)} className="lfm-btn lfm-btn--primary" style={{ padding: '6px 12px' }}>Save Settings</button>
+                                                    <Tooltip content="Save all run configuration updates to Firestore." placement="top">
+                                                        <button type="button" onClick={() => handleSaveConfig(run)} className="lfm-btn lfm-btn--primary" style={{ padding: '6px 12px' }}>Save Settings</button>
+                                                    </Tooltip>
                                                 </div>
                                             </div>
                                         ) : (
@@ -673,7 +713,7 @@ export const CohortRunsDrawer: React.FC<CohortRunsDrawerProps> = ({
                                                     </div>
                                                 ) : (
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', color: 'var(--mlab-green-dark)', fontFamily: 'var(--font-body)', fontWeight: 700 }}>
-                                                        <Infinity size={16} /> Self-Paced (Evergreen)
+                                                        <InfinityIcon size={16} /> Self-Paced (Evergreen)
                                                     </div>
                                                 )}
 
@@ -687,65 +727,76 @@ export const CohortRunsDrawer: React.FC<CohortRunsDrawerProps> = ({
                                         {/* Action Bar */}
                                         <div style={{ borderTop: '1px dashed var(--mlab-border)', paddingTop: '16px', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
 
-                                            <button
-                                                type="button"
-                                                onClick={() => onAnalyticsClick?.(run.id)}
-                                                className="lfm-btn"
-                                                style={{ background: 'var(--mlab-light-blue)', border: '1px solid var(--mlab-border)', color: 'var(--mlab-blue)', padding: '4px 10px', fontSize: '0.68rem' }}
-                                            >
-                                                <BarChart3 size={13} /> Analytics
-                                            </button>
-
-                                            {!isEditing && (
+                                            <Tooltip content="View analytics and learner submission stats for this run." placement="top">
                                                 <button
                                                     type="button"
-                                                    onClick={() => handleStartEditing(run)}
-                                                    className="lfm-btn lfm-btn--ghost"
-                                                    style={{ padding: '4px 10px', fontSize: '0.68rem' }}
+                                                    onClick={() => onAnalyticsClick?.(run.id)}
+                                                    className="lfm-btn"
+                                                    style={{ background: 'var(--mlab-light-blue)', border: '1px solid var(--mlab-border)', color: 'var(--mlab-blue)', padding: '4px 10px', fontSize: '0.68rem' }}
                                                 >
-                                                    <Settings2 size={13} /> Config
+                                                    <BarChart3 size={13} /> Analytics
                                                 </button>
+                                            </Tooltip>
+
+                                            {!isEditing && (
+                                                <Tooltip content="Edit runtime branding, metadata, assigned cohorts, and pacing dates." placement="top">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleStartEditing(run)}
+                                                        className="lfm-btn lfm-btn--ghost"
+                                                        style={{ padding: '4px 10px', fontSize: '0.68rem' }}
+                                                    >
+                                                        <Settings2 size={13} /> Config
+                                                    </button>
+                                                </Tooltip>
                                             )}
 
                                             {/* Dynamic Status Action Button */}
                                             {run.status === 'draft' ? (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleLaunchRun(run)}
-                                                    className="lfm-btn lfm-btn--primary"
-                                                    style={{ padding: '4px 10px', fontSize: '0.68rem' }}
-                                                >
-                                                    <Rocket size={13} /> Launch
-                                                </button>
+                                                <Tooltip content="Generate lesson schedules and launch this timeline into active production." placement="top">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleLaunchRun(run)}
+                                                        className="lfm-btn lfm-btn--primary"
+                                                        style={{ padding: '4px 10px', fontSize: '0.68rem' }}
+                                                    >
+                                                        <Rocket size={13} /> Launch
+                                                    </button>
+                                                </Tooltip>
                                             ) : run.status === 'active' ? (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleUpdateStatus(run.id, 'paused')}
-                                                    className="lfm-btn"
-                                                    style={{ background: '#fff1f2', border: '1px solid #fecdd3', color: '#be123c', padding: '4px 10px', fontSize: '0.68rem' }}
-                                                >
-                                                    <Ban size={13} /> Pause
-                                                </button>
+                                                <Tooltip content="Temporarily pause learner progression for this run." placement="top">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleUpdateStatus(run.id, 'paused')}
+                                                        className="lfm-btn"
+                                                        style={{ background: '#fff1f2', border: '1px solid #fecdd3', color: '#be123c', padding: '4px 10px', fontSize: '0.68rem' }}
+                                                    >
+                                                        <Ban size={13} /> Pause
+                                                    </button>
+                                                </Tooltip>
                                             ) : run.status === 'paused' ? (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleUpdateStatus(run.id, 'active')}
-                                                    className="lfm-btn"
-                                                    style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#16a34a', padding: '4px 10px', fontSize: '0.68rem' }}
-                                                >
-                                                    <PlayCircle size={13} /> Resume
-                                                </button>
+                                                <Tooltip content="Resume active learner progression for this run." placement="top">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleUpdateStatus(run.id, 'active')}
+                                                        className="lfm-btn"
+                                                        style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#16a34a', padding: '4px 10px', fontSize: '0.68rem' }}
+                                                    >
+                                                        <PlayCircle size={13} /> Resume
+                                                    </button>
+                                                </Tooltip>
                                             ) : null}
 
-                                            <button
-                                                type="button"
-                                                onClick={() => requestDeleteRun(run)}
-                                                className="lfm-btn lfm-btn--ghost"
-                                                style={{ border: 'none', color: 'var(--mlab-grey-lt)', padding: '4px 8px', marginLeft: 'auto' }}
-                                                title="Delete Timeline"
-                                            >
-                                                <Trash2 size={14} />
-                                            </button>
+                                            <Tooltip content="Permanently delete this timeline run." placement="top">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => requestDeleteRun(run)}
+                                                    className="lfm-btn lfm-btn--ghost"
+                                                    style={{ border: 'none', color: 'var(--mlab-grey-lt)', padding: '4px 8px', marginLeft: 'auto' }}
+                                                >
+                                                    <Trash2 size={14} />
+                                                </button>
+                                            </Tooltip>
                                         </div>
                                     </div>
                                 </div>

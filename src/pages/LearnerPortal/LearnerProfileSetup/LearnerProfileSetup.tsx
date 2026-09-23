@@ -7,7 +7,7 @@ import { GoogleMap, Marker } from '@react-google-maps/api';
 import {
     User, Upload, FileText, CheckCircle,
     Save, ChevronRight, ShieldCheck, MapPin, Heart, Camera,
-    Briefcase, Globe, Lock, Plus, Trash2, Info, Search, X, Code
+    Briefcase, Globe, Lock, Plus, Trash2, Info, Search, X, Code, Eye
 } from 'lucide-react';
 import { doc, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -187,6 +187,9 @@ export const LearnerProfileSetup: React.FC = () => {
     const [fetchingInitial, setFetchingInitial] = useState(true);
     const [learnerDocId, setLearnerDocId] = useState<string | null>(null);
     const [showLegacyModal, setShowLegacyModal] = useState(false);
+
+    // Code of Conduct In-App Policy Modal State
+    const [isCocModalOpen, setIsCocModalOpen] = useState(false);
 
     const [allStatssaCodes, setAllStatssaCodes] = useState<any[]>([]);
 
@@ -522,6 +525,12 @@ export const LearnerProfileSetup: React.FC = () => {
         setDocsList(prev => prev.map(doc => doc.id === id ? { ...doc, [field]: value } : doc));
     };
 
+    const handleAcceptCocInModal = () => {
+        handleChange('popiaConsent', true);
+        setIsCocModalOpen(false);
+        toast.success("Code of Conduct & POPIA consent acknowledged!");
+    };
+
     const handleSubmit = async () => {
         if (!user?.uid) return;
 
@@ -576,7 +585,7 @@ export const LearnerProfileSetup: React.FC = () => {
             );
             const provinceMatch = QCTO_PROVINCES.find(p => p.value === formData.provinceCode);
 
-            // 🚀 COMPUTE SKILLS PROGRESSION DELTA & AUDIT HISTORY LOG
+            // COMPUTE SKILLS PROGRESSION DELTA & AUDIT HISTORY LOG
             const savedSkills: SkillItem[] = Array.isArray(formData.skills) ? formData.skills : [];
             const existingSkillsMap = new Map((initialSkills || []).map((s: any) => [s.id || s.name, s]));
             const generatedSkillsHistory: SkillHistoryEntry[] = [...(initialSkillsHistory || [])];
@@ -615,7 +624,7 @@ export const LearnerProfileSetup: React.FC = () => {
                 profilePhotoUrl: finalPhotoUrl,
                 highestQualification: formData.highestQualification,
                 skills: savedSkills,
-                skillsHistory: generatedSkillsHistory, // 🚀 Persist skill progression audit log
+                skillsHistory: generatedSkillsHistory,
                 profileCompleted: true,
                 updatedAt: new Date().toISOString(),
 
@@ -752,6 +761,41 @@ export const LearnerProfileSetup: React.FC = () => {
                         <div className="lfm-footer">
                             <button type="button" className="lfm-btn lfm-btn--ghost" onClick={() => setIsMapModalOpen(false)}>Cancel</button>
                             <button type="button" className="lfm-btn lfm-btn--primary" onClick={confirmMapCoordinates}><Save size={13} /> Save Pin Location</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* IN-APP POLICY & CODE OF CONDUCT READER MODAL */}
+            {isCocModalOpen && (
+                <div className="lfm-overlay" onClick={() => setIsCocModalOpen(false)} style={{ zIndex: 99999 }}>
+                    <div className="lfm-modal animate-fade-in" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '850px', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+                        <div className="lfm-header" style={{ background: 'var(--mlab-midnight)', color: 'white', borderBottom: '3px solid var(--mlab-green)' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <ShieldCheck size={18} color="#4ade80" />
+                                <h2 className="lfm-header__title" style={{ color: 'white' }}>CodeTribe Code of Conduct &amp; POPIA Policy</h2>
+                            </div>
+                            <button className="lfm-close-btn" type="button" onClick={() => setIsCocModalOpen(false)} style={{ color: 'white' }}><X size={20} /></button>
+                        </div>
+
+                        <div className="lfm-body" style={{ flex: 1, overflowY: 'auto', padding: '16px', fontSize: '0.88rem', lineHeight: 1.6, color: '#334155' }}>
+                            <div style={{ padding: '12px 16px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '6px', marginBottom: '16px' }}>
+                                <strong style={{ color: '#166534', display: 'block', marginBottom: '4px' }}>QCTO &amp; Institutional Governance Acknowledgment</strong>
+                                Please review the mLab CodeTribe Academy rules, computer network restrictions, academic standards, and data protection terms below before consenting.
+                            </div>
+
+                            <iframe
+                                src="/code-of-conduct"
+                                title="Code of Conduct Viewer"
+                                style={{ width: '100%', height: '460px', border: '1px solid #cbd5e1', borderRadius: '6px', background: 'white' }}
+                            />
+                        </div>
+
+                        <div className="lfm-footer" style={{ borderTop: '1px solid #cbd5e1', padding: '16px 24px', background: '#f8fafc', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <button type="button" className="lfm-btn lfm-btn--ghost" onClick={() => setIsCocModalOpen(false)}>Close Reader</button>
+                            <button type="button" className="lfm-btn lfm-btn--primary" onClick={handleAcceptCocInModal} style={{ background: '#16a34a', color: 'white', border: 'none', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                                <CheckCircle size={15} /> I Have Read &amp; Agree To Terms
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -966,6 +1010,7 @@ export const LearnerProfileSetup: React.FC = () => {
                                 ))}
                             </div>
 
+                            {/* POPIA CONSENT & IN-APP POLICY READER TRIGGER */}
                             <div style={{
                                 display: 'flex', gap: '1rem', alignItems: 'flex-start',
                                 background: formData.popiaConsent ? '#f0fdf4' : '#f8fafc',
@@ -979,13 +1024,33 @@ export const LearnerProfileSetup: React.FC = () => {
                                     onChange={(e) => handleChange('popiaConsent', e.target.checked)}
                                     style={{ marginTop: '0.25rem', width: '20px', height: '20px', cursor: 'pointer', flexShrink: 0 }}
                                 />
-                                <div>
-                                    <label htmlFor="popia-consent" style={{ fontWeight: 600, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', cursor: 'pointer' }}>
-                                        <ShieldCheck size={18} color={formData.popiaConsent ? "#16a34a" : "#64748b"} />
-                                        POPIA Consent & Terms of Service
-                                    </label>
+                                <div style={{ flex: 1 }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginBottom: '0.5rem' }}>
+                                        <label htmlFor="popia-consent" style={{ fontWeight: 600, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', margin: 0 }}>
+                                            <ShieldCheck size={18} color={formData.popiaConsent ? "#16a34a" : "#64748b"} />
+                                            POPIA Consent &amp; Terms of Service
+                                        </label>
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsCocModalOpen(true)}
+                                            style={{
+                                                background: '#f1f5f9', color: '#0284c7', border: '1px solid #cbd5e1',
+                                                padding: '4px 10px', borderRadius: '4px', fontSize: '0.78rem',
+                                                fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px'
+                                            }}
+                                        >
+                                            <Eye size={13} /> Read Policy Document
+                                        </button>
+                                    </div>
                                     <p style={{ fontSize: '0.85rem', color: '#475569', margin: 0, lineHeight: 1.5 }}>
-                                        <strong>I formally consent to the processing of my data for QCTO compliance.</strong> By checking this box, I confirm that I have read and agree to the <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: '#0ea5e9', textDecoration: 'underline' }}>Terms & Conditions</a> and the <a href="/privacy-policy" target="_blank" rel="noopener noreferrer" style={{ color: '#0ea5e9', textDecoration: 'underline' }}>POPIA Privacy Policy</a>.
+                                        <strong>I formally consent to the processing of my data for QCTO compliance.</strong> By checking this box or acknowledging via the Policy Reader, I confirm that I have read and agree to the
+                                        <button type="button" onClick={() => setIsCocModalOpen(true)} style={{ background: 'none', border: 'none', color: '#0ea5e9', textDecoration: 'underline', cursor: 'pointer', padding: '0 4px', fontSize: 'inherit', fontWeight: 600 }}>
+                                            Learner Code of Conduct
+                                        </button>
+                                        and
+                                        <a href="/privacy-policy" target="_blank" rel="noopener noreferrer" style={{ color: '#0ea5e9', textDecoration: 'underline', marginLeft: '4px' }}>
+                                            POPIA Privacy Policy
+                                        </a>.
                                     </p>
                                 </div>
                             </div>

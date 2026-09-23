@@ -26,6 +26,10 @@ import { AccessManager } from './pages/AdminDashboard/AccessManager/AccessManage
 import { WorkplaceHub } from './components/views/WorkplaceHub/WorkplaceHub';
 import { WorkplacesManager } from './components/admin/WorkplacesManager/WorkplacesManager';
 
+// Auditor / SETA Portal & Magic Link Verification Gate
+import { AuditorPortalView } from './pages/AuditorPortal/AuditorPortalView';
+import { AuditTokenGate } from './pages/AuditorPortal/AuditTokenGate';
+
 // Staff (Facilitator, Assessor, Moderator, Invigilator)
 import { FacilitatorLayout } from './pages/FacilitatorDashboard/FacilitatorLayout/FacilitatorLayout';
 import { FacilitatorDashboard } from './pages/FacilitatorDashboard/FacilitatorDashboard/FacilitatorDashboard';
@@ -64,11 +68,13 @@ import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { CohortDetailsPage } from './pages/CohortDetails/CohortDetailsPage';
 
 import { PrivacyPolicy } from './components/views/PrivacyPolicy/PrivacyPolicy';
+import { CodeOfConduct } from './pages/Public/CodeOfConduct';
 import Loader from './components/common/Loader/Loader';
 import ResetPassword from './pages/ResetPassword/ResetPassword';
 
-// IMPORT THE WELCOME WIZARD & ANALYTICS HUB
+// IMPORT WELCOME WIZARD & MANDATORY POLICY INTERCEPT MODAL
 import { WelcomeWizard } from './components/common/WelcomeWizard/WelcomeWizard';
+import { MandatoryPolicyModal } from './components/common/MandatoryPolicyModal/MandatoryPolicyModal';
 
 import '../src/assets/styles/mLabModals.css';
 import { LiveAttendanceBoard } from './pages/FacilitatorDashboard/LiveAttendanceBoard/LiveAttendanceBoard';
@@ -76,37 +82,6 @@ import { EventKioskPage } from './components/admin/EcosystemDashboard/EventKiosk
 import { EventDetailsPage } from './components/admin/EcosystemDashboard/EventDetailsPage';
 import { EmployerApplicationForm } from './pages/LearnerPortal/public/EmployerApplicationForm/EmployerApplicationForm';
 import PublicSurveyPage from './pages/PublicSurvey/PublicSurvey';
-
-// // ════════════════════════════════════════════════════════════════════════════
-// // 🚀 ROUTE WRAPPER FOR DIRECT LESSON ANALYTICS ACCESS
-// // ════════════════════════════════════════════════════════════════════════════
-// const StandaloneLessonAnalyticsRoute = () => {
-//   const { unitId } = useParams();
-//   const navigate = useNavigate();
-
-//   const dummyUnit = {
-//     id: unitId || 'unit_secam_01',
-//     containerId: 'container_cta_01',
-//     title: 'JSX Syntax & Component Architecture',
-//     unitType: 'video',
-//     estimatedMinutes: 15,
-//     isRequired: true,
-//     orderIndex: 1
-//   };
-
-//   const dummyCohorts = [
-//     { id: 'cohort_dbn_01', name: 'CodeTribe Durban - Jan 2026' },
-//     { id: 'cohort_mict_2026', name: 'MICT SETA Systems Dev 2026' }
-//   ];
-
-//   return (
-//     <LessonAnalyticsModal
-//       unit={dummyUnit as any}
-//       cohorts={dummyCohorts}
-//       onClose={() => navigate('/admin?tab=content')}
-//     />
-//   );
-// };
 
 // ════════════════════════════════════════════════════════════════════════════
 // 🚀 GOOGLE WEB VITALS PERFORMANCE TRACKER
@@ -267,9 +242,11 @@ const RootRedirect = () => {
     return <Navigate to={`/setup-${user.role === 'assistant_facilitator' ? 'facilitator' : user.role === 'assistant_admin' ? 'admin' : user.role}`} replace />;
   }
 
-  switch (user.role) {
+  switch ((user.role as string)) {
     case 'admin':
     case 'assistant_admin': return <Navigate to="/admin" replace />;
+    case 'seta_verifier':
+    case 'qcto_auditor': return <Navigate to="/audit-portal" replace />;
     case 'facilitator':
     case 'assistant_facilitator': return <Navigate to="/facilitator" replace />;
     case 'assessor': return <Navigate to="/marking" replace />;
@@ -352,6 +329,9 @@ function App() {
       <Router>
         <GlobalAnalyticsTracker />
 
+        {/* 🚀 MANDATORY INTERCEPT MODAL PLACED INSIDE ROUTER CONTEXT */}
+        <MandatoryPolicyModal />
+
         <div className="App">
           <Routes>
             {/* ================= PUBLIC ROUTES ================= */}
@@ -364,6 +344,9 @@ function App() {
             <Route path="/mentor-verify/:tokenId" element={<MentorApprovalView />} />
             <Route path="/apply/host-learners" element={<EmployerApplicationForm />} />
 
+            {/* 🚀 PUBLIC AUDITOR MAGIC LINK VERIFICATION GATE */}
+            <Route path="/audit-access/:tokenId" element={<AuditTokenGate />} />
+
             <Route path="/kiosk" element={<KioskPage />} />
             <Route path="/event-kiosk/:eventId" element={<EventKioskPage />} />
             <Route path="/app-scanner-required" element={<AppScannerRequired />} />
@@ -373,6 +356,7 @@ function App() {
             {/* LEGAL & COMPLIANCE ROUTES */}
             <Route path="/privacy-policy" element={<PrivacyPolicy />} />
             <Route path="/terms" element={<PrivacyPolicy />} />
+            <Route path="/code-of-conduct" element={<CodeOfConduct />} />
 
             {/* ================= ONBOARDING GATES ================= */}
             <Route path="/setup-admin" element={
@@ -408,6 +392,13 @@ function App() {
 
             {/* ================= PROTECTED ROUTES ================= */}
 
+            {/* EXTERNAL AUDITOR / QCTO & SETA VERIFIER PORTAL */}
+            <Route path="/audit-portal" element={
+              <RoleProtectedRoute allowedRoles={['admin', 'assistant_admin', 'seta_verifier', 'qcto_auditor']}>
+                <AuditorPortalView />
+              </RoleProtectedRoute>
+            } />
+
             {/* ADMIN CONSOLE */}
             <Route path="/admin" element={
               <RoleProtectedRoute allowedRoles={['admin', 'assistant_admin']}>
@@ -420,13 +411,6 @@ function App() {
               </RoleProtectedRoute>
             } />
             <Route path="/admin/crashes" element={<Navigate to="/admin?tab=crashes" replace />} />
-
-            {/* 🚀 LESSON ANALYTICS & MODERATION ROUTE */}
-            {/* <Route path="/admin/content/analytics/:unitId" element={
-              <RoleProtectedRoute allowedRoles={['admin', 'assistant_admin', 'facilitator']}>
-                <StandaloneLessonAnalyticsRoute />
-              </RoleProtectedRoute>
-            } /> */}
 
             <Route path="/admin/ecosystem/event/:eventId" element={
               <RoleProtectedRoute allowedRoles={['admin', 'assistant_admin']}>
@@ -542,3 +526,530 @@ function App() {
 }
 
 export default App;
+
+
+
+// // src/App.tsx
+
+// import { useEffect, useState } from 'react';
+// import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useParams, useNavigate } from 'react-router-dom';
+// import { onAuthStateChanged } from 'firebase/auth';
+// import { doc, getDoc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
+// import { getAnalytics, logEvent } from 'firebase/analytics';
+// import { onCLS, onINP, onLCP, onFCP, onTTFB } from 'web-vitals';
+// import { useStore } from './store/useStore';
+// import { recordDailyActivityIfNeeded } from './lib/authAnalytics';
+
+// // --- TYPES ---
+// import type { UserProfile, UserRole } from './types/auth.types';
+
+// // --- PAGES & COMPONENTS ---
+// import Login from './pages/Login/Login';
+// import { RoleProtectedRoute } from './auth/RoleProtectedRoute';
+// import { auth, db } from './lib/firebase';
+
+// // Admin
+// import AdminDashboard from './pages/AdminDashboard/AdminDashboard';
+// import { SettingsPage } from './pages/SettingsPage/SettingsPage';
+// import { CertificateStudio } from './pages/AdminDashboard/CertificateStudio/CertificateStudio';
+// import { AdminProfileSetup } from './pages/AdminDashboard/AdminProfileSetup/AdminProfileSetup';
+// import { AccessManager } from './pages/AdminDashboard/AccessManager/AccessManager';
+// import { WorkplaceHub } from './components/views/WorkplaceHub/WorkplaceHub';
+// import { WorkplacesManager } from './components/admin/WorkplacesManager/WorkplacesManager';
+
+// // Auditor / SETA Portal
+// import { AuditorPortalView } from './pages/AuditorPortal/AuditorPortalView';
+
+// // Staff (Facilitator, Assessor, Moderator, Invigilator)
+// import { FacilitatorLayout } from './pages/FacilitatorDashboard/FacilitatorLayout/FacilitatorLayout';
+// import { FacilitatorDashboard } from './pages/FacilitatorDashboard/FacilitatorDashboard/FacilitatorDashboard';
+// import { AttendancePage } from './pages/FacilitatorDashboard/AttendancePage';
+// import { AssessmentBuilder } from './pages/FacilitatorDashboard/AssessmentBuilder/AssessmentBuilder';
+// import { AssessmentPreview } from './pages/FacilitatorDashboard/AssessmentPreview/AssessmentPreview';
+// import { SubmissionReview } from './pages/FacilitatorDashboard/SubmissionReview/SubmissionReview';
+// import { AssessorDashboard } from './pages/FacilitatorDashboard/AssessorDashboard/AssessorDashboard';
+// import InvigilatorDashboard from './components/views/InvigilatorDashboard/InvigilatorDashboard';
+
+// import { KioskPage } from './pages/KioskPage/KioskPage';
+// import { AppScannerRequired } from './pages/AppScannerRequired';
+
+// // Compliance & Profile Setup Gates
+// import { AssessorProfileSetup } from './pages/FacilitatorDashboard/AssessorProfileSetup/AssessorProfileSetup';
+// import { FacilitatorProfileSetup } from './pages/FacilitatorDashboard/FacilitatorProfileSetup/FacilitatorProfileSetup';
+// import { LearnerProfileSetup } from './pages/LearnerPortal/LearnerProfileSetup/LearnerProfileSetup';
+// import { ModeratorProfileSetup } from './pages/FacilitatorDashboard/ModeratorProfileSetup/ModeratorProfileSetup';
+// import { ModeratorDashboard } from './pages/FacilitatorDashboard/ModeratorDashboard/ModeratorDashboard';
+
+// // Mentor (Workplace)
+// import { MentorProfileSetup } from './pages/mentor/MentorProfileSetup/MentorProfileSetup';
+// import { MentorDashboard } from './pages/mentor/MentorDashboard/MentorDashboard';
+// import { MentorApprovalView } from './components/views/MentorApprovalView/MentorApprovalView';
+
+// // Learner & Public
+// import AssessmentPlayer from './pages/LearnerPortal/AssessmentPlayer/AssessmentPlayer';
+// import { ViewPortfolio } from './pages/Portfolio/ViewPortfolio';
+// import StatementOfResults from './pages/StatementOfResults/StatementOfResults';
+// import PublicVerification from './pages/LearnerPortal/public/PublicVerification/PublicVerification';
+// import { StudentVerification } from './pages/LearnerPortal/public/StudentVerification/StudentVerification';
+
+// import LearnerDashboard from './pages/LearnerPortal/LearnerDashboard/LearnerDashboard';
+// import { LearnerProfileView } from './components/views/LearnerProfileView/LearnerProfileView';
+// import { ErrorBoundary } from './components/common/ErrorBoundary';
+// import { CohortDetailsPage } from './pages/CohortDetails/CohortDetailsPage';
+
+// import { PrivacyPolicy } from './components/views/PrivacyPolicy/PrivacyPolicy';
+// import { CodeOfConduct } from './pages/Public/CodeOfConduct';
+// import Loader from './components/common/Loader/Loader';
+// import ResetPassword from './pages/ResetPassword/ResetPassword';
+
+// // IMPORT WELCOME WIZARD & MANDATORY POLICY INTERCEPT MODAL
+// import { WelcomeWizard } from './components/common/WelcomeWizard/WelcomeWizard';
+// import { MandatoryPolicyModal } from './components/common/MandatoryPolicyModal/MandatoryPolicyModal';
+
+// import '../src/assets/styles/mLabModals.css';
+// import { LiveAttendanceBoard } from './pages/FacilitatorDashboard/LiveAttendanceBoard/LiveAttendanceBoard';
+// import { EventKioskPage } from './components/admin/EcosystemDashboard/EventKioskPage';
+// import { EventDetailsPage } from './components/admin/EcosystemDashboard/EventDetailsPage';
+// import { EmployerApplicationForm } from './pages/LearnerPortal/public/EmployerApplicationForm/EmployerApplicationForm';
+// import PublicSurveyPage from './pages/PublicSurvey/PublicSurvey';
+
+// // ════════════════════════════════════════════════════════════════════════════
+// // 🚀 GOOGLE WEB VITALS PERFORMANCE TRACKER
+// // ════════════════════════════════════════════════════════════════════════════
+// const sendVitalToAnalytics = ({ name, delta, value, id }: any) => {
+//   try {
+//     const analytics = getAnalytics();
+//     logEvent(analytics, 'web_vitals', {
+//       event_category: 'Web Vitals',
+//       event_action: name,
+//       event_label: id,
+//       value: Math.round(name === 'CLS' ? delta * 1000 : delta),
+//       numeric_value: Math.round(value),
+//       non_interaction: true,
+//     });
+//   } catch (e) {
+//     /* Analytics blocked */
+//   }
+// };
+
+// if (typeof window !== 'undefined') {
+//   onCLS(sendVitalToAnalytics);
+//   onINP(sendVitalToAnalytics);
+//   onLCP(sendVitalToAnalytics);
+//   onFCP(sendVitalToAnalytics);
+//   onTTFB(sendVitalToAnalytics);
+// }
+
+// // ════════════════════════════════════════════════════════════════════════════
+// //  GLOBAL UNHANDLED ERROR LISTENER
+// // ════════════════════════════════════════════════════════════════════════════
+// const logGlobalError = async (type: string, message: string, stack?: string) => {
+//   try {
+//     const analytics = getAnalytics();
+//     logEvent(analytics, 'exception', {
+//       description: `[${type}] ${message}`.substring(0, 100),
+//       fatal: false,
+//     });
+//   } catch (e) {
+//     console.error("Analytics exception log blocked:", e);
+//   }
+
+//   try {
+//     await addDoc(collection(db, 'system_crashes'), {
+//       errorName: type,
+//       errorMessage: message,
+//       errorStack: stack || '',
+//       componentStack: 'Global Window Event',
+//       url: window.location.href,
+//       userAgent: navigator.userAgent,
+//       timestamp: serverTimestamp(),
+//       createdAt: new Date().toISOString(),
+//     });
+//   } catch (dbErr) { /* Silent fail */ }
+// };
+
+// if (typeof window !== 'undefined') {
+//   window.addEventListener('error', (event) => {
+//     logGlobalError('RuntimeError', event.message, event.error?.stack);
+//   });
+//   window.addEventListener('unhandledrejection', (event) => {
+//     const reason = event.reason;
+//     const message = typeof reason === 'string' ? reason : (reason?.message || JSON.stringify(reason));
+//     logGlobalError('UnhandledPromiseRejection', message, reason?.stack);
+//   });
+// }
+
+// // ════════════════════════════════════════════════════════════════════════════
+// //  FIREBASE ANALYTICS PAGE TRACKER
+// // ════════════════════════════════════════════════════════════════════════════
+// const GlobalAnalyticsTracker = () => {
+//   const location = useLocation();
+//   const user = useStore((state) => state.user);
+
+//   useEffect(() => {
+//     try {
+//       const analytics = getAnalytics();
+//       logEvent(analytics, 'page_view', {
+//         page_path: location.pathname,
+//         page_location: window.location.href,
+//         user_role: user?.role || 'guest',
+//         user_id: user?.uid || 'anonymous'
+//       });
+//     } catch (err) {
+//       // Analytics might be blocked by ad-blockers
+//     }
+//   }, [location.pathname, user]);
+
+//   return null;
+// };
+
+// // ════════════════════════════════════════════════════════════════════════════
+// // --- TRAFFIC CONTROLLER ---
+// // ════════════════════════════════════════════════════════════════════════════
+// const RootRedirect = () => {
+//   const user = useStore((state) => state.user);
+//   const loading = useStore((state) => state.loading);
+
+//   if (loading) return (
+//     <div className="ap-fullscreen" style={{ position: 'absolute', left: 0, right: 0, bottom: 0, top: 0, backgroundColor: 'var(--mlab-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+//       <Loader message="Syncing Session..." fullScreen={false} />
+//     </div>
+//   );
+
+//   if (!user) return <Navigate to="/login" replace />;
+
+//   const rawUploadedDocs = (user as any).uploadedDocuments;
+//   const uploadedDocs = Array.isArray(rawUploadedDocs) ? rawUploadedDocs : [];
+//   const hasDoc = (docId: string) => uploadedDocs.some((doc: any) => doc.id === docId && typeof doc.url === 'string' && doc.url.trim() !== '');
+
+//   const isLearnerCompliant = () => {
+//     if (user.role !== 'learner') return true;
+//     const d = (user as any).demographics || {};
+//     const hasDemographics =
+//       !!d.equityCode &&
+//       !!d.provinceCode &&
+//       (!!d.statssaAreaCode || !!d.statsaaAreaCode) &&
+//       !!d.localMunicipality &&
+//       !!d.learnerTitle;
+
+//     return user.profileCompleted === true && hasDemographics && hasDoc('id') && hasDoc('qual') && hasDoc('poa');
+//   };
+
+//   const isStaffCompliant = () => {
+//     if (user.role === 'learner') return true;
+//     if (!user.profileCompleted) return false;
+
+//     const hasStaffProvince = !!(user as any).province;
+//     const isForeignNational = (user as any).nationalityType === 'Foreign National';
+//     const hasPermitIfForeign = isForeignNational ? hasDoc('permit') : true;
+
+//     switch (user.role) {
+//       case 'facilitator':
+//       case 'assistant_facilitator':
+//         return hasStaffProvince && hasDoc('id') && hasDoc('cv') && hasPermitIfForeign;
+//       case 'assessor':
+//         return hasStaffProvince && hasDoc('id') && hasDoc('assessor_cert') && hasDoc('reg_letter') && hasPermitIfForeign;
+//       case 'moderator':
+//         return hasStaffProvince && hasDoc('id') && hasDoc('moderator_cert') && hasDoc('reg_letter') && hasPermitIfForeign;
+//       case 'admin':
+//       case 'assistant_admin':
+//         if ((user as any).isSuperAdmin) return true;
+//         const hasSignature = hasDoc('signature') || !!(user as any).signatureUrl;
+//         return hasStaffProvince && hasDoc('id') && hasDoc('appointment') && hasPermitIfForeign && hasSignature;
+//       case 'mentor':
+//         return hasStaffProvince;
+//       default:
+//         return true;
+//     }
+//   };
+
+//   if (user.role === 'learner' && !isLearnerCompliant()) {
+//     return <Navigate to="/setup-profile" replace />;
+//   }
+
+//   const staffRoles = ['facilitator', 'assistant_facilitator', 'assessor', 'moderator', 'mentor', 'admin', 'assistant_admin'];
+//   if (staffRoles.includes(user.role) && !isStaffCompliant()) {
+//     return <Navigate to={`/setup-${user.role === 'assistant_facilitator' ? 'facilitator' : user.role === 'assistant_admin' ? 'admin' : user.role}`} replace />;
+//   }
+
+//   switch ((user.role as string)) {
+//     case 'admin':
+//     case 'assistant_admin': return <Navigate to="/admin" replace />;
+//     case 'seta_verifier':
+//     case 'qcto_auditor': return <Navigate to="/audit-portal" replace />;
+//     case 'facilitator':
+//     case 'assistant_facilitator': return <Navigate to="/facilitator" replace />;
+//     case 'assessor': return <Navigate to="/marking" replace />;
+//     case 'moderator': return <Navigate to="/moderation" replace />;
+//     case 'mentor': return <Navigate to="/mentor" replace />;
+//     case 'learner': return <Navigate to="/portal" replace />;
+//     default: return <Navigate to="/login" replace />;
+//   }
+// };
+
+// function App() {
+//   const setUser = useStore((state) => state.setUser);
+//   const setLoading = useStore((state) => state.setLoading);
+//   const user = useStore((state) => state.user);
+//   const fetchSettings = useStore((state) => state.fetchSettings);
+
+//   const [showWizard, setShowWizard] = useState(false);
+
+//   useEffect(() => {
+//     if (user && user.profileCompleted && !(user as any).hasSeenOnboarding) {
+//       setShowWizard(true);
+//     } else {
+//       setShowWizard(false);
+//     }
+//   }, [user]);
+
+//   useEffect(() => {
+//     fetchSettings();
+//     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+//       if (firebaseUser) {
+//         try {
+//           const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+//           if (userDoc.exists()) {
+//             const data = userDoc.data();
+
+//             const userProfile = {
+//               uid: firebaseUser.uid,
+//               email: firebaseUser.email || data.email || '',
+//               fullName: data.fullName || 'Practitioner',
+//               role: data.role as UserRole,
+//               profilePhotoUrl: data.profilePhotoUrl || '',
+//               ...data,
+//               profileCompleted: data.profileCompleted === true,
+//             } as UserProfile;
+
+//             setUser(userProfile);
+//             await recordDailyActivityIfNeeded(firebaseUser.uid);
+//           }
+//         } catch (e) {
+//           console.error(e);
+//         }
+//       } else {
+//         setUser(null);
+//       }
+//       setLoading(false);
+//     });
+//     return () => unsubscribe();
+//   }, [setUser, setLoading]);
+
+//   useEffect(() => {
+//     const handleVisibilityChange = () => {
+//       if (document.visibilityState === 'visible' && auth.currentUser?.uid) {
+//         recordDailyActivityIfNeeded(auth.currentUser.uid);
+//       }
+//     };
+
+//     document.addEventListener('visibilitychange', handleVisibilityChange);
+//     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+//   }, []);
+
+//   return (
+//     <ErrorBoundary>
+//       {showWizard && user && (
+//         <WelcomeWizard
+//           user={user}
+//           onClose={() => setShowWizard(false)}
+//         />
+//       )}
+
+//       <Router>
+//         <GlobalAnalyticsTracker />
+
+//         {/* 🚀 MANDATORY INTERCEPT MODAL PLACED INSIDE ROUTER CONTEXT */}
+//         <MandatoryPolicyModal />
+
+//         <div className="App">
+//           <Routes>
+//             {/* ================= PUBLIC ROUTES ================= */}
+//             <Route path="/login" element={user ? <Navigate to="/" replace /> : <Login />} />
+//             <Route path="/reset-password" element={<ResetPassword />} />
+//             <Route path="/public-verification" element={<PublicVerification />} />
+//             <Route path="/sor/:id" element={<StatementOfResults />} />
+
+//             <Route path="/verify/:verificationCode" element={<StudentVerification />} />
+//             <Route path="/mentor-verify/:tokenId" element={<MentorApprovalView />} />
+//             <Route path="/apply/host-learners" element={<EmployerApplicationForm />} />
+
+//             <Route path="/kiosk" element={<KioskPage />} />
+//             <Route path="/event-kiosk/:eventId" element={<EventKioskPage />} />
+//             <Route path="/app-scanner-required" element={<AppScannerRequired />} />
+
+//             <Route path="/survey/:surveyId" element={<PublicSurveyPage />} />
+
+//             {/* LEGAL & COMPLIANCE ROUTES */}
+//             <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+//             <Route path="/terms" element={<PrivacyPolicy />} />
+//             <Route path="/code-of-conduct" element={<CodeOfConduct />} />
+
+//             {/* ================= ONBOARDING GATES ================= */}
+//             <Route path="/setup-admin" element={
+//               <RoleProtectedRoute allowedRoles={['admin', 'assistant_admin']}>
+//                 <AdminProfileSetup />
+//               </RoleProtectedRoute>
+//             } />
+//             <Route path="/setup-profile" element={
+//               <RoleProtectedRoute allowedRoles={['learner']}>
+//                 <LearnerProfileSetup />
+//               </RoleProtectedRoute>
+//             } />
+//             <Route path="/setup-assessor" element={
+//               <RoleProtectedRoute allowedRoles={['assessor']}>
+//                 <AssessorProfileSetup />
+//               </RoleProtectedRoute>
+//             } />
+//             <Route path="/setup-moderator" element={
+//               <RoleProtectedRoute allowedRoles={['moderator']}>
+//                 <ModeratorProfileSetup />
+//               </RoleProtectedRoute>
+//             } />
+//             <Route path="/setup-facilitator" element={
+//               <RoleProtectedRoute allowedRoles={['facilitator', 'assistant_facilitator']}>
+//                 <FacilitatorProfileSetup />
+//               </RoleProtectedRoute>
+//             } />
+//             <Route path="/setup-mentor" element={
+//               <RoleProtectedRoute allowedRoles={['mentor']}>
+//                 <MentorProfileSetup />
+//               </RoleProtectedRoute>
+//             } />
+
+//             {/* ================= PROTECTED ROUTES ================= */}
+
+//             {/* EXTERNAL AUDITOR / QCTO & SETA VERIFIER PORTAL */}
+//             <Route path="/audit-portal" element={
+//               <RoleProtectedRoute allowedRoles={['admin', 'assistant_admin', 'seta_verifier', 'qcto_auditor']}>
+//                 <AuditorPortalView />
+//               </RoleProtectedRoute>
+//             } />
+
+//             {/* ADMIN CONSOLE */}
+//             <Route path="/admin" element={
+//               <RoleProtectedRoute allowedRoles={['admin', 'assistant_admin']}>
+//                 <AdminDashboard />
+//               </RoleProtectedRoute>
+//             } />
+//             <Route path="/admin/access" element={
+//               <RoleProtectedRoute allowedRoles={['admin', 'assistant_admin']} requireSuperAdmin={true}>
+//                 <AccessManager />
+//               </RoleProtectedRoute>
+//             } />
+//             <Route path="/admin/crashes" element={<Navigate to="/admin?tab=crashes" replace />} />
+
+//             <Route path="/admin/ecosystem/event/:eventId" element={
+//               <RoleProtectedRoute allowedRoles={['admin', 'assistant_admin']}>
+//                 <EventDetailsPage />
+//               </RoleProtectedRoute>
+//             } />
+//             <Route path="/admin/studio" element={
+//               <RoleProtectedRoute allowedRoles={['admin', 'assistant_admin', 'facilitator']}>
+//                 <CertificateStudio />
+//               </RoleProtectedRoute>
+//             } />
+//             <Route path="/admin/wil" element={
+//               <RoleProtectedRoute allowedRoles={['admin', 'assistant_admin']}>
+//                 <WorkplaceHub />
+//               </RoleProtectedRoute>
+//             } />
+//             <Route path="/admin/workplaces" element={
+//               <RoleProtectedRoute allowedRoles={['admin', 'assistant_admin']}>
+//                 <WorkplacesManager />
+//               </RoleProtectedRoute>
+//             } />
+//             <Route path="/settings" element={
+//               <RoleProtectedRoute allowedRoles={['admin', 'assistant_admin']}>
+//                 <SettingsPage />
+//               </RoleProtectedRoute>
+//             } />
+//             <Route path="/admin/learners/:learnerId" element={
+//               <RoleProtectedRoute allowedRoles={['admin', 'assistant_admin']}>
+//                 <LearnerProfileView />
+//               </RoleProtectedRoute>
+//             } />
+//             <Route path="/admin/invigilate/:assessmentId" element={
+//               <RoleProtectedRoute allowedRoles={['admin', 'assistant_admin', 'facilitator', 'assistant_facilitator']}>
+//                 <InvigilatorDashboard />
+//               </RoleProtectedRoute>
+//             } />
+
+//             {/* LEARNER PORTAL */}
+//             <Route path="/portal" element={
+//               <RoleProtectedRoute allowedRoles={['learner']}>
+//                 <LearnerDashboard />
+//               </RoleProtectedRoute>
+//             } />
+//             <Route path="/learner/assessment/:assessmentId" element={
+//               <RoleProtectedRoute allowedRoles={['learner']}>
+//                 <AssessmentPlayer />
+//               </RoleProtectedRoute>
+//             } />
+
+//             {/* FACILITATOR SUITE */}
+//             <Route path="/facilitator" element={
+//               <RoleProtectedRoute allowedRoles={['facilitator', 'assistant_facilitator', 'admin', 'assistant_admin']}>
+//                 <FacilitatorLayout />
+//               </RoleProtectedRoute>
+//             }>
+//               <Route index element={<FacilitatorDashboard />} />
+//               <Route path="dashboard" element={<FacilitatorDashboard />} />
+//               <Route path="profile" element={<FacilitatorDashboard />} />
+//               <Route path="attendance" element={<FacilitatorDashboard />} />
+//               <Route path="attendance/live" element={<LiveAttendanceBoard />} />
+//               <Route path="attendance/:cohortId" element={<AttendancePage />} />
+//               <Route path="assessments" element={<FacilitatorDashboard />} />
+//               <Route path="assessments/builder/:assessmentId?" element={<AssessmentBuilder />} />
+//             </Route>
+
+//             {/* SHARED VIEWS */}
+//             <Route path="/admin/assessment/preview/:assessmentId" element={
+//               <RoleProtectedRoute allowedRoles={['admin', 'assistant_admin', 'facilitator', 'assistant_facilitator', 'assessor', 'moderator', 'mentor']}>
+//                 <AssessmentPreview />
+//               </RoleProtectedRoute>
+//             } />
+//             <Route path="/cohorts/:cohortId" element={
+//               <RoleProtectedRoute allowedRoles={['admin', 'assistant_admin', 'facilitator', 'assistant_facilitator', 'assessor', 'moderator', 'mentor']}>
+//                 <CohortDetailsPage />
+//               </RoleProtectedRoute>
+//             } />
+//             <Route path="/portfolio/:id" element={
+//               <RoleProtectedRoute allowedRoles={['admin', 'assistant_admin', 'assessor', 'moderator', 'facilitator', 'assistant_facilitator', 'learner', 'mentor']}>
+//                 <ViewPortfolio />
+//               </RoleProtectedRoute>
+//             } />
+//             <Route path="/portfolio/submission/:submissionId" element={
+//               <RoleProtectedRoute allowedRoles={['admin', 'assistant_admin', 'facilitator', 'assistant_facilitator', 'assessor', 'moderator', 'mentor']}>
+//                 <SubmissionReview />
+//               </RoleProtectedRoute>
+//             } />
+
+//             {/* ASSESSOR / MARKING SUITE */}
+//             <Route path="/marking/*" element={
+//               <RoleProtectedRoute allowedRoles={['assessor', 'admin', 'assistant_admin', 'facilitator', 'assistant_facilitator']}>
+//                 <AssessorDashboard />
+//               </RoleProtectedRoute>
+//             } />
+//             <Route path="/moderation/*" element={
+//               <RoleProtectedRoute allowedRoles={['moderator', 'admin', 'assistant_admin']}>
+//                 <ModeratorDashboard />
+//               </RoleProtectedRoute>
+//             } />
+//             <Route path="/mentor/*" element={
+//               <RoleProtectedRoute allowedRoles={['mentor']}>
+//                 <MentorDashboard />
+//               </RoleProtectedRoute>
+//             } />
+
+//             {/* ================= FALLBACKS ================= */}
+//             <Route path="/" element={<RootRedirect />} />
+//             <Route path="*" element={<RootRedirect />} />
+//           </Routes>
+//         </div>
+//       </Router>
+//     </ErrorBoundary>
+//   );
+// }
+
+// export default App;

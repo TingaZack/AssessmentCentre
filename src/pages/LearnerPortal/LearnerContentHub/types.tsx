@@ -1,3 +1,5 @@
+// src/pages/LearnerPortal/LearnerContentHub/types.ts
+
 import React from 'react';
 import {
     Code, Braces, FileCode, Terminal, GitBranch, Webhook, Globe, Laptop, Bug,
@@ -7,7 +9,7 @@ import {
     Shield, Lock, Key, Fingerprint,
     Layout, Palette, Paintbrush, PenTool, VectorSquare,
     Kanban, Target, Rocket, Briefcase, DollarSign, Compass,
-    BookOpen, GraduationCap, Award, Lightbulb, Workflow, Video, Layers3
+    BookOpen, GraduationCap, Award, Lightbulb, Workflow, Video
 } from 'lucide-react';
 import type { LearningUnit } from '../../../types/content.types';
 
@@ -21,11 +23,47 @@ export type CohortRunStatus =
     | 'ended'
     | 'draft';
 
+export interface ThemeStyles {
+    gradient: string;
+    primaryBox: string;
+    accentBox: string;
+    borderTopColor: string;
+    badgeText: string;
+    badgeBg?: string;
+}
+
 export interface CourseInstructor {
     name: string;
     role: string;
     avatarUrl?: string;
     initials?: string;
+}
+
+export interface PacingMilestone {
+    moduleOrSprintTitle?: string;
+    title?: string;
+    targetDate?: string;
+    targetHours?: number;
+}
+
+export interface TimeBoundConfig {
+    isTimeBound?: boolean;
+    startDate?: string;
+    endDate?: string;
+    enforceStrictDeadline?: boolean;
+}
+
+export interface SecamDayStructure {
+    id?: string;
+    title?: string;
+    dayCheckpoint?: Record<string, unknown>;
+}
+
+export interface SecamSprintStructure {
+    id?: string;
+    title?: string;
+    days?: SecamDayStructure[];
+    sprintCheckpoint?: Record<string, unknown>;
 }
 
 export interface CoursePackage {
@@ -34,59 +72,109 @@ export interface CoursePackage {
     description: string;
     framework: 'qcto' | 'secam';
     referenceId: string;
-    level: string;
-    tags: string[];
+    level?: string;
+    tags?: string[];
+    status?: string;
 
     // Workload & Hours
-    contentHours: number;
-    courseworkHours: number;
-    estimatedTotalHours: number;
+    contentHours?: number;
+    courseworkHours?: number;
+    estimatedTotalHours?: number;
+    totalHours?: number;
+    totalNotionalHours?: number;
 
-    // Cohort Run Metadata
-    cohortRunId: string;
+    // Cohort Run & Instance Identifiers
+    cohortRunId?: string;
     cohortRunName?: string | null;
-    runStatus: CohortRunStatus;
+    timelineId?: string;
+    placementId?: string;
+    containerId?: string;
+
+    // Status & Lifecycle
+    runStatus?: CohortRunStatus | string;
     startDate?: string | null;
     endDate?: string | null;
     applicationStartDate?: string | null;
     applicationEndDate?: string | null;
+    start?: string | null;
+    end?: string | null;
+    timelineStartDate?: string | null;
+    timelineEndDate?: string | null;
+    runStartDate?: string | null;
+    runEndDate?: string | null;
+
     openingDateLabel?: string;
     statusLabel?: string;
     isEvergreen?: boolean;
     cohortDurationLabel?: string;
+    hasStarted?: boolean;
 
-    // Counts & Stats
+    // Counts & Progress Stats
     totalUnitsCount: number;
-    completedUnitsCount: number;
+    completedUnitsCount?: number;
     lastActiveUnitId?: string;
     isBookmarked?: boolean;
     isComingSoon?: boolean;
+    enrolledCount?: number;
 
     // Visual Branding
-    illustrationType: string;
-    themeColor: string;
+    illustrationType?: string;
+    themeColor?: string;
 
     // Additional Details & Metadata
     rating?: number;
-    enrolledCount?: number;
     previewVideoUrl?: string;
     lastUpdatedLabel?: string;
     hasCertificate?: boolean;
-    instructors?: Array<{ name: string; role: string; avatarUrl?: string; initials?: string }>;
-    whatYouWillLearn?: string[];
+    instructors?: CourseInstructor[];
 
-    // 🚀 ADD THESE PROPERTIES TO FIX TS2339
+    // Curricular Lists
+    whatYouWillLearn?: string[];
     prerequisites?: string[];
     requirements?: string[];
     targetAudience?: string[];
     materialIncludes?: string[];
+
+    // Accreditation & SETA Specs
     accreditationBody?: string;
+    customAccreditationText?: string;
     saqaId?: string;
     nqfLevel?: string | number;
     credits?: number;
+
+    // Pacing & Delivery
+    timeBoundConfig?: TimeBoundConfig;
+    pacingModel?: 'cohort_scheduled' | 'individual_self_paced';
+    pacingScheduleBreakdown?: PacingMilestone[];
+
+    // Certificate Issuance Config
+    isCertificateAwarded?: boolean;
+    certificateIssuerMode?: 'mlab_internal' | 'external_authority';
+    certificateTemplateId?: string;
+    externalIssuerName?: string;
+    awaitingExternalNotice?: string;
+
+    // Blueprint Snapshots
+    checkpointMetadata?: Record<string, unknown>;
+    secamStructure?: SecamSprintStructure[];
+    allowedProgressKeys?: string[];
 }
 
-export interface LearnerUnitProgress extends Omit<Partial<LearningUnit>, 'id' | 'containerId' | 'framework' | 'title' | 'unitType' | 'estimatedMinutes' | 'isRequired' | 'orderIndex' | 'interactiveCheck'> {
+export interface InteractiveCheckDetails {
+    checkType: 'spot_the_bug' | 'socratic_dialogue' | 'oral_defense' | 'quiz' | 'none' | string;
+    instructions?: string;
+    isRequiredForCompletion?: boolean;
+    timeLimitSeconds?: number;
+    buggyCode?: string;
+    solutionCode?: string;
+    aiPersonaRole?: string;
+    defenseQuestion?: string;
+}
+
+export interface LearnerUnitProgress extends Omit<
+    Partial<LearningUnit>,
+    'id' | 'containerId' | 'framework' | 'title' | 'unitType' | 'estimatedMinutes' | 'isRequired' | 'orderIndex' | 'interactiveCheck' | 'moduleType'
+> {
     id: string;
     containerId: string;
     framework: 'qcto' | 'secam';
@@ -98,28 +186,22 @@ export interface LearnerUnitProgress extends Omit<Partial<LearningUnit>, 'id' | 
     isCompleted: boolean;
     isLocked: boolean;
     watchPercentage?: number;
+    progressPercent?: number;
     quizScore?: number;
     sprintTitle?: string;
     dayOrLessonTitle?: string;
     moduleCode?: string;
-    moduleType?: 'knowledge' | 'practical' | 'workplace';
+    moduleType?: 'knowledge' | 'practical' | 'workplace' | string;
     topicId?: string;
     videoUrl?: string;
     contentHtml?: string;
     requiredWatchPercentage?: number;
-    interactiveCheck?: {
-        checkType: 'spot_the_bug' | 'socratic_dialogue' | 'oral_defense' | 'quiz' | 'none' | string;
-        instructions?: string;
-        isRequiredForCompletion?: boolean;
-        timeLimitSeconds?: number;
-        buggyCode?: string;
-        solutionCode?: string;
-        aiPersonaRole?: string;
-        [key: string]: any;
-    };
+    isRequiredForNextUnit?: boolean;
+    linkedAssessmentId?: string | null;
+    unlinkedPolicy?: 'soft_gate' | 'hard_gate';
+    interactiveCheck?: InteractiveCheckDetails;
     createdAt?: string;
     updatedAt?: string;
-    [key: string]: any;
 }
 
 const hexToRgb = (hex: string) => {
@@ -136,7 +218,7 @@ const hexToRgb = (hex: string) => {
     };
 };
 
-export const getThemeStyles = (hexColor?: string, framework?: string) => {
+export const getThemeStyles = (hexColor?: string, framework?: string): ThemeStyles => {
     const rawHex = (hexColor || (framework === 'qcto' ? '#059669' : '#0284c7')).trim().toLowerCase();
 
     switch (rawHex) {
@@ -147,7 +229,8 @@ export const getThemeStyles = (hexColor?: string, framework?: string) => {
                 primaryBox: '#059669',
                 accentBox: '#86efac',
                 borderTopColor: '#059669',
-                badgeText: '#047857'
+                badgeText: '#047857',
+                badgeBg: '#dcfce7'
             };
         case '#7c3aed':
         case 'purple':
@@ -156,7 +239,8 @@ export const getThemeStyles = (hexColor?: string, framework?: string) => {
                 primaryBox: '#7c3aed',
                 accentBox: '#f59e0b',
                 borderTopColor: '#7c3aed',
-                badgeText: '#6d28d9'
+                badgeText: '#6d28d9',
+                badgeBg: '#f3e8ff'
             };
         case '#d97706':
         case 'amber':
@@ -166,7 +250,8 @@ export const getThemeStyles = (hexColor?: string, framework?: string) => {
                 primaryBox: '#d97706',
                 accentBox: '#f97316',
                 borderTopColor: '#d97706',
-                badgeText: '#b45309'
+                badgeText: '#b45309',
+                badgeBg: '#fef3c7'
             };
         case '#be123c':
         case 'red':
@@ -175,7 +260,8 @@ export const getThemeStyles = (hexColor?: string, framework?: string) => {
                 primaryBox: '#be123c',
                 accentBox: '#fda4af',
                 borderTopColor: '#be123c',
-                badgeText: '#be123c'
+                badgeText: '#be123c',
+                badgeBg: '#ffe4e6'
             };
         case '#0d9488':
         case 'teal':
@@ -184,7 +270,8 @@ export const getThemeStyles = (hexColor?: string, framework?: string) => {
                 primaryBox: '#0d9488',
                 accentBox: '#5eead4',
                 borderTopColor: '#0d9488',
-                badgeText: '#0f766e'
+                badgeText: '#0f766e',
+                badgeBg: '#ccfbf1'
             };
         case '#0f172a':
         case 'slate':
@@ -193,7 +280,8 @@ export const getThemeStyles = (hexColor?: string, framework?: string) => {
                 primaryBox: '#0f172a',
                 accentBox: '#38bdf8',
                 borderTopColor: '#0f172a',
-                badgeText: '#0f172a'
+                badgeText: '#0f172a',
+                badgeBg: '#f1f5f9'
             };
         case '#0284c7':
         case 'blue':
@@ -205,7 +293,8 @@ export const getThemeStyles = (hexColor?: string, framework?: string) => {
                     primaryBox: rawHex,
                     accentBox: `rgba(${r}, ${g}, ${b}, 0.35)`,
                     borderTopColor: rawHex,
-                    badgeText: rawHex
+                    badgeText: rawHex,
+                    badgeBg: `rgba(${r}, ${g}, ${b}, 0.1)`
                 };
             }
             return {
@@ -213,7 +302,8 @@ export const getThemeStyles = (hexColor?: string, framework?: string) => {
                 primaryBox: '#0284c7',
                 accentBox: '#86efac',
                 borderTopColor: '#0284c7',
-                badgeText: '#0369a1'
+                badgeText: '#0369a1',
+                badgeBg: '#e0f2fe'
             };
     }
 };

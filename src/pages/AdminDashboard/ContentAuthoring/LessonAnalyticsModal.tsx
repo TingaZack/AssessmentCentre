@@ -1,30 +1,48 @@
-// src/pages/AdminDashboard/ContentAuthoring/CurriculumAnalyticsDashboard.tsx
+// src/pages/AdminDashboard/ContentAuthoring/LessonAnalyticsModal.tsx
 
 import React, { useState, useEffect, useMemo } from 'react';
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
-import { collection, query, where, onSnapshot, orderBy, addDoc, serverTimestamp, updateDoc, doc, deleteDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, addDoc, serverTimestamp, updateDoc, doc, deleteDoc } from 'firebase/firestore';
 import { db, auth } from '../../../lib/firebase';
 import { useToast } from '../../../components/common/Toast/Toast';
 import { useStore } from '../../../store/useStore';
+import Tooltip from '../../../components/common/Tooltip/Tooltip';
 
 import {
     Search, Filter, ShieldAlert, Ban, CheckCircle2,
-    MessageSquare, Tv, Award, Send, AlertTriangle,
+    MessageSquare, Tv, Award,
     ArrowLeft, ChevronDown, ChevronUp, Clock,
     Activity, TrendingUp, AlertOctagon, Download, MailCheck, BarChart3, Rocket, ChevronRight, BookOpen,
-    Calendar, HelpCircle, Loader2, SearchX
+    Calendar, HelpCircle, Loader2, SearchX, Send,
+    AlertTriangle, Bug
 } from 'lucide-react';
 import type { LearningUnit, ContentContainer, CohortRun } from '../../../types/content.types';
+import type { Cohort } from '../../../types';
+import type { ExtendedLearningUnit, EnrichedContentContainer } from './ContentAuthoring';
+import type { ExtendedCohortRun } from './LaunchCohortModal';
 import { StatusModal, type StatusType } from '../../../components/common/StatusModal/StatusModal';
 
 import './ContentAuthoring.css';
 
 // ══════════════════════════════════════════════════════════════════════════════
-// SHARED TYPES
+// SHARED TYPES & INTERFACES
 // ══════════════════════════════════════════════════════════════════════════════
 
 export type RiskLevel = 'high_risk' | 'moderate_risk' | 'on_track';
+
+export interface UnitProgressStat {
+    unitId: string;
+    watchPct: number;
+    isCompleted: boolean;
+    duration: number;
+    watched: number;
+    score: number;
+    passed: boolean;
+    attempts: number;
+    lastActivity: string;
+    submittedAnswer: string;
+}
 
 export interface LearnerLessonProgress {
     learnerId: string;
@@ -45,7 +63,7 @@ export interface LearnerLessonProgress {
     totalWatchedMins: number;
     totalDurationMins: number;
     completedVideos: number;
-    allUnitStats: any[];
+    allUnitStats: UnitProgressStat[];
 
     // Quiz / Gate Specifics
     checkType: 'spot_the_bug' | 'socratic_dialogue' | 'oral_defense' | 'quiz' | 'none';
@@ -57,12 +75,88 @@ export interface LearnerLessonProgress {
     isBlockedFromForum: boolean;
 }
 
-export interface CohortRunStats extends CohortRun {
+export interface CohortRunStats extends ExtendedCohortRun {
     enrolledCount: number;
     completionRate: number;
     passRate: number;
     avgTimeSpentMins: number;
     riskStatus: RiskLevel;
+}
+
+export interface EnrollmentDoc {
+    userId?: string;
+    userName?: string;
+    userEmail?: string;
+    cohortId?: string;
+    cohortName?: string;
+    containerId?: string;
+    cohortRunId?: string;
+    courseId?: string;
+    status?: string;
+    [key: string]: unknown;
+}
+
+export interface ProgressDoc {
+    userId?: string;
+    userName?: string;
+    userEmail?: string;
+    containerId?: string;
+    cohortRunId?: string;
+    cohortId?: string;
+    cohortName?: string;
+    unitId?: string;
+    watchPct?: number;
+    watchedMins?: number;
+    isCompleted?: boolean;
+    score?: number;
+    passed?: boolean;
+    attempts?: number;
+    submittedAnswer?: string;
+    updatedAt?: { toDate?: () => Date; seconds?: number };
+    [key: string]: unknown;
+}
+
+export interface LessonComment {
+    id: string;
+    unitId: string;
+    containerId?: string;
+    timelineId?: string;
+    cohortRunId?: string;
+    userId: string;
+    userName: string;
+    userInitials?: string;
+    text: string;
+    createdAt?: { toDate?: () => Date; seconds?: number };
+    isStaff?: boolean;
+    isFlagged?: boolean;
+    flagReason?: string;
+}
+
+export interface LessonQuestion {
+    id: string;
+    unitId: string;
+    containerId?: string;
+    timelineId?: string;
+    cohortRunId?: string;
+    userId: string;
+    userName: string;
+    title: string;
+    contentHtml: string;
+    answersCount?: number;
+    createdAt?: { toDate?: () => Date; seconds?: number };
+}
+
+export interface LessonAnswer {
+    id: string;
+    questionId: string;
+    unitId: string;
+    containerId?: string;
+    userId: string;
+    userName: string;
+    userInitials?: string;
+    contentHtml: string;
+    createdAt?: { toDate?: () => Date; seconds?: number };
+    isStaff?: boolean;
 }
 
 const FORUM_QUILL_MODULES = {
@@ -77,12 +171,12 @@ const FORUM_QUILL_MODULES = {
 // ══════════════════════════════════════════════════════════════════════════════
 
 interface CurriculumAnalyticsDashboardProps {
-    container: ContentContainer;
-    units: LearningUnit[];
-    initialLesson: LearningUnit | null;
+    container: ContentContainer | EnrichedContentContainer;
+    units: LearningUnit[] | ExtendedLearningUnit[];
+    initialLesson: LearningUnit | ExtendedLearningUnit | null;
     initialCohortId: string | null;
     onClose: () => void;
-    onSelectLesson: (unit: LearningUnit | null) => void;
+    onSelectLesson: (unit: LearningUnit | ExtendedLearningUnit | null) => void;
 }
 
 export const CurriculumAnalyticsDashboard: React.FC<CurriculumAnalyticsDashboardProps> = ({
@@ -93,12 +187,12 @@ export const CurriculumAnalyticsDashboard: React.FC<CurriculumAnalyticsDashboard
     onClose,
     onSelectLesson
 }) => {
-    const { cohorts = [] } = useStore() as any;
+    const { cohorts = [] } = useStore() as { cohorts: Cohort[] };
 
     const [viewMode, setViewMode] = useState<'package' | 'lesson'>(
         (initialLesson || initialCohortId) ? 'lesson' : 'package'
     );
-    const [currentLesson, setCurrentLesson] = useState<LearningUnit | null>(
+    const [currentLesson, setCurrentLesson] = useState<LearningUnit | ExtendedLearningUnit | null>(
         initialLesson || (units.length > 0 ? units[0] : null)
     );
     const [activeCohortRunId, setActiveCohortRunId] = useState<string | null>(initialCohortId);
@@ -113,7 +207,7 @@ export const CurriculumAnalyticsDashboard: React.FC<CurriculumAnalyticsDashboard
 
     const formattedCohorts = useMemo(() => {
         const list = [{ id: 'all', name: 'All Cohorts / Global' }];
-        cohorts.forEach((c: any) => {
+        cohorts.forEach((c) => {
             if (c.id && c.name) list.push({ id: c.id, name: c.name });
         });
         return list;
@@ -162,17 +256,17 @@ export const CurriculumAnalyticsDashboard: React.FC<CurriculumAnalyticsDashboard
 // ══════════════════════════════════════════════════════════════════════════════
 
 interface PackageAnalyticsViewProps {
-    container: ContentContainer;
-    units: LearningUnit[];
+    container: ContentContainer | EnrichedContentContainer;
+    units: LearningUnit[] | ExtendedLearningUnit[];
     onBack: () => void;
-    onDrilldownLesson: (unit: LearningUnit, cohortRunId?: string) => void;
+    onDrilldownLesson: (unit: LearningUnit | ExtendedLearningUnit, cohortRunId?: string) => void;
 }
 
 const PackageAnalyticsView: React.FC<PackageAnalyticsViewProps> = ({ container, units, onBack, onDrilldownLesson }) => {
     const toast = useToast();
-    const [cohortRuns, setCohortRuns] = useState<CohortRun[]>([]);
-    const [allEnrollments, setAllEnrollments] = useState<any[]>([]);
-    const [allProgressDocs, setAllProgressDocs] = useState<any[]>([]);
+    const [cohortRuns, setCohortRuns] = useState<ExtendedCohortRun[]>([]);
+    const [allEnrollments, setAllEnrollments] = useState<EnrollmentDoc[]>([]);
+    const [allProgressDocs, setAllProgressDocs] = useState<ProgressDoc[]>([]);
     const [loading, setLoading] = useState(true);
     const [statusFilter, setStatusFilter] = useState<string>('all');
     const [searchTerm, setSearchTerm] = useState('');
@@ -186,7 +280,7 @@ const PackageAnalyticsView: React.FC<PackageAnalyticsViewProps> = ({ container, 
         const qRuns = query(collection(db, 'cohort_runs'), where('containerId', '==', container.id));
 
         const unsubRuns = onSnapshot(qRuns, (snap) => {
-            const fetchedRuns = snap.docs.map(d => ({ id: d.id, ...d.data() } as CohortRun));
+            const fetchedRuns = snap.docs.map(d => ({ id: d.id, ...d.data() } as ExtendedCohortRun));
             setCohortRuns(fetchedRuns);
 
             const targetRunIds = Array.from(new Set([container.id, ...fetchedRuns.map(r => r.id)]));
@@ -194,15 +288,21 @@ const PackageAnalyticsView: React.FC<PackageAnalyticsViewProps> = ({ container, 
             const qEnroll = query(collection(db, 'enrollments'));
             const unsubEnroll = onSnapshot(qEnroll, (enrollSnap) => {
                 const enrolls = enrollSnap.docs
-                    .map(d => d.data())
-                    .filter(e => targetRunIds.includes(e.containerId) || targetRunIds.includes(e.cohortRunId) || targetRunIds.includes(e.courseId));
+                    .map(d => d.data() as EnrollmentDoc)
+                    .filter(e => {
+                        const target = e.containerId || e.cohortRunId || e.courseId;
+                        return target ? targetRunIds.includes(target) : false;
+                    });
                 setAllEnrollments(enrolls);
 
                 const qProgress = query(collection(db, 'learner_content_progress'));
                 const unsubProgress = onSnapshot(qProgress, (progSnap) => {
                     const progs = progSnap.docs
-                        .map(d => d.data())
-                        .filter(p => targetRunIds.includes(p.containerId) || targetRunIds.includes(p.cohortRunId));
+                        .map(d => d.data() as ProgressDoc)
+                        .filter(p => {
+                            const target = p.containerId || p.cohortRunId;
+                            return target ? targetRunIds.includes(target) : false;
+                        });
                     setAllProgressDocs(progs);
                     setLoading(false);
                 }, () => {
@@ -228,15 +328,15 @@ const PackageAnalyticsView: React.FC<PackageAnalyticsViewProps> = ({ container, 
 
         return cohortRuns.map((run) => {
             const runEnrollments = allEnrollments.filter(e =>
-                e.cohortRunId === run.id || e.containerId === run.id || (e.courseId === run.id)
+                e.cohortRunId === run.id || e.containerId === run.id || e.courseId === run.id
             );
             const runProgressDocs = allProgressDocs.filter(p => p.containerId === run.id || p.cohortRunId === run.id);
-            const uniqueProgressUserIds = Array.from(new Set(runProgressDocs.map(p => p.userId)));
+            const uniqueProgressUserIds = Array.from(new Set(runProgressDocs.map(p => p.userId))).filter((id): id is string => Boolean(id));
 
             const enrolledUserIds = Array.from(new Set([
-                ...runEnrollments.map(e => e.userId),
+                ...runEnrollments.map(e => e.userId).filter((id): id is string => Boolean(id)),
                 ...uniqueProgressUserIds
-            ])).filter(Boolean);
+            ]));
 
             const enrolledCount = enrolledUserIds.length;
 
@@ -349,9 +449,11 @@ const PackageAnalyticsView: React.FC<PackageAnalyticsViewProps> = ({ container, 
             {/* HEADER */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--mlab-midnight)', color: 'white', padding: '18px 24px', borderRadius: '0px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                    <button onClick={onBack} style={{ background: 'rgba(255, 255, 255, 0.12)', border: 'none', color: 'white', padding: '8px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.82rem', fontWeight: 700 }}>
-                        <ArrowLeft size={16} /> Back to Studio
-                    </button>
+                    <Tooltip content="Return to the Content Authoring Studio." placement="top">
+                        <button onClick={onBack} style={{ background: 'rgba(255, 255, 255, 0.12)', border: 'none', color: 'white', padding: '8px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.82rem', fontWeight: 700 }}>
+                            <ArrowLeft size={16} /> Back to Studio
+                        </button>
+                    </Tooltip>
                     <div>
                         <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', color: 'var(--mlab-green)', fontWeight: 800, letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '6px' }}>
                             <BarChart3 size={13} /> Global Package Operations &amp; Cohort Intelligence
@@ -362,42 +464,55 @@ const PackageAnalyticsView: React.FC<PackageAnalyticsViewProps> = ({ container, 
                     </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <button onClick={() => toast.success("Exported Portfolio Audit CSV!")} style={{ background: '#0284c7', color: 'white', border: 'none', padding: '8px 16px', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                        <Download size={14} /> Export Portfolio Audit CSV
-                    </button>
+                    <Tooltip content="Download a complete CSV report of all cohort progress and assessment scores." placement="left">
+                        <button onClick={() => toast.success("Exported Portfolio Audit CSV!")} style={{ background: '#0284c7', color: 'white', border: 'none', padding: '8px 16px', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                            <Download size={14} /> Export Portfolio Audit CSV
+                        </button>
+                    </Tooltip>
                 </div>
             </div>
 
             {/* KPI METRICS */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem' }}>
-                <div className="qcto-card" style={{ padding: '16px', borderLeft: '4px solid #0284c7' }}>
-                    <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', color: '#64748b', fontWeight: 800, marginBottom: '6px' }}>Total Delivery Intakes</div>
-                    <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
-                        <span style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--mlab-midnight)', fontFamily: 'var(--font-heading)' }}>{globalSummary.totalRuns}</span>
-                        <span style={{ fontSize: '0.75rem', background: '#e0f2fe', color: '#0369a1', padding: '2px 8px', fontWeight: 800 }}>{globalSummary.totalLearners} Learners Enrolled</span>
+                <Tooltip content="Total number of active and historical cohort intakes deployed for this package." placement="top">
+                    <div className="qcto-card" style={{ padding: '16px', borderLeft: '4px solid #0284c7' }}>
+                        <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', color: '#64748b', fontWeight: 800, marginBottom: '6px' }}>Total Delivery Intakes</div>
+                        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+                            <span style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--mlab-midnight)', fontFamily: 'var(--font-heading)' }}>{globalSummary.totalRuns}</span>
+                            <span style={{ fontSize: '0.75rem', background: '#e0f2fe', color: '#0369a1', padding: '2px 8px', fontWeight: 800 }}>{globalSummary.totalLearners} Learners Enrolled</span>
+                        </div>
                     </div>
-                </div>
-                <div className="qcto-card" style={{ padding: '16px', borderLeft: '4px solid #16a34a' }}>
-                    <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', color: '#64748b', fontWeight: 800, marginBottom: '6px' }}>Average Assessment Pass Rate</div>
-                    <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
-                        <span style={{ fontSize: '1.8rem', fontWeight: 800, color: globalSummary.avgPassRate >= 75 ? '#15803d' : '#d97706', fontFamily: 'var(--font-heading)' }}>{globalSummary.avgPassRate}%</span>
-                        <span style={{ fontSize: '0.72rem', color: '#16a34a', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '2px' }}><TrendingUp size={12} /> SETA Target 75%</span>
+                </Tooltip>
+
+                <Tooltip content="Average score achieved across all quizzes and interactive checks." placement="top">
+                    <div className="qcto-card" style={{ padding: '16px', borderLeft: '4px solid #16a34a' }}>
+                        <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', color: '#64748b', fontWeight: 800, marginBottom: '6px' }}>Average Assessment Pass Rate</div>
+                        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+                            <span style={{ fontSize: '1.8rem', fontWeight: 800, color: globalSummary.avgPassRate >= 75 ? '#15803d' : '#d97706', fontFamily: 'var(--font-heading)' }}>{globalSummary.avgPassRate}%</span>
+                            <span style={{ fontSize: '0.72rem', color: '#16a34a', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '2px' }}><TrendingUp size={12} /> SETA Target 75%</span>
+                        </div>
                     </div>
-                </div>
-                <div className="qcto-card" style={{ padding: '16px', borderLeft: '4px solid #7c3aed' }}>
-                    <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', color: '#64748b', fontWeight: 800, marginBottom: '6px' }}>Course Completion Velocity</div>
-                    <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
-                        <span style={{ fontSize: '1.8rem', fontWeight: 800, color: '#6d28d9', fontFamily: 'var(--font-heading)' }}>{globalSummary.avgCompletion}%</span>
-                        <span style={{ fontSize: '0.72rem', color: '#6d28d9', fontWeight: 700 }}>Avg Pacing Rate</span>
+                </Tooltip>
+
+                <Tooltip content="Mean percentage of course video and reading content completed by enrolled learners." placement="top">
+                    <div className="qcto-card" style={{ padding: '16px', borderLeft: '4px solid #7c3aed' }}>
+                        <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', color: '#64748b', fontWeight: 800, marginBottom: '6px' }}>Course Completion Velocity</div>
+                        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+                            <span style={{ fontSize: '1.8rem', fontWeight: 800, color: '#6d28d9', fontFamily: 'var(--font-heading)' }}>{globalSummary.avgCompletion}%</span>
+                            <span style={{ fontSize: '0.72rem', color: '#6d28d9', fontWeight: 700 }}>Avg Pacing Rate</span>
+                        </div>
                     </div>
-                </div>
-                <div className="qcto-card" style={{ padding: '16px', borderLeft: '4px solid #f59e0b' }}>
-                    <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', color: '#64748b', fontWeight: 800, marginBottom: '6px' }}>Top Performing Intake</div>
-                    <div style={{ display: 'flex', flexDirection: 'column' }}>
-                        <strong style={{ fontSize: '0.9rem', color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{globalSummary.topRun ? (globalSummary.topRun.cohortName || globalSummary.topRun.name) : 'No Runs Active'}</strong>
-                        <span style={{ fontSize: '0.75rem', color: '#16a34a', fontWeight: 800, marginTop: '4px' }}>{globalSummary.topRun ? `${globalSummary.topRun.passRate}% Pass Rate` : '--'}</span>
+                </Tooltip>
+
+                <Tooltip content="The cohort run achieving the highest overall assessment pass rate." placement="top">
+                    <div className="qcto-card" style={{ padding: '16px', borderLeft: '4px solid #f59e0b' }}>
+                        <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', color: '#64748b', fontWeight: 800, marginBottom: '6px' }}>Top Performing Intake</div>
+                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                            <strong style={{ fontSize: '0.9rem', color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{globalSummary.topRun ? (globalSummary.topRun.cohortName || globalSummary.topRun.name) : 'No Runs Active'}</strong>
+                            <span style={{ fontSize: '0.75rem', color: '#16a34a', fontWeight: 800, marginTop: '4px' }}>{globalSummary.topRun ? `${globalSummary.topRun.passRate}% Pass Rate` : '--'}</span>
+                        </div>
                     </div>
-                </div>
+                </Tooltip>
             </div>
 
             {/* BOTTLENECK RADAR WITH INTAKE DROPDOWN FILTER */}
@@ -408,7 +523,9 @@ const PackageAnalyticsView: React.FC<PackageAnalyticsViewProps> = ({ container, 
                     </span>
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>Filter Radar:</span>
+                        <Tooltip content="Filter bottleneck radar to evaluate struggle rates for a specific intake." placement="top">
+                            <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>Filter Radar:</span>
+                        </Tooltip>
                         <select
                             value={bottleneckCohortRunId}
                             onChange={e => setBottleneckCohortRunId(e.target.value)}
@@ -435,13 +552,15 @@ const PackageAnalyticsView: React.FC<PackageAnalyticsViewProps> = ({ container, 
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px' }}>
-                    {bottleneckUnits.map(({ unit, retryRate }) => (
-                        <div key={unit.id} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', padding: '12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                            <div style={{ fontSize: '0.68rem', fontWeight: 800, color: '#0284c7', textTransform: 'uppercase' }}>Unit #{unit.orderIndex || 1} • {unit.unitType}</div>
-                            <strong style={{ fontSize: '0.82rem', color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{unit.title || 'Untitled Unit'}</strong>
+                    {bottleneckUnits.map(({ unit: bUnit, retryRate }) => (
+                        <div key={bUnit.id} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', padding: '12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            <div style={{ fontSize: '0.68rem', fontWeight: 800, color: '#0284c7', textTransform: 'uppercase' }}>Unit #{bUnit.orderIndex || 1} • {bUnit.unitType}</div>
+                            <strong style={{ fontSize: '0.82rem', color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{bUnit.title || 'Untitled Unit'}</strong>
                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', marginTop: '4px', borderTop: '1px dashed #cbd5e1', paddingTop: '6px' }}>
                                 <span style={{ color: '#b45309', fontWeight: 700 }}>Retry / Struggle Rate: {retryRate}%</span>
-                                <button onClick={() => onDrilldownLesson(unit, bottleneckCohortRunId !== 'all' ? bottleneckCohortRunId : undefined)} style={{ background: 'none', border: 'none', color: '#0284c7', fontWeight: 800, cursor: 'pointer', padding: 0, fontSize: '0.7rem' }}>Inspect →</button>
+                                <Tooltip content="Open micro-analytics for this specific bottleneck lesson." placement="top">
+                                    <button onClick={() => onDrilldownLesson(bUnit, bottleneckCohortRunId !== 'all' ? bottleneckCohortRunId : undefined)} style={{ background: 'none', border: 'none', color: '#0284c7', fontWeight: 800, cursor: 'pointer', padding: 0, fontSize: '0.7rem' }}>Inspect →</button>
+                                </Tooltip>
                             </div>
                         </div>
                     ))}
@@ -456,16 +575,18 @@ const PackageAnalyticsView: React.FC<PackageAnalyticsViewProps> = ({ container, 
                         <span style={{ fontSize: '0.85rem' }}>Active &amp; Historical Cohort Runs ({runStats.length})</span>
                     </div>
                     <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(255,255,255,0.1)', padding: '2px 8px' }}>
-                            <Filter size={12} color="white" />
-                            <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={{ background: 'transparent', color: 'white', border: 'none', fontSize: '0.75rem', fontWeight: 700, outline: 'none' }}>
-                                <option value="all" style={{ color: 'black' }}>All Statuses</option>
-                                <option value="active" style={{ color: 'black' }}>Active</option>
-                                <option value="draft" style={{ color: 'black' }}>Draft Blueprint</option>
-                                <option value="paused" style={{ color: 'black' }}>Paused</option>
-                                <option value="completed" style={{ color: 'black' }}>Completed</option>
-                            </select>
-                        </div>
+                        <Tooltip content="Filter cohort runs table by lifecycle status." placement="top">
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(255,255,255,0.1)', padding: '2px 8px' }}>
+                                <Filter size={12} color="white" />
+                                <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={{ background: 'transparent', color: 'white', border: 'none', fontSize: '0.75rem', fontWeight: 700, outline: 'none' }}>
+                                    <option value="all" style={{ color: 'black' }}>All Statuses</option>
+                                    <option value="active" style={{ color: 'black' }}>Active</option>
+                                    <option value="draft" style={{ color: 'black' }}>Draft Blueprint</option>
+                                    <option value="paused" style={{ color: 'black' }}>Paused</option>
+                                    <option value="completed" style={{ color: 'black' }}>Completed</option>
+                                </select>
+                            </div>
+                        </Tooltip>
                         <div className="mlab-search" style={{ margin: 0, width: '220px' }}>
                             <Search size={14} color="var(--mlab-grey)" />
                             <input type="text" placeholder="Search intake..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} style={{ padding: '4px 8px', fontSize: '0.75rem' }} />
@@ -541,17 +662,19 @@ const PackageAnalyticsView: React.FC<PackageAnalyticsViewProps> = ({ container, 
                                             {run.riskStatus === 'high_risk' && <span style={{ fontSize: '0.7rem', color: '#be123c', background: '#fff1f2', border: '1px solid #fecdd3', padding: '2px 8px', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '4px' }}><AlertOctagon size={11} /> High Risk</span>}
                                         </td>
                                         <td style={{ textAlign: 'right' }}>
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    const targetUnit = units[0];
-                                                    if (targetUnit) onDrilldownLesson(targetUnit, run.id);
-                                                    else toast.warning("No learning units in this package.");
-                                                }}
-                                                style={{ background: '#f0f9ff', color: '#0284c7', border: '1px solid #bae6fd', padding: '4px 10px', fontSize: '0.72rem', fontWeight: 800, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                                            >
-                                                Inspect Roster <ChevronRight size={12} />
-                                            </button>
+                                            <Tooltip content="Open roster and lesson analytics for this intake run." placement="left">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const targetUnit = units[0];
+                                                        if (targetUnit) onDrilldownLesson(targetUnit, run.id);
+                                                        else toast.warning("No learning units in this package.");
+                                                    }}
+                                                    style={{ background: '#f0f9ff', color: '#0284c7', border: '1px solid #bae6fd', padding: '4px 10px', fontSize: '0.72rem', fontWeight: 800, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                                                >
+                                                    Inspect Roster <ChevronRight size={12} />
+                                                </button>
+                                            </Tooltip>
                                         </td>
                                     </tr>
                                 ))
@@ -571,9 +694,9 @@ const PackageAnalyticsView: React.FC<PackageAnalyticsViewProps> = ({ container, 
 interface LessonAnalyticsViewProps {
     containerId: string;
     cohortRunId: string;
-    unit: LearningUnit;
-    allUnits: LearningUnit[];
-    onSelectUnit: (unit: LearningUnit | null) => void;
+    unit: LearningUnit | ExtendedLearningUnit;
+    allUnits: LearningUnit[] | ExtendedLearningUnit[];
+    onSelectUnit: (unit: LearningUnit | ExtendedLearningUnit | null) => void;
     cohorts: { id: string; name: string }[];
     initialCohortId?: string;
     onBack: () => void;
@@ -616,11 +739,11 @@ const LessonAnalyticsView: React.FC<LessonAnalyticsViewProps> = ({
     // REAL-TIME FIRESTORE DATA
     const [learnersProgress, setLearnersProgress] = useState<LearnerLessonProgress[]>([]);
     const [isLoadingProgress, setIsLoadingProgress] = useState(true);
-    const [comments, setComments] = useState<any[]>([]);
-    const [questions, setQuestions] = useState<any[]>([]);
+    const [comments, setComments] = useState<LessonComment[]>([]);
+    const [questions, setQuestions] = useState<LessonQuestion[]>([]);
     const [qaViewMode, setQaViewMode] = useState<'list' | 'detail'>('list');
-    const [selectedQuestion, setSelectedQuestion] = useState<any | null>(null);
-    const [questionAnswers, setQuestionAnswers] = useState<any[]>([]);
+    const [selectedQuestion, setSelectedQuestion] = useState<LessonQuestion | null>(null);
+    const [questionAnswers, setQuestionAnswers] = useState<LessonAnswer[]>([]);
 
     // Editor States
     const [newComment, setNewComment] = useState('');
@@ -637,7 +760,7 @@ const LessonAnalyticsView: React.FC<LessonAnalyticsViewProps> = ({
         cancelText?: string;
     }>({ isOpen: false, type: 'info', title: '', message: '' });
 
-    const sortedAllUnits = useMemo(() => [...allUnits].sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0)), [allUnits]);
+    const sortedAllUnits = useMemo(() => [...allUnits].sort((a, b) => (Number(a.orderIndex) || 0) - (Number(b.orderIndex) || 0)), [allUnits]);
 
     // COMPUTE QUERY TARGET KEYS DYNAMICALLY (Global vs Specific Cohort Run)
     const targetKeys = useMemo(() => {
@@ -661,31 +784,30 @@ const LessonAnalyticsView: React.FC<LessonAnalyticsViewProps> = ({
         const usersQuery = query(collection(db, 'users'));
 
         const unsubProgress = onSnapshot(progressQuery, (progSnap) => {
-            const progressDocs = progSnap.docs.map(d => d.data());
+            const progressDocs = progSnap.docs.map(d => d.data() as ProgressDoc);
 
             const unsubEnroll = onSnapshot(enrollQuery, (enrollSnap) => {
-                const enrollDocs = enrollSnap.docs.map(d => d.data());
+                const enrollDocs = enrollSnap.docs.map(d => d.data() as EnrollmentDoc);
 
                 const unsubUsers = onSnapshot(usersQuery, (usersSnap) => {
-                    const userDocsMap = new Map<string, any>();
+                    const userDocsMap = new Map<string, { displayName?: string; name?: string; email?: string; isBlockedFromForum?: boolean }>();
                     usersSnap.docs.forEach(d => userDocsMap.set(d.id, d.data()));
 
-                    const activeUserMap = new Map<string, any>();
+                    const activeUserMap = new Map<string, { userId: string; userName: string; userEmail: string; cohortId: string; cohortName: string; isBlockedFromForum: boolean }>();
 
                     // Seed from enrollments
                     enrollDocs.forEach(enroll => {
-                        const isMatch = targetKeys.some(k =>
-                            enroll.containerId === k ||
-                            enroll.cohortRunId === k ||
-                            enroll.courseId === k
-                        );
+                        const target = enroll.containerId || enroll.cohortRunId || enroll.courseId;
+                        const isMatch = target ? targetKeys.includes(target) : false;
                         if (isMatch && enroll.userId) {
+                            const userProfile = userDocsMap.get(enroll.userId) || {};
                             activeUserMap.set(enroll.userId, {
                                 userId: enroll.userId,
-                                userName: enroll.userName || userDocsMap.get(enroll.userId)?.displayName || userDocsMap.get(enroll.userId)?.name || 'Learner',
-                                userEmail: enroll.userEmail || userDocsMap.get(enroll.userId)?.email || '',
+                                userName: enroll.userName || userProfile.displayName || userProfile.name || 'Learner',
+                                userEmail: enroll.userEmail || userProfile.email || '',
                                 cohortId: enroll.cohortId || 'unassigned',
-                                cohortName: enroll.cohortName || 'Active Cohort'
+                                cohortName: enroll.cohortName || 'Active Cohort',
+                                isBlockedFromForum: userProfile.isBlockedFromForum || false
                             });
                         }
                     });
@@ -693,7 +815,8 @@ const LessonAnalyticsView: React.FC<LessonAnalyticsViewProps> = ({
                     // Seed/Augment directly from learner_content_progress
                     progressDocs.forEach(prog => {
                         if (prog.userId) {
-                            const isContainerMatch = targetKeys.includes(prog.containerId);
+                            const target = prog.containerId || prog.cohortRunId;
+                            const isContainerMatch = target ? targetKeys.includes(target) : false;
                             if (isContainerMatch && !activeUserMap.has(prog.userId)) {
                                 const userProfile = userDocsMap.get(prog.userId) || {};
                                 activeUserMap.set(prog.userId, {
@@ -701,7 +824,8 @@ const LessonAnalyticsView: React.FC<LessonAnalyticsViewProps> = ({
                                     userName: userProfile.displayName || userProfile.name || prog.userName || `Learner (${prog.userId.substring(0, 6)})`,
                                     userEmail: userProfile.email || prog.userEmail || '',
                                     cohortId: prog.cohortId || 'unassigned',
-                                    cohortName: prog.cohortName || 'Active Cohort'
+                                    cohortName: prog.cohortName || 'Active Cohort',
+                                    isBlockedFromForum: userProfile.isBlockedFromForum || false
                                 });
                             }
                         }
@@ -710,7 +834,7 @@ const LessonAnalyticsView: React.FC<LessonAnalyticsViewProps> = ({
                     const merged: LearnerLessonProgress[] = Array.from(activeUserMap.values()).map(learner => {
                         const learnerProgress = progressDocs.filter(p => p.userId === learner.userId);
 
-                        const allUnitStats = allUnits.map((u) => {
+                        const allUnitStats: UnitProgressStat[] = allUnits.map((u) => {
                             const stat = learnerProgress.find(p => p.unitId === u.id);
                             return {
                                 unitId: u.id,
@@ -801,14 +925,14 @@ const LessonAnalyticsView: React.FC<LessonAnalyticsViewProps> = ({
         );
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
-            const rawComments = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            const rawComments = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as LessonComment));
 
-            const filtered = rawComments.filter((c: any) => {
+            const filtered = rawComments.filter(c => {
                 const docContainer = c.containerId || c.timelineId || c.cohortRunId;
-                return targetKeys.includes(docContainer);
+                return docContainer ? targetKeys.includes(docContainer) : false;
             });
 
-            filtered.sort((a: any, b: any) => {
+            filtered.sort((a, b) => {
                 const timeA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : (a.createdAt?.seconds ? a.createdAt.seconds * 1000 : 0);
                 const timeB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : (b.createdAt?.seconds ? b.createdAt.seconds * 1000 : 0);
                 return timeA - timeB;
@@ -830,14 +954,14 @@ const LessonAnalyticsView: React.FC<LessonAnalyticsViewProps> = ({
         );
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
-            const rawQuestions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            const rawQuestions = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as LessonQuestion));
 
-            const filtered = rawQuestions.filter((qData: any) => {
+            const filtered = rawQuestions.filter(qData => {
                 const docContainer = qData.containerId || qData.timelineId || qData.cohortRunId;
-                return targetKeys.includes(docContainer);
+                return docContainer ? targetKeys.includes(docContainer) : false;
             });
 
-            filtered.sort((a: any, b: any) => {
+            filtered.sort((a, b) => {
                 const timeA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : (a.createdAt?.seconds ? a.createdAt.seconds * 1000 : 0);
                 const timeB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : (b.createdAt?.seconds ? b.createdAt.seconds * 1000 : 0);
                 return timeB - timeA;
@@ -862,9 +986,9 @@ const LessonAnalyticsView: React.FC<LessonAnalyticsViewProps> = ({
         );
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
-            const fetchedAnswers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            const fetchedAnswers = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as LessonAnswer));
 
-            fetchedAnswers.sort((a: any, b: any) => {
+            fetchedAnswers.sort((a, b) => {
                 const timeA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : (a.createdAt?.seconds ? a.createdAt.seconds * 1000 : 0);
                 const timeB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : (b.createdAt?.seconds ? b.createdAt.seconds * 1000 : 0);
                 return timeA - timeB;
@@ -971,7 +1095,7 @@ const LessonAnalyticsView: React.FC<LessonAnalyticsViewProps> = ({
     };
 
     // FLAG COMMENT
-    const handleToggleFlagComment = async (commentId: string, isCurrentlyFlagged: boolean) => {
+    const handleToggleFlagComment = async (commentId: string, isCurrentlyFlagged?: boolean) => {
         try {
             await updateDoc(doc(db, 'lessonComments', commentId), {
                 isFlagged: !isCurrentlyFlagged,
@@ -1067,55 +1191,63 @@ const LessonAnalyticsView: React.FC<LessonAnalyticsViewProps> = ({
             {/* TOP LESSON HEADER & DYNAMIC INTAKE SELECTOR */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--mlab-midnight)', color: 'white', padding: '16px 20px', borderRadius: '0px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                    <button onClick={onBack} style={{ background: 'rgba(255, 255, 255, 0.12)', border: 'none', color: 'white', padding: '8px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.82rem', fontWeight: 700 }}>
-                        <ArrowLeft size={16} /> Back to Package Overview
-                    </button>
+                    <Tooltip content="Return to macro package overview." placement="top">
+                        <button onClick={onBack} style={{ background: 'rgba(255, 255, 255, 0.12)', border: 'none', color: 'white', padding: '8px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.82rem', fontWeight: 700 }}>
+                            <ArrowLeft size={16} /> Back to Package Overview
+                        </button>
+                    </Tooltip>
                     <div>
                         <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', color: 'var(--mlab-green)', fontWeight: 800, letterSpacing: '0.05em' }}>
                             Detailed Analytics &amp; Moderation Hub
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
                             <BookOpen size={16} color="white" />
-                            <select
-                                value={unit?.id || ''}
-                                onChange={(e) => {
-                                    const nextUnit = sortedAllUnits.find(u => u.id === e.target.value);
-                                    if (nextUnit) onSelectUnit(nextUnit);
-                                }}
-                                style={{ background: 'transparent', color: 'white', border: '1px solid rgba(255,255,255,0.3)', padding: '2px 8px', fontSize: '1.05rem', fontWeight: 700, outline: 'none', cursor: 'pointer', maxWidth: '400px' }}
-                            >
-                                {sortedAllUnits.map(u => (
-                                    <option key={u.id} value={u.id} style={{ color: 'black' }}>
-                                        #{u.orderIndex || 1} • {u.title}
-                                    </option>
-                                ))}
-                            </select>
+                            <Tooltip content="Select another lesson in this course to inspect its performance." placement="top">
+                                <select
+                                    value={unit?.id || ''}
+                                    onChange={(e) => {
+                                        const nextUnit = sortedAllUnits.find(u => u.id === e.target.value);
+                                        if (nextUnit) onSelectUnit(nextUnit);
+                                    }}
+                                    style={{ background: 'transparent', color: 'white', border: '1px solid rgba(255,255,255,0.3)', padding: '2px 8px', fontSize: '1.05rem', fontWeight: 700, outline: 'none', cursor: 'pointer', maxWidth: '400px' }}
+                                >
+                                    {sortedAllUnits.map(u => (
+                                        <option key={u.id} value={u.id} style={{ color: 'black' }}>
+                                            #{u.orderIndex || 1} • {u.title}
+                                        </option>
+                                    ))}
+                                </select>
+                            </Tooltip>
                         </div>
                     </div>
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <button type="button" onClick={handleNudgeAtRiskLearners} disabled={isNudging} style={{ background: '#be123c', color: 'white', border: 'none', padding: '8px 14px', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                        <MailCheck size={14} /> {isNudging ? 'Dispatching...' : `Nudge At-Risk (${highRiskLearners.length})`}
-                    </button>
+                    <Tooltip content="Send reminder emails to learners falling behind in watch time or quiz scores." placement="left">
+                        <button type="button" onClick={handleNudgeAtRiskLearners} disabled={isNudging} style={{ background: '#be123c', color: 'white', border: 'none', padding: '8px 14px', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                            <MailCheck size={14} /> {isNudging ? 'Dispatching...' : `Nudge At-Risk (${highRiskLearners.length})`}
+                        </button>
+                    </Tooltip>
 
                     {/* DYNAMIC INTAKE / COHORT RUN SELECTOR */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(255,255,255,0.1)', padding: '6px 12px' }}>
-                        <Rocket size={14} color="var(--mlab-green)" />
-                        <span style={{ fontSize: '0.78rem', color: '#94a3b8', fontWeight: 600 }}>Delivery Intake:</span>
-                        <select
-                            value={selectedCohortRunId}
-                            onChange={e => setSelectedCohortRunId(e.target.value)}
-                            style={{ background: 'transparent', color: 'white', border: 'none', fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer', outline: 'none', maxWidth: '240px' }}
-                        >
-                            <option value="all" style={{ color: 'black' }}>🌍 All Cohort Runs (Global Package View)</option>
-                            {availableRuns.map(run => (
-                                <option key={run.id} value={run.id} style={{ color: 'black' }}>
-                                    🚀 {run.cohortName || run.name || run.id}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
+                    <Tooltip content="Filter lesson analytics and forums by a specific cohort run or view global package totals." placement="left">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(255,255,255,0.1)', padding: '6px 12px' }}>
+                            <Rocket size={14} color="var(--mlab-green)" />
+                            <span style={{ fontSize: '0.78rem', color: '#94a3b8', fontWeight: 600 }}>Delivery Intake:</span>
+                            <select
+                                value={selectedCohortRunId}
+                                onChange={e => setSelectedCohortRunId(e.target.value)}
+                                style={{ background: 'transparent', color: 'white', border: 'none', fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer', outline: 'none', maxWidth: '240px' }}
+                            >
+                                <option value="all" style={{ color: 'black' }}>🌍 All Cohort Runs (Global Package View)</option>
+                                {availableRuns.map(run => (
+                                    <option key={run.id} value={run.id} style={{ color: 'black' }}>
+                                        🚀 {run.cohortName || run.name || run.id}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                    </Tooltip>
                 </div>
             </div>
 
@@ -1137,93 +1269,115 @@ const LessonAnalyticsView: React.FC<LessonAnalyticsViewProps> = ({
                 </div>
 
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                    <button
-                        type="button"
-                        onClick={() => setSelectedRiskFilter('all')}
-                        style={{
-                            padding: '6px 12px',
-                            border: `1px solid ${selectedRiskFilter === 'all' ? '#0f172a' : '#cbd5e1'}`,
-                            background: selectedRiskFilter === 'all' ? '#0f172a' : 'white',
-                            color: selectedRiskFilter === 'all' ? 'white' : '#475569',
-                            fontSize: '0.75rem',
-                            fontWeight: 700,
-                            cursor: 'pointer'
-                        }}
-                    >
-                        Show All ({filteredLearners.length})
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => setSelectedRiskFilter('high_risk')}
-                        style={{
-                            padding: '6px 12px',
-                            border: '1px solid #fecdd3',
-                            background: selectedRiskFilter === 'high_risk' ? '#be123c' : '#fff1f2',
-                            color: selectedRiskFilter === 'high_risk' ? 'white' : '#be123c',
-                            fontSize: '0.75rem',
-                            fontWeight: 800,
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '4px'
-                        }}
-                    >
-                        <AlertOctagon size={13} /> At High Risk ({riskDistribution.high})
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => setSelectedRiskFilter('moderate_risk')}
-                        style={{
-                            padding: '6px 12px',
-                            border: '1px solid #fde68a',
-                            background: selectedRiskFilter === 'moderate_risk' ? '#d97706' : '#fffbeb',
-                            color: selectedRiskFilter === 'moderate_risk' ? 'white' : '#b45309',
-                            fontSize: '0.75rem',
-                            fontWeight: 800,
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '4px'
-                        }}
-                    >
-                        <AlertTriangle size={13} /> Needs Attention ({riskDistribution.moderate})
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => setSelectedRiskFilter('on_track')}
-                        style={{
-                            padding: '6px 12px',
-                            border: '1px solid #bbf7d0',
-                            background: selectedRiskFilter === 'on_track' ? '#16a34a' : '#f0fdf4',
-                            color: selectedRiskFilter === 'on_track' ? 'white' : '#15803d',
-                            fontSize: '0.75rem',
-                            fontWeight: 800,
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '4px'
-                        }}
-                    >
-                        <CheckCircle2 size={13} /> On Track ({riskDistribution.onTrack})
-                    </button>
+                    <Tooltip content="Show all enrolled learners regardless of risk tier." placement="top">
+                        <button
+                            type="button"
+                            onClick={() => setSelectedRiskFilter('all')}
+                            style={{
+                                padding: '6px 12px',
+                                border: `1px solid ${selectedRiskFilter === 'all' ? '#0f172a' : '#cbd5e1'}`,
+                                background: selectedRiskFilter === 'all' ? '#0f172a' : 'white',
+                                color: selectedRiskFilter === 'all' ? 'white' : '#475569',
+                                fontSize: '0.75rem',
+                                fontWeight: 700,
+                                cursor: 'pointer'
+                            }}
+                        >
+                            Show All ({filteredLearners.length})
+                        </button>
+                    </Tooltip>
+
+                    <Tooltip content="Filter to learners with watch time under 50% or failing quiz scores." placement="top">
+                        <button
+                            type="button"
+                            onClick={() => setSelectedRiskFilter('high_risk')}
+                            style={{
+                                padding: '6px 12px',
+                                border: '1px solid #fecdd3',
+                                background: selectedRiskFilter === 'high_risk' ? '#be123c' : '#fff1f2',
+                                color: selectedRiskFilter === 'high_risk' ? 'white' : '#be123c',
+                                fontSize: '0.75rem',
+                                fontWeight: 800,
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                            }}
+                        >
+                            <AlertOctagon size={13} /> At High Risk ({riskDistribution.high})
+                        </button>
+                    </Tooltip>
+
+                    <Tooltip content="Filter to learners making progress but scoring under 75%." placement="top">
+                        <button
+                            type="button"
+                            onClick={() => setSelectedRiskFilter('moderate_risk')}
+                            style={{
+                                padding: '6px 12px',
+                                border: '1px solid #fde68a',
+                                background: selectedRiskFilter === 'moderate_risk' ? '#d97706' : '#fffbeb',
+                                color: selectedRiskFilter === 'moderate_risk' ? 'white' : '#b45309',
+                                fontSize: '0.75rem',
+                                fontWeight: 800,
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                            }}
+                        >
+                            <AlertTriangle size={13} /> Needs Attention ({riskDistribution.moderate})
+                        </button>
+                    </Tooltip>
+
+                    <Tooltip content="Filter to learners with high completion and passing quiz scores." placement="top">
+                        <button
+                            type="button"
+                            onClick={() => setSelectedRiskFilter('on_track')}
+                            style={{
+                                padding: '6px 12px',
+                                border: '1px solid #bbf7d0',
+                                background: selectedRiskFilter === 'on_track' ? '#16a34a' : '#f0fdf4',
+                                color: selectedRiskFilter === 'on_track' ? 'white' : '#15803d',
+                                fontSize: '0.75rem',
+                                fontWeight: 800,
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                            }}
+                        >
+                            <CheckCircle2 size={13} /> On Track ({riskDistribution.onTrack})
+                        </button>
+                    </Tooltip>
                 </div>
             </div>
 
             {/* TAB SELECTOR STRIP */}
             <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', padding: '10px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ display: 'flex', gap: '8px' }}>
-                    <button onClick={() => setActiveTab('engagement')} style={{ padding: '8px 16px', border: 'none', background: activeTab === 'engagement' ? 'var(--mlab-midnight)' : 'transparent', color: activeTab === 'engagement' ? 'white' : '#64748b', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <Tv size={15} /> Lesson Watch Progress ({filteredLearners.length} Learners)
-                    </button>
-                    <button onClick={() => setActiveTab('quizzes')} style={{ padding: '8px 16px', border: 'none', background: activeTab === 'quizzes' ? 'var(--mlab-midnight)' : 'transparent', color: activeTab === 'quizzes' ? 'white' : '#64748b', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <Award size={15} /> Quiz &amp; Gate Scores
-                    </button>
-                    <button onClick={() => setActiveTab('comments')} style={{ padding: '8px 16px', border: 'none', background: activeTab === 'comments' ? 'var(--mlab-midnight)' : 'transparent', color: activeTab === 'comments' ? 'white' : '#64748b', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <MessageSquare size={15} /> Live Comments ({comments.length})
-                    </button>
-                    <button onClick={() => setActiveTab('qa')} style={{ padding: '8px 16px', border: 'none', background: activeTab === 'qa' ? 'var(--mlab-midnight)' : 'transparent', color: activeTab === 'qa' ? 'white' : '#64748b', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <HelpCircle size={15} /> Q&amp;A Threads ({questions.length})
-                    </button>
+                    <Tooltip content="View video watch percentages and time spent per learner." placement="top">
+                        <button onClick={() => setActiveTab('engagement')} style={{ padding: '8px 16px', border: 'none', background: activeTab === 'engagement' ? 'var(--mlab-midnight)' : 'transparent', color: activeTab === 'engagement' ? 'white' : '#64748b', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <Tv size={15} /> Lesson Watch Progress ({filteredLearners.length} Learners)
+                        </button>
+                    </Tooltip>
+
+                    <Tooltip content="Inspect quiz scores, attempts, and submitted code solutions." placement="top">
+                        <button onClick={() => setActiveTab('quizzes')} style={{ padding: '8px 16px', border: 'none', background: activeTab === 'quizzes' ? 'var(--mlab-midnight)' : 'transparent', color: activeTab === 'quizzes' ? 'white' : '#64748b', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <Award size={15} /> Quiz &amp; Gate Scores
+                        </button>
+                    </Tooltip>
+
+                    <Tooltip content="Moderate live student discussion comments for this lesson." placement="top">
+                        <button onClick={() => setActiveTab('comments')} style={{ padding: '8px 16px', border: 'none', background: activeTab === 'comments' ? 'var(--mlab-midnight)' : 'transparent', color: activeTab === 'comments' ? 'white' : '#64748b', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <MessageSquare size={15} /> Live Comments ({comments.length})
+                        </button>
+                    </Tooltip>
+
+                    <Tooltip content="Review student Q&A threads and post official facilitator answers." placement="top">
+                        <button onClick={() => setActiveTab('qa')} style={{ padding: '8px 16px', border: 'none', background: activeTab === 'qa' ? 'var(--mlab-midnight)' : 'transparent', color: activeTab === 'qa' ? 'white' : '#64748b', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <HelpCircle size={15} /> Q&amp;A Threads ({questions.length})
+                        </button>
+                    </Tooltip>
                 </div>
             </div>
 
@@ -1320,13 +1474,15 @@ const LessonAnalyticsView: React.FC<LessonAnalyticsViewProps> = ({
                                                     </td>
 
                                                     <td style={{ textAlign: 'right' }} onClick={e => e.stopPropagation()}>
-                                                        <button
-                                                            onClick={() => toggleBlockLearner(learner.learnerId, learner.isBlockedFromForum)}
-                                                            style={{ background: learner.isBlockedFromForum ? '#be123c' : 'transparent', color: learner.isBlockedFromForum ? 'white' : '#be123c', border: '1px solid #be123c', padding: '4px 10px', fontSize: '0.72rem', cursor: 'pointer', fontWeight: 700 }}
-                                                        >
-                                                            <Ban size={12} style={{ marginRight: '4px' }} />
-                                                            {learner.isBlockedFromForum ? 'Unblock Forum' : 'Block Forum Access'}
-                                                        </button>
+                                                        <Tooltip content={learner.isBlockedFromForum ? "Restore student's forum posting rights." : "Prevent student from posting comments in discussion streams."} placement="left">
+                                                            <button
+                                                                onClick={() => toggleBlockLearner(learner.learnerId, learner.isBlockedFromForum)}
+                                                                style={{ background: learner.isBlockedFromForum ? '#be123c' : 'transparent', color: learner.isBlockedFromForum ? 'white' : '#be123c', border: '1px solid #be123c', padding: '4px 10px', fontSize: '0.72rem', cursor: 'pointer', fontWeight: 700 }}
+                                                            >
+                                                                <Ban size={12} style={{ marginRight: '4px' }} />
+                                                                {learner.isBlockedFromForum ? 'Unblock Forum' : 'Block Forum Access'}
+                                                            </button>
+                                                        </Tooltip>
                                                     </td>
                                                 </tr>
 
@@ -1477,19 +1633,23 @@ const LessonAnalyticsView: React.FC<LessonAnalyticsViewProps> = ({
 
                         <div style={{ display: 'flex', gap: '10px', alignItems: 'center', background: '#f8fafc', padding: '12px', border: '1px solid var(--mlab-border)' }}>
                             <div style={{ width: '36px', height: '36px', background: 'var(--mlab-midnight)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 800 }}>FC</div>
-                            <input
-                                type="text"
-                                placeholder="Broadcast a comment or tip to learners in this intake..."
-                                value={newComment}
-                                onChange={(e) => setNewComment(e.target.value)}
-                                onKeyDown={(e) => e.key === 'Enter' && handleAdminPostComment()}
-                                className="pfm-input"
-                                style={{ flex: 1, padding: '10px 12px' }}
-                                disabled={isSubmitting}
-                            />
-                            <button onClick={handleAdminPostComment} disabled={isSubmitting || !newComment.trim()} className="lfm-btn lfm-btn--primary">
-                                {isSubmitting ? <Loader2 size={14} className="lfm-spin" /> : <Send size={14} />}
-                            </button>
+                            <Tooltip content="Type a comment or instruction to broadcast to learners in this lesson." placement="top">
+                                <input
+                                    type="text"
+                                    placeholder="Broadcast a comment or tip to learners in this intake..."
+                                    value={newComment}
+                                    onChange={(e) => setNewComment(e.target.value)}
+                                    onKeyDown={(e) => e.key === 'Enter' && handleAdminPostComment()}
+                                    className="pfm-input"
+                                    style={{ flex: 1, padding: '10px 12px' }}
+                                    disabled={isSubmitting}
+                                />
+                            </Tooltip>
+                            <Tooltip content="Post comment to lesson stream." placement="top">
+                                <button onClick={handleAdminPostComment} disabled={isSubmitting || !newComment.trim()} className="lfm-btn lfm-btn--primary">
+                                    {isSubmitting ? <Loader2 size={14} className="lfm-spin" /> : <Send size={14} />}
+                                </button>
+                            </Tooltip>
                         </div>
 
                         {comments.length === 0 ? (
@@ -1517,12 +1677,16 @@ const LessonAnalyticsView: React.FC<LessonAnalyticsViewProps> = ({
                                                     </span>
                                                     {!c.isStaff && (
                                                         <>
-                                                            <button onClick={() => handleToggleFlagComment(c.id, c.isFlagged)} style={{ background: 'none', border: 'none', color: c.isFlagged ? '#0f172a' : '#d97706', fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer', padding: 0 }}>
-                                                                {c.isFlagged ? 'Unflag' : 'Flag'}
-                                                            </button>
-                                                            <button onClick={() => handleDeleteComment(c.id)} style={{ background: 'none', border: 'none', color: '#be123c', fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer', padding: 0 }}>
-                                                                Delete
-                                                            </button>
+                                                            <Tooltip content={c.isFlagged ? "Remove flag from this comment." : "Flag inappropriate comment to hide it from students."} placement="top">
+                                                                <button onClick={() => handleToggleFlagComment(c.id, c.isFlagged)} style={{ background: 'none', border: 'none', color: c.isFlagged ? '#0f172a' : '#d97706', fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer', padding: 0 }}>
+                                                                    {c.isFlagged ? 'Unflag' : 'Flag'}
+                                                                </button>
+                                                            </Tooltip>
+                                                            <Tooltip content="Permanently delete this comment." placement="top">
+                                                                <button onClick={() => handleDeleteComment(c.id)} style={{ background: 'none', border: 'none', color: '#be123c', fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer', padding: 0 }}>
+                                                                    Delete
+                                                                </button>
+                                                            </Tooltip>
                                                         </>
                                                     )}
                                                 </div>
@@ -1554,36 +1718,39 @@ const LessonAnalyticsView: React.FC<LessonAnalyticsViewProps> = ({
                                 ) : (
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                                         {questions.map(q => (
-                                            <div
-                                                key={q.id}
-                                                onClick={() => { setSelectedQuestion(q); setQaViewMode('detail'); }}
-                                                style={{ padding: '16px', background: '#ffffff', border: '1px solid var(--mlab-border)', cursor: 'pointer', transition: 'border-color 0.2s', display: 'flex', flexDirection: 'column', gap: '8px' }}
-                                                onMouseEnter={(e) => e.currentTarget.style.borderColor = 'var(--mlab-blue)'}
-                                                onMouseLeave={(e) => e.currentTarget.style.borderColor = 'var(--mlab-border)'}
-                                            >
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                                    <div style={{ fontWeight: 800, fontSize: '0.95rem', color: 'var(--mlab-blue)' }}>{q.title}</div>
-                                                    <span style={{ fontSize: '0.7rem', background: q.answersCount > 0 ? '#dcfce7' : '#f1f5f9', color: q.answersCount > 0 ? '#15803d' : '#64748b', padding: '2px 8px', fontWeight: 800 }}>
-                                                        {q.answersCount || 0} Answers
-                                                    </span>
+                                            <Tooltip key={q.id} content="Click to view full thread and submit an answer." placement="top">
+                                                <div
+                                                    onClick={() => { setSelectedQuestion(q); setQaViewMode('detail'); }}
+                                                    style={{ padding: '16px', background: '#ffffff', border: '1px solid var(--mlab-border)', cursor: 'pointer', transition: 'border-color 0.2s', display: 'flex', flexDirection: 'column', gap: '8px' }}
+                                                    onMouseEnter={(e) => e.currentTarget.style.borderColor = 'var(--mlab-blue)'}
+                                                    onMouseLeave={(e) => e.currentTarget.style.borderColor = 'var(--mlab-border)'}
+                                                >
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                                        <div style={{ fontWeight: 800, fontSize: '0.95rem', color: 'var(--mlab-blue)' }}>{q.title}</div>
+                                                        <span style={{ fontSize: '0.7rem', background: (q.answersCount || 0) > 0 ? '#dcfce7' : '#f1f5f9', color: (q.answersCount || 0) > 0 ? '#15803d' : '#64748b', padding: '2px 8px', fontWeight: 800 }}>
+                                                            {q.answersCount || 0} Answers
+                                                        </span>
+                                                    </div>
+                                                    <div style={{ fontSize: '0.75rem', color: '#64748b', display: 'flex', gap: '8px' }}>
+                                                        <span>Asked by <strong>{q.userName}</strong></span> • <span>{q.createdAt?.toDate ? q.createdAt.toDate().toLocaleDateString() : 'Recently'}</span>
+                                                    </div>
                                                 </div>
-                                                <div style={{ fontSize: '0.75rem', color: '#64748b', display: 'flex', gap: '8px' }}>
-                                                    <span>Asked by <strong>{q.userName}</strong></span> • <span>{q.createdAt?.toDate ? q.createdAt.toDate().toLocaleDateString() : 'Recently'}</span>
-                                                </div>
-                                            </div>
+                                            </Tooltip>
                                         ))}
                                     </div>
                                 )}
                             </>
                         ) : selectedQuestion ? (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                                <button
-                                    type="button"
-                                    onClick={() => { setSelectedQuestion(null); setQaViewMode('list'); }}
-                                    style={{ alignSelf: 'flex-start', background: 'transparent', border: 'none', color: 'var(--mlab-blue)', fontSize: '0.8rem', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', padding: 0 }}
-                                >
-                                    <ArrowLeft size={14} /> Back to Question List
-                                </button>
+                                <Tooltip content="Return to questions list." placement="right">
+                                    <button
+                                        type="button"
+                                        onClick={() => { setSelectedQuestion(null); setQaViewMode('list'); }}
+                                        style={{ alignSelf: 'flex-start', background: 'transparent', border: 'none', color: 'var(--mlab-blue)', fontSize: '0.8rem', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', padding: 0 }}
+                                    >
+                                        <ArrowLeft size={14} /> Back to Question List
+                                    </button>
+                                </Tooltip>
 
                                 {/* Question Detail */}
                                 <div style={{ background: '#f8fafc', padding: '20px', border: '1px solid var(--mlab-border)' }}>
@@ -1604,7 +1771,7 @@ const LessonAnalyticsView: React.FC<LessonAnalyticsViewProps> = ({
                                             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                                     <strong style={{ fontSize: '0.85rem', color: ans.isStaff ? 'var(--mlab-green)' : 'var(--mlab-blue)' }}>{ans.userName}</strong>
-                                                    {ans.isStaff && <span style={{ fontSize: '0.65rem', background: 'var(--mlab-green)', color: 'white', padding: '2px 6px', fontWeight: 800, textTransform: 'uppercase' }}>Facilitator Answer</span>}
+                                                    {ans.isStaff && <span style={{ fontSize: '0.65rem', background: 'var(--mlab-green)', color: 'white', padding: '2px 6px', fontWeight: 800, textTransform: 'uppercase' }}>Facilitator</span>}
                                                 </div>
                                                 <span style={{ fontSize: '0.7rem', color: '#64748b' }}>{ans.createdAt?.toDate ? ans.createdAt.toDate().toLocaleString() : 'Just now'}</span>
                                             </div>
@@ -1628,14 +1795,17 @@ const LessonAnalyticsView: React.FC<LessonAnalyticsViewProps> = ({
                                             placeholder="Draft a detailed explanation or code solution..."
                                         />
                                     </div>
-                                    <button
-                                        onClick={handleAdminPostAnswer}
-                                        disabled={isSubmitting || !answerBody.trim()}
-                                        className="lfm-btn lfm-btn--primary"
-                                        style={{ opacity: (isSubmitting || !answerBody.trim()) ? 0.5 : 1 }}
-                                    >
-                                        {isSubmitting ? <Loader2 size={14} className="lfm-spin" /> : <Send size={14} />} Post Official Reply
-                                    </button>
+                                    <Tooltip content="Submit official facilitator response to this Q&A question." placement="top">
+                                        <button
+                                            type="button"
+                                            onClick={handleAdminPostAnswer}
+                                            disabled={isSubmitting || !answerBody.trim()}
+                                            className="lfm-btn lfm-btn--primary"
+                                            style={{ opacity: (isSubmitting || !answerBody.trim()) ? 0.5 : 1 }}
+                                        >
+                                            {isSubmitting ? <Loader2 size={14} className="lfm-spin" /> : <Send size={14} />} Post Official Reply
+                                        </button>
+                                    </Tooltip>
                                 </div>
                             </div>
                         ) : null}

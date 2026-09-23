@@ -6,7 +6,9 @@ export type UserRole =
   | "moderator"
   | "mentor"
   | "assistant_facilitator"
-  | "assistant_admin";
+  | "assistant_admin"
+  | "seta_verifier"
+  | "qcto_auditor";
 
 export interface UserProfile {
   uid: string;
@@ -20,6 +22,8 @@ export interface UserProfile {
   canMarkAssessments?: boolean;
   canFacilitateCohorts?: boolean;
   assignedCohortIds?: string[]; // Ensures the scoping logic works perfectly
+
+  isTemporaryAuditor?: boolean;
 
   signatureUrl?: string;
   profilePhotoUrl: string;

@@ -10,6 +10,7 @@ import { db } from '../../../lib/firebase';
 import { useStore } from '../../../store/useStore';
 import { useToast } from '../../../components/common/Toast/Toast';
 import { createPortal } from 'react-dom';
+import Tooltip from '../../../components/common/Tooltip/Tooltip';
 import {
     Video, FileText, Code,
     PlayCircle, Bot, Sparkles,
@@ -17,7 +18,8 @@ import {
     ChevronDown, FolderOpen, Bookmark, Briefcase, Award, Building2, FolderPlus, BarChart3, Trash2, X,
     Calendar, Package
 } from 'lucide-react';
-import type { LearningUnit, ContentContainer, CohortRun } from '../../../types/content.types';
+import type { LearningUnit, ContentContainer, CohortRun, AccreditationConfig, TimeBoundConfig, AccreditationBody } from '../../../types/content.types';
+import type { ProgrammeTemplate, Cohort } from '../../../types';
 import { ContentBuilderModal } from './ContentBuilderModal';
 import { LaunchCohortModal } from './LaunchCohortModal';
 import { CohortRunsDrawer } from './CohortRunsDrawer';
@@ -28,6 +30,7 @@ import './ContentAuthoring.css';
 import { StatusModal, type StatusType } from '../../../components/common/StatusModal/StatusModal';
 import { CourseIllustrationGraphic } from '../../LearnerPortal/LearnerContentHub/types';
 import { CurriculumAnalyticsDashboard } from './LessonAnalyticsModal';
+import type { FacilitatorInfo } from '../../../components/common/CourseMetadataSettingsPanel/CourseMetadataSettingsPanel';
 
 export interface ExtendedLearningUnit extends LearningUnit {
     containerName?: string;
@@ -37,13 +40,49 @@ export interface ExtendedLearningUnit extends LearningUnit {
     _isSaving?: boolean;
 }
 
+export interface EnrichedContentContainer extends Omit<ContentContainer, 'accreditationBody'> {
+    defaultAccreditation?: AccreditationConfig;
+    accreditationBody?: AccreditationBody | string;
+    courseworkHours?: number;
+    contentHours?: number;
+    estimatedTotalHours?: number;
+    defaultTimeBoundConfig?: TimeBoundConfig;
+    timeBoundConfig?: TimeBoundConfig;
+    illustrationType?: string;
+    themeColor?: string;
+    description?: string;
+    level?: string;
+    prerequisites?: string[];
+    learningOutcomes?: string[];
+    targetAudience?: string[];
+    isCertificateAwarded?: boolean;
+    tags?: string[];
+    instructors?: FacilitatorInfo[];
+    materialIncludes?: string[];
+    previewVideoUrl?: string;
+    checkpointScope?: 'per_lesson' | 'per_day' | 'per_sprint';
+    checkpointMetadata?: {
+        secamStructure?: Array<{ title?: string;[key: string]: unknown }>;
+        [key: string]: unknown;
+    };
+}
+
 export const ContentAuthoring: React.FC = () => {
     const toast = useToast();
 
-    // Fetch programmes and cohorts from state store
-    const { programmes = [], cohorts = [], fetchProgrammes, fetchCohorts } = useStore() as any;
+    const {
+        programmes = [],
+        cohorts = [],
+        fetchProgrammes,
+        fetchCohorts
+    } = useStore() as {
+        programmes: ProgrammeTemplate[];
+        cohorts: Cohort[];
+        fetchProgrammes: () => Promise<void>;
+        fetchCohorts: () => Promise<void>;
+    };
 
-    const [containers, setContainers] = useState<ContentContainer[]>([]);
+    const [containers, setContainers] = useState<EnrichedContentContainer[]>([]);
     const [selectedContainerId, setSelectedContainerId] = useState<string>('all');
     const [units, setUnits] = useState<ExtendedLearningUnit[]>([]);
     const [loadingContainers, setLoadingContainers] = useState(true);
@@ -52,7 +91,6 @@ export const ContentAuthoring: React.FC = () => {
 
     const [deletingUnitIds, setDeletingUnitIds] = useState<Set<string>>(new Set());
 
-    // Framework Segment Tab ('secam' | 'qcto')
     const [activeFramework, setActiveFramework] = useState<'qcto' | 'secam'>('secam');
 
     const [expandedTypes, setExpandedTypes] = useState<Set<string>>(new Set([
@@ -64,7 +102,6 @@ export const ContentAuthoring: React.FC = () => {
     const [expandedModules, setExpandedModules] = useState<Set<string>>(new Set());
     const [expandedTopics, setExpandedTopics] = useState<Set<string>>(new Set());
 
-    // Modal States
     const [showRootModal, setShowRootModal] = useState(false);
     const [rootTitle, setRootTitle] = useState('');
     const [rootRefId, setRootRefId] = useState('');
@@ -73,18 +110,15 @@ export const ContentAuthoring: React.FC = () => {
 
     const [showBuilder, setShowBuilder] = useState(false);
 
-    // Modal state for launching
     const [showLaunchCohortModal, setShowLaunchCohortModal] = useState(false);
     const [launchModalRun, setLaunchModalRun] = useState<CohortRun | null>(null);
 
     const [showRunsDrawer, setShowRunsDrawer] = useState(false);
 
-    // ANALYTICS NAVIGATION STATES
     const [showPackageAnalytics, setShowPackageAnalytics] = useState(false);
     const [analyticsUnit, setAnalyticsUnit] = useState<ExtendedLearningUnit | null>(null);
     const [selectedAnalyticsCohortId, setSelectedAnalyticsCohortId] = useState<string | null>(null);
 
-    // Reusable StatusModal State
     const [statusModal, setStatusModal] = useState<{
         isOpen: boolean;
         type: StatusType;
@@ -95,7 +129,6 @@ export const ContentAuthoring: React.FC = () => {
         cancelText?: string;
     }>({ isOpen: false, type: 'info', title: '', message: '' });
 
-    // READ INITIAL URL QUERY PARAMS ON MOUNT
     useEffect(() => {
         const searchParams = new URLSearchParams(window.location.search);
         const fwParam = searchParams.get('framework') as 'qcto' | 'secam' | null;
@@ -119,7 +152,6 @@ export const ContentAuthoring: React.FC = () => {
         }
     }, []);
 
-    // UPDATE URL QUERY PARAMS WHENEVER ACTIVE STATE CHANGES
     useEffect(() => {
         const searchParams = new URLSearchParams(window.location.search);
 
@@ -153,7 +185,6 @@ export const ContentAuthoring: React.FC = () => {
         window.history.replaceState(null, '', newRelativePathQuery);
     }, [activeFramework, selectedContainerId, showBuilder, showLaunchCohortModal, launchModalRun, showPackageAnalytics, analyticsUnit, showRootModal]);
 
-    // Fetch both programmes and cohorts
     useEffect(() => {
         if (!programmes.length && fetchProgrammes) {
             fetchProgrammes();
@@ -163,11 +194,10 @@ export const ContentAuthoring: React.FC = () => {
         }
     }, [programmes.length, cohorts.length, fetchProgrammes, fetchCohorts]);
 
-    // LISTEN TO ROOT CONTAINERS IN FIRESTORE
     useEffect(() => {
         setLoadingContainers(true);
         const unsub = onSnapshot(collection(db, 'content_containers'), (snap) => {
-            const fetchedContainers = snap.docs.map(d => ({ id: d.id, ...d.data() } as ContentContainer));
+            const fetchedContainers = snap.docs.map(d => ({ id: d.id, ...d.data() } as EnrichedContentContainer));
             setContainers(fetchedContainers);
             setLoadingContainers(false);
         }, (err) => {
@@ -179,12 +209,10 @@ export const ContentAuthoring: React.FC = () => {
         return () => unsub();
     }, []);
 
-    // FILTER CONTAINERS STRICTLY BY ACTIVE FRAMEWORK
     const filteredContainers = useMemo(() => {
         return containers.filter(c => c.framework === activeFramework);
     }, [containers, activeFramework]);
 
-    // CATALOG KPI STATS COMPUTATION
     const catalogStats = useMemo(() => {
         const totalPackages = containers.length;
         const secamPackages = containers.filter(c => c.framework === 'secam').length;
@@ -205,8 +233,7 @@ export const ContentAuthoring: React.FC = () => {
         };
     }, [containers, filteredContainers, units]);
 
-    // DYNAMIC ACTIVE CONTAINER RESOLUTION (HANDLES 'all' KEY)
-    const activeContainer = useMemo(() => {
+    const activeContainer = useMemo<EnrichedContentContainer | null>(() => {
         if (selectedContainerId === 'all') {
             return {
                 id: 'all',
@@ -214,17 +241,16 @@ export const ContentAuthoring: React.FC = () => {
                 referenceId: 'GLOBAL-FRAMEWORK-VIEW',
                 framework: activeFramework,
                 createdAt: new Date().toISOString()
-            } as ContentContainer;
+            } as EnrichedContentContainer;
         }
         return filteredContainers.find(c => c.id === selectedContainerId) || filteredContainers[0] || null;
     }, [filteredContainers, selectedContainerId, activeFramework]);
 
     const linkedTemplate = useMemo(() => {
         if (activeFramework !== 'qcto' || !activeContainer?.programmeTemplateId) return null;
-        return programmes.find((t: any) => t.id === activeContainer.programmeTemplateId) || null;
+        return programmes.find((t: ProgrammeTemplate) => t.id === activeContainer.programmeTemplateId) || null;
     }, [activeFramework, activeContainer, programmes]);
 
-    // LISTEN TO LEARNING UNITS FOR SELECTED CONTAINER OR ALL CONTAINERS IN FRAMEWORK
     useEffect(() => {
         if (filteredContainers.length === 0) {
             setUnits([]);
@@ -303,6 +329,7 @@ export const ContentAuthoring: React.FC = () => {
                 title: rootTitle.trim(),
                 referenceId: rootRefId.trim(),
                 framework: rootFramework,
+                accreditationBody: (rootFramework === 'qcto' ? 'qcto' : 'secam') as AccreditationBody,
                 ...(rootFramework === 'qcto' && rootTemplateId ? { programmeTemplateId: rootTemplateId } : {}),
                 createdAt: new Date().toISOString()
             };
@@ -380,19 +407,16 @@ export const ContentAuthoring: React.FC = () => {
                         }
 
                         if (activeContainer?.id && activeContainer.id !== 'all') {
-                            const currentMeta = (activeContainer as any).checkpointMetadata || {};
+                            const currentMeta = activeContainer.checkpointMetadata || {};
                             const currentSecamStructure = currentMeta.secamStructure || [];
-                            const updatedSecamStructure = currentSecamStructure.filter((s: any) => s.title !== sprintName);
+                            const updatedSecamStructure = currentSecamStructure.filter(s => s.title !== sprintName);
 
                             const containerRef = doc(db, 'content_containers', activeContainer.id);
                             await updateDoc(containerRef, {
                                 'checkpointMetadata.secamStructure': updatedSecamStructure,
                                 updatedAt: serverTimestamp()
                             }).catch(async () => {
-                                await setDoc(containerRef, {
-                                    checkpointMetadata: { ...currentMeta, secamStructure: updatedSecamStructure },
-                                    updatedAt: new Date().toISOString()
-                                }, { merge: true });
+                                await setDoc(containerRef, { checkpointMetadata: { ...currentMeta, secamStructure: updatedSecamStructure }, updatedAt: new Date().toISOString() }, { merge: true });
                             });
                         }
 
@@ -500,7 +524,7 @@ export const ContentAuthoring: React.FC = () => {
             ? activeContainer.title
             : `${activeContainer.title} [Ref ID: ${activeContainer.referenceId}]`;
 
-        const tree: Record<string, any> = {
+        const tree: Record<string, Record<string, Record<string, Record<string, ExtendedLearningUnit[]>>>> = {
             [rootHeaderKey]: {}
         };
 
@@ -518,7 +542,7 @@ export const ContentAuthoring: React.FC = () => {
                 const topKey = unit.topicId || 'General Logbook Topics';
                 if (!tree[rootHeaderKey][typeKey][modKey][topKey]) tree[rootHeaderKey][typeKey][modKey][topKey] = [];
 
-                tree[rootHeaderKey][typeKey][modKey][topKey].push(unit);
+                (tree[rootHeaderKey][typeKey][modKey][topKey] as unknown as ExtendedLearningUnit[]).push(unit);
             } else {
                 const sprintKey = unit.sprintTitle || 'Unassigned Sprint';
                 if (!tree[rootHeaderKey][sprintKey]) tree[rootHeaderKey][sprintKey] = {};
@@ -527,21 +551,21 @@ export const ContentAuthoring: React.FC = () => {
                 if (!tree[rootHeaderKey][sprintKey][dayKey]) tree[rootHeaderKey][sprintKey][dayKey] = {};
 
                 if (!tree[rootHeaderKey][sprintKey][dayKey]['_units']) {
-                    tree[rootHeaderKey][sprintKey][dayKey]['_units'] = [];
+                    (tree[rootHeaderKey][sprintKey][dayKey]['_units'] as unknown as ExtendedLearningUnit[]) = [];
                 }
 
-                tree[rootHeaderKey][sprintKey][dayKey]['_units'].push(unit);
+                (tree[rootHeaderKey][sprintKey][dayKey]['_units'] as unknown as ExtendedLearningUnit[]).push(unit);
             }
         });
 
         if (expandedModules.size === 0) {
-            Object.values(tree[rootHeaderKey] || {}).forEach((mods: any) => {
+            Object.values(tree[rootHeaderKey] || {}).forEach((mods) => {
                 Object.keys(mods).forEach(mKey => expandedModules.add(mKey));
             });
         }
         if (expandedTopics.size === 0) {
-            Object.values(tree[rootHeaderKey] || {}).forEach((mods: any) => {
-                Object.values(mods).forEach((tops: any) => {
+            Object.values(tree[rootHeaderKey] || {}).forEach((mods) => {
+                Object.values(mods).forEach((tops) => {
                     Object.keys(tops).forEach(tKey => expandedTopics.add(tKey));
                 });
             });
@@ -566,11 +590,10 @@ export const ContentAuthoring: React.FC = () => {
         return `${totalMins} mins`;
     };
 
-    // INLINE ANALYTICS VIEW RENDERING
     if ((showPackageAnalytics || analyticsUnit) && activeContainer) {
         return (
             <CurriculumAnalyticsDashboard
-                container={activeContainer}
+                container={activeContainer as ContentContainer}
                 units={selectedContainerId === 'all' ? units : units.filter(u => u.containerId === selectedContainerId)}
                 initialLesson={analyticsUnit}
                 initialCohortId={selectedAnalyticsCohortId}
@@ -587,7 +610,6 @@ export const ContentAuthoring: React.FC = () => {
     return (
         <div className="mlab-staff animate-fade-in" style={{ padding: '1.5rem', background: 'var(--mlab-bg, #f8fafc)' }}>
 
-            {/* STATUS MODAL PORTAL */}
             {statusModal.isOpen && createPortal(
                 <StatusModal
                     type={statusModal.type}
@@ -604,7 +626,6 @@ export const ContentAuthoring: React.FC = () => {
                 document.body
             )}
 
-            {/* STUDIO HEADER BAR */}
             <div className="qcto-card" style={{ marginBottom: '1rem' }}>
                 <div className="qcto-hdr" style={{ padding: '1rem 1.25rem' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -613,95 +634,101 @@ export const ContentAuthoring: React.FC = () => {
                     </div>
 
                     <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-                        <button
-                            type="button"
-                            className="lfm-btn lfm-btn--ghost"
-                            style={{ background: 'white', color: 'var(--mlab-blue)', borderColor: 'var(--mlab-border)' }}
-                            onClick={handleOpenRootModal}
-                        >
-                            <FolderPlus size={15} /> New Root Package
-                        </button>
+                        <Tooltip content="Create a new root content container to group units and modules." placement="left">
+                            <button
+                                type="button"
+                                className="lfm-btn lfm-btn--ghost"
+                                style={{ background: 'white', color: 'var(--mlab-blue)', borderColor: 'var(--mlab-border)' }}
+                                onClick={handleOpenRootModal}
+                            >
+                                <FolderPlus size={15} /> New Root Package
+                            </button>
+                        </Tooltip>
                     </div>
                 </div>
 
                 <div style={{ padding: '1.25rem', background: 'var(--mlab-white)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', borderTop: '1px solid var(--mlab-border)' }}>
 
-                    {/* DROPDOWN WITH "ALL" OPTION FIRST */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', flex: 1 }}>
                         <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--mlab-grey)', fontFamily: 'var(--font-heading)', textTransform: 'uppercase' }}>
                             Active {activeFramework.toUpperCase()} Package:
                         </span>
-                        <select
-                            className="pfm-input"
-                            value={selectedContainerId}
-                            onChange={e => setSelectedContainerId(e.target.value)}
-                            disabled={loadingContainers || filteredContainers.length === 0}
-                            style={{ minWidth: '320px', fontWeight: 700, color: 'var(--mlab-blue)' }}
-                        >
-                            <option value="all">🌍 All {activeFramework.toUpperCase()} Packages (Global View)</option>
-                            {filteredContainers.map((c: ContentContainer) => (
-                                <option key={c.id} value={c.id}>
-                                    {c.title} [{c.referenceId}]
-                                </option>
-                            ))}
-                        </select>
+                        <Tooltip content="Select a specific package or view all packages globally." placement="top">
+                            <select
+                                className="pfm-input"
+                                value={selectedContainerId}
+                                onChange={e => setSelectedContainerId(e.target.value)}
+                                disabled={loadingContainers || filteredContainers.length === 0}
+                                style={{ minWidth: '320px', fontWeight: 700, color: 'var(--mlab-blue)' }}
+                            >
+                                <option value="all">🌍 All {activeFramework.toUpperCase()} Packages (Global View)</option>
+                                {filteredContainers.map((c: EnrichedContentContainer) => (
+                                    <option key={c.id} value={c.id}>
+                                        {c.title} [{c.referenceId}]
+                                    </option>
+                                ))}
+                            </select>
+                        </Tooltip>
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                         <div style={{ display: 'inline-flex', border: '1px solid var(--mlab-border)', padding: '2px', background: 'var(--mlab-bg)' }}>
-                            <button
-                                type="button"
-                                onClick={() => handleFrameworkChange('qcto')}
-                                style={{
-                                    padding: '6px 14px',
-                                    border: 'none',
-                                    fontSize: '0.72rem',
-                                    fontWeight: 800,
-                                    fontFamily: 'var(--font-heading)',
-                                    cursor: 'pointer',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '6px',
-                                    textTransform: 'uppercase',
-                                    background: activeFramework === 'qcto' ? 'var(--mlab-blue)' : 'transparent',
-                                    color: activeFramework === 'qcto' ? 'white' : 'var(--mlab-grey)'
-                                }}
-                            >
-                                <GraduationCap size={14} /> QCTO Packages
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => handleFrameworkChange('secam')}
-                                style={{
-                                    padding: '6px 14px',
-                                    border: 'none',
-                                    fontSize: '0.72rem',
-                                    fontWeight: 800,
-                                    fontFamily: 'var(--font-heading)',
-                                    cursor: 'pointer',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '6px',
-                                    textTransform: 'uppercase',
-                                    background: activeFramework === 'secam' ? 'var(--mlab-blue)' : 'transparent',
-                                    color: activeFramework === 'secam' ? 'white' : 'var(--mlab-grey)'
-                                }}
-                            >
-                                <Zap size={14} /> SECAM Bootcamp
-                            </button>
+                            <Tooltip content="Switch to QCTO occupational qualifications." placement="top">
+                                <button
+                                    type="button"
+                                    onClick={() => handleFrameworkChange('qcto')}
+                                    style={{
+                                        padding: '6px 14px',
+                                        border: 'none',
+                                        fontSize: '0.72rem',
+                                        fontWeight: 800,
+                                        fontFamily: 'var(--font-heading)',
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        textTransform: 'uppercase',
+                                        background: activeFramework === 'qcto' ? 'var(--mlab-blue)' : 'transparent',
+                                        color: activeFramework === 'qcto' ? 'white' : 'var(--mlab-grey)'
+                                    }}
+                                >
+                                    <GraduationCap size={14} /> QCTO Packages
+                                </button>
+                            </Tooltip>
+                            <Tooltip content="Switch to SECAM Agile bootcamp tracks." placement="top">
+                                <button
+                                    type="button"
+                                    onClick={() => handleFrameworkChange('secam')}
+                                    style={{
+                                        padding: '6px 14px',
+                                        border: 'none',
+                                        fontSize: '0.72rem',
+                                        fontWeight: 800,
+                                        fontFamily: 'var(--font-heading)',
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        textTransform: 'uppercase',
+                                        background: activeFramework === 'secam' ? 'var(--mlab-blue)' : 'transparent',
+                                        color: activeFramework === 'secam' ? 'white' : 'var(--mlab-grey)'
+                                    }}
+                                >
+                                    <Zap size={14} /> SECAM Bootcamp
+                                </button>
+                            </Tooltip>
                         </div>
                     </div>
                 </div>
 
-                {/* ACCREDITATION & PACING SUMMARY RIBBON */}
                 {activeContainer && selectedContainerId !== 'all' && (
                     <div style={{ padding: '10px 1.25rem', background: '#f0f9ff', borderTop: '1px solid #bae6fd', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', fontSize: '0.78rem' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#0369a1', fontWeight: 700 }}>
                                 <Award size={15} color="#0284c7" />
-                                <span>Accreditation: <strong>{((activeContainer as any).defaultAccreditation?.body || activeContainer.accreditationBody || 'qcto').toUpperCase().replace('_', ' ')}</strong></span>
-                                {(activeContainer as any).defaultAccreditation?.saqaId && <span style={{ opacity: 0.8 }}>• SAQA ID: <strong>{(activeContainer as any).defaultAccreditation.saqaId}</strong></span>}
-                                {(activeContainer as any).defaultAccreditation?.nqfLevel && <span style={{ opacity: 0.8 }}>• NQF {(activeContainer as any).defaultAccreditation.nqfLevel}</span>}
+                                <span>Accreditation: <strong>{(activeContainer.defaultAccreditation?.body || activeContainer.accreditationBody || 'qcto').toUpperCase().replace('_', ' ')}</strong></span>
+                                {activeContainer.defaultAccreditation?.saqaId && <span style={{ opacity: 0.8 }}>• SAQA ID: <strong>{activeContainer.defaultAccreditation.saqaId}</strong></span>}
+                                {activeContainer.defaultAccreditation?.nqfLevel && <span style={{ opacity: 0.8 }}>• NQF {activeContainer.defaultAccreditation.nqfLevel}</span>}
                             </div>
 
                             <span style={{ color: '#cbd5e1' }}>|</span>
@@ -710,10 +737,10 @@ export const ContentAuthoring: React.FC = () => {
                                 <Clock size={15} color="#0284c7" />
                                 <span>
                                     Workload: <strong>
-                                        {(activeContainer as any).courseworkHours && (activeContainer as any).courseworkHours > 0 ? (
-                                            <>{(activeContainer as any).contentHours || Math.round(units.reduce((acc, u) => acc + (u.estimatedMinutes || 0), 0) / 60)}h lessons + {(activeContainer as any).courseworkHours}h projects ({(activeContainer as any).estimatedTotalHours || 0}h total)</>
+                                        {activeContainer.courseworkHours && activeContainer.courseworkHours > 0 ? (
+                                            <>{activeContainer.contentHours || Math.round(units.reduce((acc, u) => acc + (u.estimatedMinutes || 0), 0) / 60)}h lessons + {activeContainer.courseworkHours}h projects ({activeContainer.estimatedTotalHours || 0}h total)</>
                                         ) : (
-                                            <>{(activeContainer as any).estimatedTotalHours || Math.round(units.reduce((acc, u) => acc + (u.estimatedMinutes || 0), 0) / 60)} Hours Total</>
+                                            <>{activeContainer.estimatedTotalHours || Math.round(units.reduce((acc, u) => acc + (u.estimatedMinutes || 0), 0) / 60)} Hours Total</>
                                         )}
                                     </strong>
                                 </span>
@@ -723,8 +750,8 @@ export const ContentAuthoring: React.FC = () => {
 
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#0369a1', fontWeight: 700 }}>
                                 <Calendar size={15} color="#0284c7" />
-                                {((activeContainer as any).defaultTimeBoundConfig?.isTimeBound || (activeContainer as any).timeBoundConfig?.isTimeBound) ? (
-                                    <span>Default Window: <strong>{(activeContainer as any).defaultTimeBoundConfig?.startDate || (activeContainer as any).timeBoundConfig?.startDate || 'Start TBD'}</strong> → <strong>{(activeContainer as any).defaultTimeBoundConfig?.endDate || (activeContainer as any).timeBoundConfig?.endDate || 'End TBD'}</strong></span>
+                                {(activeContainer.defaultTimeBoundConfig?.isTimeBound || activeContainer.timeBoundConfig?.isTimeBound) ? (
+                                    <span>Default Window: <strong>{activeContainer.defaultTimeBoundConfig?.startDate || activeContainer.timeBoundConfig?.startDate || 'Start TBD'}</strong> → <strong>{activeContainer.defaultTimeBoundConfig?.endDate || activeContainer.timeBoundConfig?.endDate || 'End TBD'}</strong></span>
                                 ) : (
                                     <span style={{ color: '#64748b' }}>Schedule: <strong>Self-Paced / Flexible Blueprint</strong></span>
                                 )}
@@ -734,70 +761,78 @@ export const ContentAuthoring: React.FC = () => {
                 )}
             </div>
 
-            {/* REAL-TIME CATALOG OVERVIEW KPI STATS RIBBON */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1.25rem' }}>
-                <div style={{ background: '#ffffff', border: '1px solid #cbd5e1', borderTop: '3px solid #0284c7', padding: '14px 16px' }}>
-                    <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#0284c7', textTransform: 'uppercase', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <Package size={14} /> Total Root Packages
+                <Tooltip content="Total root packages created across all frameworks." placement="top">
+                    <div style={{ background: '#ffffff', border: '1px solid #cbd5e1', borderTop: '3px solid #0284c7', padding: '14px 16px' }}>
+                        <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#0284c7', textTransform: 'uppercase', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <Package size={14} /> Total Root Packages
+                        </div>
+                        <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--mlab-midnight)', fontFamily: 'var(--font-heading)' }}>
+                            {catalogStats.totalPackages}
+                        </div>
+                        <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px' }}>
+                            Across all frameworks
+                        </div>
                     </div>
-                    <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--mlab-midnight)', fontFamily: 'var(--font-heading)' }}>
-                        {catalogStats.totalPackages}
-                    </div>
-                    <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px' }}>
-                        Across all frameworks
-                    </div>
-                </div>
+                </Tooltip>
 
-                <div style={{ background: '#ffffff', border: '1px solid #cbd5e1', borderTop: '3px solid #6366f1', padding: '14px 16px' }}>
-                    <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#6366f1', textTransform: 'uppercase', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <Zap size={14} /> SECAM Bootcamps
+                <Tooltip content="Total SECAM Agile Bootcamp packages authored." placement="top">
+                    <div style={{ background: '#ffffff', border: '1px solid #cbd5e1', borderTop: '3px solid #6366f1', padding: '14px 16px' }}>
+                        <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#6366f1', textTransform: 'uppercase', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <Zap size={14} /> SECAM Bootcamps
+                        </div>
+                        <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--mlab-midnight)', fontFamily: 'var(--font-heading)' }}>
+                            {catalogStats.secamPackages}
+                        </div>
+                        <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px' }}>
+                            Agile Sprint Programs
+                        </div>
                     </div>
-                    <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--mlab-midnight)', fontFamily: 'var(--font-heading)' }}>
-                        {catalogStats.secamPackages}
-                    </div>
-                    <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px' }}>
-                        Agile Sprint Programs
-                    </div>
-                </div>
+                </Tooltip>
 
-                <div style={{ background: '#ffffff', border: '1px solid #cbd5e1', borderTop: '3px solid #16a34a', padding: '14px 16px' }}>
-                    <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#16a34a', textTransform: 'uppercase', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <GraduationCap size={14} /> QCTO Qualifications
+                <Tooltip content="Total QCTO qualification packages registered." placement="top">
+                    <div style={{ background: '#ffffff', border: '1px solid #cbd5e1', borderTop: '3px solid #16a34a', padding: '14px 16px' }}>
+                        <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#16a34a', textTransform: 'uppercase', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <GraduationCap size={14} /> QCTO Qualifications
+                        </div>
+                        <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--mlab-midnight)', fontFamily: 'var(--font-heading)' }}>
+                            {catalogStats.qctoPackages}
+                        </div>
+                        <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px' }}>
+                            Structured SETA Curricula
+                        </div>
                     </div>
-                    <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--mlab-midnight)', fontFamily: 'var(--font-heading)' }}>
-                        {catalogStats.qctoPackages}
-                    </div>
-                    <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px' }}>
-                        Structured SETA Curricula
-                    </div>
-                </div>
+                </Tooltip>
 
-                <div style={{ background: '#ffffff', border: '1px solid #cbd5e1', borderTop: '3px solid #7c3aed', padding: '14px 16px' }}>
-                    <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#7c3aed', textTransform: 'uppercase', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <Layers size={14} /> Authored Units
+                <Tooltip content="Total individual learning units built inside this framework view." placement="top">
+                    <div style={{ background: '#ffffff', border: '1px solid #cbd5e1', borderTop: '3px solid #7c3aed', padding: '14px 16px' }}>
+                        <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#7c3aed', textTransform: 'uppercase', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <Layers size={14} /> Authored Units
+                        </div>
+                        <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--mlab-midnight)', fontFamily: 'var(--font-heading)' }}>
+                            {catalogStats.totalUnitsCount}
+                        </div>
+                        <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px' }}>
+                            Active Learning Lessons
+                        </div>
                     </div>
-                    <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--mlab-midnight)', fontFamily: 'var(--font-heading)' }}>
-                        {catalogStats.totalUnitsCount}
-                    </div>
-                    <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px' }}>
-                        Active Learning Lessons
-                    </div>
-                </div>
+                </Tooltip>
 
-                <div style={{ background: '#ffffff', border: '1px solid #cbd5e1', borderTop: '3px solid #f59e0b', padding: '14px 16px' }}>
-                    <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#b45309', textTransform: 'uppercase', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <Clock size={14} /> Total Curriculum Hours
+                <Tooltip content="Sum of estimated learning time across all authored lessons." placement="top">
+                    <div style={{ background: '#ffffff', border: '1px solid #cbd5e1', borderTop: '3px solid #f59e0b', padding: '14px 16px' }}>
+                        <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#b45309', textTransform: 'uppercase', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <Clock size={14} /> Total Curriculum Hours
+                        </div>
+                        <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--mlab-midnight)', fontFamily: 'var(--font-heading)' }}>
+                            {catalogStats.totalNotionalHours}h
+                        </div>
+                        <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px' }}>
+                            Estimated Learning Content
+                        </div>
                     </div>
-                    <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--mlab-midnight)', fontFamily: 'var(--font-heading)' }}>
-                        {catalogStats.totalNotionalHours}h
-                    </div>
-                    <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px' }}>
-                        Estimated Learning Content
-                    </div>
-                </div>
+                </Tooltip>
             </div>
 
-            {/* SEARCH TOOLBAR */}
             <div className="qcto-card" style={{ padding: '12px 16px', marginBottom: '1.25rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', border: '1px solid var(--mlab-border)', background: 'var(--mlab-white)', padding: '0 10px' }}>
                     <Search size={16} color="var(--mlab-grey)" />
@@ -812,7 +847,6 @@ export const ContentAuthoring: React.FC = () => {
                 </div>
             </div>
 
-            {/* READ-ONLY OVERVIEW TABLE */}
             <div className="qcto-card">
                 <div className="qcto-hdr" style={{ fontSize: '0.78rem' }}>
                     <span>{activeContainer?.title || 'Package Hierarchy'} [{activeFramework.toUpperCase()}]</span>
@@ -846,9 +880,11 @@ export const ContentAuthoring: React.FC = () => {
                                         <p style={{ margin: '0 0 12px 0', fontFamily: 'var(--font-heading)', textTransform: 'uppercase' }}>
                                             No {activeFramework.toUpperCase()} Root Content Packages Provisioned
                                         </p>
-                                        <button className="lfm-btn lfm-btn--green" onClick={handleOpenRootModal}>
-                                            <FolderPlus size={14} /> Provision First {activeFramework.toUpperCase()} Package
-                                        </button>
+                                        <Tooltip content="Provision your first package to start authoring." placement="top">
+                                            <button className="lfm-btn lfm-btn--green" onClick={handleOpenRootModal}>
+                                                <FolderPlus size={14} /> Provision First {activeFramework.toUpperCase()} Package
+                                            </button>
+                                        </Tooltip>
                                     </td>
                                 </tr>
                             ) : Object.keys(contentTree).length === 0 || units.length === 0 ? (
@@ -857,9 +893,11 @@ export const ContentAuthoring: React.FC = () => {
                                         <BookOpen size={36} style={{ opacity: 0.4, marginBottom: '8px' }} />
                                         <p style={{ margin: '0 0 12px 0' }}>No learning units authored for "{activeContainer.title}".</p>
                                         {selectedContainerId !== 'all' && (
-                                            <button className="lfm-btn lfm-btn--green" onClick={() => setShowBuilder(true)}>
-                                                <Layers size={14} /> Author Learning Units
-                                            </button>
+                                            <Tooltip content="Open authoring modal to build modules and lessons." placement="top">
+                                                <button className="lfm-btn lfm-btn--green" onClick={() => setShowBuilder(true)}>
+                                                    <Layers size={14} /> Author Learning Units
+                                                </button>
+                                            </Tooltip>
                                         )}
                                     </td>
                                 </tr>
@@ -869,7 +907,6 @@ export const ContentAuthoring: React.FC = () => {
 
                                     return (
                                         <React.Fragment key={rootContainerHeader}>
-                                            {/* 🚀 STABLE PACKAGE HEADER BANNER (USES TH INSTEAD OF TR/TD TO FORCE BYPASS HOVER RULES) */}
                                             <tr style={{ userSelect: 'none', cursor: 'default' }}>
                                                 <th
                                                     colSpan={6}
@@ -886,8 +923,8 @@ export const ContentAuthoring: React.FC = () => {
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                                             <div style={{ transform: 'scale(0.85)', transformOrigin: 'left center' }}>
                                                                 <CourseIllustrationGraphic
-                                                                    type={(activeContainer as any).illustrationType || 'code'}
-                                                                    themeColor={(activeContainer as any).themeColor}
+                                                                    type={activeContainer.illustrationType || 'code'}
+                                                                    themeColor={activeContainer.themeColor}
                                                                     framework={activeFramework}
                                                                     size={20}
                                                                 />
@@ -899,50 +936,55 @@ export const ContentAuthoring: React.FC = () => {
 
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                                             {selectedContainerId !== 'all' && (
-                                                                <button
-                                                                    type="button"
-                                                                    className="lfm-btn lfm-btn--green"
-                                                                    style={{ padding: '4px 10px', height: '28px', fontSize: '0.72rem' }}
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        setShowBuilder(true);
-                                                                    }}
-                                                                >
-                                                                    <Layers size={13} /> Edit Curriculum
-                                                                </button>
+                                                                <Tooltip content="Open the interactive curriculum builder modal." placement="top">
+                                                                    <button
+                                                                        type="button"
+                                                                        className="lfm-btn lfm-btn--green"
+                                                                        style={{ padding: '4px 10px', height: '28px', fontSize: '0.72rem' }}
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            setShowBuilder(true);
+                                                                        }}
+                                                                    >
+                                                                        <Layers size={13} /> Edit Curriculum
+                                                                    </button>
+                                                                </Tooltip>
                                                             )}
 
                                                             {selectedContainerId !== 'all' && (
-                                                                <button
-                                                                    type="button"
-                                                                    className="lfm-btn"
-                                                                    style={{ padding: '4px 10px', height: '28px', fontSize: '0.72rem', background: 'rgba(255,255,255,0.15)', color: 'white', border: '1px solid rgba(255,255,255,0.3)' }}
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        setShowRunsDrawer(true);
-                                                                    }}
-                                                                >
-                                                                    <Calendar size={13} /> Manage Timelines
-                                                                </button>
+                                                                <Tooltip content="Manage delivery timelines and intake batches for this package." placement="top">
+                                                                    <button
+                                                                        type="button"
+                                                                        className="lfm-btn"
+                                                                        style={{ padding: '4px 10px', height: '28px', fontSize: '0.72rem', background: 'rgba(255,255,255,0.15)', color: 'white', border: '1px solid rgba(255,255,255,0.3)' }}
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            setShowRunsDrawer(true);
+                                                                        }}
+                                                                    >
+                                                                        <Calendar size={13} /> Manage Timelines
+                                                                    </button>
+                                                                </Tooltip>
                                                             )}
 
-                                                            <button
-                                                                type="button"
-                                                                className="lfm-btn lfm-btn--ghost"
-                                                                style={{ padding: '4px 10px', height: '28px', fontSize: '0.72rem', background: 'white', color: 'var(--mlab-blue)' }}
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    setShowPackageAnalytics(true);
-                                                                }}
-                                                            >
-                                                                <BarChart3 size={13} /> Detailed Analytics
-                                                            </button>
+                                                            <Tooltip content="Open overall learner performance and completion stats." placement="top">
+                                                                <button
+                                                                    type="button"
+                                                                    className="lfm-btn lfm-btn--ghost"
+                                                                    style={{ padding: '4px 10px', height: '28px', fontSize: '0.72rem', background: 'white', color: 'var(--mlab-blue)' }}
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setShowPackageAnalytics(true);
+                                                                    }}
+                                                                >
+                                                                    <BarChart3 size={13} /> Detailed Analytics
+                                                                </button>
+                                                            </Tooltip>
                                                         </div>
                                                     </div>
                                                 </th>
                                             </tr>
 
-                                            {/* QCTO Framework Mapping */}
                                             {activeFramework === 'qcto' ? (
                                                 isContainerExpanded && Object.entries(subMap).map(([typeLabel, modulesMap]) => {
                                                     const isTypeExpanded = expandedTypes.has(typeLabel) || true;
@@ -968,7 +1010,7 @@ export const ContentAuthoring: React.FC = () => {
                                                                 </td>
                                                             </tr>
 
-                                                            {isTypeExpanded && Object.entries(modulesMap as any)
+                                                            {isTypeExpanded && Object.entries(modulesMap as unknown as Record<string, Record<string, ExtendedLearningUnit[]>>)
                                                                 .sort(([aKey], [bKey]) => aKey.localeCompare(bKey, undefined, { numeric: true, sensitivity: 'base' }))
                                                                 .map(([modName, topicsMap]) => {
                                                                     const isModExpanded = expandedModules.has(modName);
@@ -988,24 +1030,26 @@ export const ContentAuthoring: React.FC = () => {
                                                                                             </span>
                                                                                         </div>
                                                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                                                            <button
-                                                                                                type="button"
-                                                                                                className="lfm-btn"
-                                                                                                onClick={(e) => {
-                                                                                                    e.stopPropagation();
-                                                                                                    handleDeleteModuleGroup(modName);
-                                                                                                }}
-                                                                                                style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fca5a5', padding: '3px 8px', fontSize: '0.68rem', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                                                                                            >
-                                                                                                <Trash2 size={12} /> Delete Module
-                                                                                            </button>
+                                                                                            <Tooltip content="Delete this module group and all its units." placement="top">
+                                                                                                <button
+                                                                                                    type="button"
+                                                                                                    className="lfm-btn"
+                                                                                                    onClick={(e) => {
+                                                                                                        e.stopPropagation();
+                                                                                                        handleDeleteModuleGroup(modName);
+                                                                                                    }}
+                                                                                                    style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fca5a5', padding: '3px 8px', fontSize: '0.68rem', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                                                                                                >
+                                                                                                    <Trash2 size={12} /> Delete Module
+                                                                                                </button>
+                                                                                            </Tooltip>
                                                                                             <ChevronDown size={14} color="#64748b" className={`chevron-rotate ${isModExpanded ? 'expanded' : ''}`} />
                                                                                         </div>
                                                                                     </div>
                                                                                 </td>
                                                                             </tr>
 
-                                                                            {isModExpanded && Object.entries(topicsMap as any)
+                                                                            {isModExpanded && Object.entries(topicsMap)
                                                                                 .sort(([aKey], [bKey]) => aKey.localeCompare(bKey, undefined, { numeric: true, sensitivity: 'base' }))
                                                                                 .map(([topName, topicUnits]) => {
                                                                                     const isTopExpanded = expandedTopics.has(topName);
@@ -1026,7 +1070,7 @@ export const ContentAuthoring: React.FC = () => {
 
                                                                                             {isTopExpanded && (topicUnits as ExtendedLearningUnit[])
                                                                                                 .slice()
-                                                                                                .sort((a, b) => (parseFloat(a.orderIndex as any) || 0) - (parseFloat(b.orderIndex as any) || 0))
+                                                                                                .sort((a, b) => (Number(a.orderIndex) || 0) - (Number(b.orderIndex) || 0))
                                                                                                 .map((unit) => {
                                                                                                     const ic = unit.interactiveCheck;
                                                                                                     const isDeleting = deletingUnitIds.has(unit.id);
@@ -1060,20 +1104,24 @@ export const ContentAuthoring: React.FC = () => {
                                                                                                             </td>
                                                                                                             <td style={{ textAlign: 'right' }}>
                                                                                                                 <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
-                                                                                                                    <button
-                                                                                                                        type="button"
-                                                                                                                        onClick={(e) => {
-                                                                                                                            e.stopPropagation();
-                                                                                                                            setAnalyticsUnit(unit);
-                                                                                                                        }}
-                                                                                                                        className="lfm-btn lfm-btn--ghost"
-                                                                                                                        style={{ padding: '3px 8px', fontSize: '0.68rem' }}
-                                                                                                                    >
-                                                                                                                        <BarChart3 size={12} /> Lesson Analytics
-                                                                                                                    </button>
-                                                                                                                    <button type="button" onClick={() => handleDeleteUnit(unit.id)} className="lfm-btn" style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fca5a5', padding: '3px 8px', fontSize: '0.68rem', fontWeight: 700, cursor: 'pointer' }}>
-                                                                                                                        <Trash2 size={12} />
-                                                                                                                    </button>
+                                                                                                                    <Tooltip content="Inspect unit submissions and completion stats." placement="top">
+                                                                                                                        <button
+                                                                                                                            type="button"
+                                                                                                                            onClick={(e) => {
+                                                                                                                                e.stopPropagation();
+                                                                                                                                setAnalyticsUnit(unit);
+                                                                                                                            }}
+                                                                                                                            className="lfm-btn lfm-btn--ghost"
+                                                                                                                            style={{ padding: '3px 8px', fontSize: '0.68rem' }}
+                                                                                                                        >
+                                                                                                                            <BarChart3 size={12} /> Lesson Analytics
+                                                                                                                        </button>
+                                                                                                                    </Tooltip>
+                                                                                                                    <Tooltip content="Delete this single lesson unit." placement="top">
+                                                                                                                        <button type="button" onClick={() => handleDeleteUnit(unit.id)} className="lfm-btn" style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fca5a5', padding: '3px 8px', fontSize: '0.68rem', fontWeight: 700, cursor: 'pointer' }}>
+                                                                                                                            <Trash2 size={12} />
+                                                                                                                        </button>
+                                                                                                                    </Tooltip>
                                                                                                                 </div>
                                                                                                             </td>
                                                                                                         </tr>
@@ -1117,17 +1165,19 @@ export const ContentAuthoring: React.FC = () => {
                                                                             </div>
 
                                                                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                                                <button
-                                                                                    type="button"
-                                                                                    className="lfm-btn"
-                                                                                    onClick={(e) => {
-                                                                                        e.stopPropagation();
-                                                                                        handleDeleteSprintGroup(sprintName);
-                                                                                    }}
-                                                                                    style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fca5a5', padding: '3px 8px', fontSize: '0.68rem', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                                                                                >
-                                                                                    <Trash2 size={12} /> Delete Sprint
-                                                                                </button>
+                                                                                <Tooltip content="Delete this entire sprint and all contained lessons." placement="top">
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        className="lfm-btn"
+                                                                                        onClick={(e) => {
+                                                                                            e.stopPropagation();
+                                                                                            handleDeleteSprintGroup(sprintName);
+                                                                                        }}
+                                                                                        style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fca5a5', padding: '3px 8px', fontSize: '0.68rem', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                                                                                    >
+                                                                                        <Trash2 size={12} /> Delete Sprint
+                                                                                    </button>
+                                                                                </Tooltip>
                                                                                 <ChevronDown size={16} color="#0284c7" className={`chevron-rotate ${isModExpanded ? 'expanded' : ''}`} />
                                                                             </div>
                                                                         </div>
@@ -1135,11 +1185,11 @@ export const ContentAuthoring: React.FC = () => {
                                                                 </tr>
 
                                                                 {/* Day Iteration */}
-                                                                {isModExpanded && Object.entries(daysMap as any)
+                                                                {isModExpanded && Object.entries(daysMap as unknown as Record<string, { _units?: ExtendedLearningUnit[] }>)
                                                                     .sort(([aKey], [bKey]) => aKey.localeCompare(bKey, undefined, { numeric: true, sensitivity: 'base' }))
                                                                     .map(([dayName, unitObj]) => {
                                                                         const isTopExpanded = expandedTopics.has(dayName);
-                                                                        const dayUnits = (unitObj as any)['_units'] || [];
+                                                                        const dayUnits = unitObj._units || [];
                                                                         const dayDurationStr = calculateTimeLabel(dayUnits);
 
                                                                         return (
@@ -1160,9 +1210,9 @@ export const ContentAuthoring: React.FC = () => {
                                                                                 </tr>
 
                                                                                 {/* Lesson Iteration */}
-                                                                                {isTopExpanded && (dayUnits as ExtendedLearningUnit[])
+                                                                                {isTopExpanded && dayUnits
                                                                                     .slice()
-                                                                                    .sort((a, b) => (parseFloat(a.orderIndex as any) || 0) - (parseFloat(b.orderIndex as any) || 0))
+                                                                                    .sort((a, b) => (Number(a.orderIndex) || 0) - (Number(b.orderIndex) || 0))
                                                                                     .map((unit) => {
                                                                                         const ic = unit.interactiveCheck;
                                                                                         const isDeleting = deletingUnitIds.has(unit.id);
@@ -1210,20 +1260,24 @@ export const ContentAuthoring: React.FC = () => {
                                                                                                 </td>
                                                                                                 <td style={{ textAlign: 'right' }}>
                                                                                                     <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
-                                                                                                        <button
-                                                                                                            type="button"
-                                                                                                            onClick={(e) => {
-                                                                                                                e.stopPropagation();
-                                                                                                                setAnalyticsUnit(unit);
-                                                                                                            }}
-                                                                                                            className="lfm-btn lfm-btn--ghost"
-                                                                                                            style={{ padding: '3px 8px', fontSize: '0.68rem' }}
-                                                                                                        >
-                                                                                                            <BarChart3 size={12} /> Lesson Analytics
-                                                                                                        </button>
-                                                                                                        <button type="button" onClick={() => handleDeleteUnit(unit.id)} className="lfm-btn" style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fca5a5', padding: '3px 8px', fontSize: '0.68rem', fontWeight: 700, cursor: 'pointer' }}>
-                                                                                                            <Trash2 size={12} />
-                                                                                                        </button>
+                                                                                                        <Tooltip content="Inspect unit submissions and completion stats." placement="top">
+                                                                                                            <button
+                                                                                                                type="button"
+                                                                                                                onClick={(e) => {
+                                                                                                                    e.stopPropagation();
+                                                                                                                    setAnalyticsUnit(unit);
+                                                                                                                }}
+                                                                                                                className="lfm-btn lfm-btn--ghost"
+                                                                                                                style={{ padding: '3px 8px', fontSize: '0.68rem' }}
+                                                                                                            >
+                                                                                                                <BarChart3 size={12} /> Lesson Analytics
+                                                                                                            </button>
+                                                                                                        </Tooltip>
+                                                                                                        <Tooltip content="Delete this single lesson unit." placement="top">
+                                                                                                            <button type="button" onClick={() => handleDeleteUnit(unit.id)} className="lfm-btn" style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fca5a5', padding: '3px 8px', fontSize: '0.68rem', fontWeight: 700, cursor: 'pointer' }}>
+                                                                                                                <Trash2 size={12} />
+                                                                                                            </button>
+                                                                                                        </Tooltip>
                                                                                                     </div>
                                                                                                 </td>
                                                                                             </tr>
@@ -1303,8 +1357,8 @@ export const ContentAuthoring: React.FC = () => {
                                             <label>Guide Blueprint Template (Optional)</label>
                                             <select className="lfm-input" value={rootTemplateId} onChange={e => setRootTemplateId(e.target.value)} style={{ borderRadius: '0px' }}>
                                                 <option value="">-- No Structural Template --</option>
-                                                {programmes.map((t: any) => (
-                                                    <option key={t.id} value={t.id}>{t.name} [{t.saqaId || t.code || t.id}]</option>
+                                                {programmes.map((t: ProgrammeTemplate) => (
+                                                    <option key={t.id} value={t.id}>{t.name} [{t.saqaId || (t as { code?: string }).code || t.id}]</option>
                                                 ))}
                                             </select>
                                         </div>
@@ -1346,13 +1400,14 @@ export const ContentAuthoring: React.FC = () => {
                                 const isDraft = d.id.startsWith('draft_');
                                 const targetId = isDraft ? undefined : d.id;
 
-                                const payload: any = { ...d };
-                                delete payload._isDraft;
-                                delete payload._expanded;
-                                delete payload._isSaving;
-                                if (isDraft) delete payload.id;
+                                const { _isDraft, _expanded, _isSaving, id, ...cleanUnit } = d;
 
-                                const savedId = await saveLearningUnit(payload, targetId);
+                                const unitPayload: Omit<LearningUnit, 'id'> = {
+                                    ...cleanUnit,
+                                    title: cleanUnit.title || 'Untitled Unit'
+                                };
+
+                                const savedId = await saveLearningUnit(unitPayload, targetId);
                                 savedUnits.push({ ...d, id: savedId, _isDraft: false });
                             }
                             setUnits(savedUnits);
@@ -1384,7 +1439,7 @@ export const ContentAuthoring: React.FC = () => {
                     isOpen={showLaunchCohortModal}
                     run={launchModalRun}
                     containerTitle={activeContainer.title}
-                    containerDefaultAccreditation={(activeContainer as any).defaultAccreditation}
+                    containerDefaultAccreditation={activeContainer.defaultAccreditation}
                     units={selectedContainerId === 'all' ? units : units.filter(u => u.containerId === selectedContainerId)}
                     cohorts={cohorts}
                     onClose={() => {
@@ -1404,7 +1459,7 @@ export const ContentAuthoring: React.FC = () => {
                     containerId={selectedContainerId}
                     containerName={activeContainer.title || 'Unknown Package'}
                     cohorts={cohorts}
-                    onLaunchNew={(run: CohortRun | any) => {
+                    onLaunchNew={(run: CohortRun) => {
                         setLaunchModalRun(run);
                         setShowLaunchCohortModal(true);
                     }}

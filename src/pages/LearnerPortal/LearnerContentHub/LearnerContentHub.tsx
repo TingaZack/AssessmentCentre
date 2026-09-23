@@ -13,9 +13,21 @@ import { CoursePlayerView } from './CoursePlayerView';
 import { Loader2 } from 'lucide-react';
 import { useCourseStore } from '../../../store/useCourseStore';
 
-const getCourseInstanceId = (c?: CoursePackage | null) => {
+interface ExtendedCoursePackage extends CoursePackage {
+    timelineId?: string;
+    placementId?: string;
+    hasStarted?: boolean;
+}
+
+interface ExtendedUnitProgress extends LearnerUnitProgress {
+    cohortRunId?: string;
+    unlinkedPolicy?: 'soft_gate' | 'hard_gate';
+}
+
+const getCourseInstanceId = (c?: CoursePackage | ExtendedCoursePackage | null) => {
     if (!c) return '';
-    return c.cohortRunId || (c as any).timelineId || (c as any).placementId || c.id;
+    const ext = c as ExtendedCoursePackage;
+    return ext.cohortRunId || ext.timelineId || ext.placementId || ext.id;
 };
 
 export const LearnerContentHub: React.FC = () => {
@@ -144,12 +156,14 @@ export const LearnerContentHub: React.FC = () => {
             params.set('hubView', 'overview');
             params.set('courseId', selectedCourse.id);
             if (selectedCourse.cohortRunId) params.set('cohortRunId', selectedCourse.cohortRunId);
-            if ((selectedCourse as any).timelineId) params.set('timelineId', (selectedCourse as any).timelineId);
+            const extCourse = selectedCourse as ExtendedCoursePackage;
+            if (extCourse.timelineId) params.set('timelineId', extCourse.timelineId);
         } else if (view === 'player' && selectedCourse && selectedUnit) {
             params.set('hubView', 'player');
             params.set('courseId', selectedCourse.id);
             if (selectedCourse.cohortRunId) params.set('cohortRunId', selectedCourse.cohortRunId);
-            if ((selectedCourse as any).timelineId) params.set('timelineId', (selectedCourse as any).timelineId);
+            const extCourse = selectedCourse as ExtendedCoursePackage;
+            if (extCourse.timelineId) params.set('timelineId', extCourse.timelineId);
             params.set('unitId', selectedUnit.id);
         }
 
@@ -163,13 +177,13 @@ export const LearnerContentHub: React.FC = () => {
         }
     }, [view, selectedCourse, selectedUnit, hydrated]);
 
-    // 🚀 3. GRANULAR PER-LESSON PREREQUISITE GATING
+    // 🚀 3. GRANULAR PER-LESSON PREREQUISITE & HARD-GATE ASSESSMENT LOCKING
     const courseUnits = useMemo(() => {
         if (!selectedCourse) return [];
         const activeInstId = getCourseInstanceId(selectedCourse);
 
-        const rawUnits = allUnits
-            .filter(u => u.containerId === activeInstId || u.containerId === selectedCourse.id || (u as any).cohortRunId === activeInstId)
+        const rawUnits = (allUnits as ExtendedUnitProgress[])
+            .filter(u => u.containerId === activeInstId || u.containerId === selectedCourse.id || u.cohortRunId === activeInstId)
             .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
 
         let activeLockEnforced = false;
@@ -177,8 +191,10 @@ export const LearnerContentHub: React.FC = () => {
         return rawUnits.map((unit) => {
             const isLocked = activeLockEnforced;
 
-            // Only enforce lock on future lessons if THIS specific lesson explicitly has isRequiredForNextUnit enabled AND is incomplete
-            if (!unit.isCompleted && unit.isRequiredForNextUnit === true) {
+            const isUnitIncomplete = !unit.isCompleted;
+            const requiresNextLock = unit.isRequiredForNextUnit === true || (unit.linkedAssessmentId && unit.unlinkedPolicy === 'hard_gate');
+
+            if (isUnitIncomplete && requiresNextLock) {
                 activeLockEnforced = true;
             }
 
@@ -193,7 +209,8 @@ export const LearnerContentHub: React.FC = () => {
     const continueLearningCourse = useMemo(() => {
         return courses.find(c => {
             const isActiveStatus = String(c.runStatus || '').toLowerCase() === 'active';
-            const hasStarted = (c as any).hasStarted === true || (c.completedUnitsCount && c.completedUnitsCount > 0);
+            const extCourse = c as ExtendedCoursePackage;
+            const hasStarted = extCourse.hasStarted === true || (c.completedUnitsCount !== undefined && c.completedUnitsCount > 0);
             const isIncomplete = c.completedUnitsCount === undefined || c.completedUnitsCount < c.totalUnitsCount;
             return isActiveStatus && hasStarted && isIncomplete;
         }) || null;
@@ -203,8 +220,8 @@ export const LearnerContentHub: React.FC = () => {
         if (!continueLearningCourse) return null;
         const targetInstId = getCourseInstanceId(continueLearningCourse);
 
-        const targetCourseUnits = allUnits
-            .filter(u => u.containerId === targetInstId || u.containerId === continueLearningCourse.id || (u as any).cohortRunId === targetInstId)
+        const targetCourseUnits = (allUnits as ExtendedUnitProgress[])
+            .filter(u => u.containerId === targetInstId || u.containerId === continueLearningCourse.id || u.cohortRunId === targetInstId)
             .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
 
         return targetCourseUnits.find(u => !u.isCompleted && !u.isLocked) || targetCourseUnits[0] || null;

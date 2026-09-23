@@ -1,11 +1,9 @@
-// src/components/views/LearnerProfileView/LearnerProfileView.tsx
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import {
     User, Phone, MapPin, ShieldCheck,
     FileText, Edit3, Save, X, Fingerprint,
-    GraduationCap, AlertCircle, Info, Loader2, Camera, Heart, Briefcase, Plus, PenTool, History, Eye, Globe, Building2, Search, Code
+    GraduationCap, AlertCircle, Info, Loader2, Camera, Heart, Briefcase, Plus, PenTool, History, Eye, Globe, Building2, Search, Code, Lock
 } from 'lucide-react';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
@@ -78,6 +76,39 @@ export const LearnerProfileView: React.FC<ProfileProps> = ({ profile, user, onUp
     const [isGoogleReady, setIsGoogleReady] = useState(() => typeof window !== 'undefined' && Boolean((window as any).google?.maps?.places));
 
     const targetId = profile?.authUid || profile?.userId || profile?.uid || profile?.id;
+
+    // 🚀 RESOLVE USER SIGNATURE IMAGE FROM PROFILE OR UPLOADED DOCUMENTS
+    const signatureUrl = useMemo(() => {
+        if (!liveProfile) return null;
+        return (
+            liveProfile?.signatureUrl ||
+            liveProfile?.demographics?.signatureUrl ||
+            (Array.isArray(liveProfile?.uploadedDocuments) &&
+                liveProfile?.uploadedDocuments.find((d: any) => d.id === 'signature' || d.name?.toLowerCase().includes('signature'))?.url) ||
+            null
+        );
+    }, [liveProfile]);
+
+    // 🚀 RESOLVE POPIA CONSENT & CODE OF CONDUCT STATUS
+    const popiaStatus = useMemo(() => {
+        const d = liveProfile?.demographics || {};
+        const isAgreed = d.popiActAgree === 'Y' || liveProfile?.popiaConsent === true || d.popiaConsent === true;
+        const rawDate = d.popiActDate || liveProfile?.updatedAt;
+
+        let formattedDate = 'N/A';
+        if (rawDate) {
+            if (typeof rawDate === 'string' && rawDate.length === 8) {
+                const y = rawDate.substring(0, 4);
+                const m = rawDate.substring(4, 6);
+                const day = rawDate.substring(6, 8);
+                formattedDate = `${y}-${m}-${day}`;
+            } else {
+                formattedDate = new Date(rawDate).toLocaleDateString('en-ZA');
+            }
+        }
+
+        return { isAgreed, dateStr: formattedDate };
+    }, [liveProfile]);
 
     useEffect(() => {
         if (isGoogleReady) return;
@@ -396,7 +427,7 @@ export const LearnerProfileView: React.FC<ProfileProps> = ({ profile, user, onUp
                 });
             }
 
-            // 🚀 COMPUTE SKILLS PROGRESSION DELTA & AUDIT HISTORY LOG
+            // COMPUTE SKILLS PROGRESSION DELTA & AUDIT HISTORY LOG
             const savedSkills: any[] = Array.isArray(formData.skills) ? formData.skills : [];
             const existingSkillsMap = new Map((liveProfile.skills || []).map((s: any) => [s.id || s.name, s]));
             const generatedSkillsHistory: SkillHistoryEntry[] = [...(liveProfile.skillsHistory || [])];
@@ -407,7 +438,6 @@ export const LearnerProfileView: React.FC<ProfileProps> = ({ profile, user, onUp
                 const prevSkill = existingSkillsMap.get(key);
 
                 if (!prevSkill) {
-                    // Brand new skill added
                     generatedSkillsHistory.push({
                         id: `sh_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
                         skillId: String(key),
@@ -418,7 +448,6 @@ export const LearnerProfileView: React.FC<ProfileProps> = ({ profile, user, onUp
                         updatedAt: nowIso
                     });
                 } else if ((prevSkill as any).level !== skill.level) {
-                    // Skill level upgraded or updated
                     generatedSkillsHistory.push({
                         id: `sh_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
                         skillId: String(key),
@@ -445,7 +474,7 @@ export const LearnerProfileView: React.FC<ProfileProps> = ({ profile, user, onUp
                 documentHistory: newHistory,
                 addressHistory: newAddressHistory,
                 skills: savedSkills,
-                skillsHistory: generatedSkillsHistory, // 🚀 Persist skill progression audit log
+                skillsHistory: generatedSkillsHistory,
                 demographics: {
                     ...(liveProfile.demographics || {}),
                     learnerPhoneNumber: formData.phone || liveProfile.phone,
@@ -736,7 +765,7 @@ export const LearnerProfileView: React.FC<ProfileProps> = ({ profile, user, onUp
 
                     <section className="lpv-panel">
                         <div className="lpv-panel__header">
-                            <h3 className="lpv-panel__title"><User size={16} /> Identity & Demographics</h3>
+                            <h3 className="lpv-panel__title"><User size={16} /> Identity &amp; Demographics</h3>
                             <button type="button" className={`lpv-edit-btn ${isEditing ? 'lpv-edit-btn--cancel' : ''}`} onClick={isEditing ? handleCancel : () => setIsEditing(true)}>
                                 {isEditing ? <><X size={13} /> Cancel</> : <><Edit3 size={13} /> Edit Profile</>}
                             </button>
@@ -799,7 +828,7 @@ export const LearnerProfileView: React.FC<ProfileProps> = ({ profile, user, onUp
 
                     {/* TECHNICAL SKILLS & PROFICIENCY PANEL */}
                     <section className="lpv-panel">
-                        <h3 className="lp-section-title"><Code size={16} /> Technical Skills & Competencies</h3>
+                        <h3 className="lp-section-title"><Code size={16} /> Technical Skills &amp; Competencies</h3>
                         <div style={{ marginTop: '0.5rem' }}>
                             <SkillsSelector
                                 value={displayData.skills || []}
@@ -830,7 +859,7 @@ export const LearnerProfileView: React.FC<ProfileProps> = ({ profile, user, onUp
 
                     <section className="lpv-panel">
                         <h3 className="lp-section-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', fontSize: '0.9rem', fontWeight: 600, color: 'var(--mlab-blue)' }}>
-                            <MapPin size={16} /> Residential Address & Municipal Metadata
+                            <MapPin size={16} /> Residential Address &amp; Municipal Metadata
                         </h3>
 
                         {isEditing && (
@@ -893,7 +922,7 @@ export const LearnerProfileView: React.FC<ProfileProps> = ({ profile, user, onUp
 
                         <div style={{ marginTop: '1rem' }}>
                             <FormSelectWrapper
-                                label="STATS-SA Area Code & Municipality"
+                                label="STATS-SA Area Code &amp; Municipality"
                                 value={d.statssaAreaCode || d.statsaaAreaCode}
                                 isEditing={isEditing}
                                 options={statssaOptions}
@@ -969,23 +998,24 @@ export const LearnerProfileView: React.FC<ProfileProps> = ({ profile, user, onUp
                         </div>
                     </section>
 
-                    {/* SIGNATURE SECTION */}
+                    {/* SIGNATURE & GOVERNANCE COMPLIANCE SECTION */}
                     <section className="lpv-panel">
                         <div className="lpv-panel__header">
-                            <h3 className="lpv-panel__title"><PenTool size={16} /> Digital Signature Certificate</h3>
+                            <h3 className="lpv-panel__title"><PenTool size={16} /> Digital Signature &amp; Governance Certificate</h3>
                             <button
                                 type="button"
                                 className="lpv-edit-btn"
                                 onClick={() => setShowSignatureModal(true)}
                             >
-                                <Edit3 size={13} /> {liveProfile?.signatureUrl ? 'Update Signature' : 'Add Signature'}
+                                <Edit3 size={13} /> {signatureUrl ? 'Update Signature' : 'Add Signature'}
                             </button>
                         </div>
+
                         <div style={{ padding: '1.5rem', background: '#f8fafc', border: '1px dashed #cbd5e1', borderRadius: '8px', textAlign: 'center' }}>
-                            {liveProfile?.signatureUrl ? (
+                            {signatureUrl ? (
                                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                                     <img
-                                        src={liveProfile.signatureUrl}
+                                        src={signatureUrl}
                                         alt="Learner Signature"
                                         crossOrigin="anonymous"
                                         style={{
@@ -1008,9 +1038,17 @@ export const LearnerProfileView: React.FC<ProfileProps> = ({ profile, user, onUp
                                 </div>
                             )}
                         </div>
-                        <p style={{ marginTop: '1rem', fontSize: '0.75rem', color: '#64748b', fontStyle: 'italic' }}>
-                            Note: If an administrator is logged in, please hand the device to the learner so they can personally draw or upload their signature.
-                        </p>
+
+                        {/* POPIA & CODE OF CONDUCT AUDIT BADGE */}
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: popiaStatus.isAgreed ? '#f0fdf4' : '#fffbeb', border: `1px solid ${popiaStatus.isAgreed ? '#bbf7d0' : '#fde68a'}`, borderRadius: '6px', marginTop: '1rem', flexWrap: 'wrap', gap: '10px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.82rem', fontWeight: 600, color: popiaStatus.isAgreed ? '#15803d' : '#b45309' }}>
+                                <ShieldCheck size={16} />
+                                <span>POPIA Consent &amp; Code of Conduct: <strong>{popiaStatus.isAgreed ? `Consented (${popiaStatus.dateStr})` : 'Pending Consent'}</strong></span>
+                            </div>
+                            <a href="/code-of-conduct" target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--mlab-blue)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <Eye size={14} /> View Signed Policy Document
+                            </a>
+                        </div>
                     </section>
                 </div>
 
