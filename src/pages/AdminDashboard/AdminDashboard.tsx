@@ -508,7 +508,11 @@ export const AdminDashboard: React.FC = () => {
                         </div>
                     ) : (
                         <>
-                            {currentNav === 'compliance' && <QmsComplianceDashboard />}
+                            {/* {currentNav === 'compliance' && <QmsComplianceDashboard />} */}
+                            {/* Keep QmsComplianceDashboard mounted to preserve state & prevent re-fetching on tab navigation */}
+                            <div style={{ display: currentNav === 'compliance' ? 'block' : 'none' }}>
+                                <QmsComplianceDashboard />
+                            </div>
                             {currentNav === 'workplace-verification' && <MentorDashboard />}
                             {currentNav === 'coaching' && <CoachingScheduleView />}
                             {currentNav === 'ecosystem' && <EcosystemDashboard />}

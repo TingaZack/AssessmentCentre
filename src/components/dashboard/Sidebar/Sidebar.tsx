@@ -310,8 +310,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, currentNav, setCurrentNa
     };
 
     const handleNavigation = (item: any) => {
+        // 🚀 Delegate navigation to parent handler if provided (prevents double-triggering setSearchParams)
         if (setCurrentNav) {
             setCurrentNav(item.id);
+            return;
         }
 
         const isCurrentBaseRoute = location.pathname === item.path ||
