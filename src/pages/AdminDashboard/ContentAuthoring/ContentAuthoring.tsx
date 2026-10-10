@@ -35,6 +35,10 @@ import type { FacilitatorInfo } from '../../../components/common/CourseMetadataS
 export interface ExtendedLearningUnit extends LearningUnit {
     containerName?: string;
     referenceId?: string;
+    linkedAssessmentId?: string | null;
+    assessmentId?: string | null;
+    formalAssessmentId?: string | null;
+    unlinkedPolicy?: 'soft_gate' | 'hard_gate';
     _isDraft?: boolean;
     _expanded?: boolean;
     _isSaving?: boolean;
@@ -270,7 +274,21 @@ export const ContentAuthoring: React.FC = () => {
         const unsub = onSnapshot(q,
             (snap) => {
                 if (!isMounted) return;
-                const fetched = snap.docs.map(d => ({ id: d.id, ...d.data() } as ExtendedLearningUnit));
+                const fetched = snap.docs.map(d => {
+                    const data = d.data();
+                    const resolvedAssessmentId = data.linkedAssessmentId ||
+                        data.assessmentId ||
+                        data.formalAssessmentId ||
+                        (typeof data.linkedAssessment === 'string' ? data.linkedAssessment : null) ||
+                        null;
+
+                    return {
+                        id: d.id,
+                        ...data,
+                        linkedAssessmentId: resolvedAssessmentId,
+                        unlinkedPolicy: data.unlinkedPolicy || 'soft_gate',
+                    } as ExtendedLearningUnit;
+                });
 
                 const validContainerIds = new Set(containerIds);
                 const finalUnits = (selectedContainerId === 'all' || !selectedContainerId)
@@ -1074,6 +1092,8 @@ export const ContentAuthoring: React.FC = () => {
                                                                                                 .map((unit) => {
                                                                                                     const ic = unit.interactiveCheck;
                                                                                                     const isDeleting = deletingUnitIds.has(unit.id);
+                                                                                                    const hasExam = Boolean(unit.linkedAssessmentId || (unit as any).assessmentId || (unit as any).formalAssessmentId);
+
                                                                                                     return (
                                                                                                         <tr key={unit.id} className={isDeleting ? 'row-animate-out' : 'row-animate-in'} style={{ background: '#f8fafc', borderLeft: '4px solid #38bdf8' }}>
                                                                                                             <td style={{ paddingLeft: '80px' }}>
@@ -1083,24 +1103,31 @@ export const ContentAuthoring: React.FC = () => {
                                                                                                             <td><span style={{ fontSize: '0.75rem', color: '#475569' }}>{unit.topicId}</span></td>
                                                                                                             <td><span style={{ fontSize: '0.7rem', textTransform: 'uppercase', fontWeight: 800, color: 'var(--mlab-blue)', fontFamily: 'var(--font-heading)' }}>{unit.unitType}</span></td>
                                                                                                             <td>
-                                                                                                                {ic?.checkType === 'socratic_dialogue' && (
-                                                                                                                    <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#b45309', background: '#fffbeb', padding: '2px 8px', border: '1px solid #fde68a', display: 'inline-flex', alignItems: 'center', gap: '4px', fontFamily: 'var(--font-heading)' }}>
-                                                                                                                        <Bot size={11} /> Socratic AI Chat
-                                                                                                                    </span>
-                                                                                                                )}
-                                                                                                                {ic?.checkType === 'oral_defense' && (
-                                                                                                                    <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#6d28d9', background: '#f3e8ff', padding: '2px 8px', border: '1px solid #e9d5ff', display: 'inline-flex', alignItems: 'center', gap: '4px', fontFamily: 'var(--font-heading)' }}>
-                                                                                                                        <Sparkles size={11} /> AI Oral Defense
-                                                                                                                    </span>
-                                                                                                                )}
-                                                                                                                {ic?.checkType === 'spot_the_bug' && (
-                                                                                                                    <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#be123c', background: '#fff1f2', padding: '2px 8px', border: '1px solid #fecdd3', display: 'inline-flex', alignItems: 'center', gap: '4px', fontFamily: 'var(--font-heading)' }}>
-                                                                                                                        <Bug size={11} /> Spot-the-Bug
-                                                                                                                    </span>
-                                                                                                                )}
-                                                                                                                {(!ic || ic.checkType === 'none') && (
-                                                                                                                    <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>None</span>
-                                                                                                                )}
+                                                                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                                                                                                                    {ic?.checkType === 'socratic_dialogue' && (
+                                                                                                                        <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#b45309', background: '#fffbeb', padding: '2px 8px', border: '1px solid #fde68a', display: 'inline-flex', alignItems: 'center', gap: '4px', fontFamily: 'var(--font-heading)' }}>
+                                                                                                                            <Bot size={11} /> Socratic AI Chat
+                                                                                                                        </span>
+                                                                                                                    )}
+                                                                                                                    {ic?.checkType === 'oral_defense' && (
+                                                                                                                        <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#6d28d9', background: '#f3e8ff', padding: '2px 8px', border: '1px solid #e9d5ff', display: 'inline-flex', alignItems: 'center', gap: '4px', fontFamily: 'var(--font-heading)' }}>
+                                                                                                                            <Sparkles size={11} /> AI Oral Defense
+                                                                                                                        </span>
+                                                                                                                    )}
+                                                                                                                    {ic?.checkType === 'spot_the_bug' && (
+                                                                                                                        <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#be123c', background: '#fff1f2', padding: '2px 8px', border: '1px solid #fecdd3', display: 'inline-flex', alignItems: 'center', gap: '4px', fontFamily: 'var(--font-heading)' }}>
+                                                                                                                            <Bug size={11} /> Spot-the-Bug
+                                                                                                                        </span>
+                                                                                                                    )}
+                                                                                                                    {hasExam && (
+                                                                                                                        <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#6b21a8', background: '#f3e8ff', padding: '2px 8px', border: '1px solid #e9d5ff', display: 'inline-flex', alignItems: 'center', gap: '4px', fontFamily: 'var(--font-heading)', textTransform: 'uppercase' }}>
+                                                                                                                            <Award size={11} /> Exam Linked
+                                                                                                                        </span>
+                                                                                                                    )}
+                                                                                                                    {(!ic || ic.checkType === 'none') && !hasExam && (
+                                                                                                                        <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>None</span>
+                                                                                                                    )}
+                                                                                                                </div>
                                                                                                             </td>
                                                                                                             <td style={{ textAlign: 'right' }}>
                                                                                                                 <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
@@ -1216,6 +1243,8 @@ export const ContentAuthoring: React.FC = () => {
                                                                                     .map((unit) => {
                                                                                         const ic = unit.interactiveCheck;
                                                                                         const isDeleting = deletingUnitIds.has(unit.id);
+                                                                                        const hasExam = Boolean(unit.linkedAssessmentId || (unit as any).assessmentId || (unit as any).formalAssessmentId);
+
                                                                                         return (
                                                                                             <tr key={unit.id} className={isDeleting ? 'row-animate-out' : 'row-animate-in'} style={{ background: '#f8fafc', borderLeft: '4px solid #0284c7' }}>
                                                                                                 <td style={{ paddingLeft: '64px' }}>
@@ -1239,24 +1268,31 @@ export const ContentAuthoring: React.FC = () => {
                                                                                                     </span>
                                                                                                 </td>
                                                                                                 <td>
-                                                                                                    {ic?.checkType === 'socratic_dialogue' && (
-                                                                                                        <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#b45309', background: '#fffbeb', padding: '2px 8px', border: '1px solid #fde68a', display: 'inline-flex', alignItems: 'center', gap: '4px', fontFamily: 'var(--font-heading)' }}>
-                                                                                                            <Bot size={11} /> Socratic AI Chat
-                                                                                                        </span>
-                                                                                                    )}
-                                                                                                    {ic?.checkType === 'oral_defense' && (
-                                                                                                        <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#6d28d9', background: '#f3e8ff', padding: '2px 8px', border: '1px solid #e9d5ff', display: 'inline-flex', alignItems: 'center', gap: '4px', fontFamily: 'var(--font-heading)' }}>
-                                                                                                            <Sparkles size={11} /> AI Oral Defense
-                                                                                                        </span>
-                                                                                                    )}
-                                                                                                    {ic?.checkType === 'spot_the_bug' && (
-                                                                                                        <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#be123c', background: '#fff1f2', padding: '2px 8px', border: '1px solid #fecdd3', display: 'inline-flex', alignItems: 'center', gap: '4px', fontFamily: 'var(--font-heading)' }}>
-                                                                                                            <Bug size={11} /> Spot-the-Bug
-                                                                                                        </span>
-                                                                                                    )}
-                                                                                                    {(!ic || ic.checkType === 'none') && (
-                                                                                                        <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>None</span>
-                                                                                                    )}
+                                                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                                                                                                        {ic?.checkType === 'socratic_dialogue' && (
+                                                                                                            <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#b45309', background: '#fffbeb', padding: '2px 8px', border: '1px solid #fde68a', display: 'inline-flex', alignItems: 'center', gap: '4px', fontFamily: 'var(--font-heading)' }}>
+                                                                                                                <Bot size={11} /> Socratic AI Chat
+                                                                                                            </span>
+                                                                                                        )}
+                                                                                                        {ic?.checkType === 'oral_defense' && (
+                                                                                                            <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#6d28d9', background: '#f3e8ff', padding: '2px 8px', border: '1px solid #e9d5ff', display: 'inline-flex', alignItems: 'center', gap: '4px', fontFamily: 'var(--font-heading)' }}>
+                                                                                                                <Sparkles size={11} /> AI Oral Defense
+                                                                                                            </span>
+                                                                                                        )}
+                                                                                                        {ic?.checkType === 'spot_the_bug' && (
+                                                                                                            <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#be123c', background: '#fff1f2', padding: '2px 8px', border: '1px solid #fecdd3', display: 'inline-flex', alignItems: 'center', gap: '4px', fontFamily: 'var(--font-heading)' }}>
+                                                                                                                <Bug size={11} /> Spot-the-Bug
+                                                                                                            </span>
+                                                                                                        )}
+                                                                                                        {hasExam && (
+                                                                                                            <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#6b21a8', background: '#f3e8ff', padding: '2px 8px', border: '1px solid #e9d5ff', display: 'inline-flex', alignItems: 'center', gap: '4px', fontFamily: 'var(--font-heading)', textTransform: 'uppercase' }}>
+                                                                                                                <Award size={11} /> Exam Linked
+                                                                                                            </span>
+                                                                                                        )}
+                                                                                                        {(!ic || ic.checkType === 'none') && !hasExam && (
+                                                                                                            <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>None</span>
+                                                                                                        )}
+                                                                                                    </div>
                                                                                                 </td>
                                                                                                 <td style={{ textAlign: 'right' }}>
                                                                                                     <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
@@ -1402,13 +1438,27 @@ export const ContentAuthoring: React.FC = () => {
 
                                 const { _isDraft, _expanded, _isSaving, id, ...cleanUnit } = d;
 
+                                const resolvedAssessmentId = cleanUnit.linkedAssessmentId ||
+                                    (cleanUnit as any).assessmentId ||
+                                    (cleanUnit as any).formalAssessmentId ||
+                                    (typeof (cleanUnit as any).linkedAssessment === 'string' ? (cleanUnit as any).linkedAssessment : null) ||
+                                    null;
+
                                 const unitPayload: Omit<LearningUnit, 'id'> = {
                                     ...cleanUnit,
-                                    title: cleanUnit.title || 'Untitled Unit'
+                                    title: cleanUnit.title || 'Untitled Unit',
+                                    linkedAssessmentId: resolvedAssessmentId,
+                                    unlinkedPolicy: cleanUnit.unlinkedPolicy || 'soft_gate',
                                 };
 
                                 const savedId = await saveLearningUnit(unitPayload, targetId);
-                                savedUnits.push({ ...d, id: savedId, _isDraft: false });
+                                savedUnits.push({
+                                    ...d,
+                                    id: savedId,
+                                    linkedAssessmentId: resolvedAssessmentId,
+                                    unlinkedPolicy: cleanUnit.unlinkedPolicy || 'soft_gate',
+                                    _isDraft: false
+                                });
                             }
                             setUnits(savedUnits);
 

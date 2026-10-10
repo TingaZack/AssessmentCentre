@@ -15889,3 +15889,117 @@ export const migrateLearnerSkillsHistory = onRequest(
     }
   },
 );
+
+export const scanAndFixNycAnomalies = onRequest(async (req, res) => {
+  try {
+    const db = admin.firestore();
+
+    // 🚀 Fix: Explicitly typed arrays and maps for TypeScript
+    const updates: any[] = [];
+    const fixedDetails: any[] = [];
+    const assessmentsMap: Record<string, any> = {};
+
+    // 1. Fetch all assessments to cache grading rules
+    const assessmentsSnap = await db.collection("assessments").get();
+
+    assessmentsSnap.forEach((doc) => {
+      assessmentsMap[doc.id] = doc.data();
+    });
+
+    // 2. Query all submissions that are currently flagged as Not Yet Competent
+    const nycQuery = db
+      .collection("learner_submissions")
+      .where("competency", "in", ["NYC", "DEV", "1", "2"]);
+
+    const nycSnap = await nycQuery.get();
+
+    nycSnap.forEach((doc) => {
+      const sub = doc.data();
+      const assessment = assessmentsMap[sub.assessmentId];
+
+      if (!assessment) return;
+
+      // 3. Extract the safe pass percentage (fixing the 180% glitch)
+      let rawVal = Number(
+        assessment.passPercentage ??
+          assessment.passMark ??
+          assessment.moduleInfo?.passMark ??
+          80,
+      );
+      let minPassPct = rawVal;
+
+      const totalMarks = Number(assessment.totalMarks || 0);
+
+      if (rawVal > 100 && totalMarks > 0) {
+        // Converts legacy absolute pass marks into a percentage
+        minPassPct = Math.round((rawVal / totalMarks) * 100);
+      }
+      // Cap at 100%
+      minPassPct = minPassPct > 100 ? 100 : minPassPct;
+
+      // 4. Calculate the Learner's true score
+      let score = 0;
+      if (sub.marks !== undefined && sub.marks !== null) {
+        score = Number(sub.marks);
+      } else if (sub.grading?.assessorBreakdown) {
+        // 🚀 Fix: Added types to the reduce parameters
+        score = Object.values(sub.grading.assessorBreakdown).reduce(
+          (sum: number, g: any) => sum + (Number(g.score) || 0),
+          0,
+        );
+      }
+
+      if (totalMarks <= 0) return; // Prevent Division by Zero
+
+      const pct = Math.round((score / totalMarks) * 100);
+
+      // 5. DETECT ANOMALY: If percentage >= pass mark, but competency is NYC
+      if (pct >= minPassPct) {
+        const isSECAM = Boolean(
+          sub.isBootcamp ||
+          assessment.isBootcamp ||
+          assessment.framework === "secam",
+        );
+        const newComp = isSECAM && pct >= 90 ? "HC" : "C";
+
+        updates.push({
+          ref: doc.ref,
+          data: {
+            competency: newComp,
+            systemNote: `Math Glitch Auto-Correct: Score (${pct}%) met pass mark (${minPassPct}%). Outcome corrected from ${sub.competency} to ${newComp}.`,
+            lastStaffEditAt: new Date().toISOString(),
+          },
+        });
+
+        fixedDetails.push({
+          submissionId: doc.id,
+          learnerName: sub.learnerDeclaration?.learnerName || "Unknown",
+          score: `${score}/${totalMarks}`,
+          percentage: `${pct}%`,
+          requiredPassMark: `${minPassPct}%`,
+          oldCompetency: sub.competency,
+          newCompetency: newComp,
+        });
+      }
+    });
+
+    // 6. Execute updates in safe batches (Firestore limit is 500 per batch)
+    let batchCount = 0;
+    for (let i = 0; i < updates.length; i += 400) {
+      const batch = db.batch();
+      updates.slice(i, i + 400).forEach((u) => batch.update(u.ref, u.data));
+      await batch.commit();
+      batchCount++;
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `Scan complete. Found and fixed ${updates.length} anomalies across ${batchCount} batches.`,
+      totalFixed: updates.length,
+      details: fixedDetails,
+    });
+  } catch (error: any) {
+    console.error("Error scanning for anomalies:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});

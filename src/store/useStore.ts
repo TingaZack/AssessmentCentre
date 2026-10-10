@@ -463,19 +463,19 @@ export const useStore = create<StoreState>()(
             ),
           );
 
-          console.log(
-            "🔍 [useStore -> subscribeComplianceData] rawEnrollments:",
-            {
-              totalEnrollments: raw.length,
-              droppedInEnrollmentsCount: droppedInEnrollments.length,
-              sampleStatuses: raw.slice(0, 10).map((r: any) => ({
-                id: r.id,
-                learnerId: r.learnerId || r.userId,
-                cohortId: r.cohortId,
-                status: r.status,
-              })),
-            },
-          );
+          // console.log(
+          //   "🔍 [useStore -> subscribeComplianceData] rawEnrollments:",
+          //   {
+          //     totalEnrollments: raw.length,
+          //     droppedInEnrollmentsCount: droppedInEnrollments.length,
+          //     sampleStatuses: raw.slice(0, 10).map((r: any) => ({
+          //       id: r.id,
+          //       learnerId: r.learnerId || r.userId,
+          //       cohortId: r.cohortId,
+          //       status: r.status,
+          //     })),
+          //   },
+          // );
 
           set({ rawEnrollments: raw, isComplianceLoading: false });
         },
@@ -732,8 +732,8 @@ export const useStore = create<StoreState>()(
                 .trim(),
             );
 
-            console.log("isEnrollmentDropped: ", isEnrollmentDropped);
-            console.log("isProfileDropped: ", isProfileDropped);
+            // console.log("isEnrollmentDropped: ", isEnrollmentDropped);
+            // console.log("isProfileDropped: ", isProfileDropped);
 
             const effectiveStatus =
               isProfileDropped || isEnrollmentDropped
@@ -741,7 +741,7 @@ export const useStore = create<StoreState>()(
                   ? profile.status
                   : enrollment.status
                 : enrollment.status || profile.status || "active";
-            console.log("effectiveStatus: ", effectiveStatus);
+            // console.log("effectiveStatus: ", effectiveStatus);
 
             combinedLearners.push({
               ...profile,

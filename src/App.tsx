@@ -1,5 +1,3 @@
-// src/App.tsx
-
 import { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -15,6 +13,7 @@ import type { UserProfile, UserRole } from './types/auth.types';
 // --- PAGES & COMPONENTS ---
 import Login from './pages/Login/Login';
 import { auth, db } from './lib/firebase';
+import { NotFound } from './pages/NotFound/NotFound';
 
 // Admin
 import AdminDashboard from './pages/AdminDashboard/AdminDashboard';
@@ -83,6 +82,9 @@ import { EmployerApplicationForm } from './pages/LearnerPortal/public/EmployerAp
 import PublicSurveyPage from './pages/PublicSurvey/PublicSurvey';
 import { RoleProtectedRoute } from './auth/RoleProtectedRoute';
 
+// Funder Analytics Dashboard (Public for Testing)
+import FunderDashboardView from './pages/AdminDashboard/FunderDashboard/FunderDashboard';
+
 // ════════════════════════════════════════════════════════════════════════════
 // 🚀 GOOGLE WEB VITALS PERFORMANCE TRACKER
 // ════════════════════════════════════════════════════════════════════════════
@@ -148,6 +150,25 @@ if (typeof window !== 'undefined') {
     logGlobalError('UnhandledPromiseRejection', message, reason?.stack);
   });
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// WELCOME WIZARD GATE (Hides wizard on specific routes)
+// ════════════════════════════════════════════════════════════════════════════
+const WelcomeWizardGate = ({ user, showWizard, setShowWizard }: any) => {
+  const location = useLocation();
+  const isFunderPath = location.pathname.toLowerCase().includes('funder');
+
+  useEffect(() => {
+    if (isFunderPath && showWizard) {
+      setShowWizard(false);
+    }
+  }, [isFunderPath, showWizard, setShowWizard]);
+
+  if (isFunderPath) return null;
+  if (!showWizard || !user) return null;
+
+  return <WelcomeWizard user={user} onClose={() => setShowWizard(false)} />;
+};
 
 // ════════════════════════════════════════════════════════════════════════════
 // FIREBASE ANALYTICS PAGE TRACKER
@@ -266,7 +287,9 @@ function App() {
   const [showWizard, setShowWizard] = useState(false);
 
   useEffect(() => {
-    if (user && user.profileCompleted && !(user as any).hasSeenOnboarding) {
+    const isFunderURL = window.location.pathname.toLowerCase().includes('funder');
+
+    if (user && user.profileCompleted && !(user as any).hasSeenOnboarding && !isFunderURL) {
       setShowWizard(true);
     } else {
       setShowWizard(false);
@@ -319,22 +342,17 @@ function App() {
 
   return (
     <ErrorBoundary>
-      {showWizard && user && (
-        <WelcomeWizard
-          user={user}
-          onClose={() => setShowWizard(false)}
-        />
-      )}
-
       <Router>
         <GlobalAnalyticsTracker />
+
+        <WelcomeWizardGate user={user} showWizard={showWizard} setShowWizard={setShowWizard} />
 
         {/* MANDATORY INTERCEPT MODAL PLACED INSIDE ROUTER CONTEXT */}
         {user && <MandatoryPolicyModal />}
 
         <div className="App">
           <Routes>
-            {/* ================= 🚀 ABSOLUTE PUBLIC ROUTES (NO AUTH REQUIRED) ================= */}
+            {/* ================= ABSOLUTE PUBLIC ROUTES (NO AUTH REQUIRED) ================= */}
             <Route path="/verify/:verificationCode" element={<StudentVerification />} />
             <Route path="/sor/:id" element={<StatementOfResults />} />
             <Route path="/public-verification" element={<PublicVerification />} />
@@ -347,6 +365,9 @@ function App() {
             <Route path="/kiosk" element={<KioskPage />} />
             <Route path="/event-kiosk/:eventId" element={<EventKioskPage />} />
             <Route path="/app-scanner-required" element={<AppScannerRequired />} />
+
+            {/* FUNDER DASHBOARD - PUBLIC FOR TESTING */}
+            <Route path="/funder-dashboard" element={<FunderDashboardView />} />
 
             {/* LEGAL & COMPLIANCE ROUTES */}
             <Route path="/privacy-policy" element={<PrivacyPolicy />} />
@@ -458,6 +479,12 @@ function App() {
                 <AssessmentPlayer />
               </RoleProtectedRoute>
             } />
+            {/* STANDALONE ASSESSMENT PLAYER ROUTE MATCHING COURSE PLAYER NAVIGATION */}
+            <Route path="/assessment-player/:assessmentId" element={
+              <RoleProtectedRoute allowedRoles={['learner']}>
+                <AssessmentPlayer />
+              </RoleProtectedRoute>
+            } />
 
             {/* FACILITATOR SUITE */}
             <Route path="/facilitator" element={
@@ -496,6 +523,12 @@ function App() {
                 <SubmissionReview />
               </RoleProtectedRoute>
             } />
+            {/* DIRECT ALIAS ROUTE FOR SUBMISSION REVIEW NAVIGATION */}
+            <Route path="/submission-review/:submissionId" element={
+              <RoleProtectedRoute allowedRoles={['admin', 'assistant_admin', 'facilitator', 'assistant_facilitator', 'assessor', 'moderator', 'mentor']}>
+                <SubmissionReview />
+              </RoleProtectedRoute>
+            } />
 
             {/* ASSESSOR / MARKING SUITE */}
             <Route path="/marking/*" element={
@@ -514,9 +547,9 @@ function App() {
               </RoleProtectedRoute>
             } />
 
-            {/* ================= FALLBACKS ================= */}
-            <Route path="/" element={<RootRedirect />} />
-            <Route path="*" element={<RootRedirect />} />
+            {/* ================= 404 NOT FOUND & FALLBACKS ================= */}
+            <Route path="/404" element={<NotFound />} />
+            <Route path="*" element={<NotFound />} />
           </Routes>
         </div>
       </Router>

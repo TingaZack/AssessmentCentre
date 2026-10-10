@@ -115,8 +115,9 @@ export const ModeratorDashboard: React.FC = () => {
 
                 const tasks: PendingQATask[] = [];
                 const lStatsMap: Record<string, LearnerStat> = {};
+                const lookupMap: Record<string, string> = {};
 
-                // Initialize Learner Map
+                // Initialize Learner Map with robust lookup
                 store.learners.forEach(l => {
                     if (isAdmin || (l.cohortId && myCohortIds.includes(l.cohortId))) {
                         const cName = store.cohorts.find(c => c.id === l.cohortId)?.name || 'Unknown Class';
@@ -131,38 +132,68 @@ export const ModeratorDashboard: React.FC = () => {
                             totalAssessments: 0,
                             needsQA: 0
                         };
+
+                        lookupMap[l.id] = l.id;
+                        if (l.idNumber) lookupMap[l.idNumber] = l.id;
+                        if (l.enrollmentId) lookupMap[l.enrollmentId] = l.id;
+                        if (l.authUid) lookupMap[l.authUid] = l.id;
+                        if (l.uid) lookupMap[l.uid] = l.id;
+                        if (l.id.includes('_')) {
+                            const splitPart = l.id.split('_').pop();
+                            if (splitPart) lookupMap[splitPart] = l.id;
+                        }
                     }
                 });
 
                 snap.docs.forEach(docSnap => {
                     const data = docSnap.data();
                     const subCohortId = data.cohortId;
-                    const learnerId = data.learnerId;
+
+                    // 🚀 FIX: Robust Learner ID mapping
+                    const submissionLearnerId = data.learnerId || data.authUid || data.uid;
+                    let actualLearnerId = lookupMap[submissionLearnerId];
+
+                    // If learner is missing but cohort belongs to mod, create a placeholder
+                    if (!actualLearnerId && (isAdmin || (subCohortId && myCohortIds.includes(subCohortId)))) {
+                        actualLearnerId = submissionLearnerId;
+                        lookupMap[actualLearnerId] = actualLearnerId;
+
+                        const tempName = data.learnerDeclaration?.learnerName || data.learnerName || data.fullName || 'Unknown Learner';
+                        lStatsMap[actualLearnerId] = {
+                            id: actualLearnerId, enrollmentId: data.enrollmentId || actualLearnerId, fullName: tempName, idNumber: 'N/A',
+                            cohortName: store.cohorts.find(c => c.id === subCohortId)?.name || 'Unknown Class',
+                            cohortId: subCohortId || 'Unassigned',
+                            completedQA: 0, totalAssessments: 0, needsQA: 0
+                        };
+                    }
+
+                    if (!actualLearnerId || !lStatsMap[actualLearnerId]) return;
+
+                    // 🚀 FIX: Lowercase status to prevent case-sensitivity bugs
+                    const currentStatus = String(data.status || '').toLowerCase();
 
                     if (isAdmin || (subCohortId && myCohortIds.includes(subCohortId))) {
 
                         // Update Learner Progress Stats
-                        if (lStatsMap[learnerId]) {
-                            lStatsMap[learnerId].totalAssessments += 1;
-                            if (data.status === 'moderated') {
-                                lStatsMap[learnerId].completedQA += 1;
-                            }
-                            if (['graded', 'appealed'].includes(data.status)) {
-                                lStatsMap[learnerId].needsQA += 1;
-                            }
+                        lStatsMap[actualLearnerId].totalAssessments += 1;
+                        if (currentStatus === 'moderated') {
+                            lStatsMap[actualLearnerId].completedQA += 1;
+                        }
+                        if (['graded', 'appealed'].includes(currentStatus)) {
+                            lStatsMap[actualLearnerId].needsQA += 1;
                         }
 
                         // Add to Urgent QA Queue ONLY if pending moderation or appeal
-                        if (['graded', 'appealed'].includes(data.status)) {
-                            const learnerName = store.learners.find(l => l.id === learnerId)?.fullName || data.learnerDeclaration?.learnerName || 'Unknown Learner';
+                        if (['graded', 'appealed'].includes(currentStatus)) {
+                            const learnerName = store.learners.find(l => l.id === actualLearnerId)?.fullName || data.learnerDeclaration?.learnerName || data.learnerName || 'Unknown Learner';
                             tasks.push({
                                 id: docSnap.id,
-                                learnerId: data.learnerId,
+                                learnerId: actualLearnerId,
                                 learnerName,
                                 assessmentId: data.assessmentId,
                                 title: data.title || 'Untitled Assessment',
-                                status: data.status,
-                                gradedAt: data.grading?.gradedAt || new Date().toISOString(),
+                                status: currentStatus,
+                                gradedAt: data.grading?.gradedAt || data.updatedAt || new Date().toISOString(),
                                 assessorName: data.grading?.assessorName || 'Unknown Assessor',
                                 assessorTimeSpent: data.grading?.assessorTimeSpent,
                                 assessorStartedAt: data.grading?.assessorStartedAt,

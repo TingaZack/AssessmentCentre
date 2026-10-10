@@ -1,5 +1,3 @@
-// src/types/content.types.ts
-
 export type FrameworkType = "qcto" | "secam";
 
 export type UnitFormatType =
@@ -10,6 +8,7 @@ export type UnitFormatType =
 
 export type CheckType =
   | "none"
+  | "mcq"
   | "spot_the_bug"
   | "unit_test"
   | "socratic_dialogue"
@@ -139,6 +138,19 @@ export interface CohortRun {
 
 // ─── INTERACTIVE CHECKS & LEARNING UNITS ───
 
+export interface MCQOption {
+  id: string;
+  text: string;
+  isCorrect: boolean;
+}
+
+export interface MCQQuestion {
+  id: string;
+  question: string;
+  options: MCQOption[];
+  explanation?: string;
+}
+
 export interface InteractiveCheckConfig {
   checkType: CheckType;
   instructions: string;
@@ -151,6 +163,13 @@ export interface InteractiveCheckConfig {
   aiPersonaRole?: "junior_dev" | "client" | "qa_auditor" | "architect";
   conversationGoal?: string;
   defenseQuestion?: string;
+
+  // Multi-Question MCQ Quiz Configuration
+  mcqQuestions?: MCQQuestion[];
+
+  // Legacy single-question properties for backward compatibility
+  mcqQuestion?: string;
+  mcqOptions?: MCQOption[];
 }
 
 export interface LearningUnit {
@@ -207,6 +226,8 @@ export interface VerificationReceipt {
   attemptedAt: string;
   checkType?: CheckType;
   userResponse?: string;
+  selectedMcqOptionId?: string;
+  selectedMcqOptionIds?: Record<string, string>; // Maps question.id -> selected option.id
 }
 
 export interface LearnerContentProgress {

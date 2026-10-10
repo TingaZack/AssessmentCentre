@@ -447,7 +447,7 @@ const StatementOfResults: React.FC = () => {
 
     if (isPublicView) {
         return (
-            <div className="public-verify-wrap">
+            <div className="public-verify-wrap" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', backgroundColor: '#f1f5f9' }}>
                 <div className={`public-verify-card ${verificationStatus === 'authentic' ? 'authentic' : verificationStatus === 'failed' || verificationStatus === 'revoked' ? 'failed' : ''}`}>
                     {verificationStatus === 'verifying' && (
                         <div className="verify-state">

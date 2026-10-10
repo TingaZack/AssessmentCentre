@@ -150,7 +150,7 @@ export const useCourseStore = create<CourseStoreState>((set, get) => ({
         containerData.title ||
         "Untitled Cohort Run";
 
-      // 🚀 EXTRACT NESTED TIMBOUNDCONFIG DATES AND PACING
+      // EXTRACT NESTED TIMBOUNDCONFIG DATES AND PACING
       const timeConfig =
         runData.timeBoundConfig ||
         containerData.checkpointMetadata?.defaultTimeBoundConfig ||
@@ -268,7 +268,7 @@ export const useCourseStore = create<CourseStoreState>((set, get) => ({
       let isEvergreen = !isTimeBound;
       let cohortDurationLabel = "1 Week";
 
-      // 🚀 ACCURATE POSITIVE WEEK CALCULATION
+      // ACCURATE POSITIVE WEEK CALCULATION
       if (
         startObj &&
         endObj &&
@@ -462,6 +462,17 @@ export const useCourseStore = create<CourseStoreState>((set, get) => ({
         const fetchedUnits: LearnerUnitProgress[] = snapshot.docs.map(
           (docSnap) => {
             const data = docSnap.data();
+
+            // RESOLVE LINKED ASSESSMENT CANDIDATE KEYS
+            const resolvedAssessmentId =
+              data.linkedAssessmentId ||
+              data.assessmentId ||
+              data.formalAssessmentId ||
+              (typeof data.linkedAssessment === "string"
+                ? data.linkedAssessment
+                : null) ||
+              null;
+
             return {
               id: docSnap.id,
               containerId: data.containerId,
@@ -479,6 +490,8 @@ export const useCourseStore = create<CourseStoreState>((set, get) => ({
               contentHtml: data.contentHtml,
               requiredWatchPercentage: data.requiredWatchPercentage || 90,
               interactiveCheck: data.interactiveCheck || null,
+              linkedAssessmentId: resolvedAssessmentId,
+              unlinkedPolicy: data.unlinkedPolicy || "soft_gate",
               attachments: Array.isArray(data.attachments)
                 ? data.attachments
                 : [],
@@ -486,7 +499,7 @@ export const useCourseStore = create<CourseStoreState>((set, get) => ({
               isRequiredForNextUnit: data.isRequiredForNextUnit || false,
               isCompleted: false,
               isLocked: false,
-            };
+            } as unknown as LearnerUnitProgress;
           },
         );
         set({ allUnits: fetchedUnits });

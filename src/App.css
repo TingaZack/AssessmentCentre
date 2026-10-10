@@ -17,7 +17,7 @@
 
 /* ── CSS Variables ─────────────────────────────────────────────────────────── */
 :root {
-  --mlab-blue: #073f4e;
+  --mlab-blue: #073f4e !important;
   --mlab-blue-dark: #052e3a;
   --mlab-green: #94c73d;
   --mlab-green-dark: #7aaa2e;

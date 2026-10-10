@@ -85,7 +85,7 @@ export const createCohortSlice: StateCreator<
     });
 
     try {
-      console.log("[DEBUG useStore] Fetching cohorts from Firestore...");
+      // console.log("[DEBUG useStore] Fetching cohorts from Firestore...");
       const start = Date.now();
 
       const q = query(collection(db, "cohorts"), orderBy("name"));
@@ -94,9 +94,9 @@ export const createCohortSlice: StateCreator<
         (doc) => ({ id: doc.id, ...doc.data() }) as Cohort,
       );
 
-      console.log(
-        `[DEBUG useStore] Fetched ${list.length} cohorts in ${Date.now() - start}ms.`,
-      );
+      // console.log(
+      //   `[DEBUG useStore] Fetched ${list.length} cohorts in ${Date.now() - start}ms.`,
+      // );
 
       set((state: any) => {
         state.cohorts = list;

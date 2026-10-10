@@ -563,7 +563,7 @@ export const CohortRunsDrawer: React.FC<CohortRunsDrawerProps> = ({
                                                         </label>
                                                     </Tooltip>
 
-                                                    <div style={{ position: 'relative', width: '100%' }} ref={cohortDropdownRef}>
+                                                    <div style={{ position: 'relative', width: '100%', zIndex: 9999999, color: 'var(--mlab-blue)' }} ref={cohortDropdownRef}>
                                                         <button
                                                             type="button"
                                                             onClick={() => setIsCohortDropdownOpen(!isCohortDropdownOpen)}

@@ -2,7 +2,8 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
-import { auth } from '../../../lib/firebase';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { auth, db } from '../../../lib/firebase';
 import 'react-quill-new/dist/quill.snow.css';
 import './LearnerContentHub.css';
 
@@ -10,8 +11,8 @@ import type { LearnerUnitProgress, CoursePackage } from './types';
 import { CourseCatalogView } from './CourseCatalogView';
 import { CourseOverviewView } from './CourseOverviewView';
 import { CoursePlayerView } from './CoursePlayerView';
-import { Loader2 } from 'lucide-react';
 import { useCourseStore } from '../../../store/useCourseStore';
+import Loader from '../../../components/common/Loader/Loader';
 
 interface ExtendedCoursePackage extends CoursePackage {
     timelineId?: string;
@@ -21,6 +22,9 @@ interface ExtendedCoursePackage extends CoursePackage {
 
 interface ExtendedUnitProgress extends LearnerUnitProgress {
     cohortRunId?: string;
+    linkedAssessmentId?: string | null;
+    assessmentId?: string | null;
+    formalAssessmentId?: string | null;
     unlinkedPolicy?: 'soft_gate' | 'hard_gate';
 }
 
@@ -44,13 +48,18 @@ export const LearnerContentHub: React.FC = () => {
         initializeCourseSubscriptions
     } = useCourseStore();
 
-    // 1. SAFELY INITIALIZE SUBSCRIPTIONS ONLY AFTER AUTH IS RESOLVED
+    // 1A. STORE INITIALIZATION
     useEffect(() => {
         if (!initializeCourseSubscriptions) return;
 
         let unsubscribeStore: (() => void) | undefined;
 
         const unsubscribeAuth = onAuthStateChanged(auth, (authenticatedUser) => {
+            if (unsubscribeStore) {
+                unsubscribeStore();
+                unsubscribeStore = undefined;
+            }
+
             if (authenticatedUser?.uid) {
                 unsubscribeStore = initializeCourseSubscriptions(authenticatedUser.uid);
             } else {
@@ -64,17 +73,75 @@ export const LearnerContentHub: React.FC = () => {
         };
     }, [initializeCourseSubscriptions]);
 
-    // 2A. URL HYDRATION
+    // 1B. REAL-TIME FIRESTORE LEARNER PROGRESS LISTENER
+    const [userProgressMap, setUserProgressMap] = useState<Map<string, { isCompleted: boolean; watchPct: number; lastPlayedSeconds: number }>>(new Map());
+
+    useEffect(() => {
+        let unsubscribeProgress: (() => void) | undefined;
+
+        const unsubscribeAuth = onAuthStateChanged(auth, (authenticatedUser) => {
+            if (unsubscribeProgress) {
+                unsubscribeProgress();
+                unsubscribeProgress = undefined;
+            }
+
+            if (!authenticatedUser?.uid) {
+                setUserProgressMap(new Map());
+                return;
+            }
+
+            try {
+                const q = query(
+                    collection(db, 'learner_content_progress'),
+                    where('userId', '==', authenticatedUser.uid)
+                );
+
+                unsubscribeProgress = onSnapshot(q, (snapshot) => {
+                    const progMap = new Map<string, { isCompleted: boolean; watchPct: number; lastPlayedSeconds: number }>();
+                    snapshot.docs.forEach(docSnap => {
+                        const data = docSnap.data();
+                        const unitId = data.unitId as string;
+                        if (!unitId) return;
+
+                        const existing = progMap.get(unitId);
+                        const isComp = Boolean(data.isCompleted);
+                        const pct = Number(data.watchPct) || 0;
+                        const secs = Number(data.lastPlayedSeconds) || 0;
+
+                        if (existing) {
+                            progMap.set(unitId, {
+                                isCompleted: existing.isCompleted || isComp,
+                                watchPct: Math.max(existing.watchPct, pct),
+                                lastPlayedSeconds: Math.max(existing.lastPlayedSeconds, secs)
+                            });
+                        } else {
+                            progMap.set(unitId, {
+                                isCompleted: isComp,
+                                watchPct: pct,
+                                lastPlayedSeconds: secs
+                            });
+                        }
+                    });
+                    setUserProgressMap(progMap);
+                }, (err) => {
+                    console.warn('[LearnerContentHub] Progress listener warning:', err);
+                });
+            } catch (e) {
+                console.warn('[LearnerContentHub] Failed setting up progress listener:', e);
+            }
+        });
+
+        return () => {
+            unsubscribeAuth();
+            if (unsubscribeProgress) unsubscribeProgress();
+        };
+    }, []);
+
+    // 2A. BULLETPROOF URL HYDRATION ON HARD RELOAD
     const [hydrated, setHydrated] = useState(false);
 
     useEffect(() => {
-        if (loading || hydrated) return;
-
-        if (courses.length === 0) {
-            setHydrated(true);
-            setView('catalog');
-            return;
-        }
+        if (hydrated) return;
 
         const params = new URLSearchParams(window.location.search);
         const urlView = params.get('hubView');
@@ -82,36 +149,66 @@ export const LearnerContentHub: React.FC = () => {
         const cohortRunId = params.get('cohortRunId') || params.get('timelineId');
         const unitId = params.get('unitId');
 
-        let targetCourse: CoursePackage | null = null;
-        let targetUnit: LearnerUnitProgress | null = null;
+        const hasUrlParams = Boolean(urlView || courseId || cohortRunId || unitId);
 
+        // 1. Wait if Zustand store is still fetching initial data
+        if (loading) return;
+
+        // 2. If URL parameters exist, WAIT until courses array arrives from Firestore
+        if (hasUrlParams && courses.length === 0) return;
+
+        // 3. If URL requests 'player' view or a specific 'unitId', WAIT until allUnits arrives
+        if ((urlView === 'player' || unitId) && targetCourseUnitsLoading(courses, cohortRunId, courseId, allUnits)) return;
+
+        // 4. If no URL params and courses are empty, default to catalog
+        if (!hasUrlParams && courses.length === 0) {
+            setView('catalog');
+            setHydrated(true);
+            return;
+        }
+
+        // Resolve requested course
+        let targetCourse: CoursePackage | null = null;
         if (cohortRunId || courseId) {
             targetCourse = courses.find(c => {
                 const instId = getCourseInstanceId(c);
                 return instId === cohortRunId || c.id === courseId;
             }) || null;
-            if (targetCourse) setSelectedCourse(targetCourse);
         }
 
-        if (unitId) {
+        let targetUnit: LearnerUnitProgress | null = null;
+        if (unitId && allUnits.length > 0) {
             targetUnit = allUnits.find(u => u.id === unitId) || null;
-            if (targetUnit) setSelectedUnit(targetUnit);
         }
 
-        if (urlView === 'player' && targetCourse && targetUnit) {
+        if (urlView === 'player' && targetCourse) {
+            setSelectedCourse(targetCourse);
+            if (targetUnit) {
+                setSelectedUnit(targetUnit);
+            } else {
+                const instId = getCourseInstanceId(targetCourse);
+                const courseUnitsForTarget = allUnits.filter(u => u.containerId === instId || u.containerId === targetCourse?.id);
+                if (courseUnitsForTarget.length > 0) {
+                    setSelectedUnit(courseUnitsForTarget[0]);
+                }
+            }
             setView('player');
         } else if (urlView === 'overview' && targetCourse) {
+            setSelectedCourse(targetCourse);
             setView('overview');
-        } else if (urlView) {
+        } else {
             setView('catalog');
         }
 
-        const timer = setTimeout(() => {
-            setHydrated(true);
-        }, 150);
-
-        return () => clearTimeout(timer);
+        setHydrated(true);
     }, [loading, hydrated, courses, allUnits, setSelectedCourse, setSelectedUnit, setView]);
+
+    // Helper to check if unit data for target course is still fetching
+    function targetCourseUnitsLoading(courseList: CoursePackage[], cohortRunId: string | null, courseId: string | null, unitsList: LearnerUnitProgress[]): boolean {
+        if (unitsList.length > 0) return false;
+        const matched = courseList.find(c => getCourseInstanceId(c) === cohortRunId || c.id === courseId);
+        return Boolean(matched);
+    }
 
     // 2B. DEVICE / BROWSER BACK BUTTON (POPSTATE LISTENER)
     useEffect(() => {
@@ -146,11 +243,11 @@ export const LearnerContentHub: React.FC = () => {
         return () => window.removeEventListener('popstate', handlePopState);
     }, [courses, allUnits, setSelectedCourse, setSelectedUnit, setView]);
 
-    // 2C. URL SYNC
+    // 2C. URL SYNC (REPLACE STATE TO PREVENT HISTORY CLOGGING)
     useEffect(() => {
         if (!hydrated) return;
 
-        const params = new URLSearchParams();
+        const params = new URLSearchParams(window.location.search);
 
         if (view === 'overview' && selectedCourse) {
             params.set('hubView', 'overview');
@@ -158,6 +255,8 @@ export const LearnerContentHub: React.FC = () => {
             if (selectedCourse.cohortRunId) params.set('cohortRunId', selectedCourse.cohortRunId);
             const extCourse = selectedCourse as ExtendedCoursePackage;
             if (extCourse.timelineId) params.set('timelineId', extCourse.timelineId);
+            params.delete('unitId');
+            params.delete('quiz');
         } else if (view === 'player' && selectedCourse && selectedUnit) {
             params.set('hubView', 'player');
             params.set('courseId', selectedCourse.id);
@@ -165,6 +264,13 @@ export const LearnerContentHub: React.FC = () => {
             const extCourse = selectedCourse as ExtendedCoursePackage;
             if (extCourse.timelineId) params.set('timelineId', extCourse.timelineId);
             params.set('unitId', selectedUnit.id);
+        } else if (view === 'catalog') {
+            params.delete('hubView');
+            params.delete('courseId');
+            params.delete('cohortRunId');
+            params.delete('timelineId');
+            params.delete('unitId');
+            params.delete('quiz');
         }
 
         const queryString = params.toString();
@@ -173,11 +279,11 @@ export const LearnerContentHub: React.FC = () => {
 
         if (targetSearch !== currentSearch) {
             const newUrl = `${window.location.pathname}${targetSearch}`;
-            window.history.pushState({ path: newUrl }, '', newUrl);
+            window.history.replaceState({ path: newUrl }, '', newUrl);
         }
     }, [view, selectedCourse, selectedUnit, hydrated]);
 
-    // 🚀 3. GRANULAR PER-LESSON PREREQUISITE & HARD-GATE ASSESSMENT LOCKING
+    // 3. ENRICHED PER-LESSON PREREQUISITE & HARD-GATE ASSESSMENT LOCKING
     const courseUnits = useMemo(() => {
         if (!selectedCourse) return [];
         const activeInstId = getCourseInstanceId(selectedCourse);
@@ -189,10 +295,21 @@ export const LearnerContentHub: React.FC = () => {
         let activeLockEnforced = false;
 
         return rawUnits.map((unit) => {
+            const userProg = userProgressMap.get(unit.id);
+            const isCompleted = userProg ? userProg.isCompleted : Boolean(unit.isCompleted);
+            const watchPct = userProg ? userProg.watchPct : (unit.watchPercentage || unit.progressPercent || 0);
+
+            // MULTI-FIELD LINKED ASSESSMENT RESOLUTION
+            const resolvedAssessmentId = unit.linkedAssessmentId ||
+                unit.assessmentId ||
+                unit.formalAssessmentId ||
+                (typeof (unit as any).linkedAssessment === 'string' ? (unit as any).linkedAssessment : null) ||
+                null;
+
             const isLocked = activeLockEnforced;
 
-            const isUnitIncomplete = !unit.isCompleted;
-            const requiresNextLock = unit.isRequiredForNextUnit === true || (unit.linkedAssessmentId && unit.unlinkedPolicy === 'hard_gate');
+            const isUnitIncomplete = !isCompleted;
+            const requiresNextLock = unit.isRequiredForNextUnit === true || (Boolean(resolvedAssessmentId) && unit.unlinkedPolicy === 'hard_gate');
 
             if (isUnitIncomplete && requiresNextLock) {
                 activeLockEnforced = true;
@@ -200,10 +317,21 @@ export const LearnerContentHub: React.FC = () => {
 
             return {
                 ...unit,
+                linkedAssessmentId: resolvedAssessmentId,
+                unlinkedPolicy: unit.unlinkedPolicy || 'soft_gate',
+                isCompleted,
+                watchPercentage: watchPct,
+                progressPercent: watchPct,
                 isLocked
             };
         });
-    }, [selectedCourse, allUnits]);
+    }, [selectedCourse, allUnits, userProgressMap]);
+
+    // ALWAYS RESOLVE FRESH ACTIVE UNIT FROM ENRICHED courseUnits
+    const activeUnit = useMemo(() => {
+        if (!selectedUnit) return null;
+        return courseUnits.find(u => u.id === selectedUnit.id) || selectedUnit;
+    }, [courseUnits, selectedUnit]);
 
     // 4. RESOLVE CONTINUE LEARNING BANNER
     const continueLearningCourse = useMemo(() => {
@@ -222,10 +350,17 @@ export const LearnerContentHub: React.FC = () => {
 
         const targetCourseUnits = (allUnits as ExtendedUnitProgress[])
             .filter(u => u.containerId === targetInstId || u.containerId === continueLearningCourse.id || u.cohortRunId === targetInstId)
-            .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
+            .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0))
+            .map(u => {
+                const prog = userProgressMap.get(u.id);
+                return {
+                    ...u,
+                    isCompleted: prog ? prog.isCompleted : Boolean(u.isCompleted)
+                };
+            });
 
         return targetCourseUnits.find(u => !u.isCompleted && !u.isLocked) || targetCourseUnits[0] || null;
-    }, [continueLearningCourse, allUnits]);
+    }, [continueLearningCourse, allUnits, userProgressMap]);
 
     const groupedSyllabus = useMemo(() => {
         const groups: Record<string, LearnerUnitProgress[]> = {};
@@ -250,35 +385,42 @@ export const LearnerContentHub: React.FC = () => {
         setView('overview');
     };
 
+    // ACCURATE START / RESUME HANDLER
     const handleStartOrResume = () => {
-        if (!selectedCourse) return;
+        if (!selectedCourse || courseUnits.length === 0) return;
 
-        let targetUnit = courseUnits.find(u => !u.isCompleted && !u.isLocked)
-            || courseUnits.find(u => u.id === selectedCourse.lastActiveUnitId && !u.isLocked)
-            || courseUnits[0];
+        let targetUnit = courseUnits.find(u => !u.isCompleted && !u.isLocked);
 
         if (!targetUnit) {
-            targetUnit = {
-                id: `unit_${getCourseInstanceId(selectedCourse)}_default`,
-                containerId: getCourseInstanceId(selectedCourse),
-                framework: selectedCourse.framework,
-                title: `01. Introduction to ${selectedCourse.title}`,
-                unitType: 'video',
-                estimatedMinutes: 15,
-                isRequired: true,
-                orderIndex: 1,
-                sprintTitle: 'Module 1: Core Overview & Fundamentals',
-                dayOrLessonTitle: 'Lesson 1: Introduction',
-                videoUrl: selectedCourse.previewVideoUrl || 'https://www.youtube.com/watch?v=SqcYaptowAo',
-                requiredWatchPercentage: 90,
-                attachments: [],
-                isCompleted: false,
-                isLocked: false
-            };
+            targetUnit = courseUnits.find(u => u.id === selectedCourse.lastActiveUnitId && !u.isLocked)
+                || courseUnits[0];
         }
 
-        setSelectedUnit(targetUnit);
-        setView('player');
+        if (targetUnit) {
+            setSelectedUnit(targetUnit);
+
+            const hasQuiz = Boolean(targetUnit.interactiveCheck?.checkType && (targetUnit.interactiveCheck.checkType as string) !== 'none');
+            const watchPct = targetUnit.watchPercentage || targetUnit.progressPercent || 0;
+            const reqPct = targetUnit.requiredWatchPercentage || 90;
+            const isWatchDone = watchPct >= reqPct;
+
+            const shouldOpenInQuiz = hasQuiz && isWatchDone && !targetUnit.isCompleted;
+
+            const url = new URL(window.location.href);
+            url.searchParams.set('hubView', 'player');
+            url.searchParams.set('courseId', selectedCourse.id);
+            if (selectedCourse.cohortRunId) url.searchParams.set('cohortRunId', selectedCourse.cohortRunId);
+            url.searchParams.set('unitId', targetUnit.id);
+
+            if (shouldOpenInQuiz) {
+                url.searchParams.set('quiz', 'true');
+            } else {
+                url.searchParams.delete('quiz');
+            }
+
+            window.history.pushState({ path: url.toString() }, '', url.toString());
+            setView('player');
+        }
     };
 
     const handleContinueLearning = () => {
@@ -291,10 +433,7 @@ export const LearnerContentHub: React.FC = () => {
     if (loading || !hydrated) {
         return (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', color: 'var(--mlab-blue)' }}>
-                <Loader2 size={36} className="lfm-spin" style={{ marginBottom: '12px' }} />
-                <span style={{ fontWeight: 700, fontSize: '0.9rem', fontFamily: 'var(--font-heading)', textTransform: 'uppercase' }}>
-                    Loading Catalog &amp; Progress...
-                </span>
+                <Loader message="Loading Catalog &amp; Progress..." />
             </div>
         );
     }
@@ -329,17 +468,15 @@ export const LearnerContentHub: React.FC = () => {
                     />
                 )}
 
-                {view === 'player' && selectedCourse && selectedUnit && (
+                {view === 'player' && selectedCourse && (activeUnit || selectedUnit) && (
                     <CoursePlayerView
                         selectedCourse={selectedCourse}
-                        selectedUnit={selectedUnit}
+                        selectedUnit={activeUnit || selectedUnit}
                         courseUnits={courseUnits}
                         groupedSyllabus={groupedSyllabus}
                         onBackToOverview={() => setView('overview')}
                         onSelectUnit={(unit) => {
-                            if (!unit.isLocked) {
-                                setSelectedUnit(unit);
-                            }
+                            setSelectedUnit(unit);
                         }}
                     />
                 )}

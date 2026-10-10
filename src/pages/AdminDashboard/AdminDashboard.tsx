@@ -52,6 +52,7 @@ import { CompanyInsightsView } from '../../components/admin/WorkplacesManager/Co
 
 import './AdminDashboard.css';
 import { MentorDashboard } from '../mentor/MentorDashboard/MentorDashboard';
+import Loader from '../../components/common/Loader/Loader';
 
 type NavTabs = 'directory' | 'learners' | 'staff' | 'qualifications' | 'cohorts' |
     'workplaces' | 'studio' | 'dashboard' | 'profile' | 'access' | 'crashes' |
@@ -582,10 +583,11 @@ export const AdminDashboard: React.FC = () => {
                                         onBack={() => setCurrentNav('workplaces')}
                                     />
                                 ) : (
-                                    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh', flexDirection: 'column', gap: '1rem' }}>
-                                        <Loader2 className="wm-spin" size={40} color="var(--mlab-blue)" />
-                                        <span style={{ color: 'var(--mlab-midnight)', fontWeight: 600, fontSize: '1.2rem' }}>Reconnecting to Employer Record...</span>
-                                    </div>
+                                    // <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh', flexDirection: 'column', gap: '1rem' }}>
+                                    //     <Loader2 className="wm-spin" size={40} color="var(--mlab-blue)" />
+                                    //     <span style={{ color: 'var(--mlab-midnight)', fontWeight: 600, fontSize: '1.2rem' }}>Reconnecting to Employer Record...</span>
+                                    // </div>
+                                    <Loader message='Reconnecting to Employer Record...' />
                                 )
                             )}
 

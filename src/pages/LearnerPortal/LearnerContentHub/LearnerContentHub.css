@@ -205,3 +205,288 @@
   color: var(--mlab-white);
   border-color: var(--mlab-blue);
 }
+
+.lf {
+  --ink: #f8fafc;
+  position: relative;
+  overflow: hidden;
+  /* border-radius: 6px; */
+  padding: 20px 20px 18px;
+  color: var(--ink);
+  background: #0f172a;
+  border: 1px solid #1e293b;
+  font-family: var(--font-heading, "Segoe UI", system-ui, sans-serif);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+}
+.lf * {
+  box-sizing: border-box;
+}
+.lf-aurora {
+  position: absolute;
+  inset: -30% -10% auto;
+  height: 220px;
+  pointer-events: none;
+  filter: blur(80px);
+  opacity: 0.2;
+  background:
+    radial-gradient(40% 60% at 30% 40%, var(--from), transparent),
+    radial-gradient(40% 60% at 75% 50%, var(--to), transparent);
+  transition: opacity 0.6s;
+}
+
+.lf-row {
+  position: relative;
+  display: flex;
+  width: 100%;
+  gap: 4px;
+  overflow-x: auto;
+  padding: 8px 0 16px;
+}
+.lf-chev {
+  --c: 22px;
+  flex: 1;
+  position: relative;
+  margin-left: -10px;
+  height: 82px;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  color: inherit;
+  background: none;
+  font: inherit;
+  transition:
+    transform 0.25s ease,
+    filter 0.25s ease;
+}
+.lf-chev.first {
+  margin-left: 0;
+}
+.lf-chev:not(.locked):hover {
+  transform: translateY(-2px);
+}
+.lf-chev.locked {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+.lf-chev:focus-visible {
+  outline: 2px solid #38bdf8;
+  outline-offset: 2px;
+}
+.lf-edge,
+.lf-face {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 100%;
+  clip-path: polygon(
+    0 0,
+    calc(100% - var(--c)) 0,
+    100% 50%,
+    calc(100% - var(--c)) 100%,
+    0 100%,
+    var(--c) 50%
+  );
+}
+.lf-chev.first .lf-edge,
+.lf-chev.first .lf-face {
+  clip-path: polygon(
+    0 0,
+    calc(100% - var(--c)) 0,
+    100% 50%,
+    calc(100% - var(--c)) 100%,
+    0 100%
+  );
+}
+.lf-edge {
+  padding: 1px;
+  background: linear-gradient(120deg, var(--f), var(--t));
+  opacity: 0.4;
+  transition: opacity 0.3s;
+}
+.lf-face {
+  padding: 0 calc(var(--c) + 4px) 0 calc(var(--c) + 8px);
+  background: #1e293b;
+  transition:
+    background 0.3s,
+    color 0.3s;
+  position: relative;
+}
+.lf-chev.first .lf-face {
+  padding-left: 16px;
+}
+.lf-chev:not(.locked):hover .lf-edge {
+  opacity: 0.8;
+}
+
+/* Selected state: highlighted with step gradient */
+.lf-chev.on {
+  transform: translateY(-2px);
+  z-index: 10 !important;
+}
+.lf-chev.on .lf-edge {
+  opacity: 1;
+}
+.lf-chev.on .lf-face {
+  background: linear-gradient(110deg, var(--f), var(--t));
+  color: #ffffff;
+}
+
+.lf-ico {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--f);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.15);
+  transition: all 0.3s;
+}
+.lf-chev.on .lf-ico {
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+}
+.lf-txt {
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+  min-width: 0;
+  position: relative;
+  z-index: 1;
+}
+.lf-txt b {
+  font-size: 0.82rem;
+  font-weight: 800;
+  line-height: 1.1;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lf-txt small {
+  font-size: 0.65rem;
+  opacity: 0.8;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lf-chip {
+  margin-left: auto;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 0.65rem;
+  font-weight: 800;
+  background: rgba(255, 255, 255, 0.12);
+  color: #94a3b8;
+  position: relative;
+  z-index: 1;
+}
+.lf-chip.done {
+  background: #16a34a;
+  color: #ffffff;
+}
+.lf-chip.failed {
+  background: #dc2626;
+  color: #ffffff;
+}
+.lf-chev.on .lf-chip:not(.done):not(.failed) {
+  background: rgba(15, 23, 42, 0.3);
+  color: #ffffff;
+}
+
+/* Track Beam */
+.lf-beam {
+  position: relative;
+  height: 3px;
+  margin: 0 0 16px;
+  /* border-radius: 2px; */
+  background: #1e293b;
+}
+.lf-beam-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  /* border-radius: 2px; */
+  background: linear-gradient(90deg, #38bdf8, var(--from), var(--to));
+  transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.lf-comet {
+  position: absolute;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  margin: -5px 0 0 -5px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 0 10px 2px var(--to);
+  transition: left 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Panel below chevrons */
+.lf-panel {
+  position: relative;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  padding: 16px 20px;
+  /* border-radius: 4px; */
+  background: #1e293b;
+  border: 1px solid #334155;
+}
+.lf-meta {
+  margin: 0 0 4px;
+  font-size: 0.65rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--from);
+}
+.lf-panel h3 {
+  margin: 0 0 4px;
+  font-size: 1.05rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: #ffffff;
+}
+.lf-body {
+  margin: 0;
+  max-width: 540px;
+  font-size: 0.78rem;
+  color: #cbd5e1;
+  line-height: 1.4;
+}
+.lf-cta {
+  border: 0;
+  cursor: pointer;
+  padding: 10px 22px;
+  border-radius: 0px;
+  font-size: 0.8rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #ffffff;
+  background: linear-gradient(110deg, var(--from), var(--to));
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  transition:
+    transform 0.2s,
+    box-shadow 0.2s;
+}
+.lf-cta:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+}
+
+.lf-chip.pending {
+  background: #d97706;
+  color: #ffffff;
+}

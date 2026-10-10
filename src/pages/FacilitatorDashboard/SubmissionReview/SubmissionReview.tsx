@@ -896,8 +896,9 @@ export const RenderBlocks: React.FC<any> = (props) => {
                     else { activeInkColor = 'blue'; activeData = fData; }
                 }
 
+                const isSummativeBlock = String(assessment?.type || '').toLowerCase().includes('summative');
                 // Only show ReadOnly layers for stages that are completed or graded, and not editable by the current role
-                const renderFacReadOnly = (isFacDone || fData?.feedback || fData?.score > 0) && (!canFacilitatorMark || isPrintMode);
+                const renderFacReadOnly = !isSummativeBlock && (isFacDone || fData?.feedback || fData?.score > 0) && (!canFacilitatorMark || isPrintMode);
                 const renderAssReadOnly = (isAssDone || aData?.feedback || aData?.score > 0) && (!canGrade || isPrintMode);
                 const renderModReadOnly = (isModDone || mData?.feedback) && (!canModerate || isPrintMode);
 
@@ -2259,7 +2260,8 @@ export const SubmissionReview: React.FC = () => {
     const facSubmitLabel = displayFacRole === 'mentor' ? 'Verify & Send to Assessor' : 'Send to Assessor';
     const facReadOnlyLabel = displayFacRole === 'mentor' ? 'Workplace Mentor Verification' : 'Facilitator Pre-Mark';
 
-    const canFacilitatorMark = hasFacilitatorRights && (
+    // 🚀 SUMMATIVE BYPASS: Facilitators cannot mark summatives
+    const canFacilitatorMark = !isSummative && hasFacilitatorRights && (
         currentStatus === 'submitted' ||
         (!isPureKnowledge && ['not_started', 'in_progress'].includes(currentStatus))
     );
@@ -2281,7 +2283,14 @@ export const SubmissionReview: React.FC = () => {
         console.groupEnd();
     }, [submission, user, currentStatus, isAssignedToCurrentCohort, isFacilitator, isMentor, hasFacilitatorRights, canFacilitatorMark]);
 
-    const canGrade = hasAssessorRights && (currentStatus === 'facilitator_reviewed' || currentStatus === 'returned' || currentStatus === 'missed' || currentStatus === 'violation');
+    // 🚀 SUMMATIVE BYPASS: Assessors can grade summatives directly from 'submitted' state
+    const canGrade = hasAssessorRights && (
+        currentStatus === 'facilitator_reviewed' ||
+        currentStatus === 'returned' ||
+        currentStatus === 'missed' ||
+        currentStatus === 'violation' ||
+        (isSummative && currentStatus === 'submitted')
+    );
     const canModerate = hasModeratorRights && currentStatus === 'graded';
     const canReturnToLearner = isMentor && ['submitted', 'in_progress'].includes(currentStatus);
 
@@ -3252,7 +3261,24 @@ export const SubmissionReview: React.FC = () => {
     };
 
     const getTotals = (breakdown: Record<string, GradeData>) => {
-        const score = Object.values(breakdown).reduce((sum, g) => sum + (Number(g.score) || 0), 0);
+        let score = 0;
+        if (assessment?.blocks) {
+            assessment.blocks.forEach((block: any) => {
+                const grade = breakdown[block.id];
+                if (grade) {
+                    let blockScore = Number(grade.score);
+                    // 🚀 Fallback to map "Verified" booleans back into full numeric marks
+                    if (isNaN(blockScore) || grade.score === null || grade.score === undefined) {
+                        if (grade.isCorrect === true) blockScore = Number(block.marks) || 0;
+                        else blockScore = 0;
+                    }
+                    score += blockScore;
+                }
+            });
+        } else {
+            score = Object.values(breakdown).reduce((sum, g) => sum + (Number(g.score) || 0), 0);
+        }
+
         const max = assessment?.totalMarks || 0;
         const pct = max > 0 ? Math.round((score / max) * 100) : 0;
         return { score, max, pct };
@@ -3282,16 +3308,24 @@ export const SubmissionReview: React.FC = () => {
     //     }
     // }, [assTotals.pct, assTotals.max, canGrade, isAssDone, isSECAM]);
 
+    // 🚀 FIX: SAFE PASS PERCENTAGE EXTRACTOR
+    const getSafePassPercentage = () => {
+        let rawVal = Number(assessment?.passPercentage ?? assessment?.passMark ?? assessment?.moduleInfo?.passMark ?? 80);
+        if (rawVal > 100 && assessment?.totalMarks > 0) {
+            // Converts legacy absolute pass marks into a percentage
+            return Math.round((rawVal / assessment.totalMarks) * 100);
+        }
+        return rawVal > 100 ? 100 : rawVal;
+    };
+
+    const minPassPercentage = getSafePassPercentage();
+
+    // 🚀 GLITCH DETECTOR: Identifies if the learner passed but was locked as NYC
+    const isMathGlitchDetected = isAssDone && ['NYC', 'DEV', '1', '2'].includes(String(submission?.competency || '').toUpperCase()) && assTotals.pct >= minPassPercentage;
+
     // 🚀 AUTO-DECLARE COMPETENCY BASED ON DYNAMIC / DEFAULT PASS MARK
     useEffect(() => {
         if (!canGrade || isAssDone) return;
-
-        const minPassPercentage = Number(
-            assessment?.passPercentage ??
-            assessment?.passMark ??
-            assessment?.moduleInfo?.passMark ??
-            80
-        );
 
         if (assTotals.max > 0) {
             if (assTotals.pct >= minPassPercentage) {
@@ -3307,7 +3341,7 @@ export const SubmissionReview: React.FC = () => {
                 }
             }
         }
-    }, [assTotals.pct, assTotals.max, canGrade, isAssDone, isSECAM, assessment, competency]);
+    }, [assTotals.pct, assTotals.max, canGrade, isAssDone, isSECAM, assessment, competency, minPassPercentage]);
 
     const autoSummedTaskMinutes = useMemo(() => {
         let totalMs = 0;
@@ -3497,16 +3531,32 @@ export const SubmissionReview: React.FC = () => {
             if (block.type === 'section') {
                 currentSectionId = block.id;
                 sectionTotals[currentSectionId] = { total: 0, awarded: 0 };
-            } else if (['mcq', 'text', 'task', 'checklist', 'logbook', 'qcto_workplace', 'code_sandbox'].includes(block.type) && currentSectionId) {
+            } else if (['mcq', 'text', 'task', 'checklist', 'logbook', 'qcto_workplace', 'code_sandbox', 'mathpad', 'graph'].includes(block.type) && currentSectionId) {
                 const g = submission?.grading || {}; const m = submission?.moderation || {};
                 const mLayer = m.breakdown?.[block.id] || {}; const aLayer = g.assessorBreakdown?.[block.id] || {}; const fLayer = g.facilitatorBreakdown?.[block.id] || {};
-                const legacyLayer = g.breakdown?.[block.id] || { score: 0, isCorrect: null };
-                let activeLayer = legacyLayer;
-                if (isFacDone) activeLayer = fLayer;
-                if (isAssDone) activeLayer = aLayer;
-                if (isModDone) activeLayer = mLayer;
+                const legacyLayer = g.breakdown?.[block.id] || {};
+
+                let activeLayer: any = {};
+                if (isModDone && Object.keys(mLayer).length > 0) activeLayer = mLayer;
+                else if (isAssDone && Object.keys(aLayer).length > 0) activeLayer = aLayer;
+                else if (isFacDone && Object.keys(fLayer).length > 0) activeLayer = fLayer;
+                else if (Object.keys(legacyLayer).length > 0) activeLayer = legacyLayer;
+                else if (Object.keys(aLayer).length > 0) activeLayer = aLayer;
+                else if (Object.keys(fLayer).length > 0) activeLayer = fLayer;
+
                 sectionTotals[currentSectionId].total += (Number(block.marks) || 0);
-                if (activeLayer.score !== undefined && activeLayer.score !== null) sectionTotals[currentSectionId].awarded += Number(activeLayer.score);
+
+                let blockScore = Number(activeLayer.score);
+                if (isNaN(blockScore) || activeLayer.score === null || activeLayer.score === undefined) {
+                    if (activeLayer.isCorrect === true) blockScore = Number(block.marks) || 0;
+                    else blockScore = 0;
+                }
+
+                const isGraded = (activeLayer.score !== undefined && activeLayer.score !== null) || (activeLayer.isCorrect !== undefined && activeLayer.isCorrect !== null);
+
+                if (isGraded) {
+                    sectionTotals[currentSectionId].awarded += blockScore;
+                }
             }
         });
     }
@@ -3710,12 +3760,14 @@ export const SubmissionReview: React.FC = () => {
 
 
     const triggerSubmitGrade = () => {
-        const minPassPercentage = Number(
-            assessment?.passPercentage ??
-            assessment?.passMark ??
-            assessment?.moduleInfo?.passMark ??
-            80
-        );
+        const minPassPercentage = getSafePassPercentage();
+        // const triggerSubmitGrade = () => {
+        //     const minPassPercentage = Number(
+        //         assessment?.passPercentage ??
+        //         assessment?.passMark ??
+        //         assessment?.moduleInfo?.passMark ??
+        //         80
+        //     );
 
         if (!validateAllMarked(assBreakdown, false)) return setModalConfig({ isOpen: true, type: 'warning', title: 'Incomplete Grading', message: 'You must evaluate every question and fully complete all checklists and workplace checkpoints (including declarations) before submitting.', confirmText: 'Got it', onConfirm: () => setModalConfig(null) });
         if (!competency) return setModalConfig({ isOpen: true, type: 'warning', title: 'Missing Competency', message: 'You must select a Final Competency (C or NYC) before submitting.', confirmText: 'Got it', onConfirm: () => setModalConfig(null) });
@@ -3762,7 +3814,9 @@ export const SubmissionReview: React.FC = () => {
 
     const triggerSubmitModeration = () => {
         if (!modOutcome) return setModalConfig({ isOpen: true, type: 'warning', title: 'Missing Decision', message: 'You must select Endorse or Return to Assessor before submitting.', confirmText: 'Got it', onConfirm: () => setModalConfig(null) });
-        if (modOutcome === 'Returned' && !modFeedback.trim()) return setModalConfig({ isOpen: true, type: 'warning', title: 'Green Pen Instructions Required', message: 'You must provide Green Pen instructions explaining what the Assessor needs to fix before this can be returned.', confirmText: 'Got it', onConfirm: () => setModalConfig(null) });
+
+        if (!modFeedback.trim()) return setModalConfig({ isOpen: true, type: 'warning', title: 'Moderator Notes Required', message: 'You must provide overall Moderator QA Notes before submitting your review.', confirmText: 'Got it', onConfirm: () => setModalConfig(null) });
+
         if (!isWorkplaceModule && !validateAllMarked(modBreakdown, true)) return setModalConfig({ isOpen: true, type: 'warning', title: 'Incomplete QA', message: 'You must verify every question and fully check all blocks before endorsing.', confirmText: 'Got it', onConfirm: () => setModalConfig(null) });
 
         setModalConfig({
@@ -3903,6 +3957,18 @@ export const SubmissionReview: React.FC = () => {
     );
     const showProctoringAuditCard = isViolation || isProctoredAssessment || violationHistoryCount > 0;
 
+    // // 🚀 DEBUG: Tracker for Competency vs Score Mismatch
+    // if (submission) {
+    //     console.groupCollapsed("🚨 [DEBUG] SCORE VS COMPETENCY MISMATCH");
+    //     console.log("1. Submission ID:", submission.id);
+    //     console.log("2. Submission Status:", submission.status);
+    //     console.log("3. Calculated Assessor Score:", assTotals.score, "/", assTotals.max, `(${assTotals.pct}%)`);
+    //     console.log("4. Required Pass Mark:", assessment?.passPercentage ?? assessment?.passMark ?? assessment?.moduleInfo?.passMark ?? 80, "%");
+    //     console.log("5. Local UI Competency State:", competency);
+    //     console.log("6. Saved DB Competency State:", submission.competency);
+    //     console.groupEnd();
+    // }
+
     return (
         <div className="sr-root animate-fade-in" style={{ width: '100%', position: 'absolute', top: 0, right: 0, left: 0, bottom: 0 }}>
             <ToastContainer toasts={toast.toasts} onClose={toast.closeToast} />
@@ -4040,6 +4106,33 @@ export const SubmissionReview: React.FC = () => {
                             <Printer size={13} /> Print Audit
                         </button>
                     )}
+
+                    {/* 🔥 FAIL-PROOF ADMIN FIX BUTTON */}
+                    {(isAdmin || isSuperAdmin) && submission?.competency === 'NYC' && (
+                        <button
+                            type="button"
+                            className="ap-topbar-print-btn"
+                            style={{ background: '#10b981', color: 'white', borderColor: '#059669', fontWeight: 'bold' }}
+                            onClick={async () => {
+                                if (!window.confirm("Force-correct this submission to Competent (C)?")) return;
+                                setSaving(true);
+                                try {
+                                    await updateDoc(doc(db, 'learner_submissions', submission.id), {
+                                        competency: 'C',
+                                        systemNote: `Competency force-corrected from NYC to C by ${user?.fullName} due to legacy glitch.`,
+                                        lastStaffEditAt: new Date().toISOString()
+                                    });
+                                    window.location.reload();
+                                } catch (e) {
+                                    alert("Error fixing record in database.");
+                                    setSaving(false);
+                                }
+                            }}
+                        >
+                            <Sparkles size={13} /> Force Fix NYC to C
+                        </button>
+                    )}
+
                     <span className={`ap-save-indicator${saving ? ' ap-save-indicator--saving' : ''}`}>
                         {saving ? <><Loader2 className="ap-spinner-icon animate-spin" size={12} /> Saving…</> : <><CheckCircle size={12} /> Auto-saved</>}
                     </span>
@@ -4253,19 +4346,21 @@ export const SubmissionReview: React.FC = () => {
                             </>
                         ) : <div className="sr-sig-no-image" style={{ color: 'black' }}>Awaiting Submission</div>}
                     </div>
-                    <div className="sr-sig-box" style={{ borderColor: 'blue', color: 'blue' }}>
-                        <span style={{ color: 'blue' }}>{displayFacRole === 'mentor' ? 'Mentor Verification' : 'Facilitator Pre-Marking'}</span>
-                        {isFacDone ? (
-                            <>
-                                {(submission.grading?.facilitatorSignatureUrl || facilitatorProfile?.signatureUrl) ? (
-                                    <img src={submission.grading?.facilitatorSignatureUrl || facilitatorProfile?.signatureUrl} alt="Facilitator Signature" crossOrigin="anonymous" style={filterBlue} />
-                                ) : <div className="sr-sig-no-image" style={{ color: 'blue', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontStyle: 'italic' }}>System Authenticated</div>}
-                                <strong style={{ color: 'blue' }}>{submission.grading?.facilitatorName || 'Facilitator'}</strong>
-                                <em style={{ color: 'blue' }}>Signed: {new Date(submission.grading?.facilitatorReviewedAt).toLocaleDateString()}</em>
-                                <div className="sr-sig-line" style={{ borderTopColor: 'blue' }}>{displayFacRole === 'mentor' ? 'Verification Confirmed' : 'Pre-Marking Completed'}</div>
-                            </>
-                        ) : <div className="sr-sig-no-image" style={{ color: 'blue' }}>Awaiting Verification</div>}
-                    </div>
+                    {!isSummative && (
+                        <div className="sr-sig-box" style={{ borderColor: 'blue', color: 'blue' }}>
+                            <span style={{ color: 'blue' }}>{displayFacRole === 'mentor' ? 'Mentor Verification' : 'Facilitator Pre-Marking'}</span>
+                            {isFacDone ? (
+                                <>
+                                    {(submission.grading?.facilitatorSignatureUrl || facilitatorProfile?.signatureUrl) ? (
+                                        <img src={submission.grading?.facilitatorSignatureUrl || facilitatorProfile?.signatureUrl} alt="Facilitator Signature" crossOrigin="anonymous" style={filterBlue} />
+                                    ) : <div className="sr-sig-no-image" style={{ color: 'blue', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontStyle: 'italic' }}>System Authenticated</div>}
+                                    <strong style={{ color: 'blue' }}>{submission.grading?.facilitatorName || 'Facilitator'}</strong>
+                                    <em style={{ color: 'blue' }}>Signed: {new Date(submission.grading?.facilitatorReviewedAt).toLocaleDateString()}</em>
+                                    <div className="sr-sig-line" style={{ borderTopColor: 'blue' }}>{displayFacRole === 'mentor' ? 'Verification Confirmed' : 'Pre-Marking Completed'}</div>
+                                </>
+                            ) : <div className="sr-sig-no-image" style={{ color: 'blue' }}>Awaiting Verification</div>}
+                        </div>
+                    )}
                     <div className="sr-sig-box" style={{ borderColor: 'red', color: 'red' }}>
                         <span style={{ color: 'red' }}>Assessor Sign-off</span>
                         {isAssDone ? (
@@ -4503,68 +4598,70 @@ export const SubmissionReview: React.FC = () => {
                 </div>
 
                 <aside className="sr-sidebar no-print">
-                    <ReviewStageCard
-                        colorTheme="blue" title={facPanelTitle} status={facPanelStatus}
-                        lockedMessage="The learner has not submitted this assessment yet. Marking and feedback are locked until they complete their attempt."
-                        awaitingTitle={isAwaitingSignoff ? 'Awaiting Learner Signature' : 'Awaiting Facilitator Review'}
-                        awaitingMessage={isAwaitingSignoff ? 'You have saved your verification. The learner must now log in, review your supervisor comments, and apply their signature before the logbook goes to the Assessor.' : 'The learner has submitted this assessment. Awaiting the Facilitator to complete their pre-marking.'}
-                        showScore={!isWorkplaceModule && displayFacRole !== 'mentor'}
-                        scoreAwarded={facTotals.score} scoreMax={facTotals.max} scorePct={facTotals.pct}
-                        feedbackLabel={facRemarksLabel} feedbackPlaceholder="Add overall coaching comments..."
-                        feedbackValue={facOverallFeedback} onFeedbackChange={handleFacOverallFeedbackChange}
-                        submitLabel={facSubmitLabel} onSubmit={triggerSubmitFacilitator} isSaving={saving}
-                        signatureLabel={displayFacRole === 'mentor' ? 'Mentor Verification' : 'Facilitator Pre-Marking'}
-                        signatureName={submission.grading?.facilitatorName || 'Facilitator'}
-                        signatureUrl={submission.grading?.facilitatorSignatureUrl || facilitatorProfile?.signatureUrl}
-                        signatureDate={submission.grading?.facilitatorReviewedAt ? new Date(submission.grading.facilitatorReviewedAt).toLocaleDateString() : undefined}
-                        signatureTagline={displayFacRole === 'mentor' ? 'Verification Confirmed' : 'Pre-Marking Completed'}
-                        timeOverrideValue={facTimeOverride} onTimeOverrideChange={setFacTimeOverride}
-                        autoTimeSeconds={getFacTime()} autoSummedMinutes={autoSummedTaskMinutes}
-                        activeControls={
-                            <>
-                                {canReturnToLearner && (
-                                    <button className="mlab-btn mlab-btn--ghost" style={{ width: '100%', marginTop: '10px', borderColor: '#bfdbfe', color: '#1d4ed8' }} onClick={() => setShowReturnToLearnerModal(true)} disabled={saving}>
-                                        <Undo2 size={14} style={{ marginRight: '6px' }} /> Return to Learner for Corrections
-                                    </button>
-                                )}
+                    {!isSummative && (
+                        <ReviewStageCard
+                            colorTheme="blue" title={facPanelTitle} status={facPanelStatus}
+                            lockedMessage="The learner has not submitted this assessment yet. Marking and feedback are locked until they complete their attempt."
+                            awaitingTitle={isAwaitingSignoff ? 'Awaiting Learner Signature' : 'Awaiting Facilitator Review'}
+                            awaitingMessage={isAwaitingSignoff ? 'You have saved your verification. The learner must now log in, review your supervisor comments, and apply their signature before the logbook goes to the Assessor.' : 'The learner has submitted this assessment. Awaiting the Facilitator to complete their pre-marking.'}
+                            showScore={!isWorkplaceModule && displayFacRole !== 'mentor'}
+                            scoreAwarded={facTotals.score} scoreMax={facTotals.max} scorePct={facTotals.pct}
+                            feedbackLabel={facRemarksLabel} feedbackPlaceholder="Add overall coaching comments..."
+                            feedbackValue={facOverallFeedback} onFeedbackChange={handleFacOverallFeedbackChange}
+                            submitLabel={facSubmitLabel} onSubmit={triggerSubmitFacilitator} isSaving={saving}
+                            signatureLabel={displayFacRole === 'mentor' ? 'Mentor Verification' : 'Facilitator Pre-Marking'}
+                            signatureName={submission.grading?.facilitatorName || 'Facilitator'}
+                            signatureUrl={submission.grading?.facilitatorSignatureUrl || facilitatorProfile?.signatureUrl}
+                            signatureDate={submission.grading?.facilitatorReviewedAt ? new Date(submission.grading.facilitatorReviewedAt).toLocaleDateString() : undefined}
+                            signatureTagline={displayFacRole === 'mentor' ? 'Verification Confirmed' : 'Pre-Marking Completed'}
+                            timeOverrideValue={facTimeOverride} onTimeOverrideChange={setFacTimeOverride}
+                            autoTimeSeconds={getFacTime()} autoSummedMinutes={autoSummedTaskMinutes}
+                            activeControls={
+                                <>
+                                    {canReturnToLearner && (
+                                        <button className="mlab-btn mlab-btn--ghost" style={{ width: '100%', marginTop: '10px', borderColor: '#bfdbfe', color: '#1d4ed8' }} onClick={() => setShowReturnToLearnerModal(true)} disabled={saving}>
+                                            <Undo2 size={14} style={{ marginRight: '6px' }} /> Return to Learner for Corrections
+                                        </button>
+                                    )}
 
-                                {(isFacilitator || isAdmin) && ((submission.status === 'in_progress' && assessment?.moduleInfo?.timeLimit > 0) || ['not_started', 'submitted', 'facilitator_reviewed', 'awaiting_learner_signoff'].includes(submission.status)) && (
-                                    <div className="no-print" style={{ marginTop: '10px', background: '#eff6ff', padding: '12px', borderRadius: '8px', border: '1px solid #bfdbfe' }}>
-                                        <p style={{ margin: '0 0 8px 0', fontSize: '0.85rem', color: '#1e3a8a', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                            <ShieldAlert size={14} /> Facilitator Overrides
-                                        </p>
+                                    {(isFacilitator || isAdmin) && ((submission.status === 'in_progress' && assessment?.moduleInfo?.timeLimit > 0) || ['not_started', 'submitted', 'facilitator_reviewed', 'awaiting_learner_signoff'].includes(submission.status)) && (
+                                        <div className="no-print" style={{ marginTop: '10px', background: '#eff6ff', padding: '12px', borderRadius: '8px', border: '1px solid #bfdbfe' }}>
+                                            <p style={{ margin: '0 0 8px 0', fontSize: '0.85rem', color: '#1e3a8a', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                <ShieldAlert size={14} /> Facilitator Overrides
+                                            </p>
 
-                                        {!isPureKnowledge && (
-                                            <>
-                                                {submission.status !== 'not_started' && (
-                                                    <div style={{ marginBottom: '12px', borderBottom: '1px dashed #bfdbfe', paddingBottom: '10px' }}>
-                                                        <label style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#1e40af', display: 'block', marginBottom: '4px', textTransform: 'uppercase' }}>Learner Task Timer Override (Mins)</label>
-                                                        <input type="number" min="1" placeholder="Enter true duration in minutes..." style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }} value={learnerTimeOverride} onChange={(e) => handleLearnerTimeOverrideChange(e.target.value)} disabled={saving} />
-                                                    </div>
-                                                )}
-                                                {submission.status === 'in_progress' && assessment?.moduleInfo?.timeLimit > 0 && (
-                                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px' }}>
-                                                        <button onClick={() => !disableExtraTime && grantExtraTime(15, 'Facilitator +15 min override')} disabled={disableExtraTime || saving} className="mlab-btn mlab-btn--sm" style={{ background: disableExtraTime ? '#cbd5e1' : '#3b82f6', color: 'white', padding: '6px 10px', fontSize: '0.75rem', border: 'none', cursor: disableExtraTime ? 'not-allowed' : 'pointer' }}>+15 Mins</button>
-                                                        <button onClick={() => !disableExtraTime && grantExtraTime(30, 'Facilitator +30 min override')} disabled={disableExtraTime || saving} className="mlab-btn mlab-btn--sm" style={{ background: disableExtraTime ? '#94a3b8' : '#2563eb', color: 'white', padding: '6px 10px', fontSize: '0.75rem', border: 'none', cursor: disableExtraTime ? 'not-allowed' : 'pointer' }}>+30 Mins</button>
-                                                        {submission.extraTimeGranted > 0 && <span style={{ fontSize: '0.75rem', color: '#0ea5e9', fontWeight: 'bold' }}>({submission.extraTimeGranted} min active)</span>}
-                                                    </div>
-                                                )}
-                                            </>
-                                        )}
+                                            {!isPureKnowledge && (
+                                                <>
+                                                    {submission.status !== 'not_started' && (
+                                                        <div style={{ marginBottom: '12px', borderBottom: '1px dashed #bfdbfe', paddingBottom: '10px' }}>
+                                                            <label style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#1e40af', display: 'block', marginBottom: '4px', textTransform: 'uppercase' }}>Learner Task Timer Override (Mins)</label>
+                                                            <input type="number" min="1" placeholder="Enter true duration in minutes..." style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }} value={learnerTimeOverride} onChange={(e) => handleLearnerTimeOverrideChange(e.target.value)} disabled={saving} />
+                                                        </div>
+                                                    )}
+                                                    {submission.status === 'in_progress' && assessment?.moduleInfo?.timeLimit > 0 && (
+                                                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px' }}>
+                                                            <button onClick={() => !disableExtraTime && grantExtraTime(15, 'Facilitator +15 min override')} disabled={disableExtraTime || saving} className="mlab-btn mlab-btn--sm" style={{ background: disableExtraTime ? '#cbd5e1' : '#3b82f6', color: 'white', padding: '6px 10px', fontSize: '0.75rem', border: 'none', cursor: disableExtraTime ? 'not-allowed' : 'pointer' }}>+15 Mins</button>
+                                                            <button onClick={() => !disableExtraTime && grantExtraTime(30, 'Facilitator +30 min override')} disabled={disableExtraTime || saving} className="mlab-btn mlab-btn--sm" style={{ background: disableExtraTime ? '#94a3b8' : '#2563eb', color: 'white', padding: '6px 10px', fontSize: '0.75rem', border: 'none', cursor: disableExtraTime ? 'not-allowed' : 'pointer' }}>+30 Mins</button>
+                                                            {submission.extraTimeGranted > 0 && <span style={{ fontSize: '0.75rem', color: '#0ea5e9', fontWeight: 'bold' }}>({submission.extraTimeGranted} min active)</span>}
+                                                        </div>
+                                                    )}
+                                                </>
+                                            )}
 
-                                        {(submission.status === 'not_started') && (
-                                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                                <button onClick={toggleDeferredAccess} className="mlab-btn mlab-btn--sm" style={{ background: submission.overrideUnlock ? '#ef4444' : '#10b981', color: 'white', padding: '6px 10px', fontSize: '0.75rem', border: 'none', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                    {submission.overrideUnlock ? <><Lock size={12} /> Revoke Access</> : <><Unlock size={12} /> Grant Deferred Access</>}
-                                                </button>
-                                                <span style={{ fontSize: '0.75rem', color: '#64748b' }}>{submission.overrideUnlock ? "Learner can bypass scheduling locks." : "Bound by global schedule."}</span>
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-                            </>
-                        }
-                    />
+                                            {(submission.status === 'not_started') && (
+                                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                                    <button onClick={toggleDeferredAccess} className="mlab-btn mlab-btn--sm" style={{ background: submission.overrideUnlock ? '#ef4444' : '#10b981', color: 'white', padding: '6px 10px', fontSize: '0.75rem', border: 'none', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                        {submission.overrideUnlock ? <><Lock size={12} /> Revoke Access</> : <><Unlock size={12} /> Grant Deferred Access</>}
+                                                    </button>
+                                                    <span style={{ fontSize: '0.75rem', color: '#64748b' }}>{submission.overrideUnlock ? "Learner can bypass scheduling locks." : "Bound by global schedule."}</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </>
+                            }
+                        />
+                    )}
 
                     <ReviewStageCard
                         // colorTheme="red" title="Official Assessor Grading" status={assPanelStatus}
@@ -4598,31 +4695,62 @@ export const SubmissionReview: React.FC = () => {
                         signatureTagline="Digital Signature Confirmed"
                         timeOverrideValue={assTimeOverride} onTimeOverrideChange={setAssTimeOverride} autoTimeSeconds={getAssTime()}
                         activeControls={
-                            canGrade && !isMissed && !isViolation && (
-                                <div className="sr-competency-section">
-                                    <div className="sr-role-guide red"><Info size={16} /><div><strong>Summative Judgment</strong><br />Declare Competency. You must justify your marks.</div></div>
-                                    <label className="sr-sidebar-label" style={{ color: 'red', marginTop: '1rem' }}>Final Competency</label>
-                                    {/* <div className="sr-comp-toggles">
-                                        <button className={`sr-comp-btn ${competency === 'C' ? 'active-c-red' : ''}`} onClick={() => handleCompetencySelect('C')}><Award size={16} /> Competent (C)</button>
-                                        <button className={`sr-comp-btn ${competency === 'NYC' ? 'active-nyc-red' : ''}`} onClick={() => handleCompetencySelect('NYC')}><AlertCircle size={16} /> Not Yet Competent</button>
-                                    </div> */}
-                                    <div className="sr-comp-toggles" style={{ flexWrap: 'wrap', gap: '6px' }}>
-                                        {isSECAM ? (
-                                            <>
-                                                <button className={`sr-comp-btn ${competency === 'HC' ? 'active-c-red' : ''}`} onClick={() => handleCompetencySelect('HC')} style={{ fontSize: '0.75rem', padding: '6px 10px' }}><Sparkles size={14} /> L4: Highly Competent</button>
-                                                <button className={`sr-comp-btn ${competency === 'C' ? 'active-c-red' : ''}`} onClick={() => handleCompetencySelect('C')} style={{ fontSize: '0.75rem', padding: '6px 10px' }}><Award size={14} /> L3: Competent</button>
-                                                <button className={`sr-comp-btn ${competency === 'DEV' ? 'active-nyc-red' : ''}`} onClick={() => handleCompetencySelect('DEV')} style={{ fontSize: '0.75rem', padding: '6px 10px' }}><RefreshCw size={14} /> L2: Developing</button>
-                                                <button className={`sr-comp-btn ${competency === 'NYC' ? 'active-nyc-red' : ''}`} onClick={() => handleCompetencySelect('NYC')} style={{ fontSize: '0.75rem', padding: '6px 10px' }}><AlertCircle size={14} /> L1: NYC</button>
-                                            </>
-                                        ) : (
-                                            <>
-                                                <button className={`sr-comp-btn ${competency === 'C' ? 'active-c-red' : ''}`} onClick={() => handleCompetencySelect('C')}><Award size={16} /> Competent (C)</button>
-                                                <button className={`sr-comp-btn ${competency === 'NYC' ? 'active-nyc-red' : ''}`} onClick={() => handleCompetencySelect('NYC')}><AlertCircle size={16} /> Not Yet Competent (NYC)</button>
-                                            </>
-                                        )}
+                            <>
+                                {canGrade && !isMissed && !isViolation && (
+                                    <div className="sr-competency-section">
+                                        <div className="sr-role-guide red"><Info size={16} /><div><strong>Summative Judgment</strong><br />Declare Competency. You must justify your marks.</div></div>
+                                        <label className="sr-sidebar-label" style={{ color: 'red', marginTop: '1rem' }}>Final Competency</label>
+
+                                        <div className="sr-comp-toggles" style={{ flexWrap: 'wrap', gap: '6px' }}>
+                                            {isSECAM ? (
+                                                <>
+                                                    <button className={`sr-comp-btn ${competency === 'HC' ? 'active-c-red' : ''}`} onClick={() => handleCompetencySelect('HC')} style={{ fontSize: '0.75rem', padding: '6px 10px' }}><Sparkles size={14} /> L4: Highly Competent</button>
+                                                    <button className={`sr-comp-btn ${competency === 'C' ? 'active-c-red' : ''}`} onClick={() => handleCompetencySelect('C')} style={{ fontSize: '0.75rem', padding: '6px 10px' }}><Award size={14} /> L3: Competent</button>
+                                                    <button className={`sr-comp-btn ${competency === 'DEV' ? 'active-nyc-red' : ''}`} onClick={() => handleCompetencySelect('DEV')} style={{ fontSize: '0.75rem', padding: '6px 10px' }}><RefreshCw size={14} /> L2: Developing</button>
+                                                    <button className={`sr-comp-btn ${competency === 'NYC' ? 'active-nyc-red' : ''}`} onClick={() => handleCompetencySelect('NYC')} style={{ fontSize: '0.75rem', padding: '6px 10px' }}><AlertCircle size={14} /> L1: NYC</button>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <button className={`sr-comp-btn ${competency === 'C' ? 'active-c-red' : ''}`} onClick={() => handleCompetencySelect('C')}><Award size={16} /> Competent (C)</button>
+                                                    <button className={`sr-comp-btn ${competency === 'NYC' ? 'active-nyc-red' : ''}`} onClick={() => handleCompetencySelect('NYC')}><AlertCircle size={16} /> Not Yet Competent (NYC)</button>
+                                                </>
+                                            )}
+                                        </div>
                                     </div>
-                                </div>
-                            )
+                                )}
+                                {isMathGlitchDetected && (
+                                    <div style={{ background: '#ecfdf5', border: '2px solid #10b981', padding: '12px', borderRadius: '6px', marginTop: '1rem', textAlign: 'center' }}>
+                                        <p style={{ fontSize: '0.85rem', color: '#047857', margin: '0 0 10px 0', fontWeight: 'bold' }}>
+                                            ⚠️ Math Glitch Detected: Passed but locked as NYC.
+                                        </p>
+                                        <button
+                                            type="button"
+                                            className="mlab-btn mlab-btn--sm"
+                                            style={{ background: '#10b981', color: 'white', border: 'none', width: '100%', justifyContent: 'center', cursor: 'pointer', padding: '8px', fontWeight: 'bold', borderRadius: '4px' }}
+                                            disabled={saving}
+                                            onClick={async () => {
+                                                setSaving(true);
+                                                try {
+                                                    const newComp = (isSECAM && assTotals.pct >= 90) ? 'HC' : 'C';
+                                                    await updateDoc(doc(db, 'learner_submissions', submission.id), {
+                                                        competency: newComp,
+                                                        systemNote: `Competency auto-corrected from NYC to ${newComp} by ${user?.fullName} due to legacy math glitch.`,
+                                                        lastStaffEditAt: new Date().toISOString()
+                                                    });
+                                                    toast.success(`Glitch fixed! Competency updated to ${newComp}.`);
+                                                    setTimeout(() => window.location.reload(), 1200);
+                                                } catch (err) {
+                                                    toast.error("Failed to apply fix.");
+                                                } finally {
+                                                    setSaving(false);
+                                                }
+                                            }}
+                                        >
+                                            <Sparkles size={14} style={{ marginRight: '6px' }} /> Auto-Correct to Competent
+                                        </button>
+                                    </div>
+                                )}
+                            </>
                         }
                     />
 
@@ -4787,11 +4915,12 @@ export const SubmissionReview: React.FC = () => {
                         const isFinalizedNYC = isModDone && ['NYC', 'DEV', '1', '2'].includes(String(submission?.competency || '').toUpperCase());
                         const hasPendingAppeal = submission?.appeal?.status === 'pending';
 
-                        // 🚀 RESTRICT BOARD ACTIONS TO PENDING APPEALS, EXHAUSTED ATTEMPTS (NYC), OR VIOLATIONS ONLY
+                        // 🚀 RESTRICT BOARD ACTIONS TO PENDING APPEALS, EXHAUSTED ATTEMPTS, VIOLATIONS, OR MATH GLITCHES
                         const shouldShowBoardActions = (isAdmin || isSuperAdmin) && (
                             hasPendingAppeal ||
                             (isFinalizedNYC && isMaxAttemptsExhausted) ||
-                            isViolation
+                            isViolation ||
+                            isMathGlitchDetected
                         );
 
                         if (!shouldShowBoardActions) return null;
@@ -4802,8 +4931,44 @@ export const SubmissionReview: React.FC = () => {
                                     <ShieldAlert size={16} /> Academic Board Actions
                                 </h3>
                                 <p style={{ fontSize: '0.8rem', color: '#991b1b', marginBottom: '1rem', lineHeight: 1.4 }}>
-                                    As an Administrator, you have the authority to override system lockouts, uphold learner appeals, and grant special additional attempts.
+                                    As an Administrator, you have the authority to override system lockouts, uphold learner appeals, grant special additional attempts, and fix data anomalies.
                                 </p>
+
+                                {isMathGlitchDetected && (
+                                    <div style={{ background: '#fff', border: '1px solid #fca5a5', padding: '12px', borderRadius: '6px', marginBottom: '1rem' }}>
+                                        <strong style={{ fontSize: '0.75rem', color: '#dc2626', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                            <AlertTriangle size={14} /> Legacy Math Glitch Detected
+                                        </strong>
+                                        <p style={{ fontSize: '0.85rem', color: '#475569', margin: '6px 0 10px 0', lineHeight: 1.4 }}>
+                                            The learner scored <strong>{assTotals.pct}%</strong> (Pass mark is {minPassPercentage}%), but the database incorrectly saved their outcome as <strong>Not Yet Competent (NYC)</strong> due to a previous system calculation error.
+                                        </p>
+                                        <button
+                                            type="button"
+                                            className="mlab-btn mlab-btn--sm"
+                                            style={{ background: '#10b981', color: 'white', border: 'none', width: '100%', justifyContent: 'center' }}
+                                            disabled={saving}
+                                            onClick={async () => {
+                                                setSaving(true);
+                                                try {
+                                                    const newComp = (isSECAM && assTotals.pct >= 90) ? 'HC' : 'C';
+                                                    await updateDoc(doc(db, 'learner_submissions', submission.id), {
+                                                        competency: newComp,
+                                                        systemNote: `Competency auto-corrected from NYC to ${newComp} by ${user?.fullName} due to legacy math glitch.`,
+                                                        lastStaffEditAt: new Date().toISOString()
+                                                    });
+                                                    toast.success(`Glitch fixed! Competency updated to ${newComp}.`);
+                                                    setTimeout(() => window.location.reload(), 1200);
+                                                } catch (err) {
+                                                    toast.error("Failed to apply fix.");
+                                                } finally {
+                                                    setSaving(false);
+                                                }
+                                            }}
+                                        >
+                                            <Sparkles size={14} style={{ marginRight: '6px' }} /> Auto-Correct Outcome to Competent
+                                        </button>
+                                    </div>
+                                )}
 
                                 {hasPendingAppeal && (
                                     <div style={{ background: '#fff', border: '1px solid #fecaca', padding: '10px', borderRadius: '6px', marginBottom: '1rem' }}>

@@ -295,6 +295,7 @@ export interface DashboardLearner
   enrollmentHistory?: EnrollmentRecord[];
   employerId?: string;
   mentorId?: string;
+  isBlockedFromForum?: boolean;
 }
 
 export interface ProgrammeModule {

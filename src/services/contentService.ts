@@ -31,14 +31,20 @@ export const fetchUnitsByContainer = async (
     where("containerId", "==", containerId),
   );
   const snap = await getDocs(q);
-  const units = snap.docs.map(
-    (d) =>
-      ({
-        id: d.id,
-        attachments: d.data().attachments || [],
-        ...d.data(),
-      }) as LearningUnit,
-  );
+  const units = snap.docs.map((d) => {
+    const data = d.data();
+    return {
+      id: d.id,
+      ...data,
+      linkedAssessmentId:
+        data.linkedAssessmentId ||
+        data.assessmentId ||
+        data.formalAssessmentId ||
+        null,
+      unlinkedPolicy: data.unlinkedPolicy || "soft_gate",
+      attachments: data.attachments || [],
+    } as LearningUnit;
+  });
   return units.sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
 };
 
@@ -50,14 +56,20 @@ export const fetchUnitsByProgramme = async (
     where("containerId", "==", programmeId),
   );
   const snap = await getDocs(q);
-  const units = snap.docs.map(
-    (d) =>
-      ({
-        id: d.id,
-        attachments: d.data().attachments || [],
-        ...d.data(),
-      }) as LearningUnit,
-  );
+  const units = snap.docs.map((d) => {
+    const data = d.data();
+    return {
+      id: d.id,
+      ...data,
+      linkedAssessmentId:
+        data.linkedAssessmentId ||
+        data.assessmentId ||
+        data.formalAssessmentId ||
+        null,
+      unlinkedPolicy: data.unlinkedPolicy || "soft_gate",
+      attachments: data.attachments || [],
+    } as LearningUnit;
+  });
   return units.sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
 };
 
@@ -68,8 +80,18 @@ export const saveLearningUnit = async (
   const ref = unitId
     ? doc(db, "learning_units", unitId)
     : doc(collection(db, "learning_units"));
+
+  const rawUnit = unitData as any;
+  const resolvedAssessmentId =
+    rawUnit.linkedAssessmentId ||
+    rawUnit.assessmentId ||
+    rawUnit.formalAssessmentId ||
+    null;
+
   const payload = {
     ...unitData,
+    linkedAssessmentId: resolvedAssessmentId,
+    unlinkedPolicy: rawUnit.unlinkedPolicy || "soft_gate",
     attachments: unitData.attachments || [],
     updatedAt: new Date().toISOString(),
     ...(unitId ? {} : { createdAt: new Date().toISOString() }),

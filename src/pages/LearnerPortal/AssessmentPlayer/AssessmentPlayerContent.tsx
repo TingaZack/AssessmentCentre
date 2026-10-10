@@ -549,7 +549,8 @@ const DrawingWorkspace: React.FC<{ value: string; onChange: (v: string) => void;
 };
 
 export interface AssessmentPlayerContentProps {
-    isSECAM?: boolean; // 🚀 SECAM / Bootcamp Framework Flag
+    isSECAM?: boolean;
+    isSummative?: boolean; // SUMMATIVE / Bypass Facilitator Flag
     user: any;
     assessment: any;
     submission: any;
@@ -623,6 +624,7 @@ export interface AssessmentPlayerContentProps {
 export const AssessmentPlayerContent: React.FC<AssessmentPlayerContentProps> = (props) => {
     const {
         isSECAM,
+        isSummative,
         user, assessment, submission, answers, learnerProfile, learnerEnrollment, assessorProfile,
         moderatorProfile, facilitatorProfile, employers, staff, approvedLogs, logsLoading, saving, setSaving,
         uploadProgress, setUploadProgress, activeTabs, setActiveTabs, timeLeft, isGloballyLocked,
@@ -652,6 +654,21 @@ export const AssessmentPlayerContent: React.FC<AssessmentPlayerContentProps> = (
         }
         return status as string;
     };
+
+    // // 🚀 DEBUG LOG: Verify existence of feedback texts
+    // useEffect(() => {
+    //     if (submission) {
+    //         console.groupCollapsed(`[Feedback Debug] Sidebar Comments for Submission: ${submission.id}`);
+    //         console.log("Full Submission Object:", submission);
+    //         console.log("Submission Grading Object:", submission.grading);
+    //         console.log("Facilitator Overall Feedback:", submission.grading?.facilitatorOverallFeedback);
+    //         console.log("Assessor Overall Feedback:", submission.grading?.assessorOverallFeedback);
+    //         console.log("Legacy Overall Feedback:", submission.grading?.overallFeedback);
+    //         console.log("Moderation Feedback:", submission.moderation?.feedback);
+    //         console.log("isFacDone:", isFacDone, "isAssDone:", isAssDone, "isModDone:", isModDone);
+    //         console.groupEnd();
+    //     }
+    // }, [submission, isFacDone, isAssDone, isModDone]);
 
     const [isFetchingSnapshots, setIsFetchingSnapshots] = useState(true);
     const [resolvedSnapshots, setResolvedSnapshots] = useState<Record<string, any>>({});
@@ -908,7 +925,8 @@ export const AssessmentPlayerContent: React.FC<AssessmentPlayerContentProps> = (
                             </div>
                         )}
 
-                        {!isWorkplaceModule && isFacDone && (
+                        {/* SUMMATIVE BYPASS: Hide Facilitator Score Card */}
+                        {!isSummative && !isWorkplaceModule && isFacDone && (
                             <div className={`ap-score-card${isModDone ? ' ap-score-card--verified' : ''}`}>
                                 <div className="ap-score-card__stripe" aria-hidden="true" />
                                 <div className="ap-score-card__state">{isModDone ? <><Award size={12} className="ap-score-card__state-icon ap-score-card__state-icon--verified" /> Final Verified Score</> : <><Clock size={12} className="ap-score-card__state-icon" /> Provisional Score</>}</div>
@@ -946,32 +964,92 @@ export const AssessmentPlayerContent: React.FC<AssessmentPlayerContentProps> = (
                                             <span className="ap-sidebar__awaiting__sub">The Assessor has not yet finalised your results.</span>
                                         </div>
                                     )}
-                                    {isFacDone && submission.grading?.facilitatorOverallFeedback && <div className="ap-sidebar__feedback ap-sidebar__feedback--fac"><strong className="ap-sidebar__feedback__heading"><Info size={11} /> {savedFacRole === 'mentor' ? 'Mentor Verification Summary' : 'Facilitator Summary'}</strong><p className="ap-sidebar__feedback__text">{submission.grading.facilitatorOverallFeedback}</p></div>}
-                                    {isAssDone && (submission.grading?.assessorOverallFeedback || submission.grading?.overallFeedback) && <div className="ap-sidebar__feedback ap-sidebar__feedback--ass"><strong className="ap-sidebar__feedback__heading"><MessageSquare size={11} /> Assessor Remarks</strong><p className="ap-sidebar__feedback__text">{submission.grading.assessorOverallFeedback || submission.grading.overallFeedback}</p></div>}
-                                    {isModDone && submission.moderation?.feedback && <div className="ap-sidebar__feedback ap-sidebar__feedback--mod"><strong className="ap-sidebar__feedback__heading"><ShieldCheck size={11} /> QA Endorsement Notes</strong><p className="ap-sidebar__feedback__text">{submission.moderation.feedback}</p></div>}
+
+                                    {/* 🚀 SUMMATIVE BYPASS: Hide Facilitator step completely */}
+                                    {!isSummative && (
+                                        <div className="ap-sidebar__timeline-item">
+                                            <div className={`ap-sidebar__timeline-icon${isFacDone ? ' ap-sidebar__timeline-icon--done' : ''}`}>
+                                                <UserCheck size={13} />
+                                            </div>
+                                            <div className="ap-sidebar__timeline-content">
+                                                <span className="ap-sidebar__timeline-title">
+                                                    {savedFacRole === 'mentor' ? 'Mentor Verification' : 'Facilitator Review'}
+                                                </span>
+                                                <span className="ap-sidebar__timeline-desc" style={{ marginBottom: (isFacDone && submission.grading?.facilitatorOverallFeedback) ? '6px' : '0' }}>
+                                                    {isFacDone
+                                                        ? `Completed ${getSafeDate(submission.grading?.facilitatorReviewedAt)}`
+                                                        : isViolation
+                                                            ? 'Pending Facilitator Review (Violation Flagged)'
+                                                            : isMissed
+                                                                ? 'Pending Staff Review (Missed)'
+                                                                : savedFacRole === 'mentor' ? 'Waiting for Mentor' : 'Waiting for Facilitator'}
+                                                </span>
+                                                {isFacDone && (
+                                                    <div style={{ background: 'rgba(255, 255, 255, 0.05)', padding: '6px 8px', borderRadius: '4px', borderLeft: '2px solid #3b82f6', marginTop: '4px' }}>
+                                                        {submission.grading?.facilitatorOverallFeedback ? (
+                                                            <p style={{ margin: 0, fontSize: '0.75rem', color: '#cbd5e1', lineHeight: 1.4 }}>
+                                                                "{submission.grading.facilitatorOverallFeedback}"
+                                                            </p>
+                                                        ) : (
+                                                            <p style={{ margin: 0, fontSize: '0.7rem', color: '#64748b', fontStyle: 'italic' }}>
+                                                                No additional remarks provided.
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
 
                                     <div className="ap-sidebar__timeline-item">
-                                        <div className={`ap-sidebar__timeline-icon${isFacDone ? ' ap-sidebar__timeline-icon--done' : ''}`}>
-                                            <UserCheck size={13} />
+                                        <div className={`ap-sidebar__timeline-icon${isAssDone ? ' ap-sidebar__timeline-icon--done' : ''}`}>
+                                            <Award size={13} />
                                         </div>
                                         <div className="ap-sidebar__timeline-content">
-                                            <span className="ap-sidebar__timeline-title">
-                                                {savedFacRole === 'mentor' ? 'Mentor Verification' : 'Facilitator Review'}
+                                            <span className="ap-sidebar__timeline-title">Assessor Grading</span>
+                                            <span className="ap-sidebar__timeline-desc" style={{ marginBottom: (isAssDone && (submission.grading?.assessorOverallFeedback || submission.grading?.overallFeedback)) ? '6px' : '0' }}>
+                                                {isAssDone ? `Assessed ${getSafeDate(submission.grading?.gradedAt)}` : 'Waiting for Assessor'}
                                             </span>
-                                            <span className="ap-sidebar__timeline-desc">
-                                                {isFacDone
-                                                    ? `Completed ${getSafeDate(submission.grading?.facilitatorReviewedAt)}`
-                                                    : isViolation
-                                                        ? 'Pending Facilitator Review (Violation Flagged)'
-                                                        : isMissed
-                                                            ? 'Pending Staff Review (Missed)'
-                                                            : savedFacRole === 'mentor' ? 'Waiting for Mentor' : 'Waiting for Facilitator'}
-                                            </span>
+                                            {isAssDone && (
+                                                <div style={{ background: 'rgba(255, 255, 255, 0.05)', padding: '6px 8px', borderRadius: '4px', borderLeft: '2px solid #ef4444', marginTop: '4px' }}>
+                                                    {submission.grading?.assessorOverallFeedback || submission.grading?.overallFeedback ? (
+                                                        <p style={{ margin: 0, fontSize: '0.75rem', color: '#cbd5e1', lineHeight: 1.4 }}>
+                                                            "{submission.grading.assessorOverallFeedback || submission.grading.overallFeedback}"
+                                                        </p>
+                                                    ) : (
+                                                        <p style={{ margin: 0, fontSize: '0.7rem', color: '#64748b', fontStyle: 'italic' }}>
+                                                            No additional remarks provided.
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
 
-                                    <div className="ap-sidebar__timeline-item"><div className={`ap-sidebar__timeline-icon${isAssDone ? ' ap-sidebar__timeline-icon--done' : ''}`}><Award size={13} /></div><div className="ap-sidebar__timeline-content"><span className="ap-sidebar__timeline-title">Assessor Grading</span><span className="ap-sidebar__timeline-desc">{isAssDone ? `Assessed ${getSafeDate(submission.grading?.gradedAt)}` : 'Waiting for Assessor'}</span></div></div>
-                                    <div className="ap-sidebar__timeline-item"><div className={`ap-sidebar__timeline-icon${isModDone ? ' ap-sidebar__timeline-icon--done' : ''}`}><ShieldCheck size={13} /></div><div className="ap-sidebar__timeline-content"><span className="ap-sidebar__timeline-title">Internal Moderation</span><span className="ap-sidebar__timeline-desc">{isModDone ? `${submission.moderation?.outcome === 'Returned' ? 'Returned to Assessor' : 'Endorsed'} ${getSafeDate(submission.moderation?.moderatedAt)}` : 'Awaiting QA Verification'}</span></div></div>
+                                    <div className="ap-sidebar__timeline-item">
+                                        <div className={`ap-sidebar__timeline-icon${isModDone ? ' ap-sidebar__timeline-icon--done' : ''}`}>
+                                            <ShieldCheck size={13} />
+                                        </div>
+                                        <div className="ap-sidebar__timeline-content">
+                                            <span className="ap-sidebar__timeline-title">Internal Moderation</span>
+                                            <span className="ap-sidebar__timeline-desc" style={{ marginBottom: (isModDone && submission.moderation?.feedback) ? '6px' : '0' }}>
+                                                {isModDone ? `${submission.moderation?.outcome === 'Returned' ? 'Returned to Assessor' : 'Endorsed'} ${getSafeDate(submission.moderation?.moderatedAt)}` : 'Awaiting QA Verification'}
+                                            </span>
+                                            {isModDone && (
+                                                <div style={{ background: 'rgba(255, 255, 255, 0.05)', padding: '6px 8px', borderRadius: '4px', borderLeft: '2px solid #22c55e', marginTop: '4px' }}>
+                                                    {submission.moderation?.feedback ? (
+                                                        <p style={{ margin: 0, fontSize: '0.75rem', color: '#cbd5e1', lineHeight: 1.4 }}>
+                                                            "{submission.moderation.feedback}"
+                                                        </p>
+                                                    ) : (
+                                                        <p style={{ margin: 0, fontSize: '0.7rem', color: '#64748b', fontStyle: 'italic' }}>
+                                                            No additional remarks provided.
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
 
                                     {(facilitatorProfile?.bookingUrl || assessorProfile?.bookingUrl) && (
                                         <div className="ap-sidebar__booking-card" style={{ marginTop: '1.5rem', padding: '14px', background: '#1e293b', borderRadius: '8px', border: '1px solid #334155' }}>
@@ -1086,7 +1164,18 @@ export const AssessmentPlayerContent: React.FC<AssessmentPlayerContentProps> = (
 
                                 if (['mcq', 'text', 'task', 'checklist', 'logbook', 'qcto_workplace', 'code_sandbox', 'mathpad', 'graph'].includes(block.type)) {
                                     qNum++;
-                                    const { score: blockScore, facFeedback, assFeedback, modFeedback, facIsCorrect, assIsCorrect, modIsCorrect, criteriaResults } = getBlockGrading(block.id);
+                                    const gradingData = getBlockGrading(block.id);
+                                    const { assFeedback, modFeedback, assIsCorrect, modIsCorrect, criteriaResults, isCorrect } = gradingData;
+
+                                    // 🚀 SUMMATIVE BYPASS: Hide facilitator feedback & marks from learner
+                                    const facFeedback = isSummative ? '' : gradingData.facFeedback;
+                                    const facIsCorrect = isSummative ? undefined : gradingData.facIsCorrect;
+
+                                    // Fallback to map "Verified" booleans back into full numeric marks for UI
+                                    let blockScore = gradingData.score;
+                                    if ((blockScore === undefined || blockScore === null) && isCorrect === true) blockScore = block.marks;
+                                    if ((blockScore === undefined || blockScore === null) && isCorrect === false) blockScore = 0;
+
                                     const learnerAns = answers[block.id];
                                     let inkColor = '#64748b';
                                     if (isModDone) inkColor = 'var(--mlab-green)';
@@ -1309,7 +1398,7 @@ export const AssessmentPlayerContent: React.FC<AssessmentPlayerContentProps> = (
                                                             )}
 
                                                             <div className="ap-tab-panel">
-                                                                {activeTabId === 'text' && <div className={`ap-quill-wrapper${isUploadLocked || !canEditTask ? ' locked' : ''}`} onCopyCapture={preventCopyPasteAndDrop} onCutCapture={preventCopyPasteAndDrop} onPasteCapture={preventCopyPasteAndDrop} onDropCapture={preventCopyPasteAndDrop} onKeyDownCapture={preventCopyPasteAndDrop}>{isGloballyLocked && !isAwaitingSignoff ? <div className="quill-read-only-content" style={{ padding: '1rem', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', wordBreak: 'normal', overflowWrap: 'break-word' }} dangerouslySetInnerHTML={{ __html: cleanRichText(itemAns.text) || '<em>No answer provided.</em>' }} /> : <ReactQuill theme="snow" value={itemAns.text || ''} onChange={c => handleTaskAnswerChange(block.id, 'text', c)} readOnly={isUploadLocked || !canEditTask} modules={quillModules} formats={quillFormats} placeholder={isUploadLocked || !canEditTask ? 'No answer provided.' : 'Type your answer here…'} />}</div>}
+                                                                {activeTabId === 'text' && <div className={`ap-quill-wrapper${isUploadLocked || !canEditTask ? ' locked' : ''}`} onCopyCapture={preventCopyPasteAndDrop} onCutCapture={preventCopyPasteAndDrop} onPasteCapture={preventCopyPasteAndDrop} onDropCapture={preventCopyPasteAndDrop} onKeyDownCapture={preventCopyPasteAndDrop}>{isGloballyLocked && !isAwaitingSignoff ? <div className="quill-read-only-content" style={{ padding: '1rem', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', wordBreak: 'normal', overflowWrap: 'break-word' }} dangerouslySetInnerHTML={{ __html: cleanRichText(itemAns.text) || '<em>No answer provided.</em>' }} /> : <ReactQuill theme="snow" value={itemAns.text || ''} onChange={c => handleTaskAnswerChange(block.id, 'text', c)} readOnly={isUploadLocked || !canEditTask} modules={quillModules} formats={quillFormats} placeholder={isUploadLocked || !canEditTask ? 'No answer provided.' : 'Type your detailed response here…'} />}</div>}
                                                                 {activeTabId === 'audio' && (itemAns.audioUrl ? <audio controls src={itemAns.audioUrl} style={{ width: '100%' }} /> : <div className="ap-upload-empty ap-upload-empty--simple">{isUploadLocked || !canEditTask ? 'No audio recorded.' : 'Audio recorder will appear here.'}</div>)}
                                                                 {activeTabId === 'url' && <div>{!isUploadLocked && canEditTask && <div className="ap-url-note"><strong>Note:</strong> Ensure Google Drive links are set to <em>"Anyone with the link can view"</em>.</div>}{itemAns.url && (isUploadLocked || !canEditTask) ? <UrlPreview url={itemAns.url} /> : <input type="url" className="ab-input" value={itemAns.url || ''} onChange={e => handleTaskAnswerChange(block.id, 'url', e.target.value)} disabled={isUploadLocked || !canEditTask} placeholder="https://…" />}</div>}
                                                                 {activeTabId === 'upload' && (progress !== undefined ? <UploadProgress progress={progress} /> : itemAns.uploadUrl ? <LearnerFilePreview url={itemAns.uploadUrl} onRemove={!isUploadLocked && canEditTask ? () => handleTaskAnswerChange(block.id, 'uploadUrl', '') : undefined} disabled={isUploadLocked || !canEditTask} /> : <div className="ap-upload-empty">{isUploadLocked || !canEditTask ? <span className="ap-upload-empty__hint">No file uploaded.</span> : <><p className="ap-upload-empty__hint">Select a file (Allowed: {block.allowedFileTypes || 'Any'}, Max {MAX_FILE_SIZE_MB}MB)</p><input type="file" onChange={e => handleFileValidationAndUpload(e, block.id)} disabled={isUploadLocked || !canEditTask} style={{ fontSize: '0.82rem' }} /></>}</div>)}
