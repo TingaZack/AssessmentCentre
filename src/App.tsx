@@ -6,6 +6,7 @@ import { getAnalytics, logEvent } from 'firebase/analytics';
 import { onCLS, onINP, onLCP, onFCP, onTTFB } from 'web-vitals';
 import { useStore } from './store/useStore';
 import { recordDailyActivityIfNeeded } from './lib/authAnalytics';
+import { initializeWebPush } from './lib/webPush';
 
 // --- TYPES ---
 import type { UserProfile, UserRole } from './types/auth.types';
@@ -285,6 +286,13 @@ function App() {
   const fetchSettings = useStore((state) => state.fetchSettings);
 
   const [showWizard, setShowWizard] = useState(false);
+
+  // Trigger web push subscription and permission setup when user logs in
+  useEffect(() => {
+    if (user?.uid) {
+      initializeWebPush(user.uid);
+    }
+  }, [user?.uid]);
 
   useEffect(() => {
     const isFunderURL = window.location.pathname.toLowerCase().includes('funder');

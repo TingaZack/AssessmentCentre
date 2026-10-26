@@ -25,6 +25,7 @@ const PRIVILEGE_OPTIONS = [
     { key: 'content', title: 'Content Studio', desc: 'Author learning units, video lessons, and interactive checks.' },
     { key: 'assessments', title: 'Assessment Engine', desc: 'Manage rubrics, moderation queues, and grading rules.' },
     { key: 'cohorts', title: 'Cohort Management', desc: 'Manage classes, assign educators, and oversee tracking.' },
+    { key: 'community', title: 'Cohort Community', desc: 'Access and moderate cohort community discussion channels.' },
     { key: 'ecosystem', title: 'Ecosystem & Events', desc: 'Manage external ecosystem events, sponsors, and campaigns.' },
     { key: 'studio', title: 'Certificate Studio', desc: 'Design templates and issue official certificates.' },
     { key: 'settings', title: 'System Settings', desc: 'Modify global platform configurations and API integrations.' }
@@ -74,7 +75,7 @@ export const AccessManager: React.FC = () => {
     const [privileges, setPrivileges] = useState({
         directory: false, learners: false, staff: false, attendance: false,
         workplaces: false, qualifications: false, content: false, assessments: false,
-        cohorts: false, ecosystem: false, studio: false, settings: false
+        cohorts: false, community: false, ecosystem: false, studio: false, settings: false
     });
 
     const [loading, setLoading] = useState(false);
@@ -245,7 +246,7 @@ export const AccessManager: React.FC = () => {
         setPrivileges({
             directory: false, learners: false, staff: false, attendance: false,
             workplaces: false, qualifications: false, content: false, assessments: false,
-            cohorts: false, ecosystem: false, studio: false, settings: false
+            cohorts: false, community: false, ecosystem: false, studio: false, settings: false
         });
         setShowModal(true);
     };
@@ -278,6 +279,7 @@ export const AccessManager: React.FC = () => {
             content: admin.privileges?.content || false,
             assessments: admin.privileges?.assessments || false,
             cohorts: admin.privileges?.cohorts || false,
+            community: admin.privileges?.community || false,
             ecosystem: admin.privileges?.ecosystem || false,
             studio: admin.privileges?.studio || false,
             settings: admin.privileges?.settings || false
@@ -412,7 +414,10 @@ export const AccessManager: React.FC = () => {
                     fullName,
                     role: adminType,
                     isSuperAdmin: payloadIsSuper,
-                    privileges: payloadPrivs,
+                    privileges: payloadPrivs ? {
+                        ...payloadPrivs,
+                        compliance: payloadPrivs.settings // Automatically grant QMS/Compliance if they have Settings
+                    } : null,
                     ...capabilitiesPayload
                 };
 
@@ -438,7 +443,10 @@ export const AccessManager: React.FC = () => {
                     fullName,
                     role: adminType,
                     isSuperAdmin: payloadIsSuper,
-                    privileges: payloadPrivs,
+                    privileges: payloadPrivs ? {
+                        ...payloadPrivs,
+                        compliance: payloadPrivs.settings // Automatically grant QMS/Compliance if they have Settings
+                    } : null,
                     ...capabilitiesPayload
                 });
                 toast.success(`Success! An invitation email has been sent to ${cleanEmail}.`);

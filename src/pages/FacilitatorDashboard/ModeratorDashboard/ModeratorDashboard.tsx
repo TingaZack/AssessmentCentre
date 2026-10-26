@@ -9,7 +9,8 @@ import {
     CheckCircle, FileText,
     Layers, Info, Award, Clock, Activity,
     Scale, AlertTriangle, ShieldAlert,
-    LayoutDashboard, UserCircle, Users, Search, ChevronRight
+    LayoutDashboard, UserCircle, Users, Search, ChevronRight,
+    MessagesSquare
 } from 'lucide-react';
 import { Sidebar } from '../../../components/dashboard/Sidebar/Sidebar';
 import { useStore } from '../../../store/useStore';
@@ -25,6 +26,7 @@ import '../FacilitatorDashboard/FacilitatorDashboard.css'
 
 import { ModeratorProfileView } from '../ModeratorProfileView/ModeratorProfileView';
 import StatCard from '../../../components/common/StatCard/StatCard';
+import { CommunityHub } from '../../Portfolio/CommunityHub';
 
 interface PendingQATask {
     id: string;
@@ -57,7 +59,7 @@ export const ModeratorDashboard: React.FC = () => {
     const location = useLocation();
     const store = useStore();
 
-    const [currentNav, setCurrentNav] = useState<'dashboard' | 'cohorts' | 'profile'>(
+    const [currentNav, setCurrentNav] = useState<'dashboard' | 'cohorts' | 'profile' | 'community'>(
         (location.state as any)?.activeTab || 'dashboard'
     );
     const [showDiagnostics, setShowDiagnostics] = useState(false);
@@ -272,8 +274,9 @@ export const ModeratorDashboard: React.FC = () => {
         dashboard: isAdmin ? 'Global QA & Appeals Centre' : 'Internal QA Moderation',
         cohorts: 'My Assigned QA Classes',
         profile: 'Compliance Profile',
+        community: 'Cohort Community Hub'
     };
-    const PageIcon = currentNav === 'dashboard' ? LayoutDashboard : currentNav === 'cohorts' ? Layers : UserCircle;
+    const PageIcon = currentNav === 'dashboard' ? LayoutDashboard : currentNav === 'cohorts' ? Layers : currentNav === 'community' ? MessagesSquare : UserCircle;
 
     return (
         <div className="admin-layout" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex' }}>
@@ -635,7 +638,24 @@ export const ModeratorDashboard: React.FC = () => {
                         )}
 
                         {/* ════════════════════════════════════════
-                            TAB 3 — PROFILE
+                            TAB 3 — COHORT COMMUNITY
+                        ════════════════════════════════════════ */}
+                        {currentNav === 'community' && (
+                            <div className="animate-fade-in">
+                                <CommunityHub
+                                    cohortId={myCohorts[0]?.id || ''}
+                                    user={{
+                                        uid: store.user?.uid || '',
+                                        fullName: store.user?.fullName || 'Moderator',
+                                        role: store.user?.role || 'moderator'
+                                    }}
+                                    cohorts={myCohorts}
+                                />
+                            </div>
+                        )}
+
+                        {/* ════════════════════════════════════════
+                            TAB 4 — PROFILE
                         ════════════════════════════════════════ */}
                         {currentNav === 'profile' && (
                             <ModeratorProfileView

@@ -1,3 +1,4 @@
+// vite.config.ts
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { resolve } from "path";
@@ -6,18 +7,13 @@ export default defineConfig({
   plugins: [
     react(),
     {
-      name: "conditional-coep",
+      name: "scoped-coep",
       configureServer(server) {
         server.middlewares.use((req, res, next) => {
-          // Apply strict cross-origin isolation headers to sandbox, assessment, and learner routes
-          if (
-            req.url &&
-            (req.url.includes("sandbox") ||
-              req.url.includes("assessment") ||
-              req.url.includes("learner"))
-          ) {
+          // Only apply COOP/COEP headers to the isolated sandbox page
+          if (req.url && req.url.includes("sandbox.html")) {
             res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
-            res.setHeader("Cross-Origin-Embedder-Policy", "credentialless");
+            res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
           }
           next();
         });
@@ -36,48 +32,59 @@ export default defineConfig({
 
 // import { defineConfig } from "vite";
 // import react from "@vitejs/plugin-react";
+// import { resolve } from "path";
 
 // export default defineConfig({
 //   plugins: [
 //     react(),
 //     {
-//       name: "conditional-coep",
+//       name: "global-coep",
 //       configureServer(server) {
-//         server.middlewares.use((req, res, next) => {
-//           // ONLY apply strict headers to the sandbox route
-//           if (req.url && req.url.startsWith("/sandbox")) {
-//             res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
-//             res.setHeader("Cross-Origin-Embedder-Policy", "credentialless");
-//           }
+//         server.middlewares.use((_req, res, next) => {
+//           // Apply strictly for local WebContainer development
+//           res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
+//           res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
 //           next();
 //         });
 //       },
 //     },
 //   ],
+//   build: {
+//     rollupOptions: {
+//       input: {
+//         main: resolve(__dirname, "index.html"),
+//         sandbox: resolve(__dirname, "sandbox.html"),
+//       },
+//     },
+//   },
 // });
 
-// // import { defineConfig, type Plugin } from "vite";
+// // import { defineConfig } from "vite";
 // // import react from "@vitejs/plugin-react";
 // // import { resolve } from "path";
 
-// // function scopedIsolationHeaders(matchPaths: string[]): Plugin {
-// //   return {
-// //     name: "scoped-isolation-headers",
-// //     configureServer(server) {
-// //       server.middlewares.use((req, res, next) => {
-// //         if (matchPaths.some((p) => (req.url || "").startsWith(p))) {
-// //           // Apply strict WebContainer headers ONLY to the sandbox
-// //           res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
-// //           res.setHeader("Cross-Origin-Embedder-Policy", "credentialless");
-// //         }
-// //         next();
-// //       });
-// //     },
-// //   };
-// // }
-
 // // export default defineConfig({
-// //   plugins: [react(), scopedIsolationHeaders(["/sandbox.html"])],
+// //   plugins: [
+// //     react(),
+// //     {
+// //       name: "conditional-coep",
+// //       configureServer(server) {
+// //         server.middlewares.use((req, res, next) => {
+// //           // Apply strict cross-origin isolation headers to sandbox, assessment, and learner routes
+// //           if (
+// //             req.url &&
+// //             (req.url.includes("sandbox") ||
+// //               req.url.includes("assessment") ||
+// //               req.url.includes("learner"))
+// //           ) {
+// //             res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
+// //             res.setHeader("Cross-Origin-Embedder-Policy", "credentialless");
+// //           }
+// //           next();
+// //         });
+// //       },
+// //     },
+// //   ],
 // //   build: {
 // //     rollupOptions: {
 // //       input: {
@@ -91,14 +98,68 @@ export default defineConfig({
 // // // import { defineConfig } from "vite";
 // // // import react from "@vitejs/plugin-react";
 
-// // // // https://vite.dev/config/
 // // // export default defineConfig({
-// // //   plugins: [react()],
-// // //   server: {
-// // //     headers: {
-// // //       "Cross-Origin-Opener-Policy": "same-origin",
-// // //       "Cross-Origin-Embedder-Policy": "credentialless",
-// // //       // "Cross-Origin-Embedder-Policy": "require-corp",
+// // //   plugins: [
+// // //     react(),
+// // //     {
+// // //       name: "conditional-coep",
+// // //       configureServer(server) {
+// // //         server.middlewares.use((req, res, next) => {
+// // //           // ONLY apply strict headers to the sandbox route
+// // //           if (req.url && req.url.startsWith("/sandbox")) {
+// // //             res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
+// // //             res.setHeader("Cross-Origin-Embedder-Policy", "credentialless");
+// // //           }
+// // //           next();
+// // //         });
+// // //       },
 // // //     },
-// // //   },
+// // //   ],
 // // // });
+
+// // // // import { defineConfig, type Plugin } from "vite";
+// // // // import react from "@vitejs/plugin-react";
+// // // // import { resolve } from "path";
+
+// // // // function scopedIsolationHeaders(matchPaths: string[]): Plugin {
+// // // //   return {
+// // // //     name: "scoped-isolation-headers",
+// // // //     configureServer(server) {
+// // // //       server.middlewares.use((req, res, next) => {
+// // // //         if (matchPaths.some((p) => (req.url || "").startsWith(p))) {
+// // // //           // Apply strict WebContainer headers ONLY to the sandbox
+// // // //           res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
+// // // //           res.setHeader("Cross-Origin-Embedder-Policy", "credentialless");
+// // // //         }
+// // // //         next();
+// // // //       });
+// // // //     },
+// // // //   };
+// // // // }
+
+// // // // export default defineConfig({
+// // // //   plugins: [react(), scopedIsolationHeaders(["/sandbox.html"])],
+// // // //   build: {
+// // // //     rollupOptions: {
+// // // //       input: {
+// // // //         main: resolve(__dirname, "index.html"),
+// // // //         sandbox: resolve(__dirname, "sandbox.html"),
+// // // //       },
+// // // //     },
+// // // //   },
+// // // // });
+
+// // // // // import { defineConfig } from "vite";
+// // // // // import react from "@vitejs/plugin-react";
+
+// // // // // // https://vite.dev/config/
+// // // // // export default defineConfig({
+// // // // //   plugins: [react()],
+// // // // //   server: {
+// // // // //     headers: {
+// // // // //       "Cross-Origin-Opener-Policy": "same-origin",
+// // // // //       "Cross-Origin-Embedder-Policy": "credentialless",
+// // // // //       // "Cross-Origin-Embedder-Policy": "require-corp",
+// // // // //     },
+// // // // //   },
+// // // // // });

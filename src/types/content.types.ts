@@ -35,8 +35,8 @@ export type LateSubmissionPolicy = "block" | "flag_late";
 
 export interface AccreditationConfig {
   body: AccreditationBody;
-  customText?: string | null; // Used when body === 'other'
-  saqaId?: string | null; // SAQA Qualification ID for certificate generation
+  customText?: string | null;
+  saqaId?: string | null;
   nqfLevel?: string | number | null;
   isAccredited?: boolean;
   credits?: number | null;
@@ -46,16 +46,16 @@ export interface AccreditationConfig {
 
 export interface TimeBoundConfig {
   isTimeBound: boolean;
-  startDate?: string; // ISO date string
-  endDate?: string; // ISO date string
+  startDate?: string;
+  endDate?: string;
   enforceStrictDeadline?: boolean;
-  pacingStrategy?: "even" | "manual"; // 'even' = auto-distribute across date range, 'manual' = author set
+  pacingStrategy?: "even" | "manual";
 }
 
 export interface DueDateConfig {
   type: DueDateType;
-  offsetDays?: number; // Relative days from cohort start date
-  dueDateIso?: string; // Hard absolute ISO timestamp
+  offsetDays?: number;
+  dueDateIso?: string;
   latePolicy?: LateSubmissionPolicy;
 }
 
@@ -70,15 +70,32 @@ export interface LessonAttachment {
   sizeBytes?: number;
 }
 
+// ─── MULTI-SLOT ASSESSMENT GATING CONFIGURATIONS ───
+
+export type AssessmentUnlockTrigger = "submission" | "grading";
+
+export interface GateSlot {
+  enabled: boolean;
+  assessmentId: string | null;
+  requirePassToUnlockSummative?: boolean; // For formative slots: passing score required before attempting summative
+  unlockNextOn?: AssessmentUnlockTrigger; // 'submission' unlocks next lesson immediately; 'grading' waits for assessor verdict
+}
+
+export interface AssessmentGatesConfig {
+  formative?: GateSlot;
+  summative?: GateSlot;
+  other?: GateSlot;
+}
+
 // ─── MASTER CONTAINER DATA MODEL ───
 
 export interface ContentContainer {
   id: string;
-  title: string; // Content Package Name (e.g., "CodeTribe Academy")
-  referenceId: string; // e.g., "REF-CTA-2026-BC01"
+  title: string;
+  referenceId: string;
   framework: FrameworkType;
   triggerScope?: CheckTriggerScope;
-  programmeTemplateId?: string; // Link to structural template (optional guide)
+  programmeTemplateId?: string;
   description?: string;
   instructors?: any[];
   attachments?: LessonAttachment[];
@@ -112,24 +129,25 @@ export interface ContentContainer {
 // ─── COHORT RUNS (TIME-BOUND DELIVERIES OF MASTER BLUEPRINTS) ───
 
 export interface RunScheduleEntry {
-  unitId: string; // References LearningUnit.id in the master container
-  dueDate: string; // ISO date string computed/overridden for this run
+  unitId: string;
+  dueDate: string;
   availableFromDate?: string;
   linkedAssessmentId?: string | null;
+  assessmentGates?: AssessmentGatesConfig;
   dueDateConfig?: DueDateConfig;
 }
 
 export interface CohortRun {
   id: string;
-  containerId: string; // References ContentContainer.id (master source of truth)
-  cohortId: string | null; // References active system Cohort.id (null for drafts)
+  containerId: string;
+  cohortId: string | null;
   cohortName: string;
   name?: string;
   startDate?: string;
   endDate?: string;
   timeBoundConfig: TimeBoundConfig;
-  accreditation?: AccreditationConfig; // Optional. Inherits from container defaults if omitted
-  generatedSchedule: RunScheduleEntry[]; // Computed and editable pacing schedule
+  accreditation?: AccreditationConfig;
+  generatedSchedule: RunScheduleEntry[];
   status: "draft" | "active" | "paused" | "completed" | "archived";
   createdAt: string;
   createdBy: string;
@@ -174,8 +192,8 @@ export interface InteractiveCheckConfig {
 
 export interface LearningUnit {
   id: string;
-  containerId: string; // Belongs strictly to a Root Content Container
-  programmeTemplateId?: string; // Optional blueprint reference
+  containerId: string;
+  programmeTemplateId?: string;
   framework: FrameworkType;
   title: string;
   unitType: UnitFormatType;
@@ -197,10 +215,13 @@ export interface LearningUnit {
   sprintTitle?: string;
   dayOrLessonTitle?: string;
 
-  // Verification Check
+  // Verification Check (In-Lesson interactive check)
   interactiveCheck?: InteractiveCheckConfig | null;
 
-  // Formal SETA / QCTO Assessment Linkage & Gating
+  // Multi-Slot Assessment Gating Matrix
+  assessmentGates?: AssessmentGatesConfig;
+
+  // Legacy Single Assessment Properties (Retained for Backward Compatibility)
   linkedAssessmentId?: string | null;
   unlinkedPolicy?: "soft_gate" | "hard_gate";
   passingCompetencyRequired?: boolean;
@@ -227,7 +248,7 @@ export interface VerificationReceipt {
   checkType?: CheckType;
   userResponse?: string;
   selectedMcqOptionId?: string;
-  selectedMcqOptionIds?: Record<string, string>; // Maps question.id -> selected option.id
+  selectedMcqOptionIds?: Record<string, string>;
 }
 
 export interface LearnerContentProgress {

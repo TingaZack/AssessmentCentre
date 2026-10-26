@@ -140,7 +140,7 @@ export const HistoryModal: React.FC<{ session: ProctorSession; onClose: () => vo
                             </p>
                         </div>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    {/* <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                         {vCount > 0 && (
                             <button
                                 type="button"
@@ -166,7 +166,7 @@ export const HistoryModal: React.FC<{ session: ProctorSession; onClose: () => vo
                             </button>
                         )}
                         <button className="lfm-close-btn" onClick={onClose}><X size={20} /></button>
-                    </div>
+                    </div> */}
                 </div>
                 <div className="lfm-body invig-modal-body">
                     {!session.violationHistory || session.violationHistory.length === 0 ? (

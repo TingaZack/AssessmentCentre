@@ -53,10 +53,11 @@ import { CompanyInsightsView } from '../../components/admin/WorkplacesManager/Co
 import './AdminDashboard.css';
 import { MentorDashboard } from '../mentor/MentorDashboard/MentorDashboard';
 import Loader from '../../components/common/Loader/Loader';
+import { CommunityHub } from '../Portfolio/CommunityHub';
 
 type NavTabs = 'directory' | 'learners' | 'staff' | 'qualifications' | 'cohorts' |
     'workplaces' | 'studio' | 'dashboard' | 'profile' | 'access' | 'crashes' |
-    'assessments' | 'settings' | 'attendance' | 'ecosystem' | 'company-profile' | 'coaching' | 'surveys' | 'interview-studio' | 'content' | 'workplace-verification' | 'compliance';
+    'assessments' | 'settings' | 'attendance' | 'ecosystem' | 'company-profile' | 'coaching' | 'surveys' | 'interview-studio' | 'content' | 'workplace-verification' | 'compliance' | 'community';
 
 export const AdminDashboard: React.FC = () => {
     const navigate = useNavigate();
@@ -402,6 +403,7 @@ export const AdminDashboard: React.FC = () => {
                 'assessments': privs.assessments !== false,
                 'surveys': privs.surveys !== false,
                 'cohorts': privs.cohorts !== false,
+                'community': privs.community !== false && privs.cohorts !== false,
                 'ecosystem': privs.ecosystem !== false,
                 'studio': privs.studio !== false,
                 'settings': privs.settings !== false,
@@ -462,6 +464,7 @@ export const AdminDashboard: React.FC = () => {
                                 {currentNav === 'surveys' && 'Surveys & Feedback Engine'}
                                 {currentNav === 'staff' && 'Staff & Mentors'}
                                 {currentNav === 'cohorts' && 'Cohort Management'}
+                                {currentNav === 'community' && 'Cohort Community Hub'}
                                 {currentNav === 'workplaces' && 'Workplace Management'}
                                 {currentNav === 'company-profile' && 'Corporate Partner Insights'}
                                 {currentNav === 'profile' && 'My Administrator Profile'}
@@ -484,6 +487,7 @@ export const AdminDashboard: React.FC = () => {
                                 {currentNav === 'surveys' && 'Build feedback templates, manage survey questions, and inspect response analytics'}
                                 {currentNav === 'staff' && 'Manage facilitators, assessors, moderators, and support staff'}
                                 {currentNav === 'cohorts' && 'Organize learners into training classes and assign educators'}
+                                {currentNav === 'community' && 'Access and moderate cohort community discussion channels.'}
                                 {currentNav === 'workplaces' && 'Manage employer partners and workplace mentor allocations'}
                                 {currentNav === 'company-profile' && 'View compliance, placement ledgers, and operational analytics for this host company.'}
                                 {currentNav === 'profile' && 'Manage your institutional compiler and contact details'}
@@ -516,6 +520,17 @@ export const AdminDashboard: React.FC = () => {
                             </div>
                             {currentNav === 'workplace-verification' && <MentorDashboard />}
                             {currentNav === 'coaching' && <CoachingScheduleView />}
+                            {currentNav === 'community' && (
+                                <CommunityHub
+                                    cohortId={store.cohorts[0]?.id || ''}
+                                    user={{
+                                        uid: user?.uid || '',
+                                        fullName: user?.fullName || 'Admin',
+                                        role: user?.role || 'admin'
+                                    }}
+                                    cohorts={store.cohorts}
+                                />
+                            )}
                             {currentNav === 'ecosystem' && <EcosystemDashboard />}
                             {currentNav === 'attendance' && <AttendanceHistoryList />}
                             {currentNav === 'dashboard' && <DashboardOverview />}

@@ -1,12 +1,12 @@
 // src/components/common/WelcomeWizard/WelcomeWizard.tsx
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
     ChevronRight, ChevronLeft, X, ShieldCheck, GraduationCap,
-    FileText, CheckCircle2, Users, Database, Compass,
-    Loader2, BookOpen, Award, BarChart2, Upload,
-    Lock, Eye, Zap, Layers, PenTool, Bell
+    FileText, Users, Database, Compass,
+    Loader2, Award, BarChart2,
+    Lock, Eye, Zap, PenTool, Bell
 } from 'lucide-react';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';

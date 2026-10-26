@@ -22,6 +22,7 @@ import { AssessorProfileView } from '../AssessorProfileView/AssessorProfileView'
 
 import { ModuleProgressCard } from '../../../components/common/ModuleProgressCard/ModuleProgressCard';
 import { CoachingScheduleView } from '../../../components/views/CoachingScheduleView/CoachingScheduleView';
+import { CommunityHub } from '../../Portfolio/CommunityHub';
 
 interface PendingTask {
     id: string;
@@ -66,7 +67,7 @@ export const AssessorDashboard: React.FC = () => {
     const location = useLocation();
     const store = useStore();
 
-    const [currentNav, setCurrentNav] = useState<'dashboard' | 'cohorts' | 'profile' | 'coaching'>(
+    const [currentNav, setCurrentNav] = useState<'dashboard' | 'cohorts' | 'profile' | 'coaching' | 'community'>(
         (location.state as any)?.activeTab || 'dashboard'
     );
 
@@ -481,8 +482,8 @@ export const AssessorDashboard: React.FC = () => {
     const totalReassessments = assessmentStatsMap.reduce((acc, curr) => acc + curr.reassessments.length, 0);
     const totalPending = assessmentStatsMap.reduce((acc, curr) => acc + curr.pending.length, 0);
 
-    const pageTitle = currentNav === 'dashboard' ? 'Marking Centre' : currentNav === 'cohorts' ? 'My Assigned Classes' : currentNav === 'coaching' ? 'Coaching & Support Schedule' : 'Compliance Profile';
-    const PageIcon = currentNav === 'dashboard' ? LayoutDashboard : currentNav === 'cohorts' ? Layers : currentNav === 'coaching' ? Calendar : UserCircle;
+    const pageTitle = currentNav === 'dashboard' ? 'Marking Centre' : currentNav === 'cohorts' ? 'My Assigned Classes' : currentNav === 'coaching' ? 'Coaching & Support Schedule' : currentNav === 'community' ? 'Cohort Community Hub' : 'Compliance Profile';
+    const PageIcon = currentNav === 'dashboard' ? LayoutDashboard : currentNav === 'cohorts' ? Layers : currentNav === 'coaching' ? Calendar : currentNav === 'community' ? Users : UserCircle;
 
     return (
         <div className="cdp-layout">
@@ -556,6 +557,20 @@ export const AssessorDashboard: React.FC = () => {
                     )}
 
                     {currentNav === 'coaching' && <CoachingScheduleView />}
+
+                    {currentNav === 'community' && (
+                        <div className="animate-fade-in">
+                            <CommunityHub
+                                cohortId={myCohorts[0]?.id || ''}
+                                user={{
+                                    uid: store.user?.uid || '',
+                                    fullName: store.user?.fullName || 'Assessor',
+                                    role: store.user?.role || 'assessor'
+                                }}
+                                cohorts={myCohorts}
+                            />
+                        </div>
+                    )}
 
                     {currentNav === 'dashboard' && (
                         <div className="animate-fade-in">

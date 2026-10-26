@@ -9492,6 +9492,138 @@ export const testSingleTokenPush = onRequest((req, res) => {
     }
   });
 });
+// ============================================================================
+// @MENTION MULTI-PLATFORM PUSH NOTIFICATION ENGINE (MOBILE + WEB)
+// ============================================================================
+
+/**
+ * 1. Callable Cloud Function to register browser Web Push tokens to the user's topic.
+ * Required because the client Web SDK cannot subscribe directly to topics.
+ */
+export const subscribeWebTokenToTopic = onCall(async (request) => {
+  const auth = request.auth;
+  if (!auth) {
+    throw new HttpsError("unauthenticated", "User must be authenticated.");
+  }
+
+  const { token } = request.data as { token?: string };
+  if (!token || typeof token !== "string") {
+    throw new HttpsError(
+      "invalid-argument",
+      "Valid FCM registration token is required.",
+    );
+  }
+
+  // Matches the prod/beta topic condition targeted by the notification dispatcher
+  const userTopic = `${auth.uid}_prod`;
+
+  try {
+    await admin.messaging().subscribeToTopic([token], userTopic);
+    logger.info(`✅ Successfully subscribed web token to topic: ${userTopic}`);
+    return { success: true, topic: userTopic };
+  } catch (error: any) {
+    logger.error(
+      `❌ Failed to subscribe web token to topic ${userTopic}:`,
+      error,
+    );
+    throw new HttpsError(
+      "internal",
+      error.message || "Failed to subscribe web token.",
+    );
+  }
+});
+
+/**
+ * 2. Firestore Trigger: Dispatches high-priority push notifications across
+ * iOS (APNs), Android (FCM), and Desktop/Mobile Web browsers when someone is mentioned.
+ */
+export const onMentionNotificationCreated = onDocumentCreated(
+  { document: "notifications/{notifId}" },
+  async (event) => {
+    const data = event.data?.data();
+    if (!data) return;
+
+    const { recipientId, title, message, type, channelId, cohortId } = data;
+
+    // Only process community mention events
+    if (type === "community_mention" && recipientId) {
+      try {
+        const prodTopic = `${recipientId}_prod`;
+        const betaTopic = `${recipientId}_beta`;
+        const targetCondition = `'${prodTopic}' in topics || '${betaTopic}' in topics`;
+
+        const displayTitle = title || "You were mentioned! 💬";
+        const displayBody =
+          message || "Someone tagged you in the community chat.";
+        const destinationLink = `${APP_URL}/community`;
+
+        const messagePayload: admin.messaging.Message = {
+          condition: targetCondition,
+          notification: {
+            title: displayTitle,
+            body: displayBody,
+          },
+          // Android System Config
+          android: {
+            priority: "high",
+            notification: {
+              sound: "default",
+              channelId: "default",
+              vibrateTimingsMillis: [0, 500, 250, 500],
+              defaultVibrateTimings: false,
+            },
+          },
+          // iOS / Apple Push Notification service (APNs) Config
+          apns: {
+            payload: {
+              aps: {
+                sound: "default",
+                badge: 1,
+              },
+            },
+            headers: {
+              "apns-priority": "10",
+            },
+          },
+          // Web Push Specification for Chrome, Safari, Edge, and Firefox
+          webpush: {
+            notification: {
+              title: displayTitle,
+              body: displayBody,
+              icon: "/logo192.png",
+              badge: "/badge.png",
+              vibrate: [200, 100, 200],
+              requireInteraction: false,
+              data: {
+                link: destinationLink,
+                channelId: channelId || "",
+                cohortId: cohortId || "",
+              },
+            },
+            fcmOptions: {
+              link: destinationLink,
+            },
+          },
+          data: {
+            route: "/community",
+            channelId: channelId || "",
+            cohortId: cohortId || "",
+          },
+        };
+
+        const response = await admin.messaging().send(messagePayload);
+        logger.info(
+          `✅ Successfully dispatched mention push to ${recipientId}: ${response}`,
+        );
+      } catch (error) {
+        logger.error(
+          `❌ Failed to send mention push notification to ${recipientId}:`,
+          error,
+        );
+      }
+    }
+  },
+);
 
 export const testDevTopicPush = onRequest((req, res) => {
   return cors(req, res, async () => {

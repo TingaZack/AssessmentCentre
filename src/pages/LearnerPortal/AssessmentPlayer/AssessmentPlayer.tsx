@@ -229,6 +229,8 @@ export const AssessmentPlayer: React.FC = () => {
 
     const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const answersRef = useRef(answers);
+    const playerMountTimeRef = useRef(Date.now());
+    //     const answersRef = useRef(answers);
     useEffect(() => { answersRef.current = answers; }, [answers]);
 
     const currentStatus = String(submission?.status || '').toLowerCase();
@@ -327,15 +329,32 @@ export const AssessmentPlayer: React.FC = () => {
         if (baseLimit <= 0) return null;
 
         const extraTime = submission?.extraTimeGranted || 0;
+        const totalDurationMs = (baseLimit + extraTime) * 60 * 1000;
+
         const isReattemptOrOverride = (submission?.attemptNumber || 1) > 1 || submission?.overrideUnlock === true || submission?.hasOverride === true;
 
+        // SCENARIO 1: Strict Scheduled Window
         if (assessment.isScheduled && assessment.scheduledDate && !isReattemptOrOverride) {
-            return moment(assessment.scheduledDate).valueOf() + ((baseLimit + extraTime) * 60 * 1000);
+            const scheduledEndMs = moment(assessment.scheduledDate).valueOf() + totalDurationMs;
+
+            // 🚀 THE FIX (LATE-START CATCHER): 
+            // If an admin allowed them to start late but forgot to set the override flag, 
+            // the start time will be AFTER the scheduled end time. 
+            // We must fall back to a duration-based timer so they don't get instantly booted.
+            if (submission?.startedAt) {
+                const startMs = new Date(submission.startedAt).getTime();
+                if (startMs > scheduledEndMs) {
+                    return startMs + totalDurationMs;
+                }
+            }
+
+            return scheduledEndMs;
         }
 
+        // SCENARIO 2: Duration-based (Self-paced, Overrides, Re-attempts, or Late Starts)
         if (submission?.startedAt) {
             const startMs = new Date(submission.startedAt).getTime();
-            return startMs + ((baseLimit + extraTime) * 60 * 1000);
+            return startMs + totalDurationMs;
         }
 
         return null;
@@ -662,6 +681,15 @@ export const AssessmentPlayer: React.FC = () => {
         const isReattemptOrOverride = (submission?.attemptNumber || 1) > 1 || submission?.overrideUnlock === true || submission?.hasOverride === true;
 
         if (isNotStarted && assessment?.isScheduled && assessment?.scheduledDate && !isReattemptOrOverride && !isViolation) {
+
+            // 🚀 THE FIX: If the deadline had ALREADY passed when the page loaded, 
+            // an admin intentionally reset this submission to let them take it late. 
+            // Do not auto-sweep them!
+            const initialEndMs = getAssessmentEndMs();
+            if (initialEndMs && playerMountTimeRef.current > initialEndMs) {
+                return; // Bail out of the auto-sweep interval completely
+            }
+
             const interval = setInterval(() => {
                 const endMs = getAssessmentEndMs();
                 if (endMs && getSecureNow() >= endMs) {
@@ -853,10 +881,32 @@ export const AssessmentPlayer: React.FC = () => {
                 console.warn("Cloud function fallback triggered:", cfErr.message);
             }
 
+            // --- Determine if the learner is starting late ---
+            let isLateSubmission = false;
+            if (assessment.isScheduled && assessment.scheduledDate) {
+                const baseLimit = assessment.moduleInfo?.timeLimit || assessment.timeLimit || 0;
+                const scheduledEndMs = moment(assessment.scheduledDate).valueOf() + (baseLimit * 60 * 1000);
+
+                // If they are starting after the strict window closed, flag it as late
+                if (new Date(t).getTime() > scheduledEndMs) {
+                    isLateSubmission = true;
+                }
+            }
+
+            // --- Build the payload ---
             let payload: any = {
                 status: 'in_progress',
                 startedAt: t
             };
+
+            // 🚀 Explicitly log the late status and capture any existing admin override notes
+            if (isLateSubmission) {
+                payload.isLateSubmission = true;
+                payload.lateStartDetails = {
+                    acknowledgedLateStartAt: t,
+                    reason: submission?.systemNote || submission?.overrideReason || 'System Override: Late Access Granted'
+                };
+            }
 
             if (needsRemediationGate) {
                 payload['latestCoachingLog.acknowledged'] = true;
@@ -870,6 +920,8 @@ export const AssessmentPlayer: React.FC = () => {
                 ...p,
                 status: 'in_progress',
                 startedAt: t,
+                isLateSubmission: payload.isLateSubmission || p.isLateSubmission,
+                lateStartDetails: payload.lateStartDetails || p.lateStartDetails,
                 latestCoachingLog: p.latestCoachingLog && needsRemediationGate
                     ? { ...p.latestCoachingLog, acknowledged: true, acknowledgedAt: t, learnerSignatureUrl: learnerProfile?.signatureUrl }
                     : p.latestCoachingLog
@@ -882,19 +934,31 @@ export const AssessmentPlayer: React.FC = () => {
                     assessment_title: assessment?.title || '',
                     cohort_id: submission?.cohortId || '',
                     learner_id: user?.uid || '',
-                    attempt_number: submission?.attemptNumber || 1
+                    attempt_number: submission?.attemptNumber || 1,
+                    is_late_submission: isLateSubmission
                 });
             } catch (e) { /* Analytics blocked */ }
 
             const timeLim = assessment.moduleInfo?.timeLimit || assessment.timeLimit || 0;
             if (!isPracticalModule && timeLim > 0) {
-                const endMs = getAssessmentEndMs();
-                if (endMs) {
-                    setTimeLeft(Math.max(0, Math.floor((endMs - getSecureNow()) / 1000)));
-                } else {
-                    const extraTime = submission?.extraTimeGranted || 0;
-                    setTimeLeft((timeLim + extraTime) * 60);
+                const extraTime = submission?.extraTimeGranted || 0;
+                const totalDurationSecs = (timeLim + extraTime) * 60;
+                let calculatedLeft = totalDurationSecs;
+
+                const isReattemptOrOverride = (submission?.attemptNumber || 1) > 1 || submission?.overrideUnlock === true || submission?.hasOverride === true;
+
+                if (assessment.isScheduled && assessment.scheduledDate && !isReattemptOrOverride) {
+                    const scheduledEndMs = moment(assessment.scheduledDate).valueOf() + (totalDurationSecs * 1000);
+                    const actualStartMs = new Date(t).getTime();
+
+                    // Enforce strict window ONLY if they started before the deadline expired.
+                    // If they are starting late (e.g. sick learner next day), give them the full duration.
+                    if (actualStartMs < scheduledEndMs) {
+                        calculatedLeft = Math.max(0, Math.floor((scheduledEndMs - getSecureNow()) / 1000));
+                    }
                 }
+
+                setTimeLeft(calculatedLeft);
             }
         } catch (err: any) {
             toast.error(err.message || 'Failed to start assessment. Please check compliance.');

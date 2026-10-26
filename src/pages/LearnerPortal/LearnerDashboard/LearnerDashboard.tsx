@@ -9,7 +9,7 @@ import {
     Hexagon, Search, Filter, ChevronDown, ChevronUp, Zap,
     AlertCircle, Loader2, History, PlayCircle, XCircle,
     Globe, MapPin, Target, Info, ClipboardList,
-    HelpCircle, Send, ExternalLink, Tag
+    HelpCircle, Send, ExternalLink, Tag, MessagesSquare
 } from 'lucide-react';
 import { collection, query, where, getDocs, onSnapshot, doc, updateDoc, getDoc } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
@@ -29,6 +29,7 @@ import { WelcomeGamificationPopup } from './WelcomeGamificationPopup';
 import { AiMockInterviewStudio } from '../../../components/views/AiMockInterview/AiMockInterviewStudio';
 import { CoachingScheduleView } from '../../../components/views/CoachingScheduleView/CoachingScheduleView';
 import { LearnerContentHub } from '../LearnerContentHub/LearnerContentHub';
+import { CommunityHub } from '../../Portfolio/CommunityHub';
 
 const MIDNIGHT = '#073f4e';
 const GREEN = '#94c73d';
@@ -372,14 +373,16 @@ const LearnerDashboard: React.FC = () => {
 
     // READ ACTIVE TAB DIRECTLY FROM URL SEARCH PARAMS
     const urlTab = searchParams.get('tab');
-    const validNavTabs = ['dashboard', 'profile', 'certificates', 'attendance', 'interviews', 'coaching', 'learning_units'];
+    const validNavTabs = ['dashboard', 'profile', 'certificates', 'attendance', 'interviews', 'coaching', 'learning_units', 'community'];
 
     const [currentNav, setCurrentNav] = useState<
-        'dashboard' | 'profile' | 'certificates' | 'attendance' | 'interviews' | 'coaching' | 'learning_units'
+        'dashboard' | 'profile' | 'certificates' | 'attendance' | 'interviews' | 'coaching' | 'learning_units' | 'community'
     >(() => {
         if (urlTab && validNavTabs.includes(urlTab)) return urlTab as any;
         return (location.state as any)?.activeTab || 'dashboard';
     });
+
+    const [selectedCommunityCohortId, setSelectedCommunityCohortId] = useState<string>('');
 
     const [activeDashTab, setActiveDashTab] = useState<'programmes' | 'tasks' | 'events' | 'surveys'>('programmes');
 
@@ -962,6 +965,10 @@ const LearnerDashboard: React.FC = () => {
         return store.cohorts.filter(c => enrolledCohortIds.has(c.id));
     }, [learnerEnrollments, store.cohorts, academicProfile?.cohortId]);
 
+    const resolvedCommunityCohortId = useMemo(() => {
+        return selectedCommunityCohortId || academicProfile?.cohortId || (myCohorts.length > 0 ? myCohorts[0].id : '') || '';
+    }, [selectedCommunityCohortId, academicProfile?.cohortId, myCohorts]);
+
     useEffect(() => {
         if (!myCohorts || myCohorts.length === 0) return;
         const cohortIds = Array.from(new Set(myCohorts.map(c => c.id))).slice(0, 10);
@@ -1214,8 +1221,8 @@ const LearnerDashboard: React.FC = () => {
     const techScore = academicProfile?.technicalScore ?? 0;
     const behavioralScore = academicProfile?.behavioralScore ?? 0;
 
-    const pageTitle = currentNav === 'dashboard' ? 'My Dashboard' : currentNav === 'certificates' ? 'My Certificates' : currentNav === 'attendance' ? 'Compliance Hub' : currentNav === 'interviews' ? 'AI Mock Interviews' : currentNav === 'coaching' ? 'Coaching & Support Schedule' : currentNav === 'learning_units' ? 'Learner Content Hub' : 'My Profile';
-    const pageSub = currentNav === 'dashboard' ? `Welcome back, ${store.user?.fullName || 'Learner'}` : currentNav === 'certificates' ? 'Official certificates issued to your profile' : currentNav === 'attendance' ? 'Track your compliance matrix and hardware log status' : currentNav === 'interviews' ? 'Practice real-time technical & behavioral interviews with AI' : currentNav === 'coaching' ? 'Track your requested 1-on-1 sessions, scheduled meetings, and facilitator notes' : currentNav === 'learning_units' ? 'Explore assigned courses, view curriculum syllabi, and resume video lessons' : 'Manage your personal details and account';
+    const pageTitle = currentNav === 'dashboard' ? 'My Dashboard' : currentNav === 'certificates' ? 'My Certificates' : currentNav === 'attendance' ? 'Compliance Hub' : currentNav === 'interviews' ? 'AI Mock Interviews' : currentNav === 'coaching' ? 'Coaching & Support Schedule' : currentNav === 'learning_units' ? 'Learner Content Hub' : currentNav === 'community' ? 'Cohort Community' : 'My Profile';
+    const pageSub = currentNav === 'dashboard' ? `Welcome back, ${store.user?.fullName || 'Learner'}` : currentNav === 'certificates' ? 'Official certificates issued to your profile' : currentNav === 'attendance' ? 'Track your compliance matrix and hardware log status' : currentNav === 'interviews' ? 'Practice real-time technical & behavioral interviews with AI' : currentNav === 'coaching' ? 'Track your requested 1-on-1 sessions, scheduled meetings, and facilitator notes' : currentNav === 'learning_units' ? 'Explore assigned courses, view curriculum syllabi, and resume video lessons' : currentNav === 'community' ? 'Connect, collaborate, and chat with your cohort peers and facilitators' : 'Manage your personal details and account';
 
     const clearCohortFilters = () => { setCohortSearch(''); setCohortFilter('all'); setCohortSort('newest'); };
     const clearCertFilters = () => { setCertSearch(''); setCertFilter('all'); setCertSort('newest'); };
@@ -1811,6 +1818,30 @@ const LearnerDashboard: React.FC = () => {
                         {currentNav === 'coaching' && (
                             <div className="animate-fade-in">
                                 <CoachingScheduleView />
+                            </div>
+                        )}
+
+                        {/* ════ VIEW: COHORT COMMUNITY ════ */}
+                        {currentNav === 'community' && (
+                            <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column' }}>
+                                {resolvedCommunityCohortId ? (
+                                    <CommunityHub
+                                        cohortId={resolvedCommunityCohortId}
+                                        user={{
+                                            uid: store.user?.uid || '',
+                                            fullName: store.user?.fullName || '',
+                                            role: store.user?.role || 'learner'
+                                        }}
+                                        cohorts={myCohorts.map(c => ({ id: c.id, name: c.name }))}
+                                        onCohortChange={(newId) => setSelectedCommunityCohortId(newId)}
+                                    />
+                                ) : (
+                                    <div className="ld-empty" style={{ borderRadius: 0, padding: '3rem' }}>
+                                        <div className="ld-empty__icon"><MessagesSquare size={36} strokeWidth={1.5} /></div>
+                                        <span className="ld-empty__title">No Active Cohort</span>
+                                        <p className="ld-empty__desc">You need to be assigned to an active class to participate in the cohort community hub.</p>
+                                    </div>
+                                )}
                             </div>
                         )}
 

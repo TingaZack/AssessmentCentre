@@ -9,10 +9,11 @@ import {
     Search, X, Info, BarChart2, UserMinus, Edit2, Loader2, Video, History,
     ChevronDown, ChevronUp, MapPin, Filter, ChevronRight, Globe,
     Timer, PenTool, BookOpen, Award, ShieldCheck,
-    FileText, Briefcase, AlertTriangle, ClipboardList, HelpCircle, Star, Eye, Link as LinkIcon, Trash2, MinusCircle
+    FileText, Briefcase, AlertTriangle, ClipboardList, HelpCircle, Star, Eye, Link as LinkIcon, Trash2, MinusCircle,
+    MessagesSquare
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { collection, query, where, onSnapshot, doc, updateDoc, writeBatch, increment, getDoc, deleteDoc, getDocs } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, updateDoc, writeBatch, increment, getDoc, deleteDoc, getDocs, limit } from 'firebase/firestore';
 
 import { db } from '../../../lib/firebase';
 import { useStore } from '../../../store/useStore';
@@ -30,6 +31,7 @@ import { CohortGeoMap, getLocationString, extractGeoLevels } from '../../../comp
 import { AdvancedMapFilters, type AdvancedMapFilterState } from '../../../components/common/CohortMap/AdvancedMapFilters';
 import { ExportAnalyticsModal } from '../../../components/common/ExportModal/ExportAnalyticsModal';
 import { StipendExportModal } from '../../../components/common/StipendExportModal/StipendExportModal';
+import { CommunityHub } from '../../../pages/Portfolio/CommunityHub';
 
 // ─── UTILS ─────────────────────────────────────────────────────────
 
@@ -118,8 +120,10 @@ const renderWithdrawalEmailBadge = (learner: any) => {
     );
 };
 
-// ─── MAIN COMPONENT ─────────────────────────────────────────────────────────
+// 🚀 IN-MEMORY CACHE FOR BOOTCAMP COHORT DATA
+const bootcampDataCache = new Map<string, any>();
 
+// ─── MAIN COMPONENT ─────────────────────────────────────────────────────────
 export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
@@ -134,10 +138,212 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
     }, [fetchLearners]);
 
     // UI & TAB STATES
-    const activeTab = (searchParams.get('view') as 'learners' | 'calendar' | 'attendance' | 'surveys') || 'learners';
-    const [isMatrixExpanded, setIsMatrixExpanded] = useState(true);
-    const [isAssessmentsExpanded, setIsAssessmentsExpanded] = useState(false);
-    const [showKPIs, setShowKPIs] = useState(true);
+    const activeTab = (searchParams.get('view') as 'learners' | 'calendar' | 'attendance' | 'surveys' | 'community') || 'learners';
+
+    // 🚀 PERSIST UI STATES & SCROLL POSITION TO SESSION STORAGE
+    const [isMatrixExpanded, setIsMatrixExpanded] = useState(() => {
+        const val = sessionStorage.getItem(`bc_matrix_${cohort?.id}`);
+        return val ? JSON.parse(val) : true;
+    });
+    const [isAssessmentsExpanded, setIsAssessmentsExpanded] = useState(() => {
+        const val = sessionStorage.getItem(`bc_assess_${cohort?.id}`);
+        return val ? JSON.parse(val) : false;
+    });
+    const [showKPIs, setShowKPIs] = useState(() => {
+        const val = sessionStorage.getItem(`bc_kpis_${cohort?.id}`);
+        return val ? JSON.parse(val) : true;
+    });
+
+    useEffect(() => { if (cohort?.id) sessionStorage.setItem(`bc_matrix_${cohort.id}`, JSON.stringify(isMatrixExpanded)); }, [isMatrixExpanded, cohort?.id]);
+    useEffect(() => { if (cohort?.id) sessionStorage.setItem(`bc_assess_${cohort.id}`, JSON.stringify(isAssessmentsExpanded)); }, [isAssessmentsExpanded, cohort?.id]);
+    useEffect(() => { if (cohort?.id) sessionStorage.setItem(`bc_kpis_${cohort.id}`, JSON.stringify(showKPIs)); }, [showKPIs, cohort?.id]);
+
+    useEffect(() => {
+        const scrollKey = `bc_scroll_${cohort?.id}`;
+        const savedScroll = sessionStorage.getItem(scrollKey);
+        const targetY = savedScroll ? parseInt(savedScroll, 10) : 0;
+
+        // ─── DETECT THE ACTUAL SCROLL CONTAINER ───
+        // The page uses a dashboard layout. We need to find which element
+        // ACTUALLY scrolls (has content overflow + actually changes scrollTop).
+        // Just checking `overflow: auto` in CSS is NOT enough — an element
+        // can have `overflow: auto` but not be height-constrained, in which
+        // case it never scrolls and the real scroll happens on window.
+        //
+        // Strategy: check candidates by verifying scrollHeight > clientHeight
+        // (i.e., the element has actual overflow content). Also attach a
+        // capture-phase listener on window/document to catch scroll events
+        // from ANY element as a fallback.
+        const findScrollContainer = (): HTMLElement | Window => {
+            // Helper: check if an element actually has scrollable overflow
+            const hasScrollOverflow = (el: HTMLElement): boolean => {
+                const style = getComputedStyle(el);
+                const overflowY = style.overflowY;
+                if (overflowY !== 'auto' && overflowY !== 'scroll') return false;
+                // Must have content taller than its own height
+                return el.scrollHeight > el.clientHeight + 10;
+            };
+
+            // Try .cdp-main
+            const main = document.querySelector('.cdp-main') as HTMLElement;
+            if (main && hasScrollOverflow(main)) return main;
+
+            // Try .cdp-content
+            const content = document.querySelector('.cdp-content') as HTMLElement;
+            if (content && hasScrollOverflow(content)) return content;
+
+            // Try any element with cdp- prefix that scrolls
+            const cdpElements = Array.from(document.querySelectorAll('[class*="cdp-"]')) as HTMLElement[];
+            for (const el of cdpElements) {
+                if (hasScrollOverflow(el)) return el;
+            }
+
+            // Fallback: if the document itself is scrollable, use window
+            if (document.documentElement.scrollHeight > window.innerHeight + 10) {
+                return window;
+            }
+            if (document.scrollingElement) {
+                return document.scrollingElement as HTMLElement;
+            }
+            return window;
+        };
+
+        const getScrollTop = (el: HTMLElement | Window): number => {
+            if (el === window) {
+                return Math.round(window.scrollY || window.pageYOffset || 0);
+            }
+            return Math.round((el as HTMLElement).scrollTop);
+        };
+
+        const setScrollTop = (el: HTMLElement | Window, y: number) => {
+            if (el === window) {
+                window.scrollTo({ top: y, behavior: 'instant' as ScrollBehavior });
+            } else {
+                (el as HTMLElement).scrollTo({ top: y, behavior: 'instant' as ScrollBehavior });
+            }
+        };
+
+        const getScrollHeight = (el: HTMLElement | Window): number => {
+            if (el === window) {
+                return document.documentElement.scrollHeight;
+            }
+            return (el as HTMLElement).scrollHeight;
+        };
+
+        let scrollContainer: HTMLElement | Window = window;
+        scrollContainer = findScrollContainer();
+
+        // DISABLE BROWSER'S NATIVE SCROLL RESTORATION
+        // Modern browsers try to restore scroll position automatically on
+        // back/forward navigation. This competes with our manual restoration
+        // and often wins (restoring to 0 / top). Setting to 'manual' gives
+        // us full control.
+        if ('scrollRestoration' in history) {
+            history.scrollRestoration = 'manual';
+        }
+
+        // ROBUST SCROLL RESTORATION with retry polling.
+        // Polls every animation frame until the document is tall enough to
+        // reach the saved position (or 120 frames / ~2s elapses), then scrolls.
+        if (savedScroll && targetY > 0) {
+            let attempts = 0;
+            const maxAttempts = 120;
+            const tryScroll = () => {
+                attempts++;
+                scrollContainer = findScrollContainer();
+                const docHeight = getScrollHeight(scrollContainer);
+                const viewportHeight = scrollContainer === window
+                    ? window.innerHeight
+                    : (scrollContainer as HTMLElement).clientHeight;
+                const reachable = docHeight >= targetY + viewportHeight - 50;
+
+                if (reachable || attempts >= maxAttempts) {
+                    setScrollTop(scrollContainer, targetY);
+                    // ALSO scroll window as a fallback in case the real
+                    // scroller is window (not the detected container)
+                    if (scrollContainer !== window) {
+                        window.scrollTo({ top: targetY, behavior: 'instant' as ScrollBehavior });
+                    }
+                } else {
+                    requestAnimationFrame(tryScroll);
+                }
+            };
+            requestAnimationFrame(tryScroll);
+        }
+
+        // ─── SCROLL POSITION SAVING ───
+        // Track the last NON-ZERO scroll position. The scroll container may
+        // be reset to 0 by a ScrollToTop component during navigation, so we
+        // only save non-zero values and persist the last good one on cleanup.
+        let lastGoodScrollY = 0;
+        let ticking = false;
+
+        const handleScroll = (e?: Event) => {
+            if (!ticking) {
+                requestAnimationFrame(() => {
+                    // Re-detect container in case the DOM changed
+                    scrollContainer = findScrollContainer();
+                    // If this is a capture-phase event from a different element,
+                    // use that element's scrollTop instead
+                    let y: number;
+                    if (e && e.target && e.target !== document && e.target !== window && (e.target as HTMLElement).scrollTop !== undefined) {
+                        y = Math.round((e.target as HTMLElement).scrollTop);
+                    } else {
+                        y = getScrollTop(scrollContainer);
+                    }
+                    if (y > 0) {
+                        lastGoodScrollY = y;
+                        sessionStorage.setItem(scrollKey, y.toString());
+                    }
+                    ticking = false;
+                });
+                ticking = true;
+            }
+        };
+
+        // Attach to the detected container
+        const scrollTarget: HTMLElement | Window = scrollContainer;
+        scrollTarget.addEventListener('scroll', handleScroll, { passive: true } as any);
+
+        // ALSO attach a capture-phase listener on window/document to catch
+        // scroll events from ANY element. Scroll events don't bubble, but
+        // the capture phase traverses from root to target, so a capture-phase
+        // listener on window catches scroll events from all descendant elements.
+        // This is our safety net in case the detected container is wrong.
+        const captureHandler = (e: Event) => handleScroll(e);
+        window.addEventListener('scroll', captureHandler, { passive: true, capture: true } as any);
+
+        // Safety nets for full page reloads.
+        const saveOnExit = () => {
+            // Check both the detected container AND window.scrollY
+            const containerY = getScrollTop(scrollContainer);
+            const windowY = Math.round(window.scrollY || window.pageYOffset || 0);
+            const y = Math.max(containerY, windowY);
+            const saveY = y > 0 ? y : lastGoodScrollY;
+            if (saveY > 0) {
+                sessionStorage.setItem(scrollKey, saveY.toString());
+            }
+        };
+        window.addEventListener('pagehide', saveOnExit);
+        window.addEventListener('beforeunload', saveOnExit);
+
+        return () => {
+            // CRITICAL: Save scroll on unmount. Check BOTH the detected
+            // container AND window.scrollY, since we may have guessed the
+            // container wrong (it had overflow:auto but wasn't scrolling).
+            const containerY = getScrollTop(scrollContainer);
+            const windowY = Math.round(window.scrollY || window.pageYOffset || 0);
+            const bestY = Math.max(containerY, windowY, lastGoodScrollY);
+            if (bestY > 0) {
+                sessionStorage.setItem(scrollKey, bestY.toString());
+            }
+            scrollTarget.removeEventListener('scroll', handleScroll as any);
+            window.removeEventListener('scroll', captureHandler, true as any);
+            window.removeEventListener('pagehide', saveOnExit);
+            window.removeEventListener('beforeunload', saveOnExit);
+        };
+    }, [cohort?.id, activeTab]);
+
     const [showZoomUploadModal, setShowZoomUploadModal] = useState(false);
     const [isMapFullscreen, setIsMapFullscreen] = useState(false);
     const [showExportAnalyticsModal, setShowExportAnalyticsModal] = useState(false);
@@ -193,7 +399,7 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
         setCurrentPage(1);
     }, [urlSearchTerm, statusFilter, attendanceFilter, activationFilter, locationFilter, customMinPct, customMaxPct, exitEmailFilter]);
 
-    const setActiveTab = (view: 'learners' | 'calendar' | 'attendance' | 'surveys') => updateUrlParams({ view });
+    const setActiveTab = (view: 'learners' | 'calendar' | 'attendance' | 'surveys' | 'community') => updateUrlParams({ view });
     const handleMapLocationSelect = (loc: string | null) => updateUrlParams({ location: loc, view: 'learners' });
 
     // MODAL & ACTION STATES
@@ -217,18 +423,17 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
     const handlePrevMonth = () => setCalendarMonth(prev => prev.clone().subtract(1, 'month'));
     const handleNextMonth = () => setCalendarMonth(prev => prev.clone().add(1, 'month'));
 
-    // DATA STATES
-    const [liveEnrollments, setLiveEnrollments] = useState<any[]>([]);
+    // 🚀 INITIALIZE STATES FROM IN-MEMORY CACHE
+    const cached = bootcampDataCache.get(cohort?.id) || {};
 
-    // UNIFIED ATTENDANCE ENGINE STATES
-    const [rawAttendance, setRawAttendance] = useState<any[]>([]);
-    const [rawAttendanceLogs, setRawAttendanceLogs] = useState<any[]>([]);
-    const [rawAttendanceRecords, setRawAttendanceRecords] = useState<any[]>([]);
-
-    const [enrolledLearners, setEnrolledLearners] = useState<DashboardLearner[]>([]);
-    const [cohortAnalytics, setCohortAnalytics] = useState<any>(null);
+    const [liveEnrollments, setLiveEnrollments] = useState<any[]>(cached.liveEnrollments || []);
+    const [rawAttendance, setRawAttendance] = useState<any[]>(cached.rawAttendance || []);
+    const [rawAttendanceLogs, setRawAttendanceLogs] = useState<any[]>(cached.rawAttendanceLogs || []);
+    const [rawAttendanceRecords, setRawAttendanceRecords] = useState<any[]>(cached.rawAttendanceRecords || []);
+    const [enrolledLearners, setEnrolledLearners] = useState<DashboardLearner[]>(cached.enrolledLearners || []);
+    const [cohortAnalytics, setCohortAnalytics] = useState<any>(cached.cohortAnalytics || null);
     const [ledgerDates, setLedgerDates] = useState<string[]>([]);
-    const [submissions, setSubmissions] = useState<any[]>([]);
+    const [submissions, setSubmissions] = useState<any[]>(cached.submissions || []);
     const [isGrantingTime, setIsGrantingTime] = useState(false);
 
     // SURVEY STATES
@@ -237,6 +442,52 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
     const [surveyTemplates, setSurveyTemplates] = useState<any[]>([]);
     const [viewingSurveyResponse, setViewingSurveyResponse] = useState<any | null>(null);
     const [surveySearchQuery, setSurveySearchQuery] = useState('');
+
+    // UNREAD COMMUNITY MESSAGES STATE & REAL-TIME LISTENER
+    const [unreadCommunityCount, setUnreadCommunityCount] = useState(0);
+
+    useEffect(() => {
+        if (!cohort?.id || !user?.uid) return;
+
+        const q = query(
+            collection(db, 'community_messages'),
+            where('cohortId', '==', cohort.id),
+            limit(100)
+        );
+
+        const unsub = onSnapshot(q, (snap) => {
+            let count = 0;
+            const getStoredTimestamp = (channelId: string) => {
+                try {
+                    const raw = localStorage.getItem(`mlab_last_read_${user.uid}`);
+                    if (raw) return JSON.parse(raw)[channelId] || 0;
+                } catch { }
+                return 0;
+            };
+
+            snap.docs.forEach((docSnap) => {
+                const data = docSnap.data();
+                if (data.senderId === user.uid) return;
+
+                const msgTime = data.createdAt?.seconds
+                    ? data.createdAt.seconds * 1000
+                    : (data.createdAt?.toDate ? data.createdAt.toDate().getTime() : 0);
+                const channelId = data.channelId;
+                if (!channelId) return;
+
+                const lastRead = getStoredTimestamp(channelId);
+                if (msgTime > lastRead) {
+                    count++;
+                }
+            });
+
+            setUnreadCommunityCount(count);
+        }, (err) => {
+            console.warn("Bootcamp view community unread listener error:", err);
+        });
+
+        return () => unsub();
+    }, [cohort?.id, user?.uid]);
 
     const [attendanceBands] = useState([
         { id: 'pct_0', min: 0, max: 0, label: 'No Attendance / Not Started (0%)', color: '#94a3b8' },
@@ -256,23 +507,30 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
 
     useEffect(() => {
         if (!cohort?.id) return;
-        const q = query(collection(db, 'attendance'), where('cohortId', '==', cohort.id));
-        const unsub = onSnapshot(q, snap => setRawAttendance(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
-        return () => unsub();
-    }, [cohort?.id]);
+        const updateCache = (key: string, data: any) => {
+            const current = bootcampDataCache.get(cohort.id) || {};
+            bootcampDataCache.set(cohort.id, { ...current, [key]: data });
+        };
 
-    useEffect(() => {
-        if (!cohort?.id) return;
-        const q = query(collection(db, 'attendance_logs'), where('cohortId', '==', cohort.id));
-        const unsub = onSnapshot(q, snap => setRawAttendanceLogs(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
-        return () => unsub();
-    }, [cohort?.id]);
+        const unsub1 = onSnapshot(query(collection(db, 'attendance'), where('cohortId', '==', cohort.id)), snap => {
+            const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            setRawAttendance(list);
+            updateCache('rawAttendance', list);
+        });
 
-    useEffect(() => {
-        if (!cohort?.id) return;
-        const q = query(collection(db, 'attendance_records'), where('cohortId', '==', cohort.id));
-        const unsub = onSnapshot(q, snap => setRawAttendanceRecords(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
-        return () => unsub();
+        const unsub2 = onSnapshot(query(collection(db, 'attendance_logs'), where('cohortId', '==', cohort.id)), snap => {
+            const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            setRawAttendanceLogs(list);
+            updateCache('rawAttendanceLogs', list);
+        });
+
+        const unsub3 = onSnapshot(query(collection(db, 'attendance_records'), where('cohortId', '==', cohort.id)), snap => {
+            const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            setRawAttendanceRecords(list);
+            updateCache('rawAttendanceRecords', list);
+        });
+
+        return () => { unsub1(); unsub2(); unsub3(); };
     }, [cohort?.id]);
 
     useEffect(() => {
@@ -1629,7 +1887,7 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
             <main className="cdp-main">
                 <header className="cdp-header" style={{ borderBottom: '3px solid var(--mlab-green)' }}>
                     <div className="cdp-header__left">
-                        <button className="cdp-header__back" onClick={handleBack}><ChevronLeft size={14} /> {isAdmin ? 'Back to Dashboard' : 'Back'}</button>
+                        <button className="cdp-header__back" style={{ color: 'white' }} onClick={handleBack}><ChevronLeft size={14} /> {isAdmin ? 'Back to Dashboard' : 'Back'}</button>
                         <div className="cdp-header__eyebrow"><Users size={12} /> Bootcamp Analytics & Funnel</div>
                         <h1 className="cdp-header__title">{cohort.name}</h1>
                         <p className="cdp-header__sub"><Calendar size={12} className="cdp-header__sub-icon" /> {cohort.startDate} — {cohort.endDate}<span className="cdp-header__status cdp-header__status--active">Bootcamp Active</span></p>
@@ -1846,6 +2104,23 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
                         <button className={`lfm-tab ${activeTab === 'calendar' ? 'active' : ''}`} onClick={() => setActiveTab('calendar')}><Calendar size={16} /> Calendar</button>
                         <button className={`lfm-tab ${activeTab === 'attendance' ? 'active' : ''}`} onClick={() => setActiveTab('attendance')}><UserCheck size={16} /> Attendance</button>
                         <button className={`lfm-tab ${activeTab === 'surveys' ? 'active' : ''}`} onClick={() => setActiveTab('surveys')}><ClipboardList size={16} /> Surveys</button>
+                        <button className={`lfm-tab ${activeTab === 'community' ? 'active' : ''}`} onClick={() => setActiveTab('community')}>
+                            <MessagesSquare size={16} /> Cohort Community
+                            {unreadCommunityCount > 0 && (
+                                <span style={{
+                                    background: '#ef4444',
+                                    color: 'white',
+                                    fontSize: '0.65rem',
+                                    fontWeight: 'bold',
+                                    padding: '2px 6px',
+                                    borderRadius: '10px',
+                                    marginLeft: '6px',
+                                    lineHeight: 1
+                                }}>
+                                    {unreadCommunityCount > 99 ? '99+' : unreadCommunityCount}
+                                </span>
+                            )}
+                        </button>
                     </div>
 
                     {/* ─── TAB 1: LEARNER ROSTER ─── */}
@@ -2359,6 +2634,21 @@ export const BootcampCohortView: React.FC<{ cohort: any }> = ({ cohort }) => {
                                     </div>
                                 </div>
                             </div>
+                        </div>
+                    )}
+
+                    {/* ─── TAB 5: COHORT COMMUNITY ─── */}
+                    {activeTab === 'community' && (
+                        <div className="animate-fade-in" style={{ height: 'calc(100vh - 250px)' }}>
+                            <CommunityHub
+                                cohortId={cohort.id}
+                                user={{
+                                    uid: user?.uid || '',
+                                    fullName: user?.fullName || 'Staff Member',
+                                    role: user?.role || 'staff'
+                                }}
+                                cohorts={[cohort]}
+                            />
                         </div>
                     )}
                 </div>

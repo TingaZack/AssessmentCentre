@@ -19,7 +19,8 @@ import {
     ChevronDown,
     HelpCircle,
     Award,
-    Shield
+    Shield,
+    MessagesSquare
 } from 'lucide-react';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { collection, query, where, getDocs } from 'firebase/firestore';
@@ -38,6 +39,7 @@ import '../../../components/views/CohortsView/CohortsView.css';
 import { CertificateStudio } from '../../AdminDashboard/CertificateStudio/CertificateStudio';
 import { SurveyManager } from '../../AdminDashboard/SurveyManager/SurveyManager';
 import { MentorDashboard } from '../../mentor/MentorDashboard/MentorDashboard';
+import { CommunityHub } from '../../Portfolio/CommunityHub';
 
 export const FacilitatorDashboard: React.FC = () => {
     const {
@@ -60,8 +62,7 @@ export const FacilitatorDashboard: React.FC = () => {
     const location = useLocation();
     const [searchParams, setSearchParams] = useSearchParams();
 
-    // 🚀 INCLUDED 'workplace-verification' IN THE URL TAB UNION
-    const urlTab = searchParams.get('tab') as 'dashboard' | 'history' | 'profile' | 'assessments' | 'coaching' | 'surveys' | 'studio' | 'workplace-verification' | null;
+    const urlTab = searchParams.get('tab') as 'dashboard' | 'history' | 'profile' | 'assessments' | 'coaching' | 'surveys' | 'studio' | 'workplace-verification' | 'community' | null;
 
     const activeTab = useMemo(() => {
         const path = location.pathname;
@@ -72,7 +73,7 @@ export const FacilitatorDashboard: React.FC = () => {
         return 'dashboard';
     }, [location.pathname, urlTab]);
 
-    const handleSetTab = (tab: 'dashboard' | 'history' | 'profile' | 'assessments' | 'coaching' | 'surveys' | 'studio' | 'workplace-verification') => {
+    const handleSetTab = (tab: 'dashboard' | 'history' | 'profile' | 'assessments' | 'coaching' | 'surveys' | 'studio' | 'workplace-verification' | 'community') => {
         setSearchParams((prev) => {
             prev.set('tab', tab);
             return prev;
@@ -174,10 +175,19 @@ export const FacilitatorDashboard: React.FC = () => {
                     for (const chunk of chunks) {
                         const pendingQ = query(collection(db, 'learner_submissions'), where('cohortId', 'in', chunk), where('status', '==', 'submitted'));
                         const pSnap = await getDocs(pendingQ);
-                        pendingCount += pSnap.size;
+
+                        // 🚀 REMOVED blind `pendingCount += pSnap.size;` 
 
                         pSnap.forEach(docSnap => {
                             const data = docSnap.data();
+
+                            // 🚀 SUMMATIVE BYPASS: Ignore Summatives (Assessors mark these directly)
+                            const isSummative = (data.type || data.assessmentType || '').toLowerCase().includes('summative') || (data.title || '').toLowerCase().includes('summative');
+                            if (isSummative) return;
+
+                            // 🚀 Only increment counts for Formatives
+                            pendingCount += 1;
+
                             const cid = data.cohortId;
                             if (cid) cohortPendingMap[cid] = (cohortPendingMap[cid] || 0) + 1;
 
@@ -294,6 +304,7 @@ export const FacilitatorDashboard: React.FC = () => {
                                 {activeTab === 'assessments' && <FileEdit size={22} />}
                                 {activeTab === 'surveys' && <HelpCircle size={22} />}
                                 {activeTab === 'coaching' && <MessageSquare size={22} />}
+                                {activeTab === 'community' && <MessagesSquare size={22} />}
                                 {activeTab === 'studio' && <Award size={22} />}
                             </div>
                             <div className="cdp-header__text">
@@ -305,6 +316,7 @@ export const FacilitatorDashboard: React.FC = () => {
                                     {activeTab === 'assessments' && (isAssistant ? 'Portfolio Tracking' : 'Assessment Manager')}
                                     {activeTab === 'surveys' && 'Surveys & Feedback Center'}
                                     {activeTab === 'coaching' && 'Coaching & Support Schedule'}
+                                    {activeTab === 'community' && 'Cohort Community Hub'}
                                     {activeTab === 'studio' && 'Certificate Studio'}
                                 </h1>
                                 <p className="cdp-header__sub">
@@ -336,6 +348,21 @@ export const FacilitatorDashboard: React.FC = () => {
                     {/* COACHING SCHEDULE */}
                     {activeTab === 'coaching' && (
                         <div className="animate-fade-in"><CoachingScheduleView /></div>
+                    )}
+
+                    {/* COHORT COMMUNITY */}
+                    {activeTab === 'community' && (
+                        <div className="animate-fade-in">
+                            <CommunityHub
+                                cohortId={myCohorts[0]?.id || ''}
+                                user={{
+                                    uid: user?.uid || '',
+                                    fullName: user?.fullName || 'Facilitator',
+                                    role: user?.role || 'facilitator'
+                                }}
+                                cohorts={myCohorts}
+                            />
+                        </div>
                     )}
 
                     {/* FULL SURVEY MANAGER */}
